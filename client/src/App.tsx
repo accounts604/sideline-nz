@@ -34,6 +34,7 @@ import PortalOrders from "@/pages/portal/orders";
 import PortalOrderDetail from "@/pages/portal/order-detail";
 import PortalProfile from "@/pages/portal/profile";
 import PortalNotifications from "@/pages/portal/notifications";
+import PortalInvoice from "@/pages/portal/invoice";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -89,6 +90,9 @@ function Router() {
         </Route>
 
         {/* Customer portal */}
+        <Route path="/portal/orders/:id/invoice">
+          {() => <ProtectedRoute><PortalInvoice /></ProtectedRoute>}
+        </Route>
         <Route path="/portal/orders/:id">
           {() => <ProtectedRoute><PortalOrderDetail /></ProtectedRoute>}
         </Route>

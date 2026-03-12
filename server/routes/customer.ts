@@ -138,6 +138,37 @@ router.patch("/notifications/:id/read", async (req, res) => {
   }
 });
 
+// GET /orders/:id/invoice — invoice data for printable view
+router.get("/orders/:id/invoice", async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const result = await storage.getOrderWithDetails(req.params.id);
+    if (!result) return res.status(404).json({ error: "Order not found" });
+    if (result.order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
+
+    const customer = await storage.getUser(user.userId);
+
+    res.json({
+      order: result.order,
+      items: result.items,
+      customer: customer ? {
+        email: customer.email,
+        teamName: customer.teamName,
+        contactPhone: customer.contactPhone,
+      } : null,
+      company: {
+        name: "Sideline NZ Ltd",
+        address: "New Zealand",
+        email: "info@sidelinenz.com",
+        website: "sidelinenz.com",
+      },
+    });
+  } catch (err) {
+    console.error("Portal invoice error:", err);
+    res.status(500).json({ error: "Failed to load invoice" });
+  }
+});
+
 // GET /profile — customer profile
 router.get("/profile", async (req, res) => {
   try {

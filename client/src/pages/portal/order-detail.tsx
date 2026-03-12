@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PortalLayout } from "@/components/portal-layout";
 import { useParams, Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
-import { ArrowLeft, Upload, FileText, ExternalLink, RefreshCw, Check, X, AlertCircle } from "lucide-react";
+import { ArrowLeft, Upload, FileText, ExternalLink, RefreshCw, Check, X, AlertCircle, Receipt } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 
 interface OrderItem {
@@ -414,6 +414,27 @@ export default function PortalOrderDetail() {
                 <span style={{ color: "#fff", fontWeight: 600 }}>${(order.total / 100).toFixed(2)} {order.currency?.toUpperCase()}</span>
               </div>
             </div>
+
+            <Link href={`/portal/orders/${order.id}/invoice`}>
+              <button style={{
+                width: "100%",
+                marginTop: "16px",
+                padding: "10px",
+                fontSize: "13px",
+                fontWeight: 500,
+                background: "rgba(255,255,255,0.06)",
+                color: "rgba(255,255,255,0.7)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "6px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+              }}>
+                <Receipt size={14} /> View Invoice
+              </button>
+            </Link>
           </div>
 
           {/* Design status guide */}

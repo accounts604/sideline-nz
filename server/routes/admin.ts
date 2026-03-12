@@ -3,6 +3,8 @@ import { requireAdmin } from "../auth";
 import { storage } from "../storage";
 import { hashPassword } from "../auth";
 import { z } from "zod";
+import { notifyDesignApproved, notifyDesignRejected, notifyOrderStatusChange } from "../notifications";
+import { sendInviteEmail } from "../email";
 
 const router = Router();
 
@@ -60,8 +62,21 @@ const updateOrderSchema = z.object({
 router.patch("/orders/:id", async (req, res) => {
   try {
     const data = updateOrderSchema.parse(req.body);
+    const oldOrder = await storage.getOrder(req.params.id);
     const order = await storage.updateOrder(req.params.id, data);
     if (!order) return res.status(404).json({ error: "Order not found" });
+
+    // Notify customer on status change
+    if (data.status && data.status !== oldOrder?.status && order.userId) {
+      notifyOrderStatusChange({
+        userId: order.userId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        newStatus: data.status,
+        customerEmail: order.customerEmail,
+      }).catch(err => console.error("Notify order status error:", err));
+    }
+
     res.json(order);
   } catch (err: any) {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
@@ -96,16 +111,24 @@ router.post("/orders/:id/design-review", async (req, res) => {
       });
     }
 
-    // Notify the customer
+    // Notify the customer (DB + email + GHL)
     if (file.userId) {
-      await storage.createNotification({
+      const order = await storage.getOrder(file.orderId);
+      const customer = await storage.getUser(file.userId);
+      const notifyOpts = {
         userId: file.userId,
-        type: action === "approved" ? "design_approved" : "design_rejected",
-        title: action === "approved" ? "Design Approved" : "Design Needs Revision",
-        message: comment || `Your ${file.label} design has been ${action}.`,
         orderId: file.orderId,
         designFileId: file.id,
-      });
+        label: file.label,
+        orderNumber: order?.orderNumber || "",
+        customerEmail: customer?.email || order?.customerEmail,
+      };
+
+      if (action === "approved") {
+        await notifyDesignApproved(notifyOpts);
+      } else {
+        await notifyDesignRejected({ ...notifyOpts, comment });
+      }
     }
 
     // Check if all designs for this order are approved
@@ -197,6 +220,14 @@ router.post("/customers/invite", async (req, res) => {
     if (existing) return res.status(409).json({ error: "An account with this email already exists" });
 
     const user = await storage.createInvite(email, teamName);
+
+    // Send invite email
+    if (user.inviteToken) {
+      sendInviteEmail(email, user.inviteToken, teamName).catch(err =>
+        console.error("Failed to send invite email:", err)
+      );
+    }
+
     res.status(201).json({
       id: user.id,
       email: user.email,
@@ -207,6 +238,41 @@ router.post("/customers/invite", async (req, res) => {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin invite error:", err);
     res.status(500).json({ error: "Failed to create invite" });
+  }
+});
+
+// GET /orders/:id/invoice — admin invoice view
+router.get("/orders/:id/invoice", async (req, res) => {
+  try {
+    const result = await storage.getOrderWithDetails(req.params.id);
+    if (!result) return res.status(404).json({ error: "Order not found" });
+
+    let customer = null;
+    if (result.order.userId) {
+      const user = await storage.getUser(result.order.userId);
+      if (user) {
+        customer = { email: user.email, teamName: user.teamName, contactPhone: user.contactPhone };
+      }
+    }
+
+    res.json({
+      order: result.order,
+      items: result.items,
+      customer: customer || {
+        email: result.order.customerEmail,
+        teamName: null,
+        contactPhone: null,
+      },
+      company: {
+        name: "Sideline NZ Ltd",
+        address: "New Zealand",
+        email: "info@sidelinenz.com",
+        website: "sidelinenz.com",
+      },
+    });
+  } catch (err) {
+    console.error("Admin invoice error:", err);
+    res.status(500).json({ error: "Failed to load invoice" });
   }
 });
 
