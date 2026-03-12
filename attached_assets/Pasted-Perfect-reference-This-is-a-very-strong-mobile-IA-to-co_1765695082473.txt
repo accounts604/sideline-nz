@@ -1,0 +1,116 @@
+Perfect reference. This is a very strong mobile IA to copy — simple, expandable, confidence-building.
+
+Below is a copy-paste Replit prompt that tells the AI to build this exact side-menu pattern (accordion + slide-in) for Sideline.
+
+⸻
+
+✅ REPLIT PROMPT — MOBILE SIDE MENU (JERSEYBIRD-STYLE)
+
+You are building a mobile-first slide-in side menu for a Next.js + Tailwind website called “Sideline NZ”.
+
+GOAL
+Replicate a clean, expandable mobile side menu similar to JerseyBird:
+- Full-height slide-in menu from the right
+- Accordion-style expandable sections
+- Clear hierarchy
+- Minimal, professional styling
+- Optimised for clubs and schools (time-poor users)
+
+TECH
+- Next.js (App Router)
+- Tailwind CSS
+- No external UI libraries
+- Accessible (keyboard + screen-reader friendly)
+
+BEHAVIOUR
+- Menu opens from the right when hamburger icon is tapped
+- Background page is dimmed
+- Menu can be closed by:
+  - X icon
+  - tapping overlay
+- Each main section expands/collapses independently
+- Smooth transitions (Tailwind only)
+
+MENU STRUCTURE (MOBILE)
+
+Top level sections (accordion):
+
+1. START A PROJECT
+   - Start a Project
+   - Pro Series (placeholder)
+   - Project Portal Login (placeholder)
+
+2. ABOUT SIDELINE
+   - What is Sideline?
+   - Contact Us
+
+3. FIND YOUR SPORT
+   - Rugby
+   - Football
+   - Basketball
+   - Netball
+   - Cricket
+   - Other
+
+4. TEAM STORES
+   - Team Store (placeholder)
+   - Coming Soon
+
+5. LOGIN
+
+Footer section (always visible at bottom):
+- Social icons (Instagram, Facebook, X/Twitter, TikTok)
+- Simple square icon buttons
+
+DESIGN RULES
+- White background
+- Black text
+- Thin divider lines between sections
+- Uppercase section headings
+- Minimal icons (chevron up/down only)
+- Plenty of vertical spacing
+- Tap targets large enough for thumbs
+
+COMPONENT REQUIREMENTS
+- MobileMenu.tsx
+- AccordionSection.tsx (reusable)
+- MenuOverlay.tsx
+- HamburgerButton.tsx
+
+STATE MANAGEMENT
+- Local React state only
+- No global store
+- Each accordion manages its own open/closed state
+
+RESPONSIVENESS
+- Mobile only (hidden on desktop)
+- Desktop uses a standard horizontal nav (placeholder OK)
+
+DELIVERABLE
+- Fully working mobile side menu
+- Clean Tailwind styling
+- Reusable accordion logic
+- Easy to add/remove menu items later
+
+
+⸻
+
+🔍 Why this works (important)
+	•	This pattern reduces cognitive load
+	•	Matches how club admins actually browse
+	•	Lets you scale later (team stores, portals, logins)
+	•	Feels premium without being flashy
+
+You’ve made a good instinctive call copying this structure.
+
+⸻
+
+Optional next steps (only if you want)
+
+I can:
+	1.	Convert this into exact Tailwind + React code
+	2.	Refactor it into a headless component system
+	3.	Map each menu item to GHL pipelines & intents
+	4.	Simplify it further for NZ rugby-first context
+
+Just tell me which one.

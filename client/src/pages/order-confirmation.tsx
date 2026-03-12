@@ -1,7 +1,6 @@
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import Layout from "@/components/layout";
-import { getTeamStoreBySlug } from "@/data/team-stores";
 import { CheckCircle, Package, Truck, ArrowLeft, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatPrice } from "@/lib/cart-context";
@@ -32,7 +31,7 @@ interface Order {
 
 export default function OrderConfirmationPage() {
   const params = useParams<{ slug: string }>();
-  const store = getTeamStoreBySlug(params.slug || "");
+  const storeName = (params.slug || "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   
   // Get order number from URL query
   const searchParams = new URLSearchParams(window.location.search);
@@ -85,7 +84,7 @@ export default function OrderConfirmationPage() {
         <div className="container mx-auto px-4">
           <Link href={`/team-stores/${params.slug}`}>
             <span className="inline-flex items-center text-white/70 hover:text-white mb-6 cursor-pointer text-sm">
-              <ArrowLeft size={16} className="mr-1" /> Back to {store?.name || "Store"}
+              <ArrowLeft size={16} className="mr-1" /> Back to {storeName || "Store"}
             </span>
           </Link>
 

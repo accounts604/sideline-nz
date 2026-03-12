@@ -1,0 +1,46 @@
+Build a “splash loader” intro animation for a Next.js (App Router) + Tailwind site, like JerseyBird.
+
+GOAL
+When a user first enters the site, show a full-screen loading/splash page:
+- Solid brand color background
+- Centered logo (SVG or text placeholder if no logo yet)
+- Optional small “Built by ___” pill at bottom-left
+Then the splash screen smoothly fades out and the actual site fades in.
+
+RULES / UX
+- Only show the splash ONCE per session (use sessionStorage, not localStorage).
+- If user navigates to other pages, do not show it again.
+- If user refreshes, it can show again (same session rules apply).
+- Total duration: ~1200–1800ms (slight delay then fade).
+- Must not block page rendering forever if JS fails (failsafe timeout).
+
+IMPLEMENTATION
+- Use Next.js App Router.
+- Create a client component <SplashLoader /> used in app/layout.tsx (or a top-level <Providers /> wrapper).
+- Use Tailwind for styling and transitions.
+- Use CSS transitions (opacity) + translate/scale subtle animation.
+- Use requestAnimationFrame or setTimeout to control phases:
+  1) visible
+  2) start fade
+  3) unmount
+- When splash is visible: lock scroll on body (overflow-hidden). Restore after unmount.
+- Accessibility: respect prefers-reduced-motion (if set, skip animation and show instantly).
+
+VISUAL SPEC
+- Fullscreen fixed overlay: inset-0, z-50
+- Background: brand-red (use Tailwind class like bg-red-500 for now; easy to change later)
+- Center: logo mark + wordmark (placeholder text “SIDELINE” if no logo)
+- Fade out: opacity-0 with duration-700 ease-out
+- Underlying site should fade in (optional) using a wrapper with transition-opacity.
+
+DELIVERABLE
+- Working splash screen that appears on first visit, fades away into the site
+- Clean, readable code
+- Minimal dependencies (no animation libraries)
+
+FILES TO CREATE
+- components/SplashLoader.tsx
+- components/ClientShell.tsx (wraps children, handles splash + page fade-in)
+- Update app/layout.tsx to wrap <body> content with <ClientShell>{children}</ClientShell>
+
+Also add clear comments showing where to swap in the real Sideline logo SVG later.

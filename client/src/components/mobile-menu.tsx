@@ -29,6 +29,7 @@ interface MobileMenuProps {
 const navLinks = [
   { href: "/clubs", label: "Clubs" },
   { href: "/schools", label: "Schools" },
+  { href: "/sponsor-placement", label: "Sponsors" },
   { href: "/team-stores", label: "Team Stores" },
   { href: "/our-work", label: "Our Work" },
   { href: "/contact", label: "Contact" },

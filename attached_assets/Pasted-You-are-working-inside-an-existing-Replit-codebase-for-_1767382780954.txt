@@ -1,0 +1,126 @@
+You are working inside an existing Replit codebase for Sideline NZ (Next.js + Tailwind). Some “Team Stores” and “Start a Project” work may already exist. Your job is to AUDIT the repo first, then implement ONLY the required changes. Do not rebuild the site or introduce new pages unless explicitly required.
+
+HIGH-LEVEL GOAL
+Add “Team Stores” as a secondary feature that supports the primary conversion (“Start a Project”), WITHOUT:
+- creating a separate Team Stores sales page
+- adding Team Stores to the main navigation
+- bloating the UI with irrelevant sections
+
+Instead, implement Team Stores in exactly 3 places:
+1) Inside the Start a Project form (simple question + optional conditional fields + help link)
+2) As a homepage feature section (a visually distinct colour-break band)
+3) With a reusable pop-up explainer (modal/drawer) triggered from homepage + form
+
+IMPORTANT: Remove or refactor anything that is irrelevant, duplicated, or conflicting with this approach.
+
+PHASE 1 — REPO AUDIT (DO THIS FIRST)
+1) Identify where these currently exist:
+   - Homepage file (app/page.tsx or pages/index.tsx)
+   - Start a Project form (route + component)
+   - Any existing Team Stores page/route/component
+   - Any existing modal system or UI library
+   - Any existing GHL webhook submit logic (/api/ghl/submit-project or similar)
+
+2) List what already exists and what’s missing:
+   - Does a “Team Stores” page exist? If yes, REMOVE the nav link to it and deprecate the page (do not delete if risky; you can leave route but orphan it).
+   - Does the Start a Project form already include Team Stores fields? If yes, align naming + copy with the spec below.
+   - Is there already a modal? Reuse it. If not, create a minimal accessible modal.
+
+3) Delete or simplify anything that is clearly irrelevant:
+   - Duplicate form steps, dead components, unused sections, placeholder sales pages, extra navigation items.
+
+PHASE 2 — IMPLEMENTATION (ONLY WHAT’S REQUIRED)
+
+A) HOMEPAGE FEATURE SECTION (NO NAV)
+Add a section (component preferred) on the homepage:
+- Eyebrow: “Optional add-on”
+- H2: “Online Team Stores (no admin for your club/school)”
+- Bullets:
+  - “Parents & supporters order + pay online”
+  - “We manage cut-off dates + fulfilment”
+  - “Perfect for supporter gear + merch drops”
+- CTAs:
+  1) Primary: “Add Team Store to my project” → takes user to Start a Project and preselects Team Stores = YES
+  2) Secondary: “What’s a Team Store?” → opens modal explainer
+- Add a simple “store preview” visual (fake product tiles/skeleton) to increase visuals.
+- Ensure this section is a clear “colour break” band (bg-gray-50 or subtle gradient), consistent padding, responsive.
+
+B) POP-UP EXPLAINER (REUSABLE)
+Create or reuse a modal/drawer component:
+- Component name: TeamStoreExplainerModal (or integrate into existing modal pattern)
+- Triggered from:
+  - homepage “What’s a Team Store?”
+  - form “What’s this?” link
+- Content:
+  - Title: “Team Store = online ordering without the admin”
+  - 1–2 sentence explanation
+  - 3 icon bullets (emoji or lucide icons):
+    - Individual ordering & payments
+    - Cut-off dates managed by Sideline
+    - Optional supporter merch drops
+  - Mini steps:
+    1) We build the store
+    2) You share the link
+    3) We produce + deliver after cut-off
+  - CTA in modal: “Include Team Store in my project”
+    - On homepage: navigates/scrolls to form + preselects YES
+    - On form: sets field to YES and closes modal
+
+Accessibility requirements:
+- Focus trap
+- ESC closes
+- click outside closes
+- aria-labelledby / aria-describedby
+
+C) START A PROJECT FORM (ADD/ALIGN FIELDS)
+Inside the existing multi-step form, add (or align to) these fields:
+- team_store_interest (Required)
+  Options:
+   - “Yes, we need an online team store”
+   - “Maybe / not sure”
+   - “No”
+- Add help link: “What’s a Team Store?” → opens modal
+
+Conditional (ONLY if Yes):
+- team_store_audience (Optional multi-select): Players / Parents / Supporters / Alumni / Community
+- team_store_goal (Optional select): Fundraising / Convenience / Supporter merch / Pre-orders for season
+
+Do NOT add 20 extra questions. Keep it tight.
+
+D) DATA / PRESELECT LOGIC
+When user clicks homepage primary CTA (“Add Team Store to my project”), preselect form field to YES.
+Implement the simplest reliable option based on current architecture:
+- If Start a Project form is on separate page: use query param (?teamStore=yes) OR localStorage flag
+- If form is on homepage: pass state setter down
+Pick the least invasive approach.
+
+E) GHL SUBMISSION PAYLOAD
+Ensure these new fields are included in the submit payload to the existing API route and forwarded to GHL webhook:
+- team_store_interest
+- team_store_audience
+- team_store_goal
+
+Do not break existing mappings. Add only.
+
+PHASE 3 — CLEANUP & QA
+1) Remove Team Stores from navigation if present.
+2) Remove/deprecate any separate Team Stores “sales page” if it exists (do not delete if it might be referenced; just remove links and mark as deprecated).
+3) Confirm:
+   - mobile layout looks clean
+   - section spacing is consistent
+   - clear colour breaks between sections
+   - the main CTA “Start a Project” remains primary
+   - modal works (keyboard + mobile)
+   - form submits with new fields
+4) Provide a final summary:
+   - files changed
+   - what was removed
+   - where Team Stores now appears
+
+OUTPUT FORMAT (IMPORTANT)
+- Provide code diffs or full updated files for only the files you changed.
+- Include short comments in code where decisions matter (why no nav link, why modal used).
+- Keep everything copy/paste ready for Replit.
+- Do not propose extra features beyond scope unless they are required for the above.
+
+If any ambiguity exists, choose the simplest approach that preserves the existing structure.

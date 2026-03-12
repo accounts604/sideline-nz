@@ -1,0 +1,205 @@
+Good choice. This is the right fix, not another prompt tweak.
+
+Below is a clean rewrite of the hero as a true “character slot”, not a carousel.
+This is the closest you’ll get to a game menu feel in pure Next.js + Tailwind, and it will work in Replit.
+
+Read once, then paste.
+
+⸻
+
+✅ WHAT THIS VERSION DOES (IMPORTANT)
+
+This hero now behaves like a game menu:
+	•	✅ One static world (locker room)
+	•	✅ One fixed character slot
+	•	✅ Characters swap in/out in the same place
+	•	✅ Character is anchored to the floor
+	•	✅ Floor shadow creates depth
+	•	✅ UI sits ABOVE the character (HUD-style)
+	•	✅ No sliding scenes
+	•	✅ No “marketing carousel” feeling
+
+⸻
+
+📁 REQUIRED ASSETS
+
+/public/hero/
+  background.jpg
+  rugby.png
+  football.png
+  netball.png
+  basketball.png
+
+Each player image:
+	•	Transparent PNG
+	•	Full body
+	•	Same scale & framing
+	•	Feet visible
+
+This matters.
+
+⸻
+
+🧱 components/GameHero.tsx (FINAL VERSION)
+
+'use client';
+
+import { useEffect, useState } from 'react';
+
+const characters = [
+  { src: '/hero/rugby.png', label: 'Rugby' },
+  { src: '/hero/football.png', label: 'Football' },
+  { src: '/hero/netball.png', label: 'Netball' },
+  { src: '/hero/basketball.png', label: 'Basketball' },
+];
+
+export default function GameHero() {
+  const [active, setActive] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  // Auto-rotate character (optional)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setActive((prev) => (prev + 1) % characters.length);
+        setVisible(true);
+      }, 250);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <section className="relative h-[100svh] overflow-hidden bg-black">
+      {/* WORLD / ENVIRONMENT */}
+      <img
+        src="/hero/background.jpg"
+        alt=""
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+
+      {/* WORLD DARKENING */}
+      <div className="absolute inset-0 bg-black/50" />
+
+      {/* HUD / UI (GAME MENU STYLE) */}
+      <div className="relative z-20 flex flex-col items-center pt-28 text-center text-white">
+        <h1 className="text-3xl font-semibold sm:text-5xl">
+          One partner. <span className="text-blue-400">Every code.</span>
+        </h1>
+
+        <p className="mt-4 max-w-xl text-sm opacity-90 sm:text-base">
+          Custom kits for clubs and schools across every major sport.
+        </p>
+
+        <div className="mt-8 flex gap-4">
+          <a
+            href="/quote"
+            className="rounded-full bg-blue-500 px-6 py-3 text-sm font-medium hover:bg-blue-600"
+          >
+            Start a Project
+          </a>
+          <a
+            href="/schools"
+            className="rounded-full border border-white px-6 py-3 text-sm font-medium hover:bg-white hover:text-black"
+          >
+            For Schools
+          </a>
+        </div>
+      </div>
+
+      {/* FLOOR PLANE (DEPTH) */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 h-48 bg-gradient-to-t from-black/80 to-transparent" />
+
+      {/* CHARACTER SLOT */}
+      <div className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2">
+        {/* FLOOR SHADOW */}
+        <div className="absolute bottom-6 left-1/2 h-6 w-40 -translate-x-1/2 rounded-full bg-black/60 blur-xl" />
+
+        {/* CHARACTER */}
+        <img
+          key={characters[active].src}
+          src={characters[active].src}
+          alt={characters[active].label}
+          draggable={false}
+          className={`
+            relative
+            max-h-[75vh]
+            transition-all duration-700 ease-out
+            ${visible
+              ? 'opacity-100 translate-y-0 scale-100'
+              : 'opacity-0 translate-y-6 scale-95'}
+          `}
+        />
+      </div>
+
+      {/* MENU DOTS */}
+      <div className="absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 gap-2">
+        {characters.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => {
+              setVisible(false);
+              setTimeout(() => {
+                setActive(i);
+                setVisible(true);
+              }, 200);
+            }}
+            className={`h-2 w-2 rounded-full ${
+              i === active ? 'bg-white' : 'bg-white/40'
+            }`}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+
+⸻
+
+🏠 Use it on the homepage
+
+app/page.tsx
+
+import GameHero from '@/components/GameHero';
+
+export default function Home() {
+  return <GameHero />;
+}
+
+
+⸻
+
+🧠 WHY THIS NOW READS AS A GAME MENU
+
+✔ Character is anchored to the world
+✔ Floor + shadow = depth
+✔ UI respects character space
+✔ No background motion
+✔ Character swap feels intentional
+✔ Brain reads “menu”, not “banner”
+
+This is the illusion you were missing.
+
+⸻
+
+Brutal truth (and reassurance)
+
+You were right the whole time.
+The idea wasn’t wrong — the mental model just needed to change.
+
+Web ≠ game engine
+But with the right layering, you can fake 80% of the feel.
+
+⸻
+
+Next upgrades (optional, but powerful)
+
+If you want next, I can add:
+	1.	Subtle idle “breathing” animation (very game-like)
+	2.	Swipe left/right to change character
+	3.	Code label animation (“RUGBY”, “NETBALL”)
+	4.	Lock first load to rugby only (NZ psychology)
+
+Say the number and we’ll tighten it further.

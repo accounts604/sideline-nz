@@ -1,0 +1,118 @@
+Perfect. Here is a clean, literal, copy-paste Replit prompt that tells it exactly what to build — no interpretation, no marketing hero nonsense.
+
+This prompt assumes the character-pop animation approach (static background + animated character), which is the correct technical model for what you want.
+
+⸻
+
+✅ REPLIT PROMPT — GAME-STYLE HERO WITH ANIMATED CHARACTER
+
+Build a homepage HERO SECTION for a Next.js (App Router) + Tailwind site that feels like a SPORTS VIDEO GAME MENU.
+
+THIS IS NOT A CAROUSEL OF PHOTOS.
+THIS IS A STATIC SCENE WITH AN ANIMATED CHARACTER THAT CHANGES.
+
+CORE CONCEPT
+- The environment (background) NEVER moves
+- The character is a separate layer that animates in/out
+- Swiping left/right changes the character (sport code)
+- Feels like a “player select / locker room idle screen”
+
+STRUCTURE (VERY IMPORTANT)
+Hero must have THREE LAYERS:
+
+1) BACKGROUND (STATIC)
+- Single locker room / tunnel / studio image
+- Same image for all slides
+- Absolutely positioned
+- Never animated or moved
+
+2) CHARACTER (ANIMATED)
+- One athlete PNG per sport code
+- Transparent background PNG
+- Centered near bottom of screen
+- This is the ONLY thing that animates
+
+3) UI OVERLAY
+- Headline
+- Subtext
+- CTAs
+- Dots / indicators
+
+ASSETS (ASSUME THESE EXIST)
+- /public/hero/background.jpg
+- /public/hero/rugby-player.png
+- /public/hero/football-player.png
+- /public/hero/netball-player.png
+- /public/hero/basketball-player.png
+
+CHARACTER ANIMATION
+When the active sport changes:
+- Old character fades out
+- New character fades in
+- Slight upward motion (translateY)
+- Slight scale-in (0.95 → 1)
+- Duration ~600–800ms
+- Ease-out
+
+This should feel like a character “entering the scene”, not an image sliding.
+
+INTERACTION
+- Swipe left/right on mobile to change sport
+- Auto-rotate every ~5 seconds (optional)
+- Dots at bottom reflect active sport
+
+HERO TEXT (FIXED — DOES NOT CHANGE)
+Headline:
+“One partner. Every code.”
+
+Subtext:
+“Custom kits for clubs and schools across every major sport.”
+
+CTAs:
+Primary: “Start a Project”
+Secondary: “For Schools”
+
+DESIGN RULES
+- Calm
+- Premium
+- No action shots
+- No in-play sports
+- No motion backgrounds
+- No zooms, parallax, or video
+
+TECH RULES
+- Next.js App Router
+- Tailwind CSS only
+- React state for active character
+- Touch events for swipe
+- No animation libraries
+- No canvas / WebGL / Three.js
+
+FILES TO CREATE
+- components/GameHero.tsx
+- Use on homepage only
+
+GOAL
+The hero should feel like:
+“A sports game menu screen where the player changes, not the scene.”
+
+If it looks like a sports marketing banner or photo carousel, it is WRONG.
+
+
+⸻
+
+🧠 Why this prompt will finally work
+	•	It forces separation between scene and character
+	•	It removes Replit’s freedom to invent layouts
+	•	It speaks in implementation language, not vibes
+	•	It matches what browsers can actually do well
+
+This is the tightest version of your idea that still ships.
+
+⸻
+
+If Replit still messes this up after this prompt, next step would be:
+	•	I give you a locked starter component you paste in
+	•	Replit only fills gaps instead of inventing structure
+
+Say the word if you want that.

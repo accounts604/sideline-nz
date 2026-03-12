@@ -1,0 +1,44 @@
+Here's the exact prompt to paste into Replit Agent:
+
+---
+
+> I need you to integrate Shopify Storefront API into this existing app. Here is exactly what I want:
+>
+> **Team Stores page (`/team-stores`):**
+> - Pull all Shopify collections via Storefront API
+> - Each collection = one team store card
+> - Display the collection's feature image as the card background
+> - Collection title = store name
+> - Clicking a card goes to `/team-stores/[collection-handle]`
+>
+> **Individual store page (`/team-stores/[handle]`):**
+> - Pull all products from that Shopify collection
+> - Display products in a grid with image, name, price
+> - Size selector, name/number input field
+> - Add to cart → Shopify checkout
+>
+> **Homepage (`/`):**
+> - The existing Team Stores carousel shows the first 6 Shopify collections with their feature images
+> - The existing Products carousel shows featured products from Shopify (tagged "featured")
+> - Keep all existing page design, layout, components and styling exactly as they are — only replace the hardcoded placeholder data with live Shopify data
+>
+> **Setup:**
+> - Shopify store URL goes in environment variable: `VITE_SHOPIFY_STORE_URL`
+> - Storefront API token goes in environment variable: `VITE_SHOPIFY_TOKEN`
+> - Use Shopify Storefront API GraphQL endpoint
+> - All Shopify calls go in `client/src/lib/shopify.ts`
+> - Do not change any routing, component names, file structure, or visual design
+> - Do not touch `layout.tsx`, `hero-carousel.tsx`, or any CSS
+>
+> When I add a new collection in Shopify it automatically appears as a new team store on the site. When I add products to a collection they appear in that store. No code changes needed on my end after initial setup.
+
+---
+
+Once Shopify support gives you the token, add these two to Replit **Secrets tab** (not in any file):
+
+```
+VITE_SHOPIFY_STORE_URL = your-store.myshopify.com
+VITE_SHOPIFY_TOKEN = [token from Shopify]
+```
+
+Then run that prompt. Agent has clear enough instructions it shouldn't break anything else.

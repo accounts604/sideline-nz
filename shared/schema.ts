@@ -3,19 +3,30 @@ import { pgTable, text, varchar, integer, timestamp, boolean, jsonb } from "driz
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Users table with Stripe customer reference
+// Users table with roles and Stripe customer reference
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  email: text("email"),
+  password: text("password").notNull(), // bcrypt hash
+  email: text("email").unique(),
+  role: text("role").notNull().default("customer"), // "admin" | "customer"
+  teamName: text("team_name"),
+  contactPhone: text("contact_phone"),
   stripeCustomerId: text("stripe_customer_id"),
+  emailVerified: boolean("email_verified").default(false),
+  inviteToken: text("invite_token"),
+  inviteExpiresAt: timestamp("invite_expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
   email: true,
+  role: true,
+  teamName: true,
+  contactPhone: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -72,6 +83,8 @@ export const orders = pgTable("orders", {
   customerEmail: text("customer_email"),
   customerName: text("customer_name"),
   shippingAddress: jsonb("shipping_address"),
+  designStatus: text("design_status").default("not_started"), // not_started, pending_review, approved, needs_revision
+  adminNotes: text("admin_notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   paidAt: timestamp("paid_at"),
@@ -120,3 +133,54 @@ export const ghlProducts = pgTable("ghl_products", {
 export const insertGhlProductSchema = createInsertSchema(ghlProducts).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertGhlProduct = z.infer<typeof insertGhlProductSchema>;
 export type GhlProduct = typeof ghlProducts.$inferSelect;
+
+// Design files uploaded per order
+export const designFiles = pgTable("design_files", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id").notNull().references(() => orders.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  label: text("label").notNull(), // "jersey", "shorts", "socks", "logo", "other"
+  fileName: text("file_name").notNull(),
+  fileUrl: text("file_url").notNull(), // Vercel Blob URL
+  fileSize: integer("file_size"),
+  mimeType: text("mime_type"),
+  status: text("status").notNull().default("pending"), // pending, approved, rejected
+  version: integer("version").notNull().default(1),
+  parentFileId: varchar("parent_file_id"), // Links re-uploads to original
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDesignFileSchema = createInsertSchema(designFiles).omit({ id: true, createdAt: true });
+export type InsertDesignFile = z.infer<typeof insertDesignFileSchema>;
+export type DesignFile = typeof designFiles.$inferSelect;
+
+// Design review comments
+export const designComments = pgTable("design_comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  designFileId: varchar("design_file_id").notNull().references(() => designFiles.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  comment: text("comment").notNull(),
+  action: text("action"), // "approved", "rejected", or null (just a comment)
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDesignCommentSchema = createInsertSchema(designComments).omit({ id: true, createdAt: true });
+export type InsertDesignComment = z.infer<typeof insertDesignCommentSchema>;
+export type DesignComment = typeof designComments.$inferSelect;
+
+// Notifications
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  type: text("type").notNull(), // design_approved, design_rejected, order_shipped, etc.
+  title: text("title").notNull(),
+  message: text("message"),
+  orderId: varchar("order_id").references(() => orders.id),
+  designFileId: varchar("design_file_id").references(() => designFiles.id),
+  read: boolean("read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;

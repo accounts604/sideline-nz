@@ -72,7 +72,7 @@ export default function Home() {
       {/* ── TEAM STORES CAROUSEL ── */}
       <section id="team-stores" style={{ paddingTop: "72px", paddingBottom: "16px", background: "#000" }}>
         {/* Row header */}
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "0 52px", marginBottom: "18px" }}>
+        <div className="home-row-header" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "0 52px", marginBottom: "18px" }}>
           <div>
             <p style={{ fontSize: "10px", letterSpacing: "2.5px", textTransform: "uppercase", color: "rgba(255,255,255,0.25)", marginBottom: "8px" }}>Browse</p>
             <h2 style={{ fontSize: "17px", fontWeight: 600, color: "#f0f0f0" }}>Team Stores</h2>
@@ -106,7 +106,7 @@ export default function Home() {
           <div
             ref={storesScrollRef}
             style={{ display: "flex", gap: "10px", overflowX: "auto", padding: "4px 52px 24px", scrollSnapType: "x mandatory" }}
-            className="hide-scrollbar"
+            className="hide-scrollbar home-scroll-track"
           >
             {collections.map((col, i) => (
               <Link key={col.handle} href={"/team-stores/" + col.handle}>
@@ -191,7 +191,7 @@ export default function Home() {
 
       {/* ── PRODUCTS CAROUSEL (white) ── */}
       <section style={{ paddingTop: "48px", paddingBottom: "48px", background: "#fff" }}>
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "0 52px", marginBottom: "18px" }}>
+        <div className="home-row-header" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "0 52px", marginBottom: "18px" }}>
           <div>
             <p style={{ fontSize: "10px", letterSpacing: "2.5px", textTransform: "uppercase", color: "rgba(0,0,0,0.35)", marginBottom: "8px" }}>Shop</p>
             <h2 style={{ fontSize: "17px", fontWeight: 600, color: "#111" }}>Products</h2>
@@ -219,7 +219,7 @@ export default function Home() {
           <div
             ref={productsScrollRef}
             style={{ display: "flex", gap: "14px", overflowX: "auto", padding: "4px 52px 24px", scrollSnapType: "x mandatory" }}
-            className="hide-scrollbar"
+            className="hide-scrollbar home-scroll-track"
           >
             {featuredProducts.map((product, i) => (
               <Link key={product.id} href="/team-stores">
@@ -264,7 +264,7 @@ export default function Home() {
       <div style={{ height: "120px", background: "linear-gradient(to bottom, #fff, #000)" }} />
 
       {/* ── TESTIMONIAL ── */}
-      <section style={{ padding: "80px 52px", background: "#000", textAlign: "center" }}>
+      <section className="home-testimonial" style={{ padding: "80px 52px", background: "#000", textAlign: "center" }}>
         <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "180px", color: "rgba(255,255,255,0.04)", lineHeight: 0.8, display: "block", marginBottom: "-50px", userSelect: "none" }}>&ldquo;</span>
         <blockquote
           data-testid="card-hub-testimonial"
@@ -278,7 +278,7 @@ export default function Home() {
 
       {/* ── OUR WORK GRID ── */}
       <section style={{ paddingBottom: "80px", background: "#000" }}>
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "0 52px", marginBottom: "20px" }}>
+        <div className="home-row-header" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "0 52px", marginBottom: "20px" }}>
           <div>
             <p style={{ fontSize: "10px", letterSpacing: "2.5px", textTransform: "uppercase", color: "rgba(255,255,255,0.25)", marginBottom: "8px" }}>Portfolio</p>
             <h2 style={{ fontSize: "17px", fontWeight: 600, color: "#f0f0f0" }}>Our Work</h2>
@@ -329,7 +329,7 @@ export default function Home() {
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "brightness(0.35)" }}
         />
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 55%, rgba(0,0,0,0.2) 100%)" }} />
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 72px" }}>
+        <div className="home-cta-content" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 72px" }}>
           <h2 style={{ fontFamily: "'Peloric', 'Bebas Neue', sans-serif", fontSize: "clamp(36px, 5vw, 56px)", lineHeight: 0.95, color: "#fff", marginBottom: "20px", letterSpacing: "1px" }}>
             READY TO BUILD<br />YOUR TEAM STORE?
           </h2>
@@ -363,6 +363,26 @@ export default function Home() {
         @media (max-width: 768px) {
           .home-overlay-content {
             padding: 44px 20px !important;
+          }
+          .home-row-header {
+            padding-left: 20px !important;
+            padding-right: 20px !important;
+          }
+          .home-scroll-track {
+            padding-left: 20px !important;
+            padding-right: 20px !important;
+          }
+          .home-testimonial {
+            padding: 44px 20px !important;
+          }
+          .home-work-grid {
+            padding-left: 20px !important;
+            padding-right: 20px !important;
+            grid-template-columns: 1fr !important;
+            grid-auto-rows: 220px !important;
+          }
+          .home-cta-content {
+            padding: 0 20px !important;
           }
         }
       `}</style>

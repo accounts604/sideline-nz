@@ -1,7 +1,7 @@
 import { useParams, Link, Redirect } from "wouter";
 import { useState } from "react";
 import Layout from "@/components/layout";
-import { ShoppingBag, ArrowLeft, ArrowRight, Users, Calendar, Package, Loader2, ExternalLink } from "lucide-react";
+import { ShoppingBag, ArrowLeft, ArrowRight, Users, Calendar, Package, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,12 +11,8 @@ import {
 } from "@/components/ui/dialog";
 import { useCollectionByHandle } from "@/hooks/use-shopify";
 import { formatPrice, type ShopifyProduct } from "@/lib/shopify";
-
-const SHOPIFY_STORE_URL = import.meta.env.VITE_SHOPIFY_STORE_URL || "";
-
-function getShopifyProductUrl(productHandle: string) {
-  return "https://" + SHOPIFY_STORE_URL + "/products/" + productHandle;
-}
+import { ProductModal } from "@/components/product-modal";
+import { StoreGate } from "@/components/store-gate";
 
 function TeamStoreExplainerModal({
   isOpen,
@@ -83,19 +79,17 @@ function TeamStoreExplainerModal({
 
 function ProductCard({
   product,
+  onSelect,
 }: {
   product: ShopifyProduct;
+  onSelect: (product: ShopifyProduct) => void;
 }) {
-  const shopifyUrl = getShopifyProductUrl(product.handle);
-
   return (
-    <a
-      href={shopifyUrl}
-      target="_blank"
-      rel="noopener noreferrer"
+    <button
+      onClick={() => onSelect(product)}
       data-testid={"product-card-" + product.handle}
-      style={{ cursor: "pointer", textAlign: "center", textDecoration: "none", display: "block" }}
-      className="group"
+      style={{ cursor: "pointer", textAlign: "center", display: "block", background: "none", border: "none", padding: 0 }}
+      className="group w-full"
     >
       <div style={{
         aspectRatio: "1", background: "#f5f5f5", borderRadius: "8px", overflow: "hidden",
@@ -118,7 +112,7 @@ function ProductCard({
           display: "flex", alignItems: "center", justifyContent: "center",
           opacity: 0, transition: "opacity 0.3s",
         }} className="group-hover:!opacity-100">
-          <ExternalLink size={14} style={{ color: "#fff" }} />
+          <ShoppingBag size={14} style={{ color: "#fff" }} />
         </div>
       </div>
       <h4 style={{ fontSize: "13px", fontWeight: 600, color: "#111", marginBottom: "4px", lineHeight: 1.3, textTransform: "uppercase" }}>
@@ -127,7 +121,7 @@ function ProductCard({
       <p style={{ fontSize: "15px", fontWeight: 700, color: "#111" }}>
         {formatPrice(product.priceRange.minVariantPrice.amount, product.priceRange.minVariantPrice.currencyCode)}
       </p>
-    </a>
+    </button>
   );
 }
 
@@ -137,6 +131,7 @@ export default function TeamStoreDetailPage() {
   const { data, isLoading, error } = useCollectionByHandle(handle);
 
   const [explainerModalOpen, setExplainerModalOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<ShopifyProduct | null>(null);
 
   if (isLoading) {
     return (
@@ -153,9 +148,9 @@ export default function TeamStoreDetailPage() {
   }
 
   const { collection, products } = data;
-  const shopifyCollectionUrl = "https://" + SHOPIFY_STORE_URL + "/collections/" + collection.handle;
 
   return (
+    <StoreGate storeName={collection.title}>
     <Layout>
       {/* Hero / Feature Image */}
       {collection.image && (
@@ -188,16 +183,6 @@ export default function TeamStoreDetailPage() {
               )}
             </div>
             <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              <a
-                href={shopifyCollectionUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontSize: "13px", color: "#fff", background: "#111", border: "none", borderRadius: "6px", padding: "10px 20px", cursor: "pointer", whiteSpace: "nowrap", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 600 }}
-                className="hover:opacity-90 transition-opacity"
-                data-testid="button-shop-on-shopify"
-              >
-                Shop on Shopify <ExternalLink size={13} />
-              </a>
               <button
                 onClick={() => setExplainerModalOpen(true)}
                 data-testid="button-how-it-works"
@@ -240,6 +225,7 @@ export default function TeamStoreDetailPage() {
                 <ProductCard
                   key={product.id}
                   product={product}
+                  onSelect={setSelectedProduct}
                 />
               ))}
             </div>
@@ -289,6 +275,12 @@ export default function TeamStoreDetailPage() {
         onClose={() => setExplainerModalOpen(false)}
       />
 
+      <ProductModal
+        product={selectedProduct}
+        open={!!selectedProduct}
+        onClose={() => setSelectedProduct(null)}
+      />
+
       <style>{`
         @media (min-width: 640px) {
           .store-products-grid {
@@ -304,5 +296,6 @@ export default function TeamStoreDetailPage() {
         }
       `}</style>
     </Layout>
+    </StoreGate>
   );
 }

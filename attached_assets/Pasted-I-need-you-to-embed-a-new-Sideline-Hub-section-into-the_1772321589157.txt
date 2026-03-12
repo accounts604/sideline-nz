@@ -1,0 +1,38 @@
+I need you to embed a new "Sideline Hub" section into the existing homepage (pages/index.tsx or wherever the homepage is defined). 
+
+Before you make any changes, read the current homepage file top to bottom and identify:
+1. What sections already exist (hero, services, testimonials, CTA, etc.)
+2. Any existing mentions of "team store", "fundraising", or "online store" — so we don't repeat them
+3. Where the natural mid-page break is — this is where the Hub section will sit
+
+Then do the following:
+
+STEP 1 — Create a new file: components/hub-section.tsx
+
+This component should contain one self-contained dark section using the existing design system (accent colour, font-heading, border-border, text-primary, rounded-2xl, etc.). Do not install any new dependencies.
+
+The section contains:
+- A badge label: "Introducing Sideline Hub"
+- Headline: "More than a uniform supplier. Your club's commercial home."
+- Subheadline: "Custom kit funded by your supporters, sponsor placement built in, and your own online store — all managed in one place."
+- Two header CTAs: primary button "See How It Works →" linking to /hub, and a subtle text link "Or get a free mockup ↓" that anchors to the inline form below
+- Three pillar cards side by side (stacked on mobile):
+  Pillar 1: 🏉 Custom Kit — "Fully sublimated, fully yours. Match jerseys, training gear, and off-field apparel designed around your club identity." Tag: "Design included"
+  Pillar 2: 💰 Supporter Funded — "Your supporters buy merch they actually want. That revenue funds your kit. No upfront cost. No sausage sizzles." Tag: "No upfront cost"
+  Pillar 3: 🏪 Your Own Store — "A live online store for your club. Members order direct. You don't touch the stock or the shipping." Tag: "Live in 24hrs"
+- Bottom row with two columns:
+  Left: A single testimonial card with stars, quote placeholder, name, role, club
+  Right: A 3-field inline form with id="hub-mockup-form" — fields: club name (text), sport (select: Rugby/League/Netball/Football/Basketball/Touch/Other), email (email input). Submit button: "Send My Free Mockup →". Note below: "No cost · No commitment · Delivered within 24 hours". On submit, POST to /api/ghl/mockup-request with { club_name, sport, email }. Show a simple success state on the same card.
+
+STEP 2 — Import HubSection into the homepage
+
+Find the right place to insert it — after the hero or intro block, but before any existing CTA or footer section. Do not place it next to or near any existing content that already mentions team stores, fundraising, or online ordering — if those exist, flag them to me and ask where I want the section placed instead.
+
+STEP 3 — Do not change anything else
+
+Do not modify the hero, nav, footer, existing service blocks, or any other homepage section. Only add the HubSection import and placement. The rest of the homepage stays exactly as it is.
+
+After completing, tell me:
+- What existing sections you found on the homepage
+- Where you placed the HubSection and why
+- Whether any duplicate content risk was found

@@ -1,0 +1,222 @@
+Perfect — now we’re aligned.
+You want THIS exact visual language 👇
+	•	Same environment (locker room / tunnel)
+	•	Athlete(s) styled like a game menu
+	•	Swipe left / right = change code
+	•	Calm, controlled, premium
+
+Let’s lock this into something Replit can actually execute, without it “getting creative”.
+
+Below is clear, literal code that does exactly one thing:
+👉 Swipe between codes (rugby, football, netball, basketball)
+👉 Same scene, different image per slide
+
+No guessing. No stock-action nonsense.
+
+⸻
+
+✅ WHAT WE ARE BUILDING (VERY CLEAR)
+	•	Hero = full-screen
+	•	Background = static environment
+	•	Foreground = one slide per code
+	•	Interaction = swipe on mobile, auto-rotate optional
+	•	Animation = simple slide left/right
+
+Think: FIFA / UFC player select — but a website
+
+⸻
+
+🧱 IMAGE SETUP (IMPORTANT)
+
+You need ONE image per code, all matching the same scene:
+
+/public/hero/
+  rugby.jpg
+  football.jpg
+  netball.jpg
+  basketball.jpg
+
+Each image:
+	•	Same locker room
+	•	One athlete (or same group pose)
+	•	Different kit only
+
+This prevents Replit from “inventing” layouts.
+
+⸻
+
+1️⃣ components/HeroCarousel.tsx (SWIPE-ENABLED)
+
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+
+const slides = [
+  { src: '/hero/rugby.jpg', label: 'Rugby' },
+  { src: '/hero/football.jpg', label: 'Football' },
+  { src: '/hero/netball.jpg', label: 'Netball' },
+  { src: '/hero/basketball.jpg', label: 'Basketball' },
+];
+
+export default function HeroCarousel() {
+  const [active, setActive] = useState(0);
+  const startX = useRef<number | null>(null);
+
+  // Auto-rotate (optional – comment out if you don’t want it)
+  useEffect(() => {
+    const id = setInterval(() => {
+      setActive((prev) => (prev + 1) % slides.length);
+    }, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Swipe handlers
+  const onTouchStart = (e: React.TouchEvent) => {
+    startX.current = e.touches[0].clientX;
+  };
+
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (startX.current === null) return;
+
+    const endX = e.changedTouches[0].clientX;
+    const diff = startX.current - endX;
+
+    if (diff > 50) {
+      // swipe left
+      setActive((prev) => (prev + 1) % slides.length);
+    } else if (diff < -50) {
+      // swipe right
+      setActive((prev) =>
+        prev === 0 ? slides.length - 1 : prev - 1
+      );
+    }
+
+    startX.current = null;
+  };
+
+  return (
+    <section
+      className="relative h-[100svh] overflow-hidden"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+    >
+      {/* Slides */}
+      <div
+        className="flex h-full transition-transform duration-700 ease-out"
+        style={{
+          width: `${slides.length * 100}%`,
+          transform: `translateX(-${active * (100 / slides.length)}%)`,
+        }}
+      >
+        {slides.map((slide) => (
+          <div key={slide.src} className="w-full flex-shrink-0">
+            <img
+              src={slide.src}
+              alt={slide.label}
+              className="h-full w-full object-cover"
+              draggable={false}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Dark overlay */}
+      <div className="absolute inset-0 bg-black/40" />
+
+      {/* Text overlay */}
+      <div className="absolute inset-0 z-10 flex items-center justify-center px-6">
+        <div className="max-w-3xl text-center text-white">
+          <h1 className="text-3xl font-semibold sm:text-5xl">
+            One partner. <span className="text-blue-400">Every code.</span>
+          </h1>
+
+          <p className="mt-4 text-sm opacity-90 sm:text-base">
+            Custom kits for clubs and schools across every major sport.
+          </p>
+
+          <div className="mt-8 flex justify-center gap-4">
+            <a
+              href="/quote"
+              className="rounded-full bg-blue-500 px-6 py-3 text-sm font-medium text-white hover:bg-blue-600"
+            >
+              Start a Project
+            </a>
+
+            <a
+              href="/schools"
+              className="rounded-full border border-white px-6 py-3 text-sm font-medium hover:bg-white hover:text-black"
+            >
+              For Schools
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {/* Dots */}
+      <div className="absolute bottom-6 left-1/2 z-10 flex -translate-x-1/2 gap-2">
+        {slides.map((_, i) => (
+          <span
+            key={i}
+            className={`h-2 w-2 rounded-full ${
+              i === active ? 'bg-white' : 'bg-white/40'
+            }`}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+
+⸻
+
+2️⃣ Use it on the homepage
+
+app/page.tsx
+
+import HeroCarousel from '@/components/HeroCarousel';
+
+export default function Home() {
+  return <HeroCarousel />;
+}
+
+
+⸻
+
+✅ WHY THIS MATCHES YOUR REFERENCE IMAGE
+
+✔ Same calm environment
+✔ Player-as-hero, not action
+✔ Swipe feels game-like
+✔ No layout jumps
+✔ No Replit “creative interpretation”
+
+This is locked-down enough that the tool can’t ruin it.
+
+⸻
+
+🧠 Brutally honest take (sparring mode)
+
+This is the maximum sophistication you should ship right now.
+
+Anything more:
+	•	3D
+	•	Multiple players per slide
+	•	Animated cameras
+
+…will hurt clarity and conversion, especially for schools.
+
+This version:
+	•	Looks premium
+	•	Feels intentional
+	•	Communicates “system, not supplier”
+
+⸻
+
+Next (pick one)
+	1.	Lock one canonical locker room image and derive all slides from it
+	2.	Add manual left/right arrows (desktop)
+	3.	Reduce to one athlete per slide instead of groups
+	4.	Tune headline + CTA hierarchy for schools vs clubs
+
+Say the word and we’ll tighten it further.

@@ -114,4 +114,16 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+  /* Responsive section padding: 20px mobile → 52px desktop */
+  .section-px {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+@media (min-width: 768px) {
+  .section-px {
+    padding-left: 52px;
+    padding-right: 52px;
+  }
 }

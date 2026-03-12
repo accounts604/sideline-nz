@@ -5,6 +5,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ClientShell } from "@/components/client-shell";
+import { AuthProvider } from "@/lib/auth-context";
+import { ProtectedRoute, AdminRoute } from "@/components/protected-route";
 import NotFound from "@/pages/not-found";
 
 import Home from "@/pages/home";
@@ -17,6 +19,16 @@ import OurWorkPage from "@/pages/our-work";
 import CaseStudyDetailPage from "@/pages/case-study-detail";
 import TeamStoresPage from "@/pages/team-stores";
 import TeamStoreDetailPage from "@/pages/team-store-detail";
+import SponsorPlacement from "@/pages/sponsor-placement";
+import LoginPage from "@/pages/login";
+import RegisterPage from "@/pages/register";
+import AcceptInvitePage from "@/pages/accept-invite";
+import AdminDashboard from "@/pages/admin/dashboard";
+import AdminOrders from "@/pages/admin/orders";
+import AdminOrderDetail from "@/pages/admin/order-detail";
+import AdminCustomers from "@/pages/admin/customers";
+import AdminCustomerDetail from "@/pages/admin/customer-detail";
+import AdminDesignReview from "@/pages/admin/design-review";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -33,6 +45,7 @@ function Router() {
     <>
       <ScrollToTop />
       <Switch>
+        {/* Public pages */}
         <Route path="/" component={Home} />
         <Route path="/clubs" component={Clubs} />
         <Route path="/schools" component={Schools} />
@@ -41,8 +54,43 @@ function Router() {
         <Route path="/team-stores/:slug" component={TeamStoreDetailPage} />
         <Route path="/our-work" component={OurWorkPage} />
         <Route path="/our-work/:slug" component={CaseStudyDetailPage} />
+        <Route path="/sponsor-placement" component={SponsorPlacement} />
         <Route path="/quote" component={Quote} />
         <Route path="/contact" component={Contact} />
+
+        {/* Auth pages */}
+        <Route path="/login" component={LoginPage} />
+        <Route path="/register" component={RegisterPage} />
+        <Route path="/accept-invite" component={AcceptInvitePage} />
+
+        {/* Admin portal */}
+        <Route path="/admin/orders/:id">
+          {() => <AdminRoute><AdminOrderDetail /></AdminRoute>}
+        </Route>
+        <Route path="/admin/orders">
+          {() => <AdminRoute><AdminOrders /></AdminRoute>}
+        </Route>
+        <Route path="/admin/customers/:id">
+          {() => <AdminRoute><AdminCustomerDetail /></AdminRoute>}
+        </Route>
+        <Route path="/admin/customers">
+          {() => <AdminRoute><AdminCustomers /></AdminRoute>}
+        </Route>
+        <Route path="/admin/designs">
+          {() => <AdminRoute><AdminDesignReview /></AdminRoute>}
+        </Route>
+        <Route path="/admin">
+          {() => <AdminRoute><AdminDashboard /></AdminRoute>}
+        </Route>
+
+        {/* Customer portal (Phase 3) */}
+        <Route path="/portal/:rest*">
+          {() => <ProtectedRoute><div>Customer Portal — coming in Phase 3</div></ProtectedRoute>}
+        </Route>
+        <Route path="/portal">
+          {() => <ProtectedRoute><div>Customer Portal — coming in Phase 3</div></ProtectedRoute>}
+        </Route>
+
         <Route component={NotFound} />
       </Switch>
     </>
@@ -52,12 +100,14 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <ClientShell>
-            <Router />
-        </ClientShell>
-      </TooltipProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <ClientShell>
+              <Router />
+          </ClientShell>
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

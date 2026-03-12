@@ -1,0 +1,108 @@
+Here’s the full prompt:
+
+Update all placeholder stats, copy, and messaging across the entire site to match Sideline NZ’s brand positioning. Do not change any layout, styling, or component structure — text content only.
+Brand positioning to communicate throughout:
+Sideline NZ is not a uniform supplier. We are a club growth partner. We use apparel as a vehicle for identity, sponsorship leverage, and community pride. We serve grassroots clubs and schools across New Zealand that are underfunded, volunteer-led, and time-poor. Our edge is commercial thinking applied to grassroots sport.
+Tone of voice:
+	∙	Confident but grounded
+	∙	Direct, not corporate
+	∙	Community-minded and practical
+	∙	No hype, no fluff, no “world-class” or “industry-leading”
+	∙	Speak like a trusted partner, not a salesperson
+
+TICKER STRIP — replace all items with:
+	∙	Serving Clubs Since 2021
+	∙	NZ Owned & Operated
+	∙	Free Quote Within 48 Hours
+	∙	Fully Sublimated Printing
+	∙	Sponsor Integration Built-In
+	∙	School & Club Ready
+	∙	Fast Turnaround Guaranteed
+	∙	Your Kit. Your Identity.
+
+CLUBS SECTION — replace stat and copy with:
+	∙	Number: “Est. 2021”
+	∙	Label: “Club Growth Partner”
+	∙	Heading: “Built for clubs that are time-poor.”
+	∙	Body: “Fast replies, simple ordering, and gear that arrives on time. We handle the heavy lifting so your committee doesn’t have to. From first mockup to final delivery — we’ve got it covered.”
+	∙	Button: “View Club Solutions”
+
+SCHOOLS SECTION — replace stat and copy with:
+	∙	Number: “100%”
+	∙	Label: “School Safe Process”
+	∙	Heading: “SLT-safe. Stress-free. On time.”
+	∙	Body: “Designed around how schools actually work. Clear quoting process, organised delivery, and designs that go through the right approvals. Less admin for you. Better gear for your students.”
+	∙	Button: “View School Solutions”
+
+HERO ROTATING HEADLINES — replace with:
+	∙	Slide 1: “ONE PARTNER. EVERY CODE.”
+	∙	Slide 1 sub: “Custom kits for clubs and schools across every major sport in New Zealand.”
+	∙	Slide 2: “YOUR JERSEY. PAYS FOR ITSELF.”
+	∙	Slide 2 sub: “We help clubs structure sponsorship through their kit. Your apparel becomes a revenue asset, not just an expense.”
+	∙	Slide 3: “GRASSROOTS. ELITE LOOK.”
+	∙	Slide 3 sub: “We help grassroots clubs look elite without elite budgets. Professional gear, built around your identity.”
+
+TESTIMONIAL — replace with generic but believable:
+	∙	Quote: “The whole process was straightforward from start to finish. The kit arrived on time, the quality was exactly what we needed, and our members were stoked. Would recommend Sideline to any club.”
+	∙	Name: “Club Manager”
+	∙	Role: “Rugby Club, Auckland”
+
+FREE MOCKUP FORM SECTION — replace copy with:
+	∙	Kicker: “No Cost · No Commitment”
+	∙	Heading: “GET A FREE KIT MOCKUP.”
+	∙	Body: “Tell us your club, your sport, and your colours. We’ll design a custom mockup and send it to your inbox within 48 hours. No cost. No obligation. Just a look at what your kit could be.”
+	∙	Button: “Send My Free Mockup”
+	∙	Note: “Free · No commitment · Delivered within 48 hours”
+
+CTA BAND — replace with:
+	∙	Heading: “READY TO BUILD YOUR TEAM STORE?”
+	∙	Body: “Get your club set up with its own online store. Members order direct, you manage nothing. Get started with a free mockup.”
+	∙	Button 1: “Start a Project”
+	∙	Button 2: “Learn More”
+
+CLUBS PAGE /clubs — replace all copy with:
+	∙	Hero title: “FOR CLUBS”
+	∙	Hero sub: “Your club deserves gear that represents who you are.”
+	∙	Section 1 heading: “More than a uniform supplier.”
+	∙	Section 1 body: “Most apparel companies send you a price list and wait for an order. We sit down with your club, understand your identity, and build a kit system that works for your budget, your sponsors, and your people. We’ve been doing this since 2021 and we understand how grassroots clubs actually operate.”
+	∙	Section 2 heading: “Your jersey can fund itself.”
+	∙	Section 2 body: “We help clubs structure sponsor placement on their kit so the apparel pays for itself. Front chest, sleeves, back, training gear — every panel is a sponsorship asset. We’ll show you how to approach local businesses and what to charge them.”
+	∙	Section 3 heading: “Your own online store.”
+	∙	Section 3 body: “Every club we work with gets their own branded online store. Members order direct, choose their size, add their name and number. No cash handling, no bulk guessing, no leftover stock.”
+	∙	CTA heading: “READY TO GEAR UP YOUR CLUB?”
+	∙	CTA body: “Get a free mockup within 48 hours. No commitment required.”
+
+SCHOOLS PAGE /schools — replace all copy with:
+	∙	Hero title: “FOR SCHOOLS”
+	∙	Hero sub: “Gear that works within your systems, not against them.”
+	∙	Section 1 heading: “Designed around how schools work.”
+	∙	Section 1 body: “We understand the approval process, the budget cycles, and the reporting requirements. Our quoting process is clear and documented so you can present it to your SLT with confidence.”
+	∙	Section 2 heading: “Organised delivery. Zero admin.”
+	∙	Section 2 body: “Individually bagged and labelled by student name. Delivered on time, every time. No chasing suppliers, no mystery boxes, no sizing disasters.”
+	∙	Section 3 heading: “Sponsor-ready from day one.”
+	∙	Section 3 body: “We design sponsor placement into your school kit from the start — helping sports departments offset costs and build commercial relationships with local businesses.”
+	∙	CTA heading: “LET’S TALK ABOUT YOUR SCHOOL.”
+	∙	CTA body: “Get in touch and we’ll put together a proposal that works for your budget and your process.”
+
+CONTACT PAGE /contact — replace all copy with:
+	∙	Hero title: “GET IN TOUCH”
+	∙	Hero sub: “We’re NZ-based and we reply fast. No offshore call centres, no ticket systems.”
+	∙	Form heading: “Send us a message.”
+	∙	Form body: “Tell us about your club or school and what you’re looking for. We’ll get back to you within 24 hours.”
+	∙	Below form: “Prefer to talk? Email us at hello@sidelinenz.com”
+
+OUR WORK PAGE /our-work — replace all copy with:
+	∙	Hero title: “OUR WORK”
+	∙	Hero sub: “Clubs and schools we’ve worked with across New Zealand.”
+	∙	Section intro: “Every kit we produce is custom designed around the club’s identity, colours, and sponsor structure. Here’s a selection of recent work.”
+
+QUOTE PAGE /quote — replace all copy with:
+	∙	Page title: “START A PROJECT”
+	∙	Intro: “Tell us about your club or school and what you need. We’ll come back to you within 48 hours with a free mockup and a clear quote.”
+	∙	Step 1 heading: “About your club”
+	∙	Step 2 heading: “What do you need?”
+	∙	Step 3 heading: “Your details”
+	∙	Final button: “Submit — We’ll be in touch within 48 hours”
+	∙	Completion message: “Done. We’ll have your free mockup in your inbox within 48 hours.”
+
+Do not change any layout, styling, routing, component logic, data fetching, or Shopify integration. Text content and copy only. Keep all data-testid attributes unchanged.​​​​​​​​​​​​​​​​

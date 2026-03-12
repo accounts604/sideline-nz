@@ -1,0 +1,87 @@
+Fix the homepage hero carousel sizing, image scaling, and section spacing.
+
+We have 7 hero images. All have pure black backgrounds and are portrait 
+orientation (~3:4 ratio). The hero layout places text on the left, 
+image on the right. The goal is visual consistency across all slides 
+so every image feels equally impactful.
+
+────────────────────────────────────────
+1. HERO SECTION — GLOBAL SETTINGS
+────────────────────────────────────────
+- Hero height: 92vh on desktop, 100svh on mobile
+- Background: #000000 (matches all image backgrounds — seamless blend)
+- Image container: position absolute or relative, anchored bottom-right
+- Image should display full height of the hero section
+- Use object-fit: contain with bottom alignment so figures are 
+  grounded at the bottom edge
+- Image max-height: 100% of hero section height
+- Image max-width: 55% on desktop (right half of screen)
+
+────────────────────────────────────────
+2. IMAGE-SPECIFIC OVERRIDES
+────────────────────────────────────────
+Apply slide-specific CSS classes or data attributes for these overrides:
+
+ACCESSORIES SLIDE (two people, beanie + cap):
+- The subjects sit in the LOWER 60% of the image with heavy black 
+  space above. To compensate:
+  - Apply transform: scale(1.4) on the image
+  - Apply transform-origin: bottom center
+  - This pushes the figures up to fill the frame consistently
+  - Do NOT crop — scale only
+
+NETBALL ACTION SHOT (arm raised, portrait):
+- This image is a tighter portrait crop and the subject extends 
+  beyond normal frame
+- Apply object-position: center top to anchor from the top
+- Scale to: 1.1 if needed to fill vertical space
+
+ALL OTHER SLIDES (Rugby, Tracksuit, Gridiron, Basketball, Windbreaker):
+- No scaling override needed — these fill the frame well
+- object-fit: contain, object-position: bottom right
+
+────────────────────────────────────────
+3. LEFT TEXT BLOCK — CONSISTENCY
+────────────────────────────────────────
+- Position: absolute left, vertically centered between 35%–65% 
+  of hero height
+- Padding left: clamp(2.5rem, 6vw, 7rem)
+- Max width of text block: 45% on desktop, 90% on mobile
+
+Typography scale (consistent across all slides):
+- Eyebrow label (e.g. "SIDELINE NZ · CUSTOM TEAMWEAR WORLDWIDE"):
+  font-size: 0.7rem, letter-spacing: 0.15em, opacity: 0.6
+- Main headline: font-size: clamp(3.5rem, 6.5vw, 6.5rem), 
+  font-weight: 900, line-height: 0.92
+- Subtext: font-size: clamp(0.875rem, 1.2vw, 1rem), 
+  max-width: 340px, opacity: 0.75, margin-top: 1.25rem
+- CTA buttons row: margin-top: 2rem, gap: 0.75rem
+
+────────────────────────────────────────
+4. SECTION SPACING BELOW HERO
+────────────────────────────────────────
+- Ticker/marquee bar: margin-top: 0, flush against hero bottom edge
+- Between ticker bar bottom and Team Stores section: 
+  padding-top: clamp(3.5rem, 6vw, 5rem) on the section wrapper
+- "BROWSE" eyebrow + "TEAM STORES" heading: 
+  margin-bottom: 1.75rem before card carousel starts
+- Card carousel: no extra top padding, flows directly from heading
+
+────────────────────────────────────────
+5. MOBILE RESPONSIVE
+────────────────────────────────────────
+- Below 768px: stack layout, image moves to bottom half of screen
+- Text block sits in top half, padding: 2rem 1.5rem
+- Image anchors to bottom center, height: 55vh
+- CTA buttons: stack vertically, width: 100%
+- Accessories slide mobile: scale(1.3) transform-origin: bottom center
+
+────────────────────────────────────────
+6. DO NOT TOUCH
+────────────────────────────────────────
+- No changes to routing, Shopify integration, or component structure
+- No changes to navigation
+- No changes to ticker text content
+- No changes to card carousel data or Team Stores logic
+- CSS/style layer only unless a structural fix is unavoidable for 
+  the accessories image scaling

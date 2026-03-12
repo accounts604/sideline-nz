@@ -1,0 +1,266 @@
+Good correction — and this actually sharpens the strategy 👌
+You’ve just clarified something important:
+
+> **Team Stores are not the volume offer. They’re the high-ticket, partnership offer with revenue share.**
+
+That changes **how** it should appear on the homepage, not **whether** it should appear.
+
+Let me recalibrate properly.
+
+---
+
+## 1. Reframe the offer (this is the key insight)
+
+You have **three different offers**, and they should not be weighted equally:
+
+1. **Custom Orders** → low–mid ticket, frequent, transactional
+2. **Team Stores (revenue share)** → **high ticket, long-term partnership**
+3. **Supporter / club gear** → downstream upside
+
+So the mistake would be:
+❌ “Team Stores = core CTA for everyone”
+
+The *correct* positioning is:
+✅ **Team Stores = premium partnership offer for the right clubs**
+
+That means:
+
+* Still visible on the homepage
+* But **sold, not browsed**
+* Framed as *“for established clubs & schools”*
+
+---
+
+## 2. What Team Stores should be on the homepage
+
+Not a shop.
+Not a directory.
+Not “find your store” first.
+
+It should be positioned as:
+
+> **“Want us to run your club’s online store and share revenue back?”**
+
+That’s a very different sell.
+
+---
+
+## 3. Where it sits in the homepage hierarchy (important)
+
+### Recommended order (updated)
+
+1. Hero – “Uniforms made simple”
+2. Trust strip – logos
+3. **Custom Orders / Start a Project** (primary CTA)
+4. **Team Stores – Partnership Model** (secondary, premium)
+5. How it Works
+6. Testimonials
+7. Final CTA
+
+This does two things:
+
+* Keeps your volume funnel clean
+* Signals Team Stores as *selective and valuable*
+
+---
+
+## 4. Homepage Team Stores section – revised positioning
+
+### Section headline (this matters a lot)
+
+Pick something that implies **selectivity + upside**:
+
+* **“Team stores that fund your club.”**
+* **“Turn supporter gear into club revenue.”**
+* **“A managed team store — with money back to your club.”**
+
+This immediately filters the right audience.
+
+---
+
+### Supporting copy (tight + honest)
+
+> For selected clubs and schools, we set up and manage a dedicated online team store — handling orders, payments, and delivery, while returning a portion of sales back to your organisation.
+
+This frames it as:
+
+* Managed
+* Ongoing
+* Partnership-based
+* Not for everyone
+
+---
+
+## 5. How to visually signal “high-ticket / partnership”
+
+### DO
+
+* Use a **darker or richer colour break** (charcoal, deep green, navy)
+* Fewer cards, more whitespace
+* Emphasise outcomes, not features
+
+### DON’T
+
+* List lots of stores
+* Make it feel like a marketplace
+* Put “Find your store” as the main CTA
+
+This is not Dynasty’s public directory energy — it’s **enterprise-lite**.
+
+---
+
+## 6. CTA strategy (this is critical)
+
+You only need **one CTA** here:
+
+### Primary CTA
+
+**`Apply for a Team Store`**
+
+Secondary (small text link):
+
+* “Already have a store? View stores →”
+
+Why:
+
+* “Apply” signals qualification
+* Protects your time
+* Reinforces high-ticket nature
+
+---
+
+## 7. Homepage section layout (high-ticket version)
+
+### Left column (sell the upside)
+
+* Headline
+* 3 outcomes
+* CTA
+
+Example bullets:
+
+* 💰 Revenue share back to your club
+* 📦 We handle orders, payments & delivery
+* 🧑‍🤝‍🧑 Designed for established clubs & schools
+
+### Right column (proof, not browsing)
+
+* 2–3 **example partner logos**
+* One short testimonial (even anonymised)
+* A simple diagram:
+
+  > Supporters → Store → Club earns
+
+---
+
+## 8. Revised Replit component (premium version)
+
+### `TeamStorePartnership.tsx`
+
+```tsx
+import Link from 'next/link';
+
+export default function TeamStorePartnership() {
+  return (
+    <section className="bg-neutral-900 text-white py-20">
+      <div className="max-w-7xl mx-auto px-4 grid md:grid-cols-2 gap-12 items-center">
+
+        {/* LEFT */}
+        <div>
+          <h2 className="text-3xl font-semibold mb-4">
+            Team stores that fund your club.
+          </h2>
+          <p className="text-neutral-300 mb-6">
+            For selected clubs and schools, we run a fully managed online team store —
+            returning a portion of sales back to your organisation.
+          </p>
+
+          <ul className="space-y-3 mb-8 text-sm">
+            <li>💰 Revenue share from supporter gear sales</li>
+            <li>📦 Orders, payments & delivery handled by us</li>
+            <li>🧑‍🤝‍🧑 Best suited to established clubs & schools</li>
+          </ul>
+
+          <Link
+            href="/start-a-project?type=team-store"
+            className="inline-block px-6 py-3 rounded-xl bg-white text-black font-medium"
+          >
+            Apply for a Team Store
+          </Link>
+
+          <div className="mt-4 text-xs text-neutral-400">
+            Limited partnerships available • Approval required
+          </div>
+        </div>
+
+        {/* RIGHT */}
+        <div className="rounded-2xl bg-neutral-800 p-6">
+          <div className="text-sm text-neutral-300 mb-4">
+            Example partner clubs
+          </div>
+
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="h-14 bg-neutral-700 rounded-lg" />
+            <div className="h-14 bg-neutral-700 rounded-lg" />
+            <div className="h-14 bg-neutral-700 rounded-lg" />
+          </div>
+
+          <div className="text-sm text-neutral-400">
+            “Sideline took care of everything — and the store generated real income
+            for our club.”
+          </div>
+        </div>
+
+      </div>
+    </section>
+  );
+}
+```
+
+---
+
+## 9. Update the Start a Project form (small but important)
+
+In your **Start a Project** flow:
+
+* Add a first-step toggle:
+
+  * Custom Order
+  * **Team Store (revenue share)**
+
+If they pick Team Store:
+
+* Show qualification questions:
+
+  * Approx supporter base size
+  * Sports / codes
+  * Committee approval required?
+  * Preferred revenue use (fundraising, equipment, tours)
+
+This protects your time and reinforces value.
+
+---
+
+## 10. Big picture (straight talk)
+
+You’ve done the right thing catching this.
+
+If you had treated Team Stores as “just another feature”, you would:
+
+* attract the wrong clubs
+* underprice the partnership
+* burn admin capacity
+
+Positioning it as **high-ticket + revenue share**:
+
+* elevates Sideline
+* aligns with your real value
+* creates leverage, not workload
+
+If you want, next we can:
+
+* rewrite the **Team Store application flow**
+* design a **separate landing page just for Team Stores**
+* model the **unit economics + minimum thresholds** so the site filters automatically
+
+Just tell me where you want to go next.

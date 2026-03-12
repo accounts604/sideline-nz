@@ -1,0 +1,916 @@
+import { useState, useMemo, useEffect } from “react”;
+import Layout from “@/components/layout”;
+import { Button } from “@/components/ui/button”;
+import { Input } from “@/components/ui/input”;
+import { Textarea } from “@/components/ui/textarea”;
+import { ArrowLeft, ArrowRight, Check, Upload, Loader2, HelpCircle } from “lucide-react”;
+import { cn } from “@/lib/utils”;
+import { TeamStoreExplainerModal } from “@/components/team-store-explainer-modal”;
+
+type UserType = “club” | “school” | “other”;
+
+type FormData = {
+user_type: UserType | “”;
+role: string;
+organization: string;
+member_count: string;
+current_supplier: string;
+sports: string[];
+mockup_interest: string;
+needs: string[];
+estimated_quantity: string;
+teams_involved: string[];
+fundraising_interest: string;
+sponsorship_interest: string;
+timing: string;
+season_start: string;
+urgency: string;
+design_stage: string;
+budget_range: string;
+notes: string;
+approval_process: string;
+main_concern: string[];
+name: string;
+email: string;
+phone: string;
+files: File[];
+kit_items: string[];
+personalisation: string[];
+supporter_audience: string[];
+style_preference: string;
+school_event_date: string;
+slt_friendly: string;
+team_store_interest: string;
+team_store_audience: string[];
+team_store_goal: string;
+};
+
+const INITIAL_DATA: FormData = {
+user_type: “”,
+role: “”,
+organization: “”,
+member_count: “”,
+current_supplier: “”,
+sports: [],
+mockup_interest: “”,
+needs: [],
+estimated_quantity: “”,
+teams_involved: [],
+fundraising_interest: “”,
+sponsorship_interest: “”,
+timing: “”,
+season_start: “”,
+urgency: “”,
+design_stage: “”,
+budget_range: “”,
+notes: “”,
+approval_process: “”,
+main_concern: [],
+name: “”,
+email: “”,
+phone: “”,
+files: [],
+kit_items: [],
+personalisation: [],
+supporter_audience: [],
+style_preference: “”,
+school_event_date: “”,
+slt_friendly: “”,
+team_store_interest: “”,
+team_store_audience: [],
+team_store_goal: “”,
+};
+
+const SPORTS = [“Rugby”, “League”, “Football”, “Netball”, “Basketball”, “Hockey”, “Cricket”, “Touch”, “Other”];
+
+const NEED_CARDS = [
+{ label: “Full Playing Kit”, desc: “Match-day jerseys, shorts, socks”, icon: “🏉” },
+{ label: “Training Gear”, desc: “Tees, singlets, hoodies, trackies”, icon: “🏋️” },
+{ label: “Supporter Gear”, desc: “Hoodies, tees, caps, flags”, icon: “🧢” },
+{ label: “Off-Field Apparel”, desc: “Polos, jackets, staff/community wear”, icon: “👕” },
+{ label: “Not Sure Yet”, desc: “We’ll guide you to the right setup”, icon: “🤷” },
+];
+
+const KIT_ITEMS = [“Jersey”, “Shorts”, “Socks”];
+const PERSONALISATION = [“Numbers”, “Names”, “Sponsor logos”, “Player initials”];
+const SUPPORTER_AUDIENCE = [“Players”, “Parents”, “Alumni”, “Wider community”];
+const STYLE_PREF = [“Clean / Classic”, “Bold / Modern”, “Cultural / Heritage”];
+
+const TEAMS = [“Premier”, “Reserve”, “Juniors”, “Women”, “Academy”, “Multiple teams”];
+const QUANTITIES = [“Under 20”, “20-50”, “50-100”, “100+”];
+const MEMBER_COUNT = [“Under 20”, “20-50”, “51-100”, “100-200”, “200+”];
+const TIMING = [“ASAP (Rush)”, “1-2 Months”, “3-4 Months”, “Next Season”, “Just Exploring”];
+const SEASON_MONTHS = [“January”, “February”, “March”, “April”, “May”, “June”, “July”, “August”, “September”, “October”, “November”, “December”, “Not sure”];
+const URGENCY = [“Low”, “Medium”, “High”];
+const DESIGN_STAGE = [“No design yet”, “Have ideas”, “Updating existing kit”, “Design ready”];
+const BUDGET = [“Still exploring”, “Budget-conscious”, “Mid-range”, “Premium”];
+const CONCERNS = [“Late delivery”, “Wrong sizing”, “Complicated ordering”, “Committee approval”, “Communication”, “Budget pressure”];
+const APPROVAL = [“Just me”, “Committee approval”, “SLT/Finance approval”, “Not sure yet”];
+
+const TEAM_STORE_INTEREST = [“Yes, we need an online team store”, “Maybe / not sure”, “No”];
+const TEAM_STORE_AUDIENCE = [“Players”, “Parents”, “Supporters”, “Alumni”, “Community”];
+const TEAM_STORE_GOAL = [“Fundraising”, “Convenience”, “Supporter merch”, “Pre-orders for season”, “Fund our kit through supporter sales”];
+
+const FUNDRAISING_INTEREST = [“Yes — help us fund our kit”, “Maybe”, “No — we have budget”];
+const SPONSORSHIP_INTEREST = [“Yes — we have sponsors”, “We’re looking for sponsors”, “No sponsors”];
+const MOCKUP_INTEREST = [“Yes — show me what our kit could look like”, “No thanks”];
+
+function TogglePill({ label, active, onClick, testId }: { label: string; active: boolean; onClick: () => void; testId?: string }) {
+return (
+<button
+type=“button”
+onClick={onClick}
+data-testid={testId}
+className={cn(
+“px-4 py-2.5 rounded-full border-2 text-sm font-medium transition-all”,
+active
+? “bg-accent text-white border-accent”
+: “bg-white text-primary border-border hover:border-accent/50”
+)}
+>
+{label}
+</button>
+);
+}
+
+function MultiSelectPills({ options, value, onChange, idPrefix }: { options: string[]; value: string[]; onChange: (v: string[]) => void; idPrefix: string }) {
+return (
+<div className="flex flex-wrap gap-2">
+{options.map((opt) => {
+const active = value.includes(opt);
+return (
+<TogglePill
+key={opt}
+label={opt}
+active={active}
+testId={`${idPrefix}-${opt.toLowerCase().replace(/\s+/g, "-")}`}
+onClick={() => {
+if (active) onChange(value.filter((v) => v !== opt));
+else onChange([…value, opt]);
+}}
+/>
+);
+})}
+</div>
+);
+}
+
+function CardSelect({ items, selected, toggle }: { items: { label: string; desc: string; icon: string }[]; selected: string[]; toggle: (label: string) => void }) {
+return (
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+{items.map((it) => {
+const active = selected.includes(it.label);
+return (
+<button
+key={it.label}
+type=“button”
+onClick={() => toggle(it.label)}
+data-testid={`need-${it.label.toLowerCase().replace(/\s+/g, "-")}`}
+className={cn(
+“text-left rounded-2xl border-2 p-4 transition-all”,
+active ? “border-accent bg-accent text-white” : “border-border hover:border-accent/50 bg-white”
+)}
+>
+<div className="flex items-start gap-3">
+<div className="text-2xl">{it.icon}</div>
+<div>
+<div className="font-medium">{it.label}</div>
+<div className={cn(“text-sm”, active ? “text-white/80” : “text-muted-foreground”)}>
+{it.desc}
+</div>
+</div>
+</div>
+</button>
+);
+})}
+</div>
+);
+}
+
+function SelectField({ label, value, onChange, options, placeholder = “Select…” }: { label: string; value: string; onChange: (v: string) => void; options: string[]; placeholder?: string }) {
+return (
+<div>
+<label className="block text-sm font-medium text-primary mb-2">{label}</label>
+<select
+className=“w-full border-2 border-border rounded-xl px-4 py-3 focus:outline-none focus:border-accent bg-white text-primary”
+value={value}
+onChange={(e) => onChange(e.target.value)}
+>
+<option value="">{placeholder}</option>
+{options.map((o) => (
+<option key={o} value={o}>{o}</option>
+))}
+</select>
+</div>
+);
+}
+
+export default function Quote() {
+const totalSteps = 6;
+const [step, setStep] = useState(0);
+const [form, setForm] = useState<FormData>(INITIAL_DATA);
+const [isSubmitting, setIsSubmitting] = useState(false);
+const [error, setError] = useState<string | null>(null);
+const [success, setSuccess] = useState(false);
+const [isTeamStoreModalOpen, setIsTeamStoreModalOpen] = useState(false);
+
+useEffect(() => {
+const params = new URLSearchParams(window.location.search);
+if (params.get(“teamStore”) === “yes”) {
+setForm((f) => ({ …f, team_store_interest: “Yes, we need an online team store” }));
+}
+if (params.get(“fundraise”) === “yes”) {
+setForm((f) => ({ …f, fundraising_interest: “Yes — help us fund our kit” }));
+}
+if (params.get(“mockup”) === “yes”) {
+setForm((f) => ({ …f, mockup_interest: “Yes — show me what our kit could look like” }));
+}
+}, []);
+
+const roleOptions = useMemo(() => {
+if (form.user_type === “club”) return [“Club Manager”, “Coach”, “Uniform Coordinator”, “Treasurer”, “Other”];
+if (form.user_type === “school”) return [“Director of Sport”, “Sports Coordinator”, “TIC”, “Deputy Principal”, “Other”];
+return [“Owner”, “Manager”, “Coordinator”, “Other”];
+}, [form.user_type]);
+
+const canNext = useMemo(() => {
+if (step === 0) return !!form.user_type && !!form.organization && form.sports.length > 0 && !!form.member_count;
+if (step === 1) return form.needs.length > 0 && !!form.estimated_quantity;
+if (step === 2) return !!form.timing && !!form.urgency;
+if (step === 3) return !!form.design_stage && !!form.budget_range;
+if (step === 4) return !!form.approval_process;
+if (step === 5) return !!form.name && !!form.email && form.email.includes(”@”) && !!form.phone;
+return false;
+}, [step, form]);
+
+const next = () => {
+setError(null);
+setStep((s) => Math.min(s + 1, totalSteps - 1));
+};
+
+const back = () => {
+setError(null);
+setStep((s) => Math.max(s - 1, 0));
+};
+
+const handleNeedToggle = (label: string) => {
+const active = form.needs.includes(label);
+let nextNeeds = active ? form.needs.filter((n) => n !== label) : […form.needs, label];
+if (label === “Not Sure Yet” && !active) {
+nextNeeds = [“Not Sure Yet”];
+} else {
+nextNeeds = nextNeeds.filter((n) => n !== “Not Sure Yet”);
+}
+setForm((f) => ({ …f, needs: nextNeeds }));
+};
+
+const submit = async () => {
+setIsSubmitting(true);
+setError(null);
+try {
+const res = await fetch(”/api/ghl/submit-project”, {
+method: “POST”,
+headers: { “Content-Type”: “application/json” },
+body: JSON.stringify({
+…form,
+sports: form.sports.join(”, “),
+needs: form.needs.join(”, “),
+teams_involved: form.teams_involved.join(”, “),
+main_concern: form.main_concern.join(”, “),
+kit_items: form.kit_items.join(”, “),
+personalisation: form.personalisation.join(”, “),
+supporter_audience: form.supporter_audience.join(”, “),
+team_store_audience: form.team_store_audience.join(”, “),
+files_count: form.files.length,
+}),
+});
+if (!res.ok) {
+const data = await res.json().catch(() => ({}));
+throw new Error(data?.error || “Submission failed”);
+}
+setSuccess(true);
+} catch (e: any) {
+setError(e.message || “Something went wrong”);
+} finally {
+setIsSubmitting(false);
+}
+};
+
+const resetForm = () => {
+setSuccess(false);
+setStep(0);
+setForm(INITIAL_DATA);
+};
+
+if (success) {
+return (
+<Layout>
+<section className="py-20 bg-muted/20 min-h-screen">
+<div className="container mx-auto px-4 max-w-2xl">
+<div className="bg-white rounded-2xl shadow-lg border border-border p-8 sm:p-12 text-center">
+<div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-6">
+<Check className="w-10 h-10 text-accent" />
+</div>
+<h1 className="font-heading text-3xl font-bold text-primary mb-4">Project Request Received</h1>
+<p className="text-muted-foreground text-lg mb-4">
+Thanks for reaching out! We’ll review your details and get back to you within 24 hours.
+</p>
+{form.mockup_interest === “Yes — show me what our kit could look like” && (
+<div className="bg-accent/10 border border-accent/20 rounded-xl p-4 mb-6 text-sm text-accent font-medium">
+🎨 Your free kit mockup is on its way — check your inbox within 24 hours.
+</div>
+)}
+{form.fundraising_interest === “Yes — help us fund our kit” && (
+<div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6 text-sm text-green-800 font-medium">
+💰 We’ll include fundraising campaign options in your response.
+</div>
+)}
+<Button onClick={resetForm} className="bg-accent hover:bg-accent/90 text-white font-heading uppercase rounded-full px-8" data-testid="button-start-another">
+Start Another Project
+</Button>
+</div>
+</div>
+</section>
+</Layout>
+);
+}
+
+return (
+<Layout>
+<TeamStoreExplainerModal
+isOpen={isTeamStoreModalOpen}
+onClose={() => setIsTeamStoreModalOpen(false)}
+onInclude={() => setForm((f) => ({ …f, team_store_interest: “Yes, we need an online team store” }))}
+context=“form”
+/>
+
+```
+  <section className="py-12 sm:py-20 bg-muted/20 min-h-screen">
+    <div className="container mx-auto px-4 max-w-2xl">
+      <div className="mb-8 text-center">
+        <h1 className="font-heading text-3xl sm:text-4xl font-bold text-primary mb-2">Start a Project</h1>
+        <p className="text-muted-foreground">A few quick questions to get you the right solution.</p>
+      </div>
+
+      <div className="mb-8">
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-sm text-muted-foreground">Step {step + 1} of {totalSteps}</span>
+          <span className="text-sm text-muted-foreground">{Math.round(((step + 1) / totalSteps) * 100)}%</span>
+        </div>
+        <div className="h-2 bg-muted rounded-full overflow-hidden">
+          <div className="h-full bg-accent transition-all duration-500" style={{ width: `${((step + 1) / totalSteps) * 100}%` }} />
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-lg border border-border p-6 sm:p-10">
+
+        {/* Step 1: Who are you? */}
+        {step === 0 && (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-primary mb-3">You are a...</label>
+              <div className="flex flex-wrap gap-3">
+                {(["club", "school", "other"] as UserType[]).map((t) => (
+                  <TogglePill
+                    key={t}
+                    label={t === "club" ? "Club" : t === "school" ? "School" : "Other"}
+                    active={form.user_type === t}
+                    testId={`type-${t}`}
+                    onClick={() => setForm((f) => ({ ...f, user_type: t, role: "" }))}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {form.user_type && (
+              <SelectField
+                label={form.user_type === "school" ? "Your role at the school" : form.user_type === "club" ? "Your role at the club" : "Your role"}
+                value={form.role}
+                onChange={(v) => setForm((f) => ({ ...f, role: v }))}
+                options={roleOptions}
+              />
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-primary mb-2">
+                {form.user_type === "school" ? "School name" : form.user_type === "club" ? "Club name" : "Organisation name"} *
+              </label>
+              <Input
+                value={form.organization}
+                onChange={(e) => setForm((f) => ({ ...f, organization: e.target.value }))}
+                placeholder="e.g. Ponsonby RFC"
+                data-testid="input-organization"
+                className="border-2 rounded-xl py-3"
+              />
+            </div>
+
+            {/* NEW: Member count */}
+            <SelectField
+              label="How many players or members are in your club/team? *"
+              value={form.member_count}
+              onChange={(v) => setForm((f) => ({ ...f, member_count: v }))}
+              options={MEMBER_COUNT}
+              placeholder="Select size..."
+            />
+
+            {/* NEW: Current supplier */}
+            <div>
+              <label className="block text-sm font-medium text-primary mb-2">Who do you currently order from? (optional)</label>
+              <Input
+                value={form.current_supplier}
+                onChange={(e) => setForm((f) => ({ ...f, current_supplier: e.target.value }))}
+                placeholder="e.g. Selector, Rebel Sport, or leave blank if new"
+                data-testid="input-current-supplier"
+                className="border-2 rounded-xl py-3"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-primary mb-3">Sports involved *</label>
+              <MultiSelectPills
+                options={SPORTS}
+                value={form.sports}
+                onChange={(v) => setForm((f) => ({ ...f, sports: v }))}
+                idPrefix="sport"
+              />
+            </div>
+
+            {/* NEW: Free mockup opt-in */}
+            <div className="rounded-2xl border-2 border-accent/30 bg-accent/5 p-5">
+              <label className="block text-sm font-bold text-primary mb-1">Would you like a free custom kit mockup? 🎨</label>
+              <p className="text-xs text-muted-foreground mb-3">No commitment. We'll send it within 24 hours.</p>
+              <div className="flex flex-wrap gap-2">
+                {MOCKUP_INTEREST.map((opt) => (
+                  <TogglePill
+                    key={opt}
+                    label={opt}
+                    active={form.mockup_interest === opt}
+                    testId={`mockup-${opt.toLowerCase().replace(/\s+/g, "-")}`}
+                    onClick={() => setForm((f) => ({ ...f, mockup_interest: opt }))}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: What do you need? */}
+        {step === 1 && (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-primary mb-3">What do you need? *</label>
+              <CardSelect
+                items={NEED_CARDS}
+                selected={form.needs}
+                toggle={handleNeedToggle}
+              />
+            </div>
+
+            {form.needs.includes("Full Playing Kit") && (
+              <div className="rounded-2xl border-2 border-border p-5 space-y-4 bg-muted/20">
+                <div className="font-medium text-primary">Playing kit details</div>
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-2">What items are included?</label>
+                  <MultiSelectPills
+                    options={KIT_ITEMS}
+                    value={form.kit_items}
+                    onChange={(v) => setForm((f) => ({ ...f, kit_items: v }))}
+                    idPrefix="kit"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-2">Personalisation needed?</label>
+                  <MultiSelectPills
+                    options={PERSONALISATION}
+                    value={form.personalisation}
+                    onChange={(v) => setForm((f) => ({ ...f, personalisation: v }))}
+                    idPrefix="pers"
+                  />
+                </div>
+              </div>
+            )}
+
+            {form.needs.includes("Supporter Gear") && (
+              <div className="rounded-2xl border-2 border-border p-5 space-y-4 bg-muted/20">
+                <div className="font-medium text-primary">Supporter gear details</div>
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-2">Who is this for?</label>
+                  <MultiSelectPills
+                    options={SUPPORTER_AUDIENCE}
+                    value={form.supporter_audience}
+                    onChange={(v) => setForm((f) => ({ ...f, supporter_audience: v }))}
+                    idPrefix="audience"
+                  />
+                </div>
+              </div>
+            )}
+
+            <SelectField
+              label="Estimated quantity *"
+              value={form.estimated_quantity}
+              onChange={(v) => setForm((f) => ({ ...f, estimated_quantity: v }))}
+              options={QUANTITIES}
+            />
+
+            <div>
+              <label className="block text-sm font-medium text-primary mb-3">Teams involved (optional)</label>
+              <MultiSelectPills
+                options={TEAMS}
+                value={form.teams_involved}
+                onChange={(v) => setForm((f) => ({ ...f, teams_involved: v }))}
+                idPrefix="team"
+              />
+            </div>
+
+            <SelectField
+              label="Style preference (optional)"
+              value={form.style_preference}
+              onChange={(v) => setForm((f) => ({ ...f, style_preference: v }))}
+              options={STYLE_PREF}
+            />
+
+            {/* NEW: Fundraising interest */}
+            <div className="rounded-2xl border-2 border-green-200 bg-green-50 p-5">
+              <label className="block text-sm font-bold text-primary mb-1">Are you interested in running a supporter fundraiser to help fund your kit? 💰</label>
+              <p className="text-xs text-muted-foreground mb-3">Supporters buy merch. Your kit gets funded. No upfront cost to the club.</p>
+              <div className="flex flex-wrap gap-2">
+                {FUNDRAISING_INTEREST.map((opt) => (
+                  <TogglePill
+                    key={opt}
+                    label={opt}
+                    active={form.fundraising_interest === opt}
+                    testId={`fundraise-${opt.toLowerCase().replace(/\s+/g, "-")}`}
+                    onClick={() => setForm((f) => ({ ...f, fundraising_interest: opt }))}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* NEW: Sponsorship interest */}
+            <div>
+              <label className="block text-sm font-medium text-primary mb-3">Does your club have sponsors or are you looking to attract them? (optional)</label>
+              <p className="text-xs text-muted-foreground mb-3">We can help structure sponsor placement on your kit.</p>
+              <div className="flex flex-wrap gap-2">
+                {SPONSORSHIP_INTEREST.map((opt) => (
+                  <TogglePill
+                    key={opt}
+                    label={opt}
+                    active={form.sponsorship_interest === opt}
+                    testId={`sponsor-${opt.toLowerCase().replace(/\s+/g, "-")}`}
+                    onClick={() => setForm((f) => ({ ...f, sponsorship_interest: opt }))}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {form.user_type === "school" && (
+              <div className="rounded-2xl border-2 border-border p-5 space-y-4 bg-muted/20">
+                <div className="font-medium text-primary">School details</div>
+                <SelectField
+                  label="Do you need SLT-friendly mockups?"
+                  value={form.slt_friendly}
+                  onChange={(v) => setForm((f) => ({ ...f, slt_friendly: v }))}
+                  options={["Yes", "No"]}
+                />
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-2">Key event date (optional)</label>
+                  <input
+                    type="date"
+                    className="w-full border-2 border-border rounded-xl px-4 py-3 focus:outline-none focus:border-accent bg-white text-primary"
+                    value={form.school_event_date}
+                    onChange={(e) => setForm((f) => ({ ...f, school_event_date: e.target.value }))}
+                    data-testid="input-event-date"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 3: Timeline */}
+        {step === 2 && (
+          <div className="space-y-6">
+            <SelectField
+              label="When do you need it? *"
+              value={form.timing}
+              onChange={(v) => setForm((f) => ({ ...f, timing: v }))}
+              options={TIMING}
+            />
+
+            {/* NEW: Season start month */}
+            <SelectField
+              label="When does your season start? (optional)"
+              value={form.season_start}
+              onChange={(v) => setForm((f) => ({ ...f, season_start: v }))}
+              options={SEASON_MONTHS}
+              placeholder="Select month..."
+            />
+
+            <div>
+              <label className="block text-sm font-medium text-primary mb-3">How urgent is this? *</label>
+              <div className="grid grid-cols-3 gap-3">
+                {URGENCY.map((level) => (
+                  <TogglePill
+                    key={level}
+                    label={level}
+                    active={form.urgency === level}
+                    testId={`urgency-${level.toLowerCase()}`}
+                    onClick={() => setForm((f) => ({ ...f, urgency: level }))}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Design + Budget */}
+        {step === 3 && (
+          <div className="space-y-6">
+            <SelectField
+              label="Design stage *"
+              value={form.design_stage}
+              onChange={(v) => setForm((f) => ({ ...f, design_stage: v }))}
+              options={DESIGN_STAGE}
+            />
+
+            <SelectField
+              label="Budget range *"
+              value={form.budget_range}
+              onChange={(v) => setForm((f) => ({ ...f, budget_range: v }))}
+              options={BUDGET}
+            />
+
+            <div>
+              <label className="block text-sm font-medium text-primary mb-2">Upload logo / reference images (optional)</label>
+              <label
+                htmlFor="file-upload"
+                className="border-2 border-dashed border-border rounded-xl p-6 text-center hover:border-accent/50 transition-colors cursor-pointer block"
+                data-testid="upload-dropzone"
+              >
+                <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">Click to browse files</p>
+                <input
+                  id="file-upload"
+                  type="file"
+                  className="hidden"
+                  multiple
+                  accept=".png,.jpg,.jpeg,.pdf"
+                  onChange={(e) => {
+                    if (e.target.files) {
+                      setForm((f) => ({ ...f, files: Array.from(e.target.files!) }));
+                    }
+                  }}
+                  data-testid="input-file-upload"
+                />
+              </label>
+              {form.files.length > 0 && (
+                <p className="text-sm text-accent mt-2">{form.files.length} file(s) selected</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-primary mb-2">Anything else? (optional)</label>
+              <Textarea
+                value={form.notes}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder="Special requirements, deadlines, etc."
+                className="border-2 rounded-xl"
+                rows={3}
+                data-testid="input-notes"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Step 5: Approval + Concerns + Team Store */}
+        {step === 4 && (
+          <div className="space-y-6">
+            <SelectField
+              label="Approval process *"
+              value={form.approval_process}
+              onChange={(v) => setForm((f) => ({ ...f, approval_process: v }))}
+              options={APPROVAL}
+            />
+
+            <div>
+              <label className="block text-sm font-medium text-primary mb-3">Main concerns (optional)</label>
+              <MultiSelectPills
+                options={CONCERNS}
+                value={form.main_concern}
+                onChange={(v) => setForm((f) => ({ ...f, main_concern: v }))}
+                idPrefix="concern"
+              />
+            </div>
+
+            <div className="border-t border-border pt-6">
+              <div className="flex items-center gap-2 mb-3">
+                <label className="block text-sm font-medium text-primary">Do you need an online team store?</label>
+                <button
+                  type="button"
+                  onClick={() => setIsTeamStoreModalOpen(true)}
+                  className="text-accent hover:text-accent/80 transition-colors"
+                  data-testid="button-team-store-help"
+                >
+                  <HelpCircle size={16} />
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {TEAM_STORE_INTEREST.map((opt) => (
+                  <TogglePill
+                    key={opt}
+                    label={opt}
+                    active={form.team_store_interest === opt}
+                    testId={`team-store-${opt.toLowerCase().replace(/\s+/g, "-")}`}
+                    onClick={() => setForm((f) => ({ ...f, team_store_interest: opt }))}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {form.team_store_interest === "Yes, we need an online team store" && (
+              <div className="space-y-4 bg-accent/5 rounded-xl p-4 border border-accent/20">
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-2">Who will use the store? (optional)</label>
+                  <MultiSelectPills
+                    options={TEAM_STORE_AUDIENCE}
+                    value={form.team_store_audience}
+                    onChange={(v) => setForm((f) => ({ ...f, team_store_audience: v }))}
+                    idPrefix="ts-audience"
+                  />
+                </div>
+
+                <SelectField
+                  label="Main goal for the store (optional)"
+                  value={form.team_store_goal}
+                  onChange={(v) => setForm((f) => ({ ...f, team_store_goal: v }))}
+                  options={TEAM_STORE_GOAL}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 6: Contact + Review */}
+        {step === 5 && (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-primary mb-2">Your name *</label>
+              <Input
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="John Smith"
+                data-testid="input-name"
+                className="border-2 rounded-xl py-3"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-primary mb-2">Email *</label>
+              <Input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="john@example.com"
+                data-testid="input-email"
+                className="border-2 rounded-xl py-3"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-primary mb-2">Phone *</label>
+              <Input
+                type="tel"
+                value={form.phone}
+                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                placeholder="021 123 4567"
+                data-testid="input-phone"
+                className="border-2 rounded-xl py-3"
+              />
+            </div>
+
+            <div className="bg-muted/30 rounded-xl p-5 border border-border">
+              <h3 className="font-bold text-primary mb-3">Review Your Details</h3>
+              <div className="text-sm text-muted-foreground space-y-1">
+                <p><span className="font-medium text-primary">Type:</span> {form.user_type}</p>
+                <p><span className="font-medium text-primary">Role:</span> {form.role || "—"}</p>
+                <p><span className="font-medium text-primary">Organisation:</span> {form.organization}</p>
+                {form.member_count && (
+                  <p><span className="font-medium text-primary">Members:</span> {form.member_count}</p>
+                )}
+                {form.current_supplier && (
+                  <p><span className="font-medium text-primary">Current supplier:</span> {form.current_supplier}</p>
+                )}
+                <p><span className="font-medium text-primary">Sports:</span> {form.sports.join(", ")}</p>
+                {form.mockup_interest && (
+                  <p><span className="font-medium text-primary">Free mockup:</span> {form.mockup_interest}</p>
+                )}
+                <p><span className="font-medium text-primary">Needs:</span> {form.needs.join(", ")}</p>
+                {form.kit_items.length > 0 && (
+                  <p><span className="font-medium text-primary">Kit items:</span> {form.kit_items.join(", ")}</p>
+                )}
+                {form.personalisation.length > 0 && (
+                  <p><span className="font-medium text-primary">Personalisation:</span> {form.personalisation.join(", ")}</p>
+                )}
+                {form.supporter_audience.length > 0 && (
+                  <p><span className="font-medium text-primary">Audience:</span> {form.supporter_audience.join(", ")}</p>
+                )}
+                <p><span className="font-medium text-primary">Quantity:</span> {form.estimated_quantity}</p>
+                {form.style_preference && (
+                  <p><span className="font-medium text-primary">Style:</span> {form.style_preference}</p>
+                )}
+                {form.fundraising_interest && (
+                  <p><span className="font-medium text-primary">Fundraising:</span> {form.fundraising_interest}</p>
+                )}
+                {form.sponsorship_interest && (
+                  <p><span className="font-medium text-primary">Sponsorship:</span> {form.sponsorship_interest}</p>
+                )}
+                <p><span className="font-medium text-primary">Timing:</span> {form.timing} ({form.urgency} urgency)</p>
+                {form.season_start && (
+                  <p><span className="font-medium text-primary">Season starts:</span> {form.season_start}</p>
+                )}
+                <p><span className="font-medium text-primary">Design:</span> {form.design_stage}</p>
+                <p><span className="font-medium text-primary">Budget:</span> {form.budget_range}</p>
+                <p><span className="font-medium text-primary">Approval:</span> {form.approval_process}</p>
+                {form.main_concern.length > 0 && (
+                  <p><span className="font-medium text-primary">Concerns:</span> {form.main_concern.join(", ")}</p>
+                )}
+                {form.slt_friendly && (
+                  <p><span className="font-medium text-primary">SLT-friendly:</span> {form.slt_friendly}</p>
+                )}
+                {form.school_event_date && (
+                  <p><span className="font-medium text-primary">Event date:</span> {form.school_event_date}</p>
+                )}
+                {form.team_store_interest && (
+                  <p><span className="font-medium text-primary">Team Store:</span> {form.team_store_interest}</p>
+                )}
+                {form.team_store_audience.length > 0 && (
+                  <p><span className="font-medium text-primary">Store audience:</span> {form.team_store_audience.join(", ")}</p>
+                )}
+                {form.team_store_goal && (
+                  <p><span className="font-medium text-primary">Store goal:</span> {form.team_store_goal}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+            {error}
+          </div>
+        )}
+
+        <div className="mt-8 flex items-center justify-between">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={back}
+            disabled={isSubmitting || step === 0}
+            className={cn("rounded-full", step === 0 && "opacity-40")}
+            data-testid="button-back"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" /> Back
+          </Button>
+
+          {step < totalSteps - 1 ? (
+            <Button
+              type="button"
+              onClick={next}
+              disabled={!canNext}
+              className={cn(
+                "rounded-full",
+                canNext ? "bg-accent hover:bg-accent/90 text-white" : "bg-muted text-muted-foreground"
+              )}
+              data-testid="button-next"
+            >
+              Next <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              onClick={submit}
+              disabled={isSubmitting || !canNext}
+              className={cn(
+                "rounded-full",
+                canNext ? "bg-accent hover:bg-accent/90 text-white" : "bg-muted text-muted-foreground"
+              )}
+              data-testid="button-submit"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Submitting...
+                </>
+              ) : (
+                "Submit"
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  </section>
+</Layout>
+```
+
+);
+}

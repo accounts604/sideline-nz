@@ -1,0 +1,798 @@
+Sweet — we’ll do **(1) Team Store Partnership landing page** + **(2) separate application flow**.
+
+Below is everything you need: **page structure, copy, and paste-ready Replit code** (Next.js App Router + Tailwind), plus a **big Replit agent prompt** and **vibe code commentary**.
+
+---
+
+# A) What we’re building
+
+## New routes
+
+1. **`/team-stores/partnership`**
+   Landing page that *sells* the high-ticket offer and filters the right clubs/schools.
+
+2. **`/apply/team-store`**
+   Separate application flow (multi-step). This is *not* the same as “Start a Project”.
+
+## CTA wiring
+
+* Homepage “Team Stores” CTA → `/team-stores/partnership`
+* Landing page primary CTA → `/apply/team-store`
+
+---
+
+# B) Landing page content (copy + layout)
+
+### Sections (clean, high-ticket, not “shop-y”)
+
+1. Hero: “Team stores that fund your club”
+2. Social proof strip: logos + 1 stat line
+3. How it works (3 steps)
+4. Revenue back (simple explanation)
+5. What Sideline handles vs what the club handles (two-column)
+6. Who it’s for / not for (qualification)
+7. FAQ
+8. Final CTA block
+
+Tone: premium partnership, selective, admin relief + money back.
+
+---
+
+# C) Paste-ready code
+
+## 1) Create: `app/team-stores/partnership/page.tsx`
+
+```tsx
+import Link from "next/link";
+
+function SectionTitle({ eyebrow, title, desc }: { eyebrow?: string; title: string; desc?: string }) {
+  return (
+    <div className="max-w-2xl">
+      {eyebrow && <div className="text-sm font-medium text-neutral-500 mb-2">{eyebrow}</div>}
+      <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">{title}</h2>
+      {desc && <p className="mt-3 text-neutral-600">{desc}</p>}
+    </div>
+  );
+}
+
+function Pill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-700">
+      {children}
+    </span>
+  );
+}
+
+export default function TeamStorePartnershipPage() {
+  return (
+    <main className="min-h-screen">
+      {/* HERO (dark break = “premium”) */}
+      <section className="bg-neutral-950 text-white">
+        <div className="max-w-7xl mx-auto px-4 py-16 md:py-24 grid md:grid-cols-2 gap-12 items-center">
+          <div>
+            <div className="flex flex-wrap gap-2 mb-6">
+              <Pill>High-ticket partnership</Pill>
+              <Pill>Revenue share</Pill>
+              <Pill>We manage the admin</Pill>
+            </div>
+
+            <h1 className="text-4xl md:text-5xl font-semibold tracking-tight">
+              Team stores that fund your club.
+            </h1>
+
+            <p className="mt-5 text-neutral-300 text-lg">
+              For selected clubs and schools, we build and manage a dedicated online team store —
+              and return a portion of sales back to your organisation.
+            </p>
+
+            <div className="mt-8 flex gap-4 flex-wrap">
+              <Link
+                href="/apply/team-store"
+                className="px-6 py-3 rounded-xl bg-white text-black font-medium"
+              >
+                Apply for a Team Store
+              </Link>
+              <Link
+                href="/start-a-project"
+                className="px-6 py-3 rounded-xl border border-neutral-700 text-white hover:border-white transition"
+              >
+                Need uniforms only?
+              </Link>
+            </div>
+
+            <div className="mt-4 text-sm text-neutral-400">
+              Limited partnerships available • Approval required • Built for clubs with real demand
+            </div>
+          </div>
+
+          {/* Visual proof card */}
+          <div className="rounded-2xl bg-neutral-900 border border-neutral-800 p-6 md:p-8">
+            <div className="text-sm text-neutral-300 mb-4">What you get</div>
+            <div className="grid gap-4">
+              <div className="rounded-xl bg-neutral-950/60 border border-neutral-800 p-4">
+                <div className="font-medium">A club-branded online store</div>
+                <div className="text-sm text-neutral-400 mt-1">Supporters order direct. No spreadsheets.</div>
+              </div>
+              <div className="rounded-xl bg-neutral-950/60 border border-neutral-800 p-4">
+                <div className="font-medium">We handle orders + delivery</div>
+                <div className="text-sm text-neutral-400 mt-1">You focus on rugby/sport. We run the store.</div>
+              </div>
+              <div className="rounded-xl bg-neutral-950/60 border border-neutral-800 p-4">
+                <div className="font-medium">Revenue returned to your club</div>
+                <div className="text-sm text-neutral-400 mt-1">A practical fundraiser that doesn’t burn volunteers.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* TRUST STRIP (light break) */}
+      <section className="bg-white border-b border-neutral-200">
+        <div className="max-w-7xl mx-auto px-4 py-10 flex flex-col md:flex-row gap-6 md:items-center md:justify-between">
+          <div className="text-neutral-700">
+            <div className="font-medium">Trusted by clubs & community organisations</div>
+            <div className="text-sm text-neutral-500">Logos go here (real partners only)</div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Pill>Designed</Pill>
+            <Pill>Produced</Pill>
+            <Pill>Fulfilled</Pill>
+            <Pill>Revenue shared</Pill>
+          </div>
+        </div>
+      </section>
+
+      {/* HOW IT WORKS (tinted break) */}
+      <section className="bg-neutral-50">
+        <div className="max-w-7xl mx-auto px-4 py-16">
+          <SectionTitle
+            eyebrow="How it works"
+            title="A fundraiser that doesn’t create admin."
+            desc="Simple model: supporters buy → we fulfill → your club earns."
+          />
+
+          <div className="mt-10 grid md:grid-cols-3 gap-6">
+            {[
+              {
+                step: "01",
+                title: "We build your store",
+                desc: "Your crest, your gear range, your rules. Clean UX for parents and supporters.",
+              },
+              {
+                step: "02",
+                title: "Supporters order direct",
+                desc: "Payments go through the store. No chasing money or managing spreadsheets.",
+              },
+              {
+                step: "03",
+                title: "We fulfill + return revenue",
+                desc: "We handle production + delivery. You receive revenue share based on sales.",
+              },
+            ].map((s) => (
+              <div key={s.step} className="rounded-2xl bg-white border border-neutral-200 p-6">
+                <div className="text-sm font-medium text-neutral-500">{s.step}</div>
+                <div className="mt-2 text-xl font-semibold">{s.title}</div>
+                <div className="mt-2 text-neutral-600">{s.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* REVENUE BREAK (white) */}
+      <section className="bg-white">
+        <div className="max-w-7xl mx-auto px-4 py-16">
+          <SectionTitle
+            eyebrow="Revenue share"
+            title="Your club earns from every supporter order."
+            desc="We’ll confirm the revenue-share structure during onboarding. The goal is simple: a store that’s worth it for your club and sustainable to run."
+          />
+
+          <div className="mt-10 grid md:grid-cols-2 gap-6">
+            <div className="rounded-2xl border border-neutral-200 p-6">
+              <div className="font-semibold">Good uses for revenue</div>
+              <ul className="mt-3 space-y-2 text-neutral-700">
+                <li>• Tours, registrations, and travel</li>
+                <li>• Equipment, medical kits, and coaches</li>
+                <li>• Community kaupapa and junior development</li>
+              </ul>
+            </div>
+            <div className="rounded-2xl border border-neutral-200 p-6">
+              <div className="font-semibold">We keep it simple</div>
+              <ul className="mt-3 space-y-2 text-neutral-700">
+                <li>• Clear store rules (preorder vs stock)</li>
+                <li>• Clear timelines communicated upfront</li>
+                <li>• Supporter-friendly ordering</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* RESPONSIBILITIES (tinted break) */}
+      <section className="bg-neutral-50">
+        <div className="max-w-7xl mx-auto px-4 py-16">
+          <SectionTitle
+            eyebrow="What we handle"
+            title="We run the store. You keep the mana."
+            desc="This only works if it reduces workload for your volunteers."
+          />
+
+          <div className="mt-10 grid md:grid-cols-2 gap-6">
+            <div className="rounded-2xl bg-white border border-neutral-200 p-6">
+              <div className="text-lg font-semibold">Sideline handles</div>
+              <ul className="mt-3 space-y-2 text-neutral-700">
+                <li>• Store build + product setup</li>
+                <li>• Payment processing</li>
+                <li>• Production and fulfilment coordination</li>
+                <li>• Customer service for orders</li>
+                <li>• Reporting + revenue share tracking</li>
+              </ul>
+            </div>
+
+            <div className="rounded-2xl bg-white border border-neutral-200 p-6">
+              <div className="text-lg font-semibold">Your club handles</div>
+              <ul className="mt-3 space-y-2 text-neutral-700">
+                <li>• Approving designs + range</li>
+                <li>• Promoting the store (we give assets)</li>
+                <li>• Choosing how revenue is used</li>
+                <li>• One point of contact (so we can move fast)</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* QUALIFICATION (dark-ish break but not full black) */}
+      <section className="bg-neutral-900 text-white">
+        <div className="max-w-7xl mx-auto px-4 py-16">
+          <SectionTitle
+            eyebrow="Who it’s for"
+            title="Not for everyone — and that’s the point."
+            desc="We keep the programme high-quality by partnering with clubs and schools that have real demand and the ability to promote."
+          />
+
+          <div className="mt-10 grid md:grid-cols-2 gap-6">
+            <div className="rounded-2xl bg-neutral-950/40 border border-neutral-800 p-6">
+              <div className="text-lg font-semibold">Great fit if you…</div>
+              <ul className="mt-3 space-y-2 text-neutral-200">
+                <li>• Have an active supporter/community base</li>
+                <li>• Want a proper fundraiser without admin</li>
+                <li>• Can commit to promoting store drops</li>
+                <li>• Have decision makers who can approve quickly</li>
+              </ul>
+            </div>
+            <div className="rounded-2xl bg-neutral-950/40 border border-neutral-800 p-6">
+              <div className="text-lg font-semibold">Probably not a fit if you…</div>
+              <ul className="mt-3 space-y-2 text-neutral-200">
+                <li>• Want one-off gear with no ongoing promotion</li>
+                <li>• Don’t have a clear point of contact</li>
+                <li>• Need instant delivery on every item</li>
+                <li>• Can’t align internally on approvals</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="mt-10">
+            <Link
+              href="/apply/team-store"
+              className="inline-block px-6 py-3 rounded-xl bg-white text-black font-medium"
+            >
+              Apply for a Team Store
+            </Link>
+            <div className="mt-3 text-sm text-neutral-400">
+              Application takes ~2–4 minutes. If you’re a fit, we’ll book a quick call.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ (white) */}
+      <section className="bg-white">
+        <div className="max-w-7xl mx-auto px-4 py-16">
+          <SectionTitle eyebrow="FAQ" title="Quick answers" />
+
+          <div className="mt-10 grid md:grid-cols-2 gap-6">
+            {[
+              {
+                q: "Do we have to hold stock?",
+                a: "No. Stores can run on preorder, stock, or a mix. We’ll set the rules clearly so supporters understand timelines.",
+              },
+              {
+                q: "How do we promote the store?",
+                a: "We provide simple promo assets and drop schedules. Your job is to post/share; our job is to run the machine.",
+              },
+              {
+                q: "How does revenue share work?",
+                a: "We confirm the structure during onboarding based on your range, volumes, and store model. Transparent tracking and reporting.",
+              },
+              {
+                q: "Can we still do custom uniform orders?",
+                a: "Yes. The Team Store is an ongoing channel; custom orders can sit alongside for playing kits and one-off drops.",
+              },
+            ].map((item) => (
+              <div key={item.q} className="rounded-2xl border border-neutral-200 p-6">
+                <div className="font-semibold">{item.q}</div>
+                <div className="mt-2 text-neutral-600">{item.a}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* FINAL CTA (tinted break) */}
+      <section className="bg-neutral-50 border-t border-neutral-200">
+        <div className="max-w-7xl mx-auto px-4 py-16 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+          <div>
+            <div className="text-2xl font-semibold">Ready to fundraise without the admin?</div>
+            <div className="text-neutral-600 mt-1">Apply and we’ll confirm fit + next steps.</div>
+          </div>
+          <Link href="/apply/team-store" className="px-6 py-3 rounded-xl bg-black text-white font-medium">
+            Apply for a Team Store
+          </Link>
+        </div>
+      </section>
+    </main>
+  );
+}
+```
+
+---
+
+## 2) Create: `app/apply/team-store/page.tsx` (separate application flow)
+
+This is a **simple 3-step**, high-signal qualification form. For now it submits to an API route you’ll wire to GHL.
+
+```tsx
+"use client";
+
+import React, { useMemo, useState } from "react";
+
+type AppData = {
+  org_name: string;
+  org_type: "club" | "school" | "other" | "";
+  sport_codes: string[];
+  region: string;
+
+  supporter_base: string;
+  promotion_commitment: string;
+  approvals: string;
+  revenue_use: string[];
+
+  contact_name: string;
+  contact_email: string;
+  contact_phone: string;
+  notes: string;
+};
+
+const SPORTS = ["Rugby", "League", "Football", "Netball", "Basketball", "Hockey", "Cricket", "Touch", "Other"];
+const REVENUE_USE = ["Tour / travel", "Registrations", "Equipment", "Coaching", "Juniors development", "Community kaupapa", "Other"];
+
+function cx(...classes: Array<string | false | undefined | null>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function TogglePill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx(
+        "px-3 py-2 rounded-full border text-sm transition",
+        active ? "bg-black text-white border-black" : "bg-white text-black border-gray-300 hover:border-black"
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
+function MultiPills({ options, value, onChange }: { options: string[]; value: string[]; onChange: (v: string[]) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((opt) => {
+        const active = value.includes(opt);
+        return (
+          <TogglePill
+            key={opt}
+            label={opt}
+            active={active}
+            onClick={() => (active ? onChange(value.filter((x) => x !== opt)) : onChange([...value, opt]))}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+export default function ApplyTeamStorePage() {
+  const totalSteps = 3;
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
+
+  const [data, setData] = useState<AppData>({
+    org_name: "",
+    org_type: "",
+    sport_codes: [],
+    region: "",
+
+    supporter_base: "",
+    promotion_commitment: "",
+    approvals: "",
+    revenue_use: [],
+
+    contact_name: "",
+    contact_email: "",
+    contact_phone: "",
+    notes: "",
+  });
+
+  const canNext = useMemo(() => {
+    if (step === 0) return !!data.org_name && !!data.org_type && data.sport_codes.length > 0 && !!data.region;
+    if (step === 1) return !!data.supporter_base && !!data.promotion_commitment && !!data.approvals && data.revenue_use.length > 0;
+    if (step === 2) return !!data.contact_name && !!data.contact_phone && data.contact_email.includes("@");
+    return false;
+  }, [step, data]);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/ghl/apply-team-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...data, offer: "team_store_partnership", submitted_at: new Date().toISOString() }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.error || "Submission failed");
+      }
+      setOk(true);
+    } catch (e: any) {
+      setError(e.message || "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (ok) {
+    return (
+      <main className="max-w-2xl mx-auto px-4 py-14">
+        <div className="rounded-2xl border border-neutral-200 p-8">
+          <h1 className="text-2xl font-semibold">Application received ✅</h1>
+          <p className="mt-2 text-neutral-600">
+            If you’re a good fit, we’ll reach out to book a quick call and confirm next steps.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="max-w-3xl mx-auto px-4 py-12">
+      <div className="mb-8">
+        <h1 className="text-3xl font-semibold">Apply for a Team Store</h1>
+        <p className="mt-2 text-neutral-600">
+          This is a selective partnership. Answer a few questions so we can confirm fit.
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 p-6 md:p-8">
+        {/* Progress */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between text-sm mb-2">
+            <div className="font-medium">Step {step + 1} of {totalSteps}</div>
+            <div className="text-neutral-500">{Math.round(((step + 1) / totalSteps) * 100)}%</div>
+          </div>
+          <div className="h-2 bg-neutral-200 rounded-full overflow-hidden">
+            <div className="h-2 bg-black" style={{ width: `${((step + 1) / totalSteps) * 100}%` }} />
+          </div>
+        </div>
+
+        {/* Step 1 */}
+        {step === 0 && (
+          <div className="space-y-5">
+            <label className="block">
+              <div className="text-sm font-medium mb-1">Club / School name</div>
+              <input
+                className="w-full border border-neutral-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+                value={data.org_name}
+                onChange={(e) => setData((d) => ({ ...d, org_name: e.target.value }))}
+                placeholder="e.g. Ponsonby RFC"
+              />
+            </label>
+
+            <label className="block">
+              <div className="text-sm font-medium mb-2">Organisation type</div>
+              <div className="flex flex-wrap gap-2">
+                {(["club", "school", "other"] as const).map((t) => (
+                  <TogglePill
+                    key={t}
+                    label={t === "club" ? "Club" : t === "school" ? "School" : "Other"}
+                    active={data.org_type === t}
+                    onClick={() => setData((d) => ({ ...d, org_type: t }))}
+                  />
+                ))}
+              </div>
+            </label>
+
+            <div>
+              <div className="text-sm font-medium mb-2">Sports / codes</div>
+              <MultiPills options={SPORTS} value={data.sport_codes} onChange={(v) => setData((d) => ({ ...d, sport_codes: v }))} />
+            </div>
+
+            <label className="block">
+              <div className="text-sm font-medium mb-1">Region</div>
+              <input
+                className="w-full border border-neutral-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+                value={data.region}
+                onChange={(e) => setData((d) => ({ ...d, region: e.target.value }))}
+                placeholder="e.g. Auckland / Waikato / BOP"
+              />
+            </label>
+          </div>
+        )}
+
+        {/* Step 2 */}
+        {step === 1 && (
+          <div className="space-y-5">
+            <label className="block">
+              <div className="text-sm font-medium mb-1">Supporter / community size (rough)</div>
+              <select
+                className="w-full border border-neutral-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+                value={data.supporter_base}
+                onChange={(e) => setData((d) => ({ ...d, supporter_base: e.target.value }))}
+              >
+                <option value="">Select…</option>
+                <option>Under 200</option>
+                <option>200–500</option>
+                <option>500–1,000</option>
+                <option>1,000+</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <div className="text-sm font-medium mb-1">Can you commit to promoting store drops?</div>
+              <select
+                className="w-full border border-neutral-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+                value={data.promotion_commitment}
+                onChange={(e) => setData((d) => ({ ...d, promotion_commitment: e.target.value }))}
+              >
+                <option value="">Select…</option>
+                <option>Yes — we can post and share consistently</option>
+                <option>Somewhat — limited capacity</option>
+                <option>Not really — we need help with promo</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <div className="text-sm font-medium mb-1">Approvals</div>
+              <select
+                className="w-full border border-neutral-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+                value={data.approvals}
+                onChange={(e) => setData((d) => ({ ...d, approvals: e.target.value }))}
+              >
+                <option value="">Select…</option>
+                <option>Just me</option>
+                <option>Committee approval required</option>
+                <option>SLT / Finance approval required</option>
+                <option>Not sure yet</option>
+              </select>
+            </label>
+
+            <div>
+              <div className="text-sm font-medium mb-2">What would you use revenue for?</div>
+              <MultiPills options={REVENUE_USE} value={data.revenue_use} onChange={(v) => setData((d) => ({ ...d, revenue_use: v }))} />
+            </div>
+          </div>
+        )}
+
+        {/* Step 3 */}
+        {step === 2 && (
+          <div className="space-y-5">
+            <label className="block">
+              <div className="text-sm font-medium mb-1">Contact name</div>
+              <input
+                className="w-full border border-neutral-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+                value={data.contact_name}
+                onChange={(e) => setData((d) => ({ ...d, contact_name: e.target.value }))}
+                placeholder="Your name"
+              />
+            </label>
+
+            <label className="block">
+              <div className="text-sm font-medium mb-1">Email</div>
+              <input
+                type="email"
+                className="w-full border border-neutral-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+                value={data.contact_email}
+                onChange={(e) => setData((d) => ({ ...d, contact_email: e.target.value }))}
+                placeholder="you@email.com"
+              />
+            </label>
+
+            <label className="block">
+              <div className="text-sm font-medium mb-1">Phone</div>
+              <input
+                className="w-full border border-neutral-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+                value={data.contact_phone}
+                onChange={(e) => setData((d) => ({ ...d, contact_phone: e.target.value }))}
+                placeholder="+64…"
+              />
+            </label>
+
+            <label className="block">
+              <div className="text-sm font-medium mb-1">Anything else? (optional)</div>
+              <textarea
+                className="w-full min-h-[120px] border border-neutral-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+                value={data.notes}
+                onChange={(e) => setData((d) => ({ ...d, notes: e.target.value }))}
+                placeholder="E.g. we want 2–3 store drops per season; supporters have been asking for hoodies…"
+              />
+            </label>
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            {error}
+          </div>
+        )}
+
+        {/* Nav buttons */}
+        <div className="mt-7 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setStep((s) => Math.max(0, s - 1))}
+            disabled={busy || step === 0}
+            className={cx("px-4 py-2 rounded-xl border", step === 0 ? "opacity-40 cursor-not-allowed" : "hover:border-black")}
+          >
+            Back
+          </button>
+
+          {step < totalSteps - 1 ? (
+            <button
+              type="button"
+              onClick={() => setStep((s) => Math.min(totalSteps - 1, s + 1))}
+              disabled={busy || !canNext}
+              className={cx("px-4 py-2 rounded-xl", canNext ? "bg-black text-white" : "bg-neutral-200 text-neutral-500 cursor-not-allowed")}
+            >
+              Next
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={submit}
+              disabled={busy || !canNext}
+              className={cx("px-4 py-2 rounded-xl", canNext ? "bg-black text-white" : "bg-neutral-200 text-neutral-500 cursor-not-allowed")}
+            >
+              {busy ? "Submitting…" : "Submit Application"}
+            </button>
+          )}
+        </div>
+      </div>
+    </main>
+  );
+}
+```
+
+---
+
+## 3) Create the API route: `app/api/ghl/apply-team-store/route.ts`
+
+Wire to your GHL webhook (same pattern as before, but separate endpoint).
+
+```ts
+import { NextResponse } from "next/server";
+
+export async function POST(req: Request) {
+  try {
+    const payload = await req.json();
+
+    const webhookUrl = process.env.GHL_TEAM_STORE_APP_WEBHOOK_URL;
+    if (!webhookUrl) {
+      return NextResponse.json({ error: "Missing GHL_TEAM_STORE_APP_WEBHOOK_URL" }, { status: 500 });
+    }
+
+    const res = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return NextResponse.json({ error: `GHL webhook error: ${res.status} ${text}` }, { status: 502 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || "Server error" }, { status: 500 });
+  }
+}
+```
+
+**Replit Secrets to add:**
+
+* `GHL_TEAM_STORE_APP_WEBHOOK_URL`
+
+---
+
+# D) Homepage CTA wiring (minimal change)
+
+Wherever you currently mention Team Stores on homepage, make the CTA:
+
+* **Learn about Team Stores** → `/team-stores/partnership`
+* **Apply** → `/apply/team-store`
+
+If you want the premium vibe: show “Apply” as the main button and “Learn more” as the secondary link (on homepage).
+
+---
+
+# E) Big Replit agent prompt (copy/paste)
+
+```text
+Build a premium “Team Store Partnership” landing page + separate application flow for Sideline NZ.
+
+Tech:
+- Next.js App Router (app/)
+- Tailwind CSS
+- No external UI libraries
+
+Routes:
+1) /team-stores/partnership
+   - Hero section (dark premium block)
+   - Trust strip
+   - How it works (3 cards)
+   - Revenue share explanation
+   - Sideline handles vs Club handles (two-column)
+   - Qualification (who it’s for / not for)
+   - FAQ
+   - Final CTA
+
+Primary CTA on landing page:
+- “Apply for a Team Store” -> /apply/team-store
+
+Secondary CTA:
+- “Need uniforms only?” -> /start-a-project
+
+2) /apply/team-store
+   - Multi-step application (3 steps)
+   - Captures:
+     org_name, org_type, sport_codes, region,
+     supporter_base, promotion_commitment, approvals, revenue_use,
+     contact_name, contact_email, contact_phone, notes
+   - Validations per step
+   - Submits to /api/ghl/apply-team-store
+
+3) /api/ghl/apply-team-store
+   - Forwards JSON to GHL webhook URL from env var:
+     GHL_TEAM_STORE_APP_WEBHOOK_URL
+
+Design requirements:
+- High-ticket feel: whitespace, strong hierarchy, clear colour breaks
+- Not “marketplace” or “shop”
+- Copy sells admin relief + revenue share + selectivity
+- Mobile-first and accessible (labels, focus rings)
+
+Deliver:
+- Full code for both pages + API route
+- Brief note where to add homepage CTA links
+```
+
+---
+
+# F) Vibe code commentary (so it looks right)
+
+* **Team Stores Partnership page is “premium black + clean white + soft grey”**
+  That’s your colour breaks and high-ticket signal.
+* Avoid showing a store directory on this page.
+  Directory = “shopping”; partnership = “apply”.
+* Keep *one* primary CTA repeated 3 times: **Apply**.
+* Use “selective / approval required” microcopy to protect your time and perceived value.
+
+---
+
+If you paste this into Replit and tell me what your current file structure is (or drop the repo tree), I can tell you **exactly which existing homepage section to replace** and the best CTA placements without bloating the layout.

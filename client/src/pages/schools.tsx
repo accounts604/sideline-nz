@@ -108,6 +108,11 @@ export default function Schools() {
               <p className="text-gray-400 text-base md:text-lg leading-relaxed" data-testid="text-schools-section3-body">
                 We design sponsor placement into your school kit from the start — helping sports departments offset costs and build commercial relationships with local businesses.
               </p>
+              <Link href="/sponsor-placement">
+                <span className="inline-block mt-4 text-sm text-white/50 hover:text-white transition-colors cursor-pointer">
+                  See our sponsor zone guide →
+                </span>
+              </Link>
             </div>
           </div>
         </div>

@@ -1,0 +1,118 @@
+You are working inside an EXISTING Sideline NZ Next.js + Tailwind Replit codebase.
+
+IMPORTANT CONTEXT
+We are NOT adding ecommerce functionality yet.
+This phase is purely VISUAL / AESTHETIC to showcase “Online Team Stores” as a capability.
+No payments, no cart, no checkout, no Shopify integration.
+
+The goal is to:
+- Make Team Stores look real and credible
+- Increase perceived capability
+- Drive users back to “Start a Project”
+- Keep future Shopify integration easy later
+
+DO NOT:
+- Add cart logic
+- Add checkout logic
+- Add Stripe
+- Add Shopify
+- Add product admin
+- Create a separate Team Stores sales page
+- Add Team Stores to main navigation
+
+PHASE 1 — AUDIT
+1) Review existing store/collection/product-related components.
+2) Identify any logic that implies real purchasing (Add to Cart, Buy Now, Checkout).
+3) Remove or disable those interactions if they exist.
+4) Keep layouts, cards, grids, and visuals where useful.
+
+PHASE 2 — AESTHETIC STORE EXPERIENCE (FAKE BUT REALISTIC)
+
+A) HOMEPAGE FEATURE SECTION
+- Add or refine a homepage section for “Online Team Stores”.
+- Visually distinct colour break.
+- Content:
+  - Eyebrow: “Optional add-on”
+  - H2: “Online Team Stores (no admin for your club or school)”
+  - 3 bullets:
+    - Parents & supporters order online
+    - Cut-off dates managed by Sideline
+    - Perfect for supporter gear & merch drops
+- CTAs:
+  1) Primary: “Add to my project” → Start a Project
+  2) Secondary: “See how it works” → opens modal
+- Include a mock “store preview”:
+  - Product cards with images
+  - Prices shown (static placeholders)
+  - No interaction beyond hover
+
+B) MOCK COLLECTION PAGE
+If a collection page already exists:
+- Keep the grid layout
+- Populate with static/mock product data:
+  - title
+  - price (display only)
+  - image
+- On click:
+  - Do NOT open checkout
+  - Either:
+    - open a modal explainer
+    - or route to product detail mock page
+
+C) MOCK PRODUCT PAGE (IMPORTANT)
+- Design should mimic Shopify-style product pages:
+  - Image gallery
+  - Price
+  - Variant selectors (size / colour) — VISUAL ONLY
+  - Quantity selector — VISUAL ONLY
+- Replace “Add to Cart” with:
+  - “Available via Team Store”
+  - or “Include in your project”
+- Primary CTA:
+  - “Start a Project”
+- Secondary CTA:
+  - “What’s a Team Store?” → modal
+
+Add a small helper note:
+“Products are available through club/school team stores — not direct checkout.”
+
+PHASE 3 — TEAM STORE EXPLAINER MODAL
+Create or reuse a modal component:
+- Title: “Online Team Stores made simple”
+- Short explanation:
+  “We create a custom online store for your club or school so parents and supporters can order directly. No admin, no payments for you to manage.”
+- 3 icons + bullets:
+  - Individual ordering & payments
+  - Fixed cut-off dates
+  - Bulk production & delivery
+- CTA:
+  “Include Team Store in my project” → Start a Project
+
+PHASE 4 — COPY & UX GUARDRAILS
+- Anywhere products or pricing appear:
+  - Make it clear this is NOT a public retail store.
+- Use language like:
+  - “Example products”
+  - “Preview”
+  - “Available via Team Store”
+- Avoid:
+  - “Buy now”
+  - “Checkout”
+  - “Add to cart”
+
+PHASE 5 — FUTURE-PROOFING (DO THIS QUIETLY)
+- Structure components so real data can be swapped in later:
+  - ProductCard
+  - ProductGrid
+  - ProductDetail
+- Keep product data in a single mock data file (e.g. /data/mockProducts.ts)
+- Comment code where Shopify integration would later plug in.
+
+DELIVERABLES
+1) List files changed
+2) Confirm no ecommerce logic exists
+3) Confirm CTAs route to Start a Project
+4) Ensure visuals feel “real” and premium
+5) Keep everything clean, minimal, and aligned with Sideline branding
+
+If there is ambiguity, choose simplicity and visual credibility over functionality.

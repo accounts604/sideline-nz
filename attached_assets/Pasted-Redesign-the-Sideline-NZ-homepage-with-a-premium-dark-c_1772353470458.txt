@@ -1,0 +1,99 @@
+Redesign the Sideline NZ homepage with a premium 
+dark cinematic UI. Do NOT change the existing 
+logo or header font — keep the current SIDELINE NZ 
+wordmark exactly as it is.
+
+COLOUR PALETTE — USE THESE EXACTLY:
+
+Primary Background:  #080b12  (near black, base)
+Surface Cards:       #0f1420  (slightly lighter dark)
+Border/Dividers:     rgba(255,255,255,0.07)
+Card Hover Border:   rgba(255,255,255,0.12)
+
+Gold Accent:         #e5a01e  (primary CTA, highlights)
+Gold Glow:           rgba(229,160,30,0.15) (for glows)
+Gold Muted:          rgba(229,160,30,0.4)  (secondary)
+
+Text Primary:        #f0f0f0  (near white)
+Text Secondary:      rgba(255,255,255,0.55)
+Text Muted:          rgba(255,255,255,0.3)
+
+Sport Colours (for category cards only):
+Rugby:               #14532d  (dark green)
+Netball:             #1e3a5f  (dark blue)
+League:              #4c1d1d  (dark red)
+Football:            #064e3b  (emerald)
+General:             #1e1b2e  (dark purple)
+
+DO NOT USE:
+- Bright blue (#2563eb or similar) anywhere
+- White card backgrounds
+- Light grey backgrounds
+- Purple gradients
+- Any colour not listed above
+
+TYPOGRAPHY:
+- Keep existing SIDELINE NZ logo font exactly as is
+- Headings: Bebas Neue (import in index.html)
+- Body: DM Sans (import in index.html)
+- Add to index.html:
+  <link href="https://fonts.googleapis.com/css2?
+  family=Bebas+Neue&family=DM+Sans:wght@300;400;
+  500;600&display=swap" rel="stylesheet">
+
+DESIGN RULES:
+- Dark #080b12 background throughout entire page
+- No visible section breaks — all sections bleed 
+  into each other via gradient transitions
+- Cards float with rgba(255,255,255,0.04) background
+- Subtle 1px rgba border, no hard outlines
+- Gold glow on hover states only
+- Netflix-style carousels with gradient fade 
+  edges (#080b12 to transparent) on both sides
+- All CTA buttons: gold #e5a01e background, 
+  black text, rounded-full, uppercase
+
+SECTIONS TO REDESIGN:
+
+1. HERO — keep existing hero-carousel.tsx as is
+
+2. SIDELINE HUB
+- Background: #080b12
+- Three feature cards on #0f1420 surface
+- Left border: 2px solid #e5a01e on active/hover
+- Icon colour: #e5a01e
+
+3. WHAT DO YOU NEED
+- Horizontal carousel
+- Each card uses sport colour from palette above
+- Fade edges: gradient from #080b12 to transparent
+
+4. FOR CLUBS / FOR SCHOOLS
+- Two dark panels side by side
+- Stats in Bebas Neue, colour #e5a01e
+- No blue anywhere
+
+5. TEAM STORES PREVIEW
+- Floating card on #080b12
+- Soft gold glow: rgba(229,160,30,0.08) radial
+
+6. TESTIMONIALS
+- #080b12 background
+- Large quote text, no white card boxes
+- Gold quotation mark
+
+7. FREE MOCKUP FORM
+- Surface: #0f1420
+- Input borders: rgba(255,255,255,0.1)
+- Submit button: #e5a01e background, black text
+
+8. OUR WORK
+- Dark image cards with gradient overlay on hover
+- Club name appears on hover in gold
+
+KEEP INTACT:
+- All component names and file names
+- All wouter Link and routing
+- All data-testid attributes  
+- All existing functionality
+- Sideline NZ logo and header font

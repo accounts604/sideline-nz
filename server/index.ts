@@ -1,19 +1,13 @@
+import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
+import cookieParser from "cookie-parser";
+import { registerRoutes } from "./routes/index";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { runMigrations } from 'stripe-replit-sync';
-import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
 
 const app = express();
 const httpServer = createServer(app);
-
-declare module "http" {
-  interface IncomingMessage {
-    rawBody: unknown;
-  }
-}
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -24,47 +18,6 @@ export function log(message: string, source = "express") {
   });
 
   console.log(`${formattedTime} [${source}] ${message}`);
-}
-
-// Initialize Stripe schema and sync data
-async function initStripe() {
-  const databaseUrl = process.env.DATABASE_URL;
-
-  if (!databaseUrl) {
-    console.log('DATABASE_URL not set - Stripe integration disabled');
-    return;
-  }
-
-  try {
-    console.log('Initializing Stripe schema...');
-    await runMigrations({ 
-      databaseUrl,
-      schema: 'stripe'
-    });
-    console.log('Stripe schema ready');
-
-    const stripeSync = await getStripeSync();
-
-    // Set up managed webhook
-    console.log('Setting up managed webhook...');
-    const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
-    try {
-      const result = await stripeSync.findOrCreateManagedWebhook(
-        `${webhookBaseUrl}/api/stripe/webhook`
-      );
-      console.log(`Webhook configured: ${result?.webhook?.url || 'webhook setup complete'}`);
-    } catch (webhookError: any) {
-      console.log('Webhook setup skipped (may already exist or not needed in dev):', webhookError.message);
-    }
-
-    // Sync Stripe data in background
-    console.log('Syncing Stripe data...');
-    stripeSync.syncBackfill()
-      .then(() => console.log('Stripe data synced'))
-      .catch((err: any) => console.error('Error syncing Stripe data:', err));
-  } catch (error) {
-    console.error('Failed to initialize Stripe:', error);
-  }
 }
 
 // Register Stripe webhook route BEFORE express.json()
@@ -96,15 +49,10 @@ app.post(
   }
 );
 
-// Now apply JSON middleware for all other routes
-app.use(
-  express.json({
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
+// JSON middleware for all other routes
+app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+app.use(cookieParser());
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -132,30 +80,18 @@ app.use((req, res, next) => {
   next();
 });
 
-let appReady = false;
-
-app.use((req, res, next) => {
-  if (!appReady && req.method === "GET" && req.path === "/") {
-    return res.status(200).send("OK");
-  }
-  next();
-});
-
 (async () => {
-  const port = parseInt(process.env.PORT || "5000", 10);
+  const port = parseInt(process.env.PORT || "5001", 10);
 
   httpServer.listen(
     {
       port,
       host: "0.0.0.0",
-      reusePort: true,
     },
     () => {
       log(`serving on port ${port}`);
     },
   );
-
-  initStripe().catch((err) => console.error('Stripe init background error:', err));
 
   await registerRoutes(httpServer, app);
 
@@ -174,6 +110,5 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  appReady = true;
   log("all routes and static serving ready");
 })();

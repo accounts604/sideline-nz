@@ -1,0 +1,179 @@
+Perfect — this image is exactly the right level of realism for what we discussed.
+Below is drop-in, Replit-ready code for a simple hero carousel using Next.js App Router + Tailwind, no libraries, no nonsense.
+
+I’ll keep it explicit and boring (in a good way) so it actually works.
+
+⸻
+
+1️⃣ File: components/HeroCarousel.tsx
+
+'use client';
+
+import { useEffect, useState, useRef } from 'react';
+
+const slides = [
+  {
+    src: '/hero/slide-rugby.jpg',
+    alt: 'Rugby kit',
+  },
+  {
+    src: '/hero/slide-football.jpg',
+    alt: 'Football kit',
+  },
+  {
+    src: '/hero/slide-netball.jpg',
+    alt: 'Netball kit',
+  },
+  {
+    src: '/hero/slide-basketball.jpg',
+    alt: 'Basketball kit',
+  },
+];
+
+export default function HeroCarousel() {
+  const [active, setActive] = useState(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-rotate
+  useEffect(() => {
+    intervalRef.current = setInterval(() => {
+      setActive((prev) => (prev + 1) % slides.length);
+    }, 4500);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  return (
+    <section className="relative h-[100svh] w-full overflow-hidden">
+      {/* Slides */}
+      {slides.map((slide, index) => (
+        <div
+          key={slide.src}
+          className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${
+            index === active ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <img
+            src={slide.src}
+            alt={slide.alt}
+            className="h-full w-full object-cover"
+            draggable={false}
+          />
+        </div>
+      ))}
+
+      {/* Overlay */}
+      <div className="absolute inset-0 bg-black/45" />
+
+      {/* Content */}
+      <div className="relative z-10 flex h-full items-center justify-center px-6">
+        <div className="max-w-3xl text-center text-white">
+          <h1 className="text-3xl font-semibold leading-tight sm:text-5xl">
+            One partner. Every code.
+          </h1>
+
+          <p className="mt-4 text-sm opacity-90 sm:text-base">
+            Custom kits for clubs and schools across every major sport.
+          </p>
+
+          <div className="mt-8 flex flex-wrap justify-center gap-4">
+            <a
+              href="/quote"
+              className="rounded-full bg-white px-6 py-3 text-sm font-medium text-black transition hover:bg-gray-200"
+            >
+              Start a Project
+            </a>
+
+            <a
+              href="/schools"
+              className="rounded-full border border-white px-6 py-3 text-sm font-medium transition hover:bg-white hover:text-black"
+            >
+              For Schools
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
+⸻
+
+2️⃣ Use it on the homepage
+
+File: app/page.tsx
+
+import HeroCarousel from '@/components/HeroCarousel';
+
+export default function HomePage() {
+  return (
+    <>
+      <HeroCarousel />
+      {/* Other sections below */}
+    </>
+  );
+}
+
+
+⸻
+
+3️⃣ Folder structure (important for Replit)
+
+/app
+  page.tsx
+/components
+  HeroCarousel.tsx
+/public
+  /hero
+    slide-rugby.jpg
+    slide-football.jpg
+    slide-netball.jpg
+    slide-basketball.jpg
+
+👉 Put your Gemini-generated images (or the example image) in /public/hero/.
+
+⸻
+
+4️⃣ Why this code is right for Sideline
+	•	✅ Simple opacity fade (no jank)
+	•	✅ One environment, multiple codes
+	•	✅ Fast load
+	•	✅ Mobile-first
+	•	✅ Easy to replace images later
+	•	✅ No carousel dependency hell
+
+This is production-safe, not demo code.
+
+⸻
+
+5️⃣ Optional upgrades (later, not now)
+
+If/when you want:
+	•	Swipe gestures
+	•	Manual arrows
+	•	Pause on hover
+	•	Code label per slide
+
+—all can be added without rewriting this.
+
+⸻
+
+My honest take (sparring mode)
+
+You made the right call simplifying.
+This hero already communicates:
+
+“Professional. Multi-code. Systemised.”
+
+Anything more complex at this stage would reduce clarity, not increase impact.
+
+If you want next, I can:
+	•	Add mobile swipe support
+	•	Refine spacing + typography
+	•	Tune for NZ rugby-first psychology
+	•	Integrate GHL tracking on CTAs
+
+Just tell me what to do next.

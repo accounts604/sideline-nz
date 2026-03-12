@@ -1,0 +1,81 @@
+Here’s the full combined prompt — copy and paste the whole thing into Replit Agent:
+
+Redesign the entire site to match the homepage aesthetic. The homepage is the design reference — use it as the source of truth for every decision below.
+GLOBAL DESIGN RULES — apply everywhere:
+	∙	Background: #000 black throughout — no bg-white anywhere on any page
+	∙	Text: #f0f0f0 primary, rgba(255,255,255,0.45) secondary, rgba(255,255,255,0.25) muted
+	∙	Cards: #111 background, 1px solid rgba(255,255,255,0.08) border, border-radius: 6px — remove all rounded-2xl
+	∙	Buttons: white solid (background #fff color #000) or ghost (border 1px solid rgba(255,255,255,0.2) color #fff) — border-radius: 4px not rounded-full
+	∙	Headings: Bebas Neue font, uppercase
+	∙	Body text: DM Sans, font-weight 300
+	∙	Remove all bg-white, text-black, border-black, rounded-2xl from every file except layout.tsx and hero-carousel.tsx
+	∙	Desktop section padding: 80px 52px
+	∙	Mobile section padding: 44px 20px
+
+HOMEPAGE MOBILE FIXES:
+	1.	Team Stores carousel — remove all top margin and padding causing the huge blank space above the cards on mobile. Cards start immediately after the section heading
+	2.	Clubs and Schools sections — on mobile reduce padding to 40px 20px, stack vertically with photo 220px tall on top and text below with 24px gap, remove excessive dead space around the stat numbers
+	3.	Products carousel — on mobile set card min-width 160px, height 200px, ensure horizontal scroll works
+	4.	Testimonial — fix so the full quote text renders on mobile, not just the attribution
+	5.	Our Work grid — on mobile 2 columns, first card full width at 200px tall, remaining cards 160px tall
+	6.	All form inputs — font-size 16px on mobile to prevent iOS auto-zoom
+	7.	Every section on mobile — max padding 44px 20px, no more than 60px gap between sections
+
+INNER PAGES — apply dark redesign to all of these:
+/clubs, /schools, /team-stores, /our-work, /our-work/[slug], /quote, /contact
+For every inner page:
+	1.	Full black background — no white sections anywhere
+	2.	Hero at top of every page — full width, minimum 400px tall, dark background image with gradient overlay (linear-gradient(to top, #000 0%, rgba(0,0,0,0.5) 40%, transparent 70%)), page title in Bebas Neue at clamp(52px, 7vw, 96px) overlaid bottom-left at left: 52px, bottom: 48px. On mobile left: 20px, bottom: 32px
+	3.	All content cards — #111 background, 1px solid rgba(255,255,255,0.08) border, border-radius: 6px, image fills card with gradient overlay, text overlaid at bottom inside card
+	4.	All stats and numbers — Bebas Neue, 80px minimum, white, tight line-height
+	5.	All forms and inputs:
+	∙	Input background: rgba(255,255,255,0.05)
+	∙	Input border: 1px solid rgba(255,255,255,0.1)
+	∙	Input text: #f0f0f0
+	∙	Input border-radius: 4px
+	∙	Input padding: 14px 16px
+	∙	Font-size: 16px on mobile
+	∙	Focus state: border-color rgba(255,255,255,0.3)
+	6.	Section spacing — minimum 80px between sections on desktop, 44px on mobile
+
+QUOTE PAGE specifically:
+	∙	Dark multi-step form on black background
+	∙	Progress bar at top — white filled segments on dark track
+	∙	Each step full width, dark background
+	∙	Step navigation buttons — Next button white solid, Back button ghost
+	∙	All inputs follow global dark input rules above
+	∙	Step headings in Bebas Neue
+
+TEAM STORES listing page /team-stores:
+	∙	Page hero with title “TEAM STORES” in Bebas Neue overlaid on dark background image
+	∙	Collections grid below — 3 columns desktop, 2 columns mobile
+	∙	Each card: image fills full card height (360px desktop, 240px mobile), dark gradient overlay, collection name overlaid at bottom in white
+	∙	No text or labels outside the card boundary
+	∙	On mobile cards minimum 160px wide
+
+OUR WORK page /our-work:
+	∙	Page hero with title “OUR WORK”
+	∙	Masonry-style grid — first card double width and double height
+	∙	Cards: image fills card, gradient overlay, club name and sport overlaid on hover
+	∙	On mobile 2 column grid
+
+CLUBS page /clubs and SCHOOLS page /schools:
+	∙	Page hero with relevant title
+	∙	Large stat number (72+ or 35+) in Bebas Neue below hero
+	∙	Feature content in alternating left/right splits — photo one side, text other side — same treatment as homepage feature splits
+	∙	Dark background throughout
+	∙	CTA section at bottom — full width dark image with text and button overlaid
+
+CONTACT page /contact:
+	∙	Page hero with title “GET IN TOUCH”
+	∙	Dark form — name, email, phone, message fields using global dark input styles
+	∙	Submit button white solid full width
+	∙	Contact details (email, phone) displayed in large Bebas Neue below form
+
+STRICT RULES — do not break these:
+	∙	Do not change any routing or URL structure
+	∙	Do not change any component logic, data fetching, or state management
+	∙	Do not touch layout.tsx, hero-carousel.tsx, or home.tsx
+	∙	Do not change any data-testid attributes
+	∙	Do not change the Shopify integration code
+	∙	Visual and styling changes only​​​​​​​​​​​​​​​​

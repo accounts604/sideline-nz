@@ -1,0 +1,845 @@
+Below is a **Replit-ready** “Jerseybird-style” **multi-step Start a Project form** with:
+
+* Step-by-step logic (branching for **club vs school**)
+* Field validation
+* **Progress indicator**
+* “Review + Submit” step
+* Submits to a **Next.js API route** that forwards to your **GHL Webhook**
+* Optional **file upload** pattern (clean + realistic): upload files to Cloudinary (or Uploadcare) → send **URLs** to GHL
+
+> Why URLs? GHL webhooks are great for structured data, but *binary file uploads* are messy unless you embed a native GHL form. URL upload is the most reliable pattern for a custom Next.js form.
+
+---
+
+# 1) Form logic (Jerseybird-style steps)
+
+### Step 1 — Who are you?
+
+* `user_type` (club/school/other)
+* `role` (changes labels/options based on user_type)
+* `organization`
+* `sports` (multi)
+
+**Next button enabled when:** `user_type`, `organization`, `sports` are set.
+
+---
+
+### Step 2 — What do you need?
+
+* `needs` (multi)
+* `estimated_quantity`
+* `teams_involved` (optional multi)
+
+**Next enabled when:** `needs`, `estimated_quantity`
+
+---
+
+### Step 3 — Timeline + urgency
+
+* `timing`
+* `urgency`
+
+**Next enabled when:** both set
+
+---
+
+### Step 4 — Design + budget
+
+* `design_stage`
+* `budget_range`
+* `files` (optional uploads)
+* `notes` (optional)
+
+**Next enabled when:** `design_stage`, `budget_range` (files optional)
+
+---
+
+### Step 5 — Approval + concerns
+
+* `approval_process`
+* `main_concern` (multi)
+
+**Next enabled when:** `approval_process` (concern optional)
+
+---
+
+### Step 6 — Contact details + Review
+
+* `name`, `email`, `phone`
+* Show review summary
+* Submit
+
+**Submit enabled when:** valid contact fields
+
+---
+
+# 2) Replit / Next.js code
+
+## A) `/app/start-a-project/page.tsx` (the UI)
+
+Create this file:
+
+```tsx
+'use client';
+
+import React, { useMemo, useState } from 'react';
+
+type UserType = 'club' | 'school' | 'other';
+
+type FormData = {
+  user_type: UserType | '';
+  role: string;
+  organization: string;
+  sports: string[];
+
+  needs: string[];
+  estimated_quantity: string;
+  teams_involved: string[];
+
+  timing: string;
+  urgency: string;
+
+  design_stage: string;
+  budget_range: string;
+  notes: string;
+
+  approval_process: string;
+  main_concern: string[];
+
+  name: string;
+  email: string;
+  phone: string;
+
+  // file URLs (uploaded externally)
+  file_urls: string[];
+};
+
+const SPORTS = ['Rugby', 'League', 'Football', 'Netball', 'Basketball', 'Hockey', 'Cricket', 'Touch', 'Other'];
+const NEEDS = ['Full Playing Kit', 'Training Gear', 'Supporter Gear', 'Off-Field Apparel', 'Not Sure Yet'];
+const TEAMS = ['Premier', 'Reserve', 'Juniors', 'Women', 'Academy', 'Multiple teams / year levels'];
+
+const TIMING = ['ASAP (Rush)', '1-2 Months', '3-4 Months', 'Next Season', 'Just Exploring'];
+const URGENCY = ['Low', 'Medium', 'High'];
+
+const DESIGN_STAGE = ['No design yet – need guidance', 'Have ideas / inspiration', 'Updating an existing kit', 'Final design ready'];
+const BUDGET = ['Still exploring options', 'Budget-conscious', 'Mid-range', 'Premium / best quality'];
+
+const CONCERNS = ['Late delivery', 'Wrong sizing', 'Overcomplicated ordering', 'Committee/SLT approval', 'Supplier communication', 'Budget pressure'];
+
+const APPROVAL = ['Just me', 'Committee approval required', 'SLT / Finance approval required', 'Not sure yet'];
+
+function cx(...classes: Array<string | false | undefined | null>) {
+  return classes.filter(Boolean).join(' ');
+}
+
+function TogglePill({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx(
+        'px-3 py-2 rounded-full border text-sm transition',
+        active ? 'bg-black text-white border-black' : 'bg-white text-black border-gray-300 hover:border-black'
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
+function MultiSelectPills({
+  options,
+  value,
+  onChange,
+}: {
+  options: string[];
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((opt) => {
+        const active = value.includes(opt);
+        return (
+          <TogglePill
+            key={opt}
+            label={opt}
+            active={active}
+            onClick={() => {
+              if (active) onChange(value.filter((v) => v !== opt));
+              else onChange([...value, opt]);
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder = 'Select…',
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder?: string;
+}) {
+  return (
+    <label className="block">
+      <div className="text-sm font-medium mb-1">{label}</div>
+      <select
+        className="w-full border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">{placeholder}</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function Input({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = 'text',
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <label className="block">
+      <div className="text-sm font-medium mb-1">{label}</div>
+      <input
+        type={type}
+        className="w-full border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  );
+}
+
+function Textarea({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block">
+      <div className="text-sm font-medium mb-1">{label}</div>
+      <textarea
+        className="w-full min-h-[120px] border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  );
+}
+
+function Progress({ step, total }: { step: number; total: number }) {
+  const pct = Math.round(((step + 1) / total) * 100);
+  return (
+    <div className="mb-6">
+      <div className="flex items-center justify-between text-sm mb-2">
+        <div className="font-medium">Step {step + 1} of {total}</div>
+        <div className="text-gray-600">{pct}%</div>
+      </div>
+      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+        <div className="h-2 bg-black" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * OPTIONAL: file upload pattern (Cloudinary upload preset)
+ * - This calls /api/upload which you’ll wire to Cloudinary (or Uploadcare).
+ * - On success, we store URLs in form.file_urls.
+ */
+async function uploadFiles(files: FileList): Promise<string[]> {
+  const uploaded: string[] = [];
+  for (const file of Array.from(files)) {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/upload', { method: 'POST', body: form });
+    if (!res.ok) throw new Error('Upload failed');
+    const data = await res.json();
+    uploaded.push(data.url);
+  }
+  return uploaded;
+}
+
+export default function StartAProjectPage() {
+  const totalSteps = 6;
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successId, setSuccessId] = useState<string | null>(null);
+
+  const [form, setForm] = useState<FormData>({
+    user_type: '',
+    role: '',
+    organization: '',
+    sports: [],
+
+    needs: [],
+    estimated_quantity: '',
+    teams_involved: [],
+
+    timing: '',
+    urgency: '',
+
+    design_stage: '',
+    budget_range: '',
+    notes: '',
+
+    approval_process: '',
+    main_concern: [],
+
+    name: '',
+    email: '',
+    phone: '',
+
+    file_urls: [],
+  });
+
+  const roleOptions = useMemo(() => {
+    if (form.user_type === 'club') return ['Club Manager', 'Coach', 'Uniform Coordinator', 'Treasurer', 'Other'];
+    if (form.user_type === 'school') return ['Director of Sport', 'Sports Coordinator', 'TIC', 'Deputy Principal', 'Other'];
+    return ['Owner', 'Manager', 'Coordinator', 'Other'];
+  }, [form.user_type]);
+
+  // Basic validation per step (keep it simple + reliable)
+  const canNext = useMemo(() => {
+    if (step === 0) return !!form.user_type && !!form.organization && form.sports.length > 0;
+    if (step === 1) return form.needs.length > 0 && !!form.estimated_quantity;
+    if (step === 2) return !!form.timing && !!form.urgency;
+    if (step === 3) return !!form.design_stage && !!form.budget_range; // files optional
+    if (step === 4) return !!form.approval_process;
+    if (step === 5) return !!form.name && !!form.email && !!form.phone && form.email.includes('@');
+    return false;
+  }, [step, form]);
+
+  function next() {
+    setError(null);
+    setStep((s) => Math.min(s + 1, totalSteps - 1));
+  }
+  function back() {
+    setError(null);
+    setStep((s) => Math.max(s - 1, 0));
+  }
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/ghl/submit-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || 'Submission failed');
+      }
+      const data = await res.json();
+      setSuccessId(data.id || 'ok');
+    } catch (e: any) {
+      setError(e.message || 'Something went wrong');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (successId) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-12">
+        <div className="rounded-2xl border border-gray-200 p-8">
+          <h1 className="text-2xl font-semibold mb-2">Project request received ✅</h1>
+          <p className="text-gray-700 mb-6">
+            Thanks — we’ll be in touch shortly with the next steps.
+          </p>
+          <button
+            className="px-4 py-2 rounded-xl bg-black text-white"
+            onClick={() => {
+              setSuccessId(null);
+              setStep(0);
+              setForm({
+                user_type: '',
+                role: '',
+                organization: '',
+                sports: [],
+                needs: [],
+                estimated_quantity: '',
+                teams_involved: [],
+                timing: '',
+                urgency: '',
+                design_stage: '',
+                budget_range: '',
+                notes: '',
+                approval_process: '',
+                main_concern: [],
+                name: '',
+                email: '',
+                phone: '',
+                file_urls: [],
+              });
+            }}
+          >
+            Start another project
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-10">
+      <div className="mb-8">
+        <h1 className="text-3xl font-semibold">Start a Project</h1>
+        <p className="text-gray-700 mt-2">
+          A few quick questions so we can guide you properly — and keep it simple.
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-gray-200 p-6 md:p-8">
+        <Progress step={step} total={totalSteps} />
+
+        {/* STEP 1 */}
+        {step === 0 && (
+          <div className="space-y-5">
+            <div>
+              <div className="text-sm font-medium mb-2">You are a…</div>
+              <div className="flex gap-2 flex-wrap">
+                {(['club', 'school', 'other'] as UserType[]).map((t) => (
+                  <TogglePill
+                    key={t}
+                    label={t === 'club' ? 'Club' : t === 'school' ? 'School' : 'Other'}
+                    active={form.user_type === t}
+                    onClick={() => setForm((f) => ({ ...f, user_type: t, role: '' }))}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <Select
+              label={form.user_type === 'school' ? 'Your role at the school' : form.user_type === 'club' ? 'Your role at the club' : 'Your role'}
+              value={form.role}
+              onChange={(v) => setForm((f) => ({ ...f, role: v }))}
+              options={roleOptions}
+              placeholder="Select role…"
+            />
+
+            <Input
+              label={form.user_type === 'school' ? 'School name' : form.user_type === 'club' ? 'Club name' : 'Organisation name'}
+              value={form.organization}
+              onChange={(v) => setForm((f) => ({ ...f, organization: v }))}
+              placeholder="e.g. Ponsonby RFC"
+            />
+
+            <div>
+              <div className="text-sm font-medium mb-2">Sports involved</div>
+              <MultiSelectPills
+                options={SPORTS}
+                value={form.sports}
+                onChange={(v) => setForm((f) => ({ ...f, sports: v }))}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2 */}
+        {step === 1 && (
+          <div className="space-y-5">
+            <div>
+              <div className="text-sm font-medium mb-2">What do you need?</div>
+              <MultiSelectPills
+                options={NEEDS}
+                value={form.needs}
+                onChange={(v) => setForm((f) => ({ ...f, needs: v }))}
+              />
+            </div>
+
+            <Select
+              label="Estimated quantity"
+              value={form.estimated_quantity}
+              onChange={(v) => setForm((f) => ({ ...f, estimated_quantity: v }))}
+              options={['Under 20', '20–50', '50–100', '100+']}
+            />
+
+            <div>
+              <div className="text-sm font-medium mb-2">Teams involved (optional)</div>
+              <MultiSelectPills
+                options={TEAMS}
+                value={form.teams_involved}
+                onChange={(v) => setForm((f) => ({ ...f, teams_involved: v }))}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3 */}
+        {step === 2 && (
+          <div className="space-y-5">
+            <Select
+              label="When do you need it?"
+              value={form.timing}
+              onChange={(v) => setForm((f) => ({ ...f, timing: v }))}
+              options={TIMING}
+            />
+            <Select
+              label="Urgency"
+              value={form.urgency}
+              onChange={(v) => setForm((f) => ({ ...f, urgency: v }))}
+              options={URGENCY}
+            />
+          </div>
+        )}
+
+        {/* STEP 4 */}
+        {step === 3 && (
+          <div className="space-y-5">
+            <Select
+              label="Design stage"
+              value={form.design_stage}
+              onChange={(v) => setForm((f) => ({ ...f, design_stage: v }))}
+              options={DESIGN_STAGE}
+            />
+            <Select
+              label="Budget range"
+              value={form.budget_range}
+              onChange={(v) => setForm((f) => ({ ...f, budget_range: v }))}
+              options={BUDGET}
+            />
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Upload logo / reference images (optional)</div>
+              <input
+                type="file"
+                multiple
+                className="block w-full text-sm"
+                onChange={async (e) => {
+                  const files = e.target.files;
+                  if (!files || files.length === 0) return;
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    const urls = await uploadFiles(files);
+                    setForm((f) => ({ ...f, file_urls: [...f.file_urls, ...urls] }));
+                  } catch (err: any) {
+                    setError(err.message || 'Upload failed');
+                  } finally {
+                    setBusy(false);
+                    e.currentTarget.value = '';
+                  }
+                }}
+              />
+              {form.file_urls.length > 0 && (
+                <div className="text-sm text-gray-700">
+                  Uploaded: {form.file_urls.length} file(s)
+                </div>
+              )}
+            </div>
+
+            <Textarea
+              label="Anything else we should know? (optional)"
+              value={form.notes}
+              onChange={(v) => setForm((f) => ({ ...f, notes: v }))}
+              placeholder="e.g. Need SLT-friendly mockups, or want supporter gear added…"
+            />
+          </div>
+        )}
+
+        {/* STEP 5 */}
+        {step === 4 && (
+          <div className="space-y-5">
+            <Select
+              label="Approval process"
+              value={form.approval_process}
+              onChange={(v) => setForm((f) => ({ ...f, approval_process: v }))}
+              options={APPROVAL}
+            />
+
+            <div>
+              <div className="text-sm font-medium mb-2">Main concerns (optional)</div>
+              <MultiSelectPills
+                options={CONCERNS}
+                value={form.main_concern}
+                onChange={(v) => setForm((f) => ({ ...f, main_concern: v }))}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* STEP 6 */}
+        {step === 5 && (
+          <div className="space-y-5">
+            <Input
+              label="Contact name"
+              value={form.name}
+              onChange={(v) => setForm((f) => ({ ...f, name: v }))}
+              placeholder="Your name"
+            />
+            <Input
+              label="Email"
+              type="email"
+              value={form.email}
+              onChange={(v) => setForm((f) => ({ ...f, email: v }))}
+              placeholder="you@email.com"
+            />
+            <Input
+              label="Phone"
+              value={form.phone}
+              onChange={(v) => setForm((f) => ({ ...f, phone: v }))}
+              placeholder="+64…"
+            />
+
+            <div className="rounded-xl bg-gray-50 border border-gray-200 p-4">
+              <div className="font-medium mb-2">Review</div>
+              <div className="text-sm text-gray-700 space-y-1">
+                <div><b>Type:</b> {form.user_type}</div>
+                <div><b>Role:</b> {form.role || '—'}</div>
+                <div><b>Org:</b> {form.organization}</div>
+                <div><b>Sports:</b> {form.sports.join(', ')}</div>
+                <div><b>Needs:</b> {form.needs.join(', ')}</div>
+                <div><b>Qty:</b> {form.estimated_quantity}</div>
+                <div><b>Teams:</b> {form.teams_involved.join(', ') || '—'}</div>
+                <div><b>Timing:</b> {form.timing}</div>
+                <div><b>Urgency:</b> {form.urgency}</div>
+                <div><b>Design stage:</b> {form.design_stage}</div>
+                <div><b>Budget:</b> {form.budget_range}</div>
+                <div><b>Approval:</b> {form.approval_process}</div>
+                <div><b>Concerns:</b> {form.main_concern.join(', ') || '—'}</div>
+                <div><b>Files:</b> {form.file_urls.length ? `${form.file_urls.length} uploaded` : '—'}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            {error}
+          </div>
+        )}
+
+        <div className="mt-7 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={back}
+            disabled={busy || step === 0}
+            className={cx(
+              'px-4 py-2 rounded-xl border',
+              step === 0 ? 'opacity-40 cursor-not-allowed' : 'hover:border-black'
+            )}
+          >
+            Back
+          </button>
+
+          {step < totalSteps - 1 ? (
+            <button
+              type="button"
+              onClick={next}
+              disabled={busy || !canNext}
+              className={cx(
+                'px-4 py-2 rounded-xl',
+                canNext ? 'bg-black text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+              )}
+            >
+              Next
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={submit}
+              disabled={busy || !canNext}
+              className={cx(
+                'px-4 py-2 rounded-xl',
+                canNext ? 'bg-black text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+              )}
+            >
+              {busy ? 'Submitting…' : 'Submit'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## B) `/app/api/ghl/submit-project/route.ts` (forwards to your GHL webhook)
+
+Create this file:
+
+```ts
+import { NextResponse } from 'next/server';
+
+export async function POST(req: Request) {
+  try {
+    const payload = await req.json();
+
+    const webhookUrl = process.env.GHL_PROJECT_WEBHOOK_URL;
+    if (!webhookUrl) {
+      return NextResponse.json({ error: 'Missing GHL_PROJECT_WEBHOOK_URL' }, { status: 500 });
+    }
+
+    // Add any hidden tracking context here (utm, source, page, etc.)
+    const enriched = {
+      ...payload,
+      source: 'sidelinenz.com start-a-project',
+      submitted_at: new Date().toISOString(),
+    };
+
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(enriched),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      return NextResponse.json({ error: `GHL webhook error: ${res.status} ${text}` }, { status: 502 });
+    }
+
+    return NextResponse.json({ ok: true, id: crypto.randomUUID() });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || 'Server error' }, { status: 500 });
+  }
+}
+```
+
+---
+
+## C) Optional file upload endpoint `/app/api/upload/route.ts`
+
+This is a **placeholder**. Choose ONE option:
+
+### Option 1 (best): Cloudinary upload (recommended)
+
+* You’ll set:
+
+  * `CLOUDINARY_CLOUD_NAME`
+  * `CLOUDINARY_UPLOAD_PRESET` (unsigned preset)
+
+Create:
+
+```ts
+import { NextResponse } from 'next/server';
+
+export async function POST(req: Request) {
+  try {
+    const form = await req.formData();
+    const file = form.get('file') as File | null;
+    if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 });
+
+    const cloud = process.env.CLOUDINARY_CLOUD_NAME;
+    const preset = process.env.CLOUDINARY_UPLOAD_PRESET;
+    if (!cloud || !preset) {
+      return NextResponse.json({ error: 'Missing Cloudinary env vars' }, { status: 500 });
+    }
+
+    const cloudinaryForm = new FormData();
+    cloudinaryForm.append('file', file);
+    cloudinaryForm.append('upload_preset', preset);
+
+    const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/auto/upload`, {
+      method: 'POST',
+      body: cloudinaryForm,
+    });
+
+    if (!uploadRes.ok) {
+      const text = await uploadRes.text().catch(() => '');
+      return NextResponse.json({ error: `Cloudinary error: ${uploadRes.status} ${text}` }, { status: 502 });
+    }
+
+    const data = await uploadRes.json();
+    return NextResponse.json({ url: data.secure_url });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || 'Upload server error' }, { status: 500 });
+  }
+}
+```
+
+---
+
+# 3) Environment variables to set in Replit
+
+In Replit Secrets:
+
+* `GHL_PROJECT_WEBHOOK_URL` = your GHL workflow webhook URL
+  (Optional for uploads)
+* `CLOUDINARY_CLOUD_NAME`
+* `CLOUDINARY_UPLOAD_PRESET`
+
+---
+
+# 4) How this maps to GHL
+
+In GHL you’ll do one of these patterns:
+
+### Pattern A (simple): Webhook → Workflow → Create/Update Contact + Opportunity
+
+* Trigger: **Inbound Webhook**
+* Actions:
+
+  * Create/Update Contact (use `email` / `phone`)
+  * Add tags (use `user_type`, `sports`, `needs`, etc.)
+  * Create Opportunity in “Custom Orders” pipeline
+  * Internal notification (email/slack)
+  * Auto-reply to lead (email/sms)
+
+### Pattern B (more “Jerseybird”): Route different workflows based on inputs
+
+* If `user_type = school` → school workflow tone + SLT-friendly pack
+* If `urgency = High` or `timing = ASAP` → instant “rush” workflow + internal alert
+
+(Your Integration Plan already supports this GHL-first approach.) 
+
+---
+
+# 5) What “more in depth” usually means (so you don’t rebuild twice)
+
+If you want it to feel even *more* like Jerseybird, the next upgrades are:
+
+* **Conditional questions**:
+
+  * If `needs` includes “Full Playing Kit” → ask “include socks? shorts?”
+  * If `sports` includes Rugby/League → ask “numbers + names?”
+* **Inline help cards** per step (“What happens next”)
+* **Calendar booking** only after submission based on urgency
+* **Auto-save draft** to localStorage so they don’t lose progress
+
+If you say “yes”, I’ll drop in the exact code changes for those 4 upgrades (no fluff, just commits).

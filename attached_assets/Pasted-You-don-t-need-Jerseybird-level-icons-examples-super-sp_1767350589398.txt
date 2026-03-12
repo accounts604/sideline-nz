@@ -1,0 +1,316 @@
+You don’t *need* Jerseybird-level “icons + examples + super-specific questions” to make the form work… but if you’re trying to **match their conversion + reduce back-and-forth**, then **yes — you want some of it**.
+
+Here’s the truth:
+
+* **Too shallow** → you’ll spend your life in DMs/email clarifying basics (Mikey/Daniel hate this).
+* **Too deep** → people bounce (especially on mobile, time-poor admins).
+* The win is: **depth in the *right* places**, with **visual guidance** that makes it *feel* easy.
+
+## What Jerseybird is *actually* doing with icons/examples
+
+1. **Reduces cognitive load** (people understand faster than reading)
+2. **Increases confidence** (“ah yep, that’s what I need”)
+3. **Improves data quality** (you get the details without 10 follow-up questions)
+4. **Creates perceived professionalism** (trust signal)
+
+So yes: add icons + examples — but don’t turn it into a 40-question interrogation.
+
+---
+
+# The “Depth” you should add (high ROI, low friction)
+
+## 1) Visual cards for “What do you need?”
+
+Instead of plain pill text, use **cards with icons + 1-liners**:
+
+* 🏉 **Full Playing Kit** — Jerseys, shorts, socks (match-day)
+* 🧥 **Training Gear** — tees, singlets, hoodies, trackies
+* 🧢 **Supporter Gear** — tees, hoodies, caps, flags
+* 👕 **Off-field Apparel** — polos, tees, jackets (staff/community)
+* 🤷 **Not sure yet** — we’ll guide you
+
+This is 100% worth doing.
+
+## 2) Ask *one* “specific detail” per category (conditional)
+
+Only ask more when they pick something.
+
+Example conditional questions:
+
+* If **Full Playing Kit** selected:
+
+  * **Garment types** (multi): Jersey, Shorts, Socks
+  * **Personalisation** (multi): Names, Numbers, Sponsor logos
+* If **Supporter Gear**:
+
+  * **Audience**: Players, Parents, Alumni, Wider community
+* If **School** user_type:
+
+  * **Need SLT-friendly design?** (Yes/No)
+  * **Delivery deadline aligned to event** (text/date)
+
+This is how you get Jerseybird “depth” without the drop-off.
+
+## 3) Examples / inspiration prompts (tiny but powerful)
+
+Add a section:
+
+* “Upload an example you like” (optional)
+* “Or pick a style” with 3 cards:
+
+  * Clean/Classic
+  * Bold/Modern
+  * Cultural/Heritage
+
+Even if they don’t upload, the selection helps your designer and your quote.
+
+---
+
+# Replit code upgrade: add icon cards + conditional depth (drop-in)
+
+Below is **drop-in code** you can paste into your existing `/app/start-a-project/page.tsx` to replace the Needs step UI and add conditional questions.
+
+### 1) Add these icon cards + definitions near the top (under constants)
+
+```tsx
+const NEED_CARDS = [
+  { label: 'Full Playing Kit', desc: 'Match-day jerseys, shorts, socks', icon: '🏉' },
+  { label: 'Training Gear', desc: 'Tees, singlets, hoodies, trackies', icon: '🏋️' },
+  { label: 'Supporter Gear', desc: 'Hoodies, tees, caps, flags', icon: '🧢' },
+  { label: 'Off-Field Apparel', desc: 'Polos, jackets, staff/community wear', icon: '👕' },
+  { label: 'Not Sure Yet', desc: 'We’ll guide you to the right setup', icon: '🤷' },
+];
+
+const KIT_ITEMS = ['Jersey', 'Shorts', 'Socks'];
+const PERSONALISATION = ['Numbers', 'Names', 'Sponsor logos', 'Player initials'];
+const SUPPORTER_AUDIENCE = ['Players', 'Parents', 'Alumni', 'Wider community'];
+const STYLE_PREF = ['Clean / Classic', 'Bold / Modern', 'Cultural / Heritage'];
+```
+
+### 2) Extend your `FormData` type and initial state with these fields
+
+In `type FormData = { ... }` add:
+
+```ts
+  kit_items: string[];
+  personalisation: string[];
+  supporter_audience: string[];
+  style_preference: string;
+  school_event_date: string; // optional (ISO date string)
+  slt_friendly: string; // 'Yes' | 'No' | ''
+```
+
+Then in your `useState<FormData>({...})` initial object add:
+
+```ts
+    kit_items: [],
+    personalisation: [],
+    supporter_audience: [],
+    style_preference: '',
+    school_event_date: '',
+    slt_friendly: '',
+```
+
+### 3) Add a “CardSelect” component (paste under TogglePill)
+
+```tsx
+function CardSelect({
+  items,
+  selected,
+  toggle,
+}: {
+  items: { label: string; desc: string; icon: string }[];
+  selected: string[];
+  toggle: (label: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {items.map((it) => {
+        const active = selected.includes(it.label);
+        return (
+          <button
+            key={it.label}
+            type="button"
+            onClick={() => toggle(it.label)}
+            className={cx(
+              'text-left rounded-2xl border p-4 transition',
+              active ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-black bg-white'
+            )}
+          >
+            <div className="flex items-start gap-3">
+              <div className="text-2xl">{it.icon}</div>
+              <div>
+                <div className="font-medium">{it.label}</div>
+                <div className={cx('text-sm', active ? 'text-gray-200' : 'text-gray-600')}>
+                  {it.desc}
+                </div>
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+```
+
+### 4) Replace Step 2 UI with the card UI + conditional questions
+
+Inside `STEP 2` (where you currently render needs pills), replace that section with:
+
+```tsx
+<div className="space-y-5">
+  <div>
+    <div className="text-sm font-medium mb-2">What do you need?</div>
+    <CardSelect
+      items={NEED_CARDS}
+      selected={form.needs}
+      toggle={(label) => {
+        const active = form.needs.includes(label);
+        const nextNeeds = active ? form.needs.filter((n) => n !== label) : [...form.needs, label];
+
+        // If they choose "Not Sure Yet", clear other needs (keeps it clean)
+        const cleaned =
+          label === 'Not Sure Yet' && !active ? ['Not Sure Yet'] : nextNeeds.filter((n) => n !== 'Not Sure Yet');
+
+        setForm((f) => ({ ...f, needs: cleaned }));
+      }}
+    />
+  </div>
+
+  {/* Conditional depth: only if they picked Full Playing Kit */}
+  {form.needs.includes('Full Playing Kit') && (
+    <div className="rounded-2xl border border-gray-200 p-4 space-y-4">
+      <div className="font-medium">Playing kit details</div>
+
+      <div>
+        <div className="text-sm font-medium mb-2">What items are included?</div>
+        <MultiSelectPills
+          options={KIT_ITEMS}
+          value={form.kit_items}
+          onChange={(v) => setForm((f) => ({ ...f, kit_items: v }))}
+        />
+      </div>
+
+      <div>
+        <div className="text-sm font-medium mb-2">Personalisation needed?</div>
+        <MultiSelectPills
+          options={PERSONALISATION}
+          value={form.personalisation}
+          onChange={(v) => setForm((f) => ({ ...f, personalisation: v }))}
+        />
+      </div>
+    </div>
+  )}
+
+  {/* Conditional depth: Supporter gear */}
+  {form.needs.includes('Supporter Gear') && (
+    <div className="rounded-2xl border border-gray-200 p-4 space-y-4">
+      <div className="font-medium">Supporter gear details</div>
+      <div>
+        <div className="text-sm font-medium mb-2">Who is this for?</div>
+        <MultiSelectPills
+          options={SUPPORTER_AUDIENCE}
+          value={form.supporter_audience}
+          onChange={(v) => setForm((f) => ({ ...f, supporter_audience: v }))}
+        />
+      </div>
+    </div>
+  )}
+
+  <Select
+    label="Estimated quantity"
+    value={form.estimated_quantity}
+    onChange={(v) => setForm((f) => ({ ...f, estimated_quantity: v }))}
+    options={['Under 20', '20–50', '50–100', '100+']}
+  />
+
+  <div>
+    <div className="text-sm font-medium mb-2">Teams involved (optional)</div>
+    <MultiSelectPills
+      options={TEAMS}
+      value={form.teams_involved}
+      onChange={(v) => setForm((f) => ({ ...f, teams_involved: v }))}
+    />
+  </div>
+
+  {/* Style preference: simple, confidence-building */}
+  <Select
+    label="Style preference (optional)"
+    value={form.style_preference}
+    onChange={(v) => setForm((f) => ({ ...f, style_preference: v }))}
+    options={STYLE_PREF}
+    placeholder="Select a style…"
+  />
+
+  {/* School-specific micro-depth */}
+  {form.user_type === 'school' && (
+    <div className="rounded-2xl border border-gray-200 p-4 space-y-4">
+      <div className="font-medium">School details</div>
+
+      <Select
+        label="Do you need SLT-friendly mockups?"
+        value={form.slt_friendly}
+        onChange={(v) => setForm((f) => ({ ...f, slt_friendly: v }))}
+        options={['Yes', 'No']}
+        placeholder="Select…"
+      />
+
+      <label className="block">
+        <div className="text-sm font-medium mb-1">Key event date (optional)</div>
+        <input
+          type="date"
+          className="w-full border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+          value={form.school_event_date}
+          onChange={(e) => setForm((f) => ({ ...f, school_event_date: e.target.value }))}
+        />
+      </label>
+    </div>
+  )}
+</div>
+```
+
+### 5) Update the Step 2 validation rule (so it still feels easy)
+
+In your `canNext` logic for step 1 (needs step), keep it simple:
+
+* require `needs` + `estimated_quantity`
+* *don’t* require the conditional fields (kit_items etc) — optional depth
+
+No changes needed unless you want to enforce kit_items when playing kit is selected.
+
+If you *do* want that enforcement, change:
+
+```ts
+if (step === 1) return form.needs.length > 0 && !!form.estimated_quantity;
+```
+
+to:
+
+```ts
+if (step === 1) {
+  if (form.needs.length === 0 || !form.estimated_quantity) return false;
+  if (form.needs.includes('Full Playing Kit') && form.kit_items.length === 0) return false;
+  return true;
+}
+```
+
+---
+
+# What I’d do (recommendation)
+
+✅ Add **icons + examples** (card UI) — high conversion impact
+✅ Add **conditional depth** for *Playing Kit* + *Supporter Gear* + *School* only
+❌ Don’t add 20 extra fields across everything
+
+This hits the Jerseybird feel while respecting your users’ time.
+
+---
+
+If you want, I can also:
+
+* add **small example images** inside the cards (not just emoji icons)
+* add “Need help?” mini-tooltips per question
+* add a “Save & continue later” draft autosave
+
+But what I gave you above is the clean “v1.2 Jerseybird-style” upgrade.

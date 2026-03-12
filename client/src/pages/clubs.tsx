@@ -102,6 +102,14 @@ export default function Clubs() {
               <p style={{ color: "rgba(255,255,255,0.55)", fontSize: "16px", lineHeight: 1.7, fontWeight: 300 }}>
                 We help clubs structure sponsor placement on their kit so the apparel pays for itself. Front chest, sleeves, back, training gear — every panel is a sponsorship asset. We'll show you how to approach local businesses and what to charge them.
               </p>
+              <Link href="/sponsor-placement">
+                <span style={{ display: "inline-block", marginTop: "16px", fontSize: "14px", color: "rgba(255,255,255,0.6)", cursor: "pointer", transition: "color 0.2s" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.6)")}
+                >
+                  See our sponsor zone guide →
+                </span>
+              </Link>
             </div>
           </div>
         </div>

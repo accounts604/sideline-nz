@@ -54,6 +54,21 @@ export async function fetchFeaturedProducts(): Promise<ShopifyProduct[]> {
   return res.json();
 }
 
+export async function createShopifyCart(
+  lines: { merchandiseId: string; quantity: number }[]
+): Promise<ShopifyCart> {
+  const res = await fetch("/api/shopify/cart", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lines }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Cart creation failed" }));
+    throw new Error(err.error || "Cart creation failed");
+  }
+  return res.json();
+}
+
 export function formatPrice(amount: string, currencyCode = "NZD"): string {
   return new Intl.NumberFormat("en-NZ", {
     style: "currency",

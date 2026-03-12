@@ -1,0 +1,130 @@
+Perfect. Here’s a clean, copy-paste base prompt you can drop straight into Replit AI.
+This is v1-focused, no overengineering, aligned to Sideline + GHL.
+
+⸻
+
+✅ REPLIT BASE PROMPT — SIDELINE NZ WEBSITE
+
+You are building a production-ready marketing website for a New Zealand sports apparel brand called “Sideline NZ”.
+
+TECH STACK
+- Next.js (App Router)
+- Tailwind CSS
+- Deployed and runnable inside Replit
+- No backend database required
+- Clean, readable, well-structured code
+
+PRIMARY GOAL
+Create a clear, trustworthy, conversion-focused website that:
+- Serves rugby clubs and schools
+- Captures leads via embedded GoHighLevel (GHL) forms
+- Routes users to the correct enquiry pathway
+- Prioritises clarity, reliability, and simplicity
+
+BRAND POSITIONING
+Sideline NZ makes uniforms simple.
+Reliable service, clean designs, clear timelines, no stress.
+
+TARGET USERS
+1. Rugby Club Managers / Administrators
+   - Time-poor
+   - Wants fast replies, simple process, no surprises
+2. School Sports Coordinators / Decision Makers
+   - Risk-averse
+   - Needs SLT-safe designs, clear quotes, organised process
+
+TONE & VOICE
+- Calm
+- Clear
+- Professional
+- Reassuring
+- No hype, no slang, no buzzwords
+
+DESIGN STYLE
+- Clean, modern sports brand
+- Strong headings, plenty of white space
+- Practical layouts over flashy visuals
+- Mobile-first
+- Use Tailwind defaults (no custom theme required)
+
+SITE STRUCTURE (PAGES)
+- Home (/)
+- Clubs (/clubs)
+- Schools (/schools)
+- Team Stores (placeholder page) (/team-stores)
+- Request a Quote (/quote)
+- Contact (/contact)
+
+PAGE REQUIREMENTS
+
+HOME
+- Clear headline: “We make uniforms simple.”
+- Short value statement (reliable, no stress, clear timelines)
+- Two primary pathways:
+  - “For Clubs”
+  - “For Schools”
+- Strong CTA: “Request a Quote”
+
+CLUBS PAGE
+- Speak directly to club administrators
+- Emphasise:
+  - Fast communication
+  - Simple ordering
+  - Reliable delivery
+- CTA: “Get a Club Quote”
+
+SCHOOLS PAGE
+- Speak to school sports coordinators
+- Emphasise:
+  - Organised process
+  - SLT-approved designs
+  - Reduced admin workload
+- CTA: “Get a School Quote”
+
+TEAM STORES PAGE
+- Placeholder content
+- Explain team stores are coming / managed per club
+- No e-commerce logic yet
+
+QUOTE PAGE
+- Clear explanation of the process
+- Embedded GoHighLevel form (use placeholder div + comment)
+- Copy should reassure and reduce stress
+
+CONTACT PAGE
+- Simple contact info
+- Optional second GHL form placeholder
+
+COMPONENT REQUIREMENTS
+- Reusable Header / Footer
+- Responsive navigation
+- Simple button component
+- Layout wrapper
+
+GOHIGHLEVEL INTEGRATION
+- Do NOT implement API logic
+- Insert clear placeholder comments where GHL embed scripts will go
+- Example: <!-- GHL FORM EMBED HERE -->
+
+DELIVERABLE
+- Fully working Next.js app
+- Tailwind configured
+- All pages linked
+- Clean, readable code
+- No mock data beyond placeholder copy
+
+
+⸻
+
+🔑 What this prompt does well
+	•	Keeps scope tight (v1 launchable)
+	•	Avoids Shopify complexity for now
+	•	Aligns with your real buyers
+	•	Sets you up to plug in GHL + Shopify later without refactor
+
+If you want next:
+	•	I can tailor this prompt for Replit Agent mode
+	•	Or generate exact page copy to paste straight in
+	•	Or give you a Phase 2 prompt (team stores + Shopify)
+
+Just say the word.

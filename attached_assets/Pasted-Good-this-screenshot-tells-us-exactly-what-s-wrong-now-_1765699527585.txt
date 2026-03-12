@@ -1,0 +1,240 @@
+Good — this screenshot tells us exactly what’s wrong now.
+This is no longer a “concept” problem. This is a layout mechanics bug.
+
+I’ll be very precise.
+
+⸻
+
+What’s actually happening (root cause)
+
+Your hero is stacking characters vertically because:
+	1.	Each character render is still participating in normal document flow
+	2.	When the active character changes, the old one is not truly removed from layout
+	3.	Mobile viewport height + bottom anchoring = browser thinks:
+“Oh, this is content below the hero”
+
+So instead of:
+
+ONE SLOT → character swaps in place
+
+You’re getting:
+
+Character A
+Character B
+Character C
+
+Which is why you see:
+	•	Netball
+	•	then Basketball
+	•	then Rugby
+…all appearing down the page.
+
+This is why it feels broken.
+
+⸻
+
+The non-negotiable rule we must enforce
+
+There can only ever be ONE character slot in the DOM layout.
+Everything else must be absolutely positioned inside that slot.
+
+Right now, Replit violated that rule.
+
+⸻
+
+The fix (simple but strict)
+
+We are going to:
+	1.	Create ONE fixed “character stage”
+	2.	Absolutely position the character inside it
+	3.	Force overflow-hidden
+	4.	Ensure height is locked
+	5.	Ensure character swapping does NOT change layout height
+
+This will immediately stop the vertical stacking.
+
+⸻
+
+✅ CORRECTED GameHero.tsx (LOCKED LAYOUT)
+
+Replace your current component entirely with this.
+
+'use client';
+
+import { useEffect, useState } from 'react';
+
+const characters = [
+  { src: '/hero/netball.png', label: 'Netball' },
+  { src: '/hero/basketball.png', label: 'Basketball' },
+  { src: '/hero/rugby.png', label: 'Rugby' },
+];
+
+export default function GameHero() {
+  const [active, setActive] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setActive((prev) => (prev + 1) % characters.length);
+        setVisible(true);
+      }, 250);
+    }, 4500);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <section className="relative h-[100svh] overflow-hidden bg-black">
+      {/* BACKGROUND */}
+      <img
+        src="/hero/background.jpg"
+        alt=""
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+
+      {/* OVERLAY */}
+      <div className="absolute inset-0 bg-black/55" />
+
+      {/* HUD */}
+      <div className="relative z-20 flex flex-col items-center pt-28 text-center text-white">
+        <h1 className="text-3xl font-semibold sm:text-5xl">
+          One partner. <span className="text-blue-400">Every code.</span>
+        </h1>
+
+        <p className="mt-4 max-w-xl text-sm opacity-90 sm:text-base">
+          Custom kits for clubs and schools across every major sport.
+        </p>
+
+        <div className="mt-8 flex gap-4">
+          <a className="rounded-full bg-blue-500 px-6 py-3 text-sm font-medium">
+            Start a Project
+          </a>
+          <a className="rounded-full border border-white px-6 py-3 text-sm">
+            For Schools
+          </a>
+        </div>
+      </div>
+
+      {/* CHARACTER STAGE (THIS IS THE KEY FIX) */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 h-[55vh] overflow-hidden">
+        {/* FLOOR GRADIENT */}
+        <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-black/90 to-transparent" />
+
+        {/* FLOOR SHADOW */}
+        <div className="absolute bottom-10 left-1/2 h-6 w-40 -translate-x-1/2 rounded-full bg-black/60 blur-xl" />
+
+        {/* CHARACTER SLOT */}
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2">
+          <img
+            key={characters[active].src}
+            src={characters[active].src}
+            alt={characters[active].label}
+            draggable={false}
+            className={`
+              max-h-[55vh]
+              transition-all duration-700 ease-out
+              ${visible
+                ? 'opacity-100 translate-y-0 scale-100'
+                : 'opacity-0 translate-y-8 scale-95'}
+            `}
+          />
+        </div>
+
+        {/* CODE LABEL */}
+        <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 text-xs tracking-widest text-white/70">
+          {characters[active].label.toUpperCase()}
+        </div>
+      </div>
+
+      {/* DOTS */}
+      <div className="absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 gap-2">
+        {characters.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => {
+              setVisible(false);
+              setTimeout(() => {
+                setActive(i);
+                setVisible(true);
+              }, 200);
+            }}
+            className={`h-2 w-2 rounded-full ${
+              i === active ? 'bg-white' : 'bg-white/40'
+            }`}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+
+⸻
+
+Why this FIXES what you’re seeing
+
+✅ ONE character stage
+
+<div className="absolute bottom-0 left-0 right-0 h-[55vh] overflow-hidden">
+
+This prevents any vertical expansion.
+
+⸻
+
+✅ Character is absolutely positioned
+
+<div className="absolute bottom-0 left-1/2 -translate-x-1/2">
+
+So it never pushes content downward.
+
+⸻
+
+✅ Overflow is locked
+
+overflow-hidden
+
+Anything outside the stage is clipped.
+
+⸻
+
+✅ Height is fixed
+
+h-[55vh]
+
+So mobile browsers can’t resize the layout when the image changes.
+
+⸻
+
+Why it will now feel like a game menu
+	•	Character swaps in the same physical space
+	•	UI never jumps
+	•	No stacking
+	•	No scroll bleed
+	•	Brain reads: “character slot”, not “image list”
+
+This is the last structural fix you needed.
+
+⸻
+
+One last sanity check (important)
+
+Make sure:
+	•	All character PNGs are roughly the same height
+	•	Feet are visible
+	•	Transparent background is clean
+
+If one image is taller, it will look like a jump even though layout is fixed.
+
+⸻
+
+If you want next
+
+I can:
+	1.	Add subtle idle breathing (very game-like)
+	2.	Add swipe gestures (mobile)
+	3.	Lock rugby as default first load
+	4.	Reduce CTA dominance further (more HUD-like)
+
+Say the number.

@@ -1,0 +1,17 @@
+Clean list. Fixing all of it in one pass.​​​​​​​​​​​​​​​​
+
+Quote_v3.tsx — full replacement, 708 lines. Here’s what changed against every point raised:
+Dave’s issues:
+	∙	Member count gate removed — now optional with a sublabel explaining why it’s useful (“Helps us suggest the right pricing tier”). Form advances without it.
+	∙	Quantity ambiguity fixed — logic detects if both kit and supporter gear are selected, and renders two separate quantity dropdowns: “Playing kit quantity” and “Supporter gear quantity.” Single selection still shows one field.
+	∙	Steps 3+4 merged — old thin Steps 3 (extras) and 4 (timeline) are now one step. Form is 6 steps total, not 7.
+	∙	Mockup moved to top of Step 4 — it’s now the first thing on the Design & Budget step, above the required dropdowns. Strongest hook, most visible position.
+	∙	Review panel is now collapsible — collapsed by default on load. Submit button sits directly below it. Dave’s thumb finds it immediately.
+Sarah’s issues:
+	∙	Org placeholder is dynamic — schools see “e.g. Rangitoto College”, clubs see “e.g. Ponsonby RFC”, other sees “e.g. Westside Community Group.”
+	∙	Event date field replaced — raw date picker removed. Now a plain text Input with sublabel: “e.g. Term 2 Week 3” or “Athletics Day March 15”. Freeform, mobile-friendly.
+	∙	Budget now shows dollar ranges — card-style selector with hints: “$50–80 per person”, “$80–130 per person”, “$130+ per person.” Takeable to a finance team.
+	∙	Team store pill shortened — “Yes, we need an online team store” → just “Yes”. All three options fit on one line on mobile.
+	∙	Notes appear in review — form.notes is now rendered in the review panel.
+	∙	Success screen mentions email confirmation — “check your inbox at [email] for a confirmation” and direct contact email included.
+One thing still outside this file: the actual confirmation email needs to be triggered from your GHL automation when the submission lands. That’s a GHL workflow, not a form change. Want me to spec that sequence out?​​​​​​​​​​​​​​​​
