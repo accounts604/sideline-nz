@@ -57,6 +57,9 @@ const updateOrderSchema = z.object({
   status: z.string().optional(),
   designStatus: z.string().optional(),
   adminNotes: z.string().optional(),
+  trackingNumber: z.string().optional(),
+  trackingUrl: z.string().optional(),
+  estimatedDeliveryDate: z.string().transform(v => v ? new Date(v) : undefined).optional(),
 });
 
 router.patch("/orders/:id", async (req, res) => {
@@ -273,6 +276,329 @@ router.get("/orders/:id/invoice", async (req, res) => {
   } catch (err) {
     console.error("Admin invoice error:", err);
     res.status(500).json({ error: "Failed to load invoice" });
+  }
+});
+
+// ============ SIZE BREAKDOWNS ============
+
+// POST /orders/:id/size-breakdowns — add size breakdown for an order item
+const sizeBreakdownSchema = z.object({
+  orderItemId: z.string(),
+  size: z.string(),
+  quantity: z.number().int().min(1),
+  playerName: z.string().optional(),
+  playerNumber: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+router.post("/orders/:id/size-breakdowns", async (req, res) => {
+  try {
+    const data = sizeBreakdownSchema.parse(req.body);
+    const user = (req as any).user;
+    const breakdown = await storage.createSizeBreakdown({
+      ...data,
+      orderId: req.params.id,
+      playerName: data.playerName ?? null,
+      playerNumber: data.playerNumber ?? null,
+      notes: data.notes ?? null,
+    });
+
+    await storage.logOrderActivity({
+      orderId: req.params.id,
+      userId: user.userId,
+      action: "size_breakdown_added",
+      details: { size: data.size, quantity: data.quantity, playerName: data.playerName, playerNumber: data.playerNumber },
+    });
+
+    res.status(201).json(breakdown);
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin size breakdown error:", err);
+    res.status(500).json({ error: "Failed to create size breakdown" });
+  }
+});
+
+// PATCH /orders/:id/size-breakdowns/:bid — update a breakdown
+router.patch("/orders/:id/size-breakdowns/:bid", async (req, res) => {
+  try {
+    const updated = await storage.updateSizeBreakdown(req.params.bid, req.body);
+    if (!updated) return res.status(404).json({ error: "Breakdown not found" });
+    res.json(updated);
+  } catch (err) {
+    console.error("Admin update breakdown error:", err);
+    res.status(500).json({ error: "Failed to update breakdown" });
+  }
+});
+
+// DELETE /orders/:id/size-breakdowns/:bid — delete a breakdown
+router.delete("/orders/:id/size-breakdowns/:bid", async (req, res) => {
+  try {
+    await storage.deleteSizeBreakdown(req.params.bid);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Admin delete breakdown error:", err);
+    res.status(500).json({ error: "Failed to delete breakdown" });
+  }
+});
+
+// ============ PRODUCTION PIPELINE ============
+
+// POST /orders/:id/production/initialize — create production pipeline for an order
+router.post("/orders/:id/production/initialize", async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const existing = await storage.getProductionStages(req.params.id);
+    if (existing.length > 0) return res.status(409).json({ error: "Pipeline already initialized" });
+
+    const stages = await storage.initializeProductionPipeline(req.params.id);
+
+    await storage.logOrderActivity({
+      orderId: req.params.id,
+      userId: user.userId,
+      action: "production_initialized",
+      details: { stageCount: stages.length },
+    });
+
+    res.status(201).json(stages);
+  } catch (err) {
+    console.error("Admin init pipeline error:", err);
+    res.status(500).json({ error: "Failed to initialize pipeline" });
+  }
+});
+
+// POST /orders/:id/production/advance — advance to next production stage
+router.post("/orders/:id/production/advance", async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { notes } = req.body || {};
+    const stages = await storage.getProductionStages(req.params.id);
+    if (stages.length === 0) return res.status(400).json({ error: "Pipeline not initialized" });
+
+    const currentIdx = stages.findIndex(s => s.status === "in_progress");
+    if (currentIdx === -1) return res.status(400).json({ error: "No active stage" });
+    if (currentIdx >= stages.length - 1) return res.status(400).json({ error: "Already at final stage" });
+
+    const now = new Date();
+
+    // Complete current stage
+    await storage.updateProductionStage(stages[currentIdx].id, {
+      status: "completed",
+      completedAt: now,
+      completedBy: user.userId,
+      notes: notes || null,
+    });
+
+    // Start next stage
+    const nextStage = stages[currentIdx + 1];
+    await storage.updateProductionStage(nextStage.id, {
+      status: "in_progress",
+      enteredAt: now,
+    });
+
+    // Update order's production stage
+    await storage.updateOrder(req.params.id, { productionStage: nextStage.stage } as any);
+
+    // Log activity
+    await storage.logOrderActivity({
+      orderId: req.params.id,
+      userId: user.userId,
+      action: "stage_advanced",
+      details: { from: stages[currentIdx].stage, to: nextStage.stage, notes },
+    });
+
+    // Notify customer about production progress
+    const order = await storage.getOrder(req.params.id);
+    if (order?.userId) {
+      const stageLabels: Record<string, string> = {
+        design_confirmed: "Your designs have been confirmed",
+        in_production: "Your order is now in production",
+        printing: "Your order is being printed/embroidered",
+        quality_check: "Your order is undergoing quality checks",
+        packing: "Your order is being packed",
+        shipped: "Your order has been shipped",
+        delivered: "Your order has been delivered",
+      };
+
+      const label = stageLabels[nextStage.stage];
+      if (label) {
+        await storage.createNotification({
+          userId: order.userId,
+          type: "production_update",
+          title: "Production Update",
+          message: `${label} — Order ${order.orderNumber}`,
+          orderId: order.id,
+        });
+      }
+    }
+
+    const updated = await storage.getProductionStages(req.params.id);
+    res.json(updated);
+  } catch (err) {
+    console.error("Admin advance stage error:", err);
+    res.status(500).json({ error: "Failed to advance stage" });
+  }
+});
+
+// PATCH /orders/:id/production/:stageId — update a specific production stage
+router.patch("/orders/:id/production/:stageId", async (req, res) => {
+  try {
+    const updated = await storage.updateProductionStage(req.params.stageId, req.body);
+    if (!updated) return res.status(404).json({ error: "Stage not found" });
+    res.json(updated);
+  } catch (err) {
+    console.error("Admin update stage error:", err);
+    res.status(500).json({ error: "Failed to update stage" });
+  }
+});
+
+// ============ QUALITY CONTROL ============
+
+// POST /orders/:id/qc — create a quality check
+const qcSchema = z.object({
+  productionStageId: z.string().optional(),
+  checkType: z.enum(["pre_production", "mid_production", "final", "packaging"]),
+  status: z.enum(["pending", "passed", "failed", "conditional"]).default("pending"),
+  notes: z.string().optional(),
+  photoUrls: z.array(z.string()).optional(),
+  issues: z.string().optional(),
+});
+
+router.post("/orders/:id/qc", async (req, res) => {
+  try {
+    const data = qcSchema.parse(req.body);
+    const user = (req as any).user;
+
+    const check = await storage.createQualityCheck({
+      orderId: req.params.id,
+      productionStageId: data.productionStageId ?? null,
+      checkType: data.checkType,
+      status: data.status,
+      checkedBy: user.userId,
+      notes: data.notes ?? null,
+      photoUrls: data.photoUrls ?? null,
+      issues: data.issues ?? null,
+    });
+
+    await storage.logOrderActivity({
+      orderId: req.params.id,
+      userId: user.userId,
+      action: "qc_created",
+      details: { checkType: data.checkType, status: data.status },
+    });
+
+    // Notify customer if QC failed
+    if (data.status === "failed") {
+      const order = await storage.getOrder(req.params.id);
+      if (order?.userId) {
+        await storage.createNotification({
+          userId: order.userId,
+          type: "qc_issue",
+          title: "Quality Check Issue",
+          message: `A quality issue was found on your order ${order.orderNumber}. Our team is working on it.`,
+          orderId: order.id,
+        });
+      }
+    }
+
+    res.status(201).json(check);
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin QC create error:", err);
+    res.status(500).json({ error: "Failed to create QC check" });
+  }
+});
+
+// PATCH /orders/:id/qc/:checkId — update a quality check
+router.patch("/orders/:id/qc/:checkId", async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const existing = await storage.getQualityCheck(req.params.checkId);
+    if (!existing) return res.status(404).json({ error: "QC check not found" });
+
+    const updated = await storage.updateQualityCheck(req.params.checkId, {
+      ...req.body,
+      checkedBy: user.userId,
+      resolvedAt: req.body.status === "passed" ? new Date() : undefined,
+    });
+
+    await storage.logOrderActivity({
+      orderId: req.params.id,
+      userId: user.userId,
+      action: "qc_updated",
+      details: { checkId: req.params.checkId, status: req.body.status },
+    });
+
+    res.json(updated);
+  } catch (err) {
+    console.error("Admin QC update error:", err);
+    res.status(500).json({ error: "Failed to update QC check" });
+  }
+});
+
+// ============ ORDER MESSAGES ============
+
+// GET /orders/:id/messages — get all messages for an order
+router.get("/orders/:id/messages", async (req, res) => {
+  try {
+    const messages = await storage.getOrderMessages(req.params.id);
+    res.json(messages);
+  } catch (err) {
+    console.error("Admin messages error:", err);
+    res.status(500).json({ error: "Failed to load messages" });
+  }
+});
+
+// POST /orders/:id/messages — send a message on an order
+const messageSchema = z.object({
+  message: z.string().min(1),
+  attachmentUrl: z.string().url().optional(),
+  attachmentName: z.string().optional(),
+});
+
+router.post("/orders/:id/messages", async (req, res) => {
+  try {
+    const data = messageSchema.parse(req.body);
+    const user = (req as any).user;
+
+    const msg = await storage.createOrderMessage({
+      orderId: req.params.id,
+      userId: user.userId,
+      senderRole: "admin",
+      message: data.message,
+      attachmentUrl: data.attachmentUrl ?? null,
+      attachmentName: data.attachmentName ?? null,
+    });
+
+    // Notify customer about new message
+    const order = await storage.getOrder(req.params.id);
+    if (order?.userId) {
+      await storage.createNotification({
+        userId: order.userId,
+        type: "new_message",
+        title: "New Message",
+        message: `New message on order ${order.orderNumber}`,
+        orderId: order.id,
+      });
+    }
+
+    res.status(201).json(msg);
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin message error:", err);
+    res.status(500).json({ error: "Failed to send message" });
+  }
+});
+
+// ============ ORDER ACTIVITY LOG ============
+
+// GET /orders/:id/activity — get activity log for an order
+router.get("/orders/:id/activity", async (req, res) => {
+  try {
+    const activity = await storage.getOrderActivityLog(req.params.id);
+    res.json(activity);
+  } catch (err) {
+    console.error("Admin activity error:", err);
+    res.status(500).json({ error: "Failed to load activity" });
   }
 });
 

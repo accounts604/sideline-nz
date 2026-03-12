@@ -115,6 +115,55 @@ router.post("/orders/:id/designs/:did/reupload", async (req, res) => {
   }
 });
 
+// GET /orders/:id/messages — get messages for an order
+router.get("/orders/:id/messages", async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
+
+    const messages = await storage.getOrderMessages(req.params.id);
+    res.json(messages);
+  } catch (err) {
+    console.error("Portal messages error:", err);
+    res.status(500).json({ error: "Failed to load messages" });
+  }
+});
+
+// POST /orders/:id/messages — send a message on an order
+const messageSchema = z.object({
+  message: z.string().min(1),
+  attachmentUrl: z.string().url().optional(),
+  attachmentName: z.string().optional(),
+});
+
+router.post("/orders/:id/messages", async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
+
+    const data = messageSchema.parse(req.body);
+
+    const msg = await storage.createOrderMessage({
+      orderId: req.params.id,
+      userId: user.userId,
+      senderRole: "customer",
+      message: data.message,
+      attachmentUrl: data.attachmentUrl ?? null,
+      attachmentName: data.attachmentName ?? null,
+    });
+
+    res.status(201).json(msg);
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Portal message error:", err);
+    res.status(500).json({ error: "Failed to send message" });
+  }
+});
+
 // GET /notifications — customer notifications
 router.get("/notifications", async (req, res) => {
   try {

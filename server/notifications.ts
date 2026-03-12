@@ -118,3 +118,32 @@ export async function notifyOrderStatusChange(opts: {
     orderId: opts.orderId,
   });
 }
+
+export async function notifyNewMessage(opts: {
+  userId: string;
+  orderId: string;
+  orderNumber: string;
+}) {
+  await storage.createNotification({
+    userId: opts.userId,
+    type: "new_message",
+    title: "New Message",
+    message: `New message on order ${opts.orderNumber}`,
+    orderId: opts.orderId,
+  });
+}
+
+export async function notifyQcIssue(opts: {
+  userId: string;
+  orderId: string;
+  orderNumber: string;
+  checkType: string;
+}) {
+  await storage.createNotification({
+    userId: opts.userId,
+    type: "qc_issue",
+    title: "Quality Check Issue",
+    message: `A quality issue was found during ${opts.checkType.replace(/_/g, " ")} on order ${opts.orderNumber}. Our team is working on it.`,
+    orderId: opts.orderId,
+  });
+}

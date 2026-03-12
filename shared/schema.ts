@@ -85,6 +85,10 @@ export const orders = pgTable("orders", {
   shippingAddress: jsonb("shipping_address"),
   designStatus: text("design_status").default("not_started"), // not_started, pending_review, approved, needs_revision
   adminNotes: text("admin_notes"),
+  productionStage: text("production_stage").default("order_received"), // Current production stage
+  trackingNumber: text("tracking_number"),
+  trackingUrl: text("tracking_url"),
+  estimatedDeliveryDate: timestamp("estimated_delivery_date"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   paidAt: timestamp("paid_at"),
@@ -167,6 +171,90 @@ export const designComments = pgTable("design_comments", {
 export const insertDesignCommentSchema = createInsertSchema(designComments).omit({ id: true, createdAt: true });
 export type InsertDesignComment = z.infer<typeof insertDesignCommentSchema>;
 export type DesignComment = typeof designComments.$inferSelect;
+
+// Order size breakdowns — detailed per-item size/quantity/player info
+export const orderSizeBreakdowns = pgTable("order_size_breakdowns", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderItemId: varchar("order_item_id").notNull().references(() => orderItems.id),
+  orderId: varchar("order_id").notNull().references(() => orders.id),
+  size: text("size").notNull(),
+  quantity: integer("quantity").notNull().default(1),
+  playerName: text("player_name"),
+  playerNumber: text("player_number"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertOrderSizeBreakdownSchema = createInsertSchema(orderSizeBreakdowns).omit({ id: true, createdAt: true });
+export type InsertOrderSizeBreakdown = z.infer<typeof insertOrderSizeBreakdownSchema>;
+export type OrderSizeBreakdown = typeof orderSizeBreakdowns.$inferSelect;
+
+// Production stages — track order through production pipeline
+export const productionStages = pgTable("production_stages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id").notNull().references(() => orders.id),
+  stage: text("stage").notNull(), // order_received, design_review, design_confirmed, in_production, printing, quality_check, packing, shipped, delivered
+  status: text("status").notNull().default("pending"), // pending, in_progress, completed, skipped
+  enteredAt: timestamp("entered_at"),
+  completedAt: timestamp("completed_at"),
+  completedBy: varchar("completed_by").references(() => users.id),
+  notes: text("notes"),
+  estimatedDate: timestamp("estimated_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertProductionStageSchema = createInsertSchema(productionStages).omit({ id: true, createdAt: true });
+export type InsertProductionStage = z.infer<typeof insertProductionStageSchema>;
+export type ProductionStage = typeof productionStages.$inferSelect;
+
+// Quality checks — QC checkpoints at each production stage
+export const qualityChecks = pgTable("quality_checks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id").notNull().references(() => orders.id),
+  productionStageId: varchar("production_stage_id").references(() => productionStages.id),
+  checkType: text("check_type").notNull(), // pre_production, mid_production, final, packaging
+  status: text("status").notNull().default("pending"), // pending, passed, failed, conditional
+  checkedBy: varchar("checked_by").references(() => users.id),
+  notes: text("notes"),
+  photoUrls: jsonb("photo_urls"), // array of photo URLs
+  issues: text("issues"), // description of any issues found
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertQualityCheckSchema = createInsertSchema(qualityChecks).omit({ id: true, createdAt: true });
+export type InsertQualityCheck = z.infer<typeof insertQualityCheckSchema>;
+export type QualityCheck = typeof qualityChecks.$inferSelect;
+
+// Order messages — threaded chat per order (customer ↔ admin + chatbot)
+export const orderMessages = pgTable("order_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id").notNull().references(() => orders.id),
+  userId: varchar("user_id").references(() => users.id), // null for system/bot messages
+  senderRole: text("sender_role").notNull(), // admin, customer, system, bot
+  message: text("message").notNull(),
+  attachmentUrl: text("attachment_url"),
+  attachmentName: text("attachment_name"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertOrderMessageSchema = createInsertSchema(orderMessages).omit({ id: true, createdAt: true });
+export type InsertOrderMessage = z.infer<typeof insertOrderMessageSchema>;
+export type OrderMessage = typeof orderMessages.$inferSelect;
+
+// Order activity log — full audit trail
+export const orderActivity = pgTable("order_activity", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id").notNull().references(() => orders.id),
+  userId: varchar("user_id").references(() => users.id),
+  action: text("action").notNull(), // status_change, design_uploaded, design_reviewed, qc_completed, message_sent, stage_advanced, etc.
+  details: jsonb("details"), // { from: "paid", to: "processing" } etc.
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertOrderActivitySchema = createInsertSchema(orderActivity).omit({ id: true, createdAt: true });
+export type InsertOrderActivity = z.infer<typeof insertOrderActivitySchema>;
+export type OrderActivity = typeof orderActivity.$inferSelect;
 
 // Notifications
 export const notifications = pgTable("notifications", {
