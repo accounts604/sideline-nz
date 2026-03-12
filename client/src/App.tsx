@@ -29,6 +29,11 @@ import AdminOrderDetail from "@/pages/admin/order-detail";
 import AdminCustomers from "@/pages/admin/customers";
 import AdminCustomerDetail from "@/pages/admin/customer-detail";
 import AdminDesignReview from "@/pages/admin/design-review";
+import PortalDashboard from "@/pages/portal/dashboard";
+import PortalOrders from "@/pages/portal/orders";
+import PortalOrderDetail from "@/pages/portal/order-detail";
+import PortalProfile from "@/pages/portal/profile";
+import PortalNotifications from "@/pages/portal/notifications";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -83,12 +88,21 @@ function Router() {
           {() => <AdminRoute><AdminDashboard /></AdminRoute>}
         </Route>
 
-        {/* Customer portal (Phase 3) */}
-        <Route path="/portal/:rest*">
-          {() => <ProtectedRoute><div>Customer Portal — coming in Phase 3</div></ProtectedRoute>}
+        {/* Customer portal */}
+        <Route path="/portal/orders/:id">
+          {() => <ProtectedRoute><PortalOrderDetail /></ProtectedRoute>}
+        </Route>
+        <Route path="/portal/orders">
+          {() => <ProtectedRoute><PortalOrders /></ProtectedRoute>}
+        </Route>
+        <Route path="/portal/profile">
+          {() => <ProtectedRoute><PortalProfile /></ProtectedRoute>}
+        </Route>
+        <Route path="/portal/notifications">
+          {() => <ProtectedRoute><PortalNotifications /></ProtectedRoute>}
         </Route>
         <Route path="/portal">
-          {() => <ProtectedRoute><div>Customer Portal — coming in Phase 3</div></ProtectedRoute>}
+          {() => <ProtectedRoute><PortalDashboard /></ProtectedRoute>}
         </Route>
 
         <Route component={NotFound} />

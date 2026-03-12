@@ -89,6 +89,11 @@ router.post("/login", async (req, res) => {
     const token = signToken({ userId: user.id, role });
     setAuthCookie(res, token);
 
+    // Auto-link any guest orders with matching email
+    if (user.email) {
+      await storage.linkOrdersByEmail(user.email, user.id);
+    }
+
     res.json({
       id: user.id,
       email: user.email,
