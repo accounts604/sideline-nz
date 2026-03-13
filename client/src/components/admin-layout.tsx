@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+import { SidelineLogo } from "./sideline-logo";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -37,7 +38,8 @@ function NavLink({ href, label, icon: Icon, active, onClick }: {
           fontSize: "14px",
           fontWeight: active ? 600 : 400,
           color: active ? "#fff" : "rgba(255,255,255,0.6)",
-          background: active ? "rgba(255,255,255,0.1)" : "transparent",
+          background: active ? "rgba(249,115,22,0.12)" : "transparent",
+          borderLeft: active ? "3px solid #f97316" : "3px solid transparent",
           cursor: "pointer",
           transition: "all 0.15s ease",
         }}
@@ -64,23 +66,10 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       {/* Logo */}
       <div style={{ padding: "24px 20px 32px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
         <Link href="/admin">
-          <span
-            style={{
-              fontSize: "22px",
-              fontWeight: 700,
-              color: "#fff",
-              textTransform: "uppercase",
-              letterSpacing: "2px",
-              fontFamily: "'Bebas Neue', sans-serif",
-              cursor: "pointer",
-            }}
-          >
-            Sideline
-          </span>
+          <div style={{ cursor: "pointer" }}>
+            <SidelineLogo subtitle="Admin Portal" />
+          </div>
         </Link>
-        <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", marginTop: "4px", letterSpacing: "1px", textTransform: "uppercase" }}>
-          Admin Portal
-        </p>
       </div>
 
       {/* Navigation */}

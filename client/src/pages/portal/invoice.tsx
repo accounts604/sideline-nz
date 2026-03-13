@@ -91,8 +91,8 @@ export default function PortalInvoice() {
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "48px" }}>
           <div>
-            <h1 style={{ fontSize: "28px", fontWeight: 700, margin: 0, textTransform: "uppercase", letterSpacing: "2px" }}>
-              SIDELINE
+            <h1 style={{ fontSize: "28px", fontWeight: 700, margin: 0, textTransform: "uppercase", letterSpacing: "2px", fontFamily: "'Bebas Neue', sans-serif" }}>
+              <span style={{ color: "#f97316" }}>S</span>IDELINE
             </h1>
             <p style={{ fontSize: "11px", color: "#888", marginTop: "4px", letterSpacing: "1px", textTransform: "uppercase" }}>
               Custom Sportswear NZ

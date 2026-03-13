@@ -252,8 +252,8 @@ export default function PurchaseOrderView() {
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px" }}>
           <div>
-            <h1 style={{ fontSize: "28px", fontWeight: 800, margin: 0, letterSpacing: "-0.5px" }}>
-              <span style={{ color: "#0ea5e9" }}>S</span>IDELINE
+            <h1 style={{ fontSize: "28px", fontWeight: 800, margin: 0, letterSpacing: "-0.5px", fontFamily: "'Bebas Neue', sans-serif" }}>
+              <span style={{ color: "#f97316" }}>S</span>IDELINE
             </h1>
             <div style={{ fontSize: "11px", color: "#555", marginTop: "8px", lineHeight: "1.6" }}>
               Sideline NZ (Sideline Custom Goods Ltd)<br />

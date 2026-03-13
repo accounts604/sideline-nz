@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowRight } from "lucide-react";
+import { SidelineMark } from "@/components/sideline-logo";
 
 export default function LoginPage() {
   const { login, user } = useAuth();
@@ -53,22 +54,23 @@ export default function LoginPage() {
     >
       <div style={{ width: "100%", maxWidth: "400px", textAlign: "center" }}>
         <Link href="/">
-          <span
-            style={{
-              fontSize: "clamp(24px, 5vw, 32px)",
-              fontWeight: 700,
-              color: "#fff",
-              textTransform: "uppercase",
-              letterSpacing: "2px",
-              fontFamily: "'Bebas Neue', sans-serif",
-              cursor: "pointer",
-              display: "inline-block",
-              marginBottom: "8px",
-            }}
-          >
-            Sideline
-          </span>
+          <div style={{ cursor: "pointer", display: "inline-block", marginBottom: "12px" }}>
+            <SidelineMark size={48} />
+          </div>
         </Link>
+        <h1
+          style={{
+            fontSize: "clamp(24px, 5vw, 32px)",
+            fontWeight: 700,
+            color: "#fff",
+            textTransform: "uppercase",
+            letterSpacing: "3px",
+            fontFamily: "'Bebas Neue', sans-serif",
+            marginBottom: "4px",
+          }}
+        >
+          Sideline
+        </h1>
         <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.5)", marginBottom: "32px" }}>
           Sign in to your account
         </p>
@@ -121,8 +123,8 @@ export default function LoginPage() {
             disabled={submitting}
             style={{
               width: "100%",
-              background: "#fff",
-              color: "#000",
+              background: "#f97316",
+              color: "#fff",
               borderRadius: "6px",
               fontSize: "14px",
               fontWeight: 600,
@@ -130,6 +132,7 @@ export default function LoginPage() {
               padding: "16px 32px",
               height: "auto",
               cursor: submitting ? "not-allowed" : "pointer",
+              border: "none",
             }}
           >
             {submitting ? (
