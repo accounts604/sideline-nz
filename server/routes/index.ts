@@ -7,6 +7,7 @@ import authRouter from "./auth";
 import adminRouter from "./admin";
 import customerRouter from "./customer";
 import uploadsRouter from "./uploads";
+import { mockupPublicRouter, adminMockupRouter } from "./mockups";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -27,11 +28,17 @@ export async function registerRoutes(
   // Admin portal (Phase 2)
   app.use("/api/admin", adminRouter);
 
+  // Admin mockup management
+  app.use("/api/admin/mockups", adminMockupRouter);
+
   // Customer portal (Phase 3)
   app.use("/api/portal", customerRouter);
 
   // File uploads (Phase 3)
   app.use("/api/uploads", uploadsRouter);
+
+  // Mockup engine (public lead form)
+  app.use("/api/mockups", mockupPublicRouter);
 
   return httpServer;
 }

@@ -31,6 +31,9 @@ import AdminCustomerDetail from "@/pages/admin/customer-detail";
 import AdminDesignReview from "@/pages/admin/design-review";
 import AdminPurchaseOrder from "@/pages/admin/purchase-order";
 import AdminCreatePO from "@/pages/admin/create-po";
+import AdminMockups from "@/pages/admin/mockups";
+import AdminMockupDetail from "@/pages/admin/mockup-detail";
+import GetMockupPage from "@/pages/get-mockup";
 import PortalDashboard from "@/pages/portal/dashboard";
 import PortalOrders from "@/pages/portal/orders";
 import PortalOrderDetail from "@/pages/portal/order-detail";
@@ -65,6 +68,7 @@ function Router() {
         <Route path="/sponsor-placement" component={SponsorPlacement} />
         <Route path="/quote" component={Quote} />
         <Route path="/contact" component={Contact} />
+        <Route path="/get-mockup" component={GetMockupPage} />
 
         {/* Auth pages */}
         <Route path="/login" component={LoginPage} />
@@ -92,6 +96,12 @@ function Router() {
         </Route>
         <Route path="/admin/designs">
           {() => <AdminRoute><AdminDesignReview /></AdminRoute>}
+        </Route>
+        <Route path="/admin/mockups/:id">
+          {() => <AdminRoute><AdminMockupDetail /></AdminRoute>}
+        </Route>
+        <Route path="/admin/mockups">
+          {() => <AdminRoute><AdminMockups /></AdminRoute>}
         </Route>
         <Route path="/admin">
           {() => <AdminRoute><AdminDashboard /></AdminRoute>}

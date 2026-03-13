@@ -273,6 +273,59 @@ export const insertOrderActivitySchema = createInsertSchema(orderActivity).omit(
 export type InsertOrderActivity = z.infer<typeof insertOrderActivitySchema>;
 export type OrderActivity = typeof orderActivity.$inferSelect;
 
+// Mockup requests — lead form submissions that trigger AI mockup generation
+export const mockupRequests = pgTable("mockup_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // Lead info
+  contactName: text("contact_name").notNull(),
+  contactEmail: text("contact_email").notNull(),
+  contactPhone: text("contact_phone"),
+  teamName: text("team_name").notNull(),
+  sport: text("sport").notNull(), // rugby, netball, cricket, basketball, hockey, football, etc.
+  primaryColor: text("primary_color").notNull(), // hex
+  secondaryColor: text("secondary_color"), // hex
+  accentColor: text("accent_color"), // hex
+  logoUrl: text("logo_url"), // uploaded team logo
+  notes: text("notes"), // additional requirements
+  // Processing state
+  status: text("status").notNull().default("pending"), // pending, generating, designs_ready, video_ready, sent, failed
+  errorMessage: text("error_message"),
+  // Outputs
+  videoUrl: text("video_url"), // ffmpeg montage video URL
+  voiceoverUrl: text("voiceover_url"), // Eleven Labs audio URL
+  emailSentAt: timestamp("email_sent_at"),
+  // CRM integration
+  ghlContactId: text("ghl_contact_id"),
+  ghlTagsSynced: boolean("ghl_tags_synced").default(false),
+  clickupTaskId: text("clickup_task_id"),
+  // Timing
+  generationStartedAt: timestamp("generation_started_at"),
+  generationCompletedAt: timestamp("generation_completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMockupRequestSchema = createInsertSchema(mockupRequests).omit({ id: true, createdAt: true });
+export type InsertMockupRequest = z.infer<typeof insertMockupRequestSchema>;
+export type MockupRequest = typeof mockupRequests.$inferSelect;
+
+// Mockup designs — individual AI-generated designs for a mockup request
+export const mockupDesigns = pgTable("mockup_designs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestId: varchar("request_id").notNull().references(() => mockupRequests.id),
+  designNumber: integer("design_number").notNull(), // 1-4
+  prompt: text("prompt").notNull(), // The prompt sent to Gemini
+  imageUrl: text("image_url"), // Generated image URL (Vercel Blob)
+  thumbnailUrl: text("thumbnail_url"),
+  status: text("status").notNull().default("pending"), // pending, generating, completed, failed
+  errorMessage: text("error_message"),
+  generationTimeMs: integer("generation_time_ms"), // How long Gemini took
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMockupDesignSchema = createInsertSchema(mockupDesigns).omit({ id: true, createdAt: true });
+export type InsertMockupDesign = z.infer<typeof insertMockupDesignSchema>;
+export type MockupDesign = typeof mockupDesigns.$inferSelect;
+
 // Notifications
 export const notifications = pgTable("notifications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
