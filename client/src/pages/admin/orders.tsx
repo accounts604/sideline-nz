@@ -73,6 +73,14 @@ export default function AdminOrders() {
           </p>
         </div>
 
+        <Link href="/admin/orders/create-po">
+          <button style={{
+            padding: "10px 20px", fontSize: "13px", fontWeight: 600,
+            background: "#fff", color: "#000", border: "none", borderRadius: "6px",
+            cursor: "pointer",
+          }}>+ New PO</button>
+        </Link>
+
         {/* Search */}
         <div style={{ position: "relative" }}>
           <Search size={16} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.3)" }} />

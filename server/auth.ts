@@ -16,10 +16,11 @@ export function signToken(payload: JwtPayload): string {
 }
 
 export function setAuthCookie(res: Response, token: string) {
+  const isProxied = process.env.COOKIE_SECURE === "true" || process.env.NODE_ENV === "production";
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: isProxied,
+    sameSite: isProxied ? "none" : "lax",
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     path: "/",
   });

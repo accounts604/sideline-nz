@@ -140,6 +140,21 @@ team_store_audience, team_store_goal, source, submitted_at
 enquiry_type, message, source, submitted_at
 ```
 
+### Smart Quote System (6 fields)
+```
+quote_number, quote_total, quote_status, quote_items,
+quote_valid_until, quote_url
+```
+
+**Tags Applied:**
+| Event | Tag |
+|-------|-----|
+| Quote Created | "Website Lead", "Smart Quote", "Sport: {sport}" |
+| Quote Sent | "Quote Sent" |
+| Quote Viewed | "Quote Viewed" |
+| Quote Accepted | "Quote Accepted" |
+| Quote Rejected | "Quote Rejected" |
+
 ### Hub Mockup Request (5 fields)
 ```
 organization (from club_name), sports, email,

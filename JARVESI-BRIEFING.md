@@ -1,6 +1,6 @@
 # Jarvesi Briefing — Sideline NZ Build
 
-**Last updated:** 2026-03-13
+**Last updated:** 2026-03-12
 **Lead developer:** Claude Code (KIG's terminal)
 **Point of contact:** Jarvesi (this Mac's terminal)
 
@@ -16,7 +16,7 @@ Sideline NZ (sidelinenz.com) — custom sportswear brand. Full website rebuild w
 
 ---
 
-## Current Status: Phase 2 COMPLETE
+## Current Status: ALL 4 PHASES COMPLETE
 
 ### What's Done
 
@@ -40,16 +40,17 @@ Sideline NZ (sidelinenz.com) — custom sportswear brand. Full website rebuild w
 - .env.example updated with JWT_SECRET, BLOB_READ_WRITE_TOKEN
 
 **Portal Phase 2 — Admin Portal (complete):**
-- Admin API: 10 endpoints in server/routes/admin.ts (all behind requireAdmin middleware)
+- Admin API: 11 endpoints in server/routes/admin.ts (all behind requireAdmin middleware)
   - GET /dashboard — stats (total orders, pending orders, pending designs, total customers)
   - GET /orders — filterable/paginated order list (status, designStatus, search)
   - GET /orders/:id — full order detail with items, design files, comments
-  - PATCH /orders/:id — update status, design status, admin notes
-  - POST /orders/:id/design-review — approve/reject design file with comment + auto-notifications
+  - PATCH /orders/:id — update status, design status, admin notes + auto-notify customer
+  - POST /orders/:id/design-review — approve/reject design file with comment + notifications + email + GHL sync
+  - GET /orders/:id/invoice — admin invoice data
   - GET /customers — paginated customer list with search
   - GET /customers/:id — customer profile + their orders
   - PATCH /customers/:id — edit team name, phone
-  - POST /customers/invite — create account + invite token (7-day expiry)
+  - POST /customers/invite — create account + invite token (7-day expiry) + send invite email
   - GET /designs/pending — review queue of pending design files
 - Storage layer extended with ~20 new methods for admin queries, design files, comments, notifications
 - Admin layout (client/src/components/admin-layout.tsx) — dark sidebar, mobile responsive
@@ -60,58 +61,45 @@ Sideline NZ (sidelinenz.com) — custom sportswear brand. Full website rebuild w
   - customers.tsx — customer list with search + invite form
   - customer-detail.tsx — profile editing + order history
   - design-review.tsx — pending designs queue with image preview + approve/reject
-- All routes wired in App.tsx with AdminRoute guards
-- TypeScript clean (zero errors in our code)
-- Auth guard verified: /admin redirects to /login when not authenticated
-- Homepage still renders correctly
 
-### What's Next
-
-**Phase 4 PRIORITY — Mockup Automation Engine + Smart Form: ✅ READY TO BUILD**
-
-**Smart Form (Customer-Guided, AI-Assisted):**
-- Team name input (customer types)
-- Sport selector + reference gallery (customer chooses)
-- Color picker + example teams (customer picks colors)
-- Logo upload (customer provides)
-- Products selector (jersey/shorts/tracksuit/etc - customer checks boxes)
-- Design style + reference examples (customer selects style)
-- Inspiration gallery (optional reference images)
-- Form validation + preview before submit
-
-**Stock Template Library:**
-- Rugby: jersey, shorts, socks, tracksuit (standard templates)
-- Netball: singlet, skirt, warmup top
-- Football: jersey, shorts
-- Basketball: jersey, shorts
-- All templates consistent (same proportions, design language)
-
-**Mockup Generation:**
-- Template selection (match sport + products)
-- Color + logo injection (image manipulation)
-- Generate 4 variations (A/B/C/D using template swaps)
-- All use same template (professional consistency)
-- Gemini API for final polish + voiceover
-- Video montage (ffmpeg)
-- Email + GHL + ClickUp integration
-
-**Competitive Advantage:** 5 min vs 24-48h competitors, professional consistency
-
-**See:** PHASE-4-MOCKUP-ENGINE.md (full specification - updated)
-**Status:** All APIs connected, smart form spec complete, ready for Claude Code
-
-**Phase 4 Secondary — Customer Portal + File Uploads:**
+**Portal Phase 3 — Customer Portal + File Uploads (complete):**
 - Vercel Blob upload flow (POST /api/uploads/token → client uploads to Blob → POST design record)
-- Customer API endpoints (server/routes/customer.ts — currently stub)
-- Customer frontend pages (dashboard, orders, order-detail, profile)
-- Design approval workflow (customer-facing: upload, see status, re-upload rejected)
-- Auto-link guest orders on login by matching email
+- Customer API: 9 endpoints in server/routes/customer.ts (all behind requireAuth)
+  - GET /orders — customer's orders
+  - GET /orders/:id — order detail (ownership check)
+  - POST /orders/:id/designs — upload design file record (after Blob upload)
+  - POST /orders/:id/designs/:did/reupload — re-upload rejected design (versioning)
+  - GET /orders/:id/invoice — invoice data for printable view
+  - GET /notifications — customer notifications
+  - PATCH /notifications/:id/read — mark notification read
+  - GET /profile — customer profile
+  - PATCH /profile — update team name, phone
+- Portal layout (client/src/components/portal-layout.tsx) — dark sidebar, notification badge, responsive
+- 6 customer pages in client/src/pages/portal/:
+  - dashboard.tsx — stat cards (active orders, designs needed, unread notifications) + recent orders
+  - orders.tsx — order list with status badges
+  - order-detail.tsx — order items, design files with upload/re-upload, review comments, "View Invoice" button
+  - profile.tsx — edit team name, phone, account info
+  - notifications.tsx — activity feed with mark-as-read, links to orders
+  - invoice.tsx — clean printable invoice with company branding, line items, totals
+- Auto-link guest orders on login by matching email (auth.ts)
 
-**Phase 4 — Notifications + Polish:**
-- Notification system (server/notifications.ts)
-- GHL status sync (tag updates on design approved, order shipped)
-- Invoice page (server-rendered JSON, frontend printable view)
-- Email stubs (pluggable interface, console stub for now)
+**Portal Phase 4 — Notifications + Polish (complete):**
+- Email service (server/email.ts) — pluggable interface with console stub
+  - Templates: design approved, design rejected, order shipped, invite
+  - Provider factory: set EMAIL_PROVIDER env var to swap to Resend/SendGrid later
+- GHL sync (server/ghl-sync.ts) — tag management by email
+  - Finds contacts via GHL API search
+  - Adds tags: "Design Approved", "Order Shipped"
+  - Graceful fallback when GHL credentials not configured
+- Notification system (server/notifications.ts) — centralized dispatch
+  - notifyDesignApproved: DB notification + email + GHL tag
+  - notifyDesignRejected: DB notification + email
+  - notifyOrderShipped: DB notification + email + GHL tag
+  - notifyOrderStatusChange: auto-dispatches for processing/shipped/delivered
+- Admin design-review now triggers full pipeline (DB + email + GHL)
+- Admin order status update now notifies customer
+- Admin invite now sends invite email
 
 ---
 
@@ -119,32 +107,15 @@ Sideline NZ (sidelinenz.com) — custom sportswear brand. Full website rebuild w
 
 - **Auth:** JWT in httpOnly cookies (snz_token, 7-day expiry, secure in prod, sameSite lax)
 - **Password hashing:** bcrypt, 10 rounds
-- **File uploads:** Vercel Blob with client-side upload + server-side token generation
+- **File uploads:** Vercel Blob with client-side upload + server-side token generation (50MB limit)
 - **Accounts:** Hybrid — customer self-signup + admin can invite
 - **Design uploads:** Multiple files per order (jersey, shorts, socks, logo, other)
 - **Rejected designs:** Immediate re-upload allowed (versioning via parentFileId + version number)
 - **Design review:** Approve/reject with comments. All files approved = order designStatus auto-set to "approved"
 - **Communication:** Approve/reject with comments (no full chat yet)
-- **Email:** Pluggable interface with console stub — provider TBD (Resend/SendGrid)
+- **Email:** Pluggable interface with console stub — swap to Resend/SendGrid via EMAIL_PROVIDER env var
+- **GHL sync:** Tag-based — adds tags to contacts on design approved + order shipped
 - **Route structure:** /api/auth, /api/admin, /api/portal, /api/uploads, /api/ghl, /api/shopify, /api (store)
-
----
-
-## Phase 5 — Expanded Product Range
-
-**What's Next (Post-Mockup Engine):**
-- Extend mockup generation to all product types:
-  - Headwear (beanies, caps, winter wear)
-  - Hoodies + training wear
-  - Supporter tees (casual fan wear)
-  - Accessories (armbands, wristbands, bags)
-- Two-tier team store strategy:
-  - **Basic:** Jersey + shorts + socks (current)
-  - **Full:** Basic + headwear + hoodies + casual + accessories
-- Update Shopify collections (reference: Moana Pasifika, Dynasty Sport examples)
-- Higher AOV per customer, multiple purchase occasions
-
-**Timeline:** After Phase 4 mockup engine ships (proven jersey mockups working)
 
 ---
 
@@ -154,7 +125,7 @@ Sideline NZ (sidelinenz.com) — custom sportswear brand. Full website rebuild w
 2. **Relay change requests** from KIG to Claude Code
 3. **Do NOT edit code directly** — all code changes go through Claude Code
 4. **You can read any file** in the repo to answer questions
-5. **Message KIG** when you get this briefing — let him know Phase 2 is done and what's next
+5. **Message KIG** when you get this briefing — let him know all 4 phases are done
 
 If KIG asks "what's the status" — refer to this file and the plan at .claude/plans/misty-puzzling-crane.md
 
@@ -182,16 +153,34 @@ Or use Claude Code's launch.json config.
 |------|---------|
 | shared/schema.ts | Database schema (Drizzle) — users, orders, designFiles, designComments, notifications |
 | server/auth.ts | JWT + bcrypt utilities (signToken, setAuthCookie, requireAuth, requireAdmin) |
+| server/email.ts | Pluggable email service — console stub, templates for design/order/invite emails |
+| server/ghl-sync.ts | GHL tag sync — finds contacts by email, adds tags |
+| server/notifications.ts | Centralized notification dispatch — DB + email + GHL in one call |
 | server/routes/ | All API route modules (index, auth, admin, customer, store, ghl, shopify, uploads) |
-| server/routes/admin.ts | Admin API — 10 endpoints for dashboard, orders, customers, designs, invites |
+| server/routes/admin.ts | Admin API — 11 endpoints for dashboard, orders, customers, designs, invites, invoices |
+| server/routes/customer.ts | Customer API — 9 endpoints for orders, designs, notifications, profile, invoices |
+| server/routes/uploads.ts | Vercel Blob upload token generation |
 | server/storage.ts | Database access layer — ~40 methods covering all tables |
 | client/src/App.tsx | Frontend routing (public + auth + admin + portal routes) |
 | client/src/lib/auth-context.tsx | Auth state management (React Query + Context) |
 | client/src/components/admin-layout.tsx | Admin sidebar layout (dark theme, responsive) |
+| client/src/components/portal-layout.tsx | Customer portal sidebar layout (dark theme, responsive, notification badge) |
 | client/src/pages/admin/ | 6 admin pages (dashboard, orders, order-detail, customers, customer-detail, design-review) |
+| client/src/pages/portal/ | 6 customer pages (dashboard, orders, order-detail, profile, notifications, invoice) |
 | .claude/plans/misty-puzzling-crane.md | Full 4-phase implementation plan |
 | .env.example | Required environment variables |
 | scripts/seed-admin.ts | Creates admin account (romero@sidelinenz.com) |
+
+---
+
+## What Could Come Next (if KIG wants)
+
+- **Email provider:** Swap console stub to Resend or SendGrid (just set EMAIL_PROVIDER + API key)
+- **Full chat:** Add threaded comments on orders (beyond approve/reject)
+- **Order tracking:** Courier integration (NZ Post, Aramex)
+- **Bulk operations:** Multi-select orders for status updates
+- **Analytics:** Order volume charts, revenue dashboard
+- **SSO:** Google/Microsoft login for customers
 
 ---
 
@@ -201,8 +190,8 @@ Claude Code's memory is at: `~/.claude/projects/-Users-Shared-Claude-Code/memory
 
 The full implementation plan is at: `~/Projects/sideline-nz/.claude/plans/misty-puzzling-crane.md`
 
-KIG asked you to message him once you've read this briefing. Let him know:
-- Phase 1 (Foundation) and Phase 2 (Admin Portal) are both complete
-- The admin portal has: dashboard with stats, order management with design approve/reject, customer management with invite system, design review queue
-- Next up is Phase 3: Customer Portal + File Uploads (Vercel Blob)
-- All existing public pages (home, team stores, hub, quote, contact) still work perfectly
+All 4 portal phases are complete:
+- Phase 1: Foundation (auth, schema, route split)
+- Phase 2: Admin Portal (dashboard, orders, customers, design review)
+- Phase 3: Customer Portal (dashboard, orders, designs, profile, notifications, file uploads)
+- Phase 4: Notifications + Polish (email service, GHL sync, invoices, centralized notifications)

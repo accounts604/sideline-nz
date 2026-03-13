@@ -29,11 +29,22 @@ import AdminOrderDetail from "@/pages/admin/order-detail";
 import AdminCustomers from "@/pages/admin/customers";
 import AdminCustomerDetail from "@/pages/admin/customer-detail";
 import AdminDesignReview from "@/pages/admin/design-review";
+import AdminPurchaseOrder from "@/pages/admin/purchase-order";
+import AdminCreatePO from "@/pages/admin/create-po";
+import AdminMockups from "@/pages/admin/mockups";
+import AdminMockupDetail from "@/pages/admin/mockup-detail";
+import AdminQuotes from "@/pages/admin/quotes";
+import AdminQuoteDetail from "@/pages/admin/quote-detail";
+import AdminCreateQuote from "@/pages/admin/create-quote";
+import AdminQuoteTemplates from "@/pages/admin/quote-templates";
+import QuoteViewPage from "@/pages/quote-view";
+import GetMockupPage from "@/pages/get-mockup";
 import PortalDashboard from "@/pages/portal/dashboard";
 import PortalOrders from "@/pages/portal/orders";
 import PortalOrderDetail from "@/pages/portal/order-detail";
 import PortalProfile from "@/pages/portal/profile";
 import PortalNotifications from "@/pages/portal/notifications";
+import PortalInvoice from "@/pages/portal/invoice";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -62,6 +73,8 @@ function Router() {
         <Route path="/sponsor-placement" component={SponsorPlacement} />
         <Route path="/quote" component={Quote} />
         <Route path="/contact" component={Contact} />
+        <Route path="/get-mockup" component={GetMockupPage} />
+        <Route path="/quote-view/:token" component={QuoteViewPage} />
 
         {/* Auth pages */}
         <Route path="/login" component={LoginPage} />
@@ -69,6 +82,12 @@ function Router() {
         <Route path="/accept-invite" component={AcceptInvitePage} />
 
         {/* Admin portal */}
+        <Route path="/admin/orders/create-po">
+          {() => <AdminRoute><AdminCreatePO /></AdminRoute>}
+        </Route>
+        <Route path="/admin/orders/:id/po">
+          {() => <AdminRoute><AdminPurchaseOrder /></AdminRoute>}
+        </Route>
         <Route path="/admin/orders/:id">
           {() => <AdminRoute><AdminOrderDetail /></AdminRoute>}
         </Route>
@@ -84,11 +103,32 @@ function Router() {
         <Route path="/admin/designs">
           {() => <AdminRoute><AdminDesignReview /></AdminRoute>}
         </Route>
+        <Route path="/admin/quotes/create">
+          {() => <AdminRoute><AdminCreateQuote /></AdminRoute>}
+        </Route>
+        <Route path="/admin/quotes/templates">
+          {() => <AdminRoute><AdminQuoteTemplates /></AdminRoute>}
+        </Route>
+        <Route path="/admin/quotes/:id">
+          {() => <AdminRoute><AdminQuoteDetail /></AdminRoute>}
+        </Route>
+        <Route path="/admin/quotes">
+          {() => <AdminRoute><AdminQuotes /></AdminRoute>}
+        </Route>
+        <Route path="/admin/mockups/:id">
+          {() => <AdminRoute><AdminMockupDetail /></AdminRoute>}
+        </Route>
+        <Route path="/admin/mockups">
+          {() => <AdminRoute><AdminMockups /></AdminRoute>}
+        </Route>
         <Route path="/admin">
           {() => <AdminRoute><AdminDashboard /></AdminRoute>}
         </Route>
 
         {/* Customer portal */}
+        <Route path="/portal/orders/:id/invoice">
+          {() => <ProtectedRoute><PortalInvoice /></ProtectedRoute>}
+        </Route>
         <Route path="/portal/orders/:id">
           {() => <ProtectedRoute><PortalOrderDetail /></ProtectedRoute>}
         </Route>

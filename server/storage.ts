@@ -8,8 +8,14 @@ import {
   type DesignFile, type InsertDesignFile,
   type DesignComment, type InsertDesignComment,
   type Notification, type InsertNotification,
+  type OrderSizeBreakdown, type InsertOrderSizeBreakdown,
+  type ProductionStage, type InsertProductionStage,
+  type QualityCheck, type InsertQualityCheck,
+  type OrderMessage, type InsertOrderMessage,
+  type OrderActivity, type InsertOrderActivity,
   users, carts, cartItems, orders, orderItems, ghlProducts,
-  designFiles, designComments, notifications
+  designFiles, designComments, notifications,
+  orderSizeBreakdowns, productionStages, qualityChecks, orderMessages, orderActivity
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, desc, count, ilike } from "drizzle-orm";
@@ -50,6 +56,7 @@ export interface IStorage {
   // Order Items
   getOrderItems(orderId: string): Promise<OrderItem[]>;
   createOrderItem(item: InsertOrderItem): Promise<OrderItem>;
+  updateOrderItem(id: string, data: Partial<InsertOrderItem>): Promise<OrderItem | undefined>;
   
   // Stripe data queries (from stripe schema)
   getStripeProducts(storeSlug?: string): Promise<any[]>;
@@ -65,8 +72,12 @@ export interface IStorage {
 
   // Admin queries
   getAllOrders(opts: { status?: string; designStatus?: string; search?: string; limit?: number; offset?: number }): Promise<{ orders: Order[]; total: number }>;
-  getOrderWithDetails(orderId: string): Promise<{ order: Order; items: OrderItem[]; designs: DesignFile[]; comments: DesignComment[] } | null>;
-  updateOrder(orderId: string, data: { status?: string; designStatus?: string; adminNotes?: string }): Promise<Order | undefined>;
+  getOrderWithDetails(orderId: string): Promise<{
+    order: Order; items: OrderItem[]; designs: DesignFile[]; comments: DesignComment[];
+    sizeBreakdowns: OrderSizeBreakdown[]; stages: ProductionStage[];
+    qcChecks: QualityCheck[]; messages: OrderMessage[]; activity: OrderActivity[];
+  } | null>;
+  updateOrder(orderId: string, data: Partial<Record<string, any>>): Promise<Order | undefined>;
   getAllCustomers(opts: { search?: string; limit?: number; offset?: number }): Promise<{ customers: User[]; total: number }>;
   getCustomerWithOrders(userId: string): Promise<{ customer: User; orders: Order[] } | null>;
   updateCustomer(userId: string, data: { teamName?: string; contactPhone?: string }): Promise<User | undefined>;
@@ -91,6 +102,34 @@ export interface IStorage {
   getNotifications(userId: string): Promise<Notification[]>;
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationRead(id: string): Promise<void>;
+
+  // Order Size Breakdowns
+  getSizeBreakdowns(orderId: string): Promise<OrderSizeBreakdown[]>;
+  getSizeBreakdownsByItem(orderItemId: string): Promise<OrderSizeBreakdown[]>;
+  createSizeBreakdown(breakdown: InsertOrderSizeBreakdown): Promise<OrderSizeBreakdown>;
+  updateSizeBreakdown(id: string, data: Partial<InsertOrderSizeBreakdown>): Promise<OrderSizeBreakdown | undefined>;
+  deleteSizeBreakdown(id: string): Promise<void>;
+
+  // Production Stages
+  getProductionStages(orderId: string): Promise<ProductionStage[]>;
+  getProductionStage(id: string): Promise<ProductionStage | undefined>;
+  createProductionStage(stage: InsertProductionStage): Promise<ProductionStage>;
+  updateProductionStage(id: string, data: Partial<InsertProductionStage>): Promise<ProductionStage | undefined>;
+  initializeProductionPipeline(orderId: string): Promise<ProductionStage[]>;
+
+  // Quality Checks
+  getQualityChecks(orderId: string): Promise<QualityCheck[]>;
+  getQualityCheck(id: string): Promise<QualityCheck | undefined>;
+  createQualityCheck(check: InsertQualityCheck): Promise<QualityCheck>;
+  updateQualityCheck(id: string, data: Partial<InsertQualityCheck>): Promise<QualityCheck | undefined>;
+
+  // Order Messages
+  getOrderMessages(orderId: string): Promise<OrderMessage[]>;
+  createOrderMessage(message: InsertOrderMessage): Promise<OrderMessage>;
+
+  // Order Activity
+  getOrderActivityLog(orderId: string): Promise<OrderActivity[]>;
+  logOrderActivity(activity: InsertOrderActivity): Promise<OrderActivity>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -260,6 +299,11 @@ export class DatabaseStorage implements IStorage {
     return newItem;
   }
 
+  async updateOrderItem(id: string, data: Partial<InsertOrderItem>): Promise<OrderItem | undefined> {
+    const [item] = await db.update(orderItems).set(data).where(eq(orderItems.id, id)).returning();
+    return item;
+  }
+
   // Stripe data queries (direct Stripe API — replaces stripe-replit-sync)
   async getStripeProducts(storeSlug?: string): Promise<any[]> {
     try {
@@ -404,7 +448,11 @@ export class DatabaseStorage implements IStorage {
     return { orders: result, total: totalResult.count };
   }
 
-  async getOrderWithDetails(orderId: string): Promise<{ order: Order; items: OrderItem[]; designs: DesignFile[]; comments: DesignComment[] } | null> {
+  async getOrderWithDetails(orderId: string): Promise<{
+    order: Order; items: OrderItem[]; designs: DesignFile[]; comments: DesignComment[];
+    sizeBreakdowns: OrderSizeBreakdown[]; stages: ProductionStage[];
+    qcChecks: QualityCheck[]; messages: OrderMessage[]; activity: OrderActivity[];
+  } | null> {
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
     if (!order) return null;
 
@@ -419,10 +467,16 @@ export class DatabaseStorage implements IStorage {
         .orderBy(desc(designComments.createdAt));
     }
 
-    return { order, items, designs, comments };
+    const sizeBreakdowns = await db.select().from(orderSizeBreakdowns).where(eq(orderSizeBreakdowns.orderId, orderId));
+    const stages = await db.select().from(productionStages).where(eq(productionStages.orderId, orderId)).orderBy(productionStages.createdAt);
+    const qcChecks = await db.select().from(qualityChecks).where(eq(qualityChecks.orderId, orderId)).orderBy(desc(qualityChecks.createdAt));
+    const messages = await db.select().from(orderMessages).where(eq(orderMessages.orderId, orderId)).orderBy(orderMessages.createdAt);
+    const activityLog = await db.select().from(orderActivity).where(eq(orderActivity.orderId, orderId)).orderBy(desc(orderActivity.createdAt)).limit(50);
+
+    return { order, items, designs, comments, sizeBreakdowns, stages, qcChecks, messages, activity: activityLog };
   }
 
-  async updateOrder(orderId: string, data: { status?: string; designStatus?: string; adminNotes?: string }): Promise<Order | undefined> {
+  async updateOrder(orderId: string, data: Partial<Record<string, any>>): Promise<Order | undefined> {
     const [order] = await db.update(orders)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(orders.id, orderId))
@@ -583,6 +637,131 @@ export class DatabaseStorage implements IStorage {
 
   async markNotificationRead(id: string): Promise<void> {
     await db.update(notifications).set({ read: true }).where(eq(notifications.id, id));
+  }
+
+  // Order Size Breakdowns
+  async getSizeBreakdowns(orderId: string): Promise<OrderSizeBreakdown[]> {
+    return await db.select().from(orderSizeBreakdowns)
+      .where(eq(orderSizeBreakdowns.orderId, orderId))
+      .orderBy(orderSizeBreakdowns.size);
+  }
+
+  async getSizeBreakdownsByItem(orderItemId: string): Promise<OrderSizeBreakdown[]> {
+    return await db.select().from(orderSizeBreakdowns)
+      .where(eq(orderSizeBreakdowns.orderItemId, orderItemId))
+      .orderBy(orderSizeBreakdowns.size);
+  }
+
+  async createSizeBreakdown(breakdown: InsertOrderSizeBreakdown): Promise<OrderSizeBreakdown> {
+    const [row] = await db.insert(orderSizeBreakdowns).values(breakdown).returning();
+    return row;
+  }
+
+  async updateSizeBreakdown(id: string, data: Partial<InsertOrderSizeBreakdown>): Promise<OrderSizeBreakdown | undefined> {
+    const [row] = await db.update(orderSizeBreakdowns).set(data).where(eq(orderSizeBreakdowns.id, id)).returning();
+    return row;
+  }
+
+  async deleteSizeBreakdown(id: string): Promise<void> {
+    await db.delete(orderSizeBreakdowns).where(eq(orderSizeBreakdowns.id, id));
+  }
+
+  // Production Stages
+  async getProductionStages(orderId: string): Promise<ProductionStage[]> {
+    return await db.select().from(productionStages)
+      .where(eq(productionStages.orderId, orderId))
+      .orderBy(productionStages.createdAt);
+  }
+
+  async getProductionStage(id: string): Promise<ProductionStage | undefined> {
+    const [stage] = await db.select().from(productionStages).where(eq(productionStages.id, id));
+    return stage;
+  }
+
+  async createProductionStage(stage: InsertProductionStage): Promise<ProductionStage> {
+    const [row] = await db.insert(productionStages).values(stage).returning();
+    return row;
+  }
+
+  async updateProductionStage(id: string, data: Partial<InsertProductionStage>): Promise<ProductionStage | undefined> {
+    const [row] = await db.update(productionStages).set(data).where(eq(productionStages.id, id)).returning();
+    return row;
+  }
+
+  async initializeProductionPipeline(orderId: string): Promise<ProductionStage[]> {
+    const stages = [
+      "order_received",
+      "design_review",
+      "design_confirmed",
+      "in_production",
+      "printing",
+      "quality_check",
+      "packing",
+      "shipped",
+      "delivered",
+    ];
+
+    const created: ProductionStage[] = [];
+    for (let i = 0; i < stages.length; i++) {
+      const [row] = await db.insert(productionStages).values({
+        orderId,
+        stage: stages[i],
+        status: i === 0 ? "in_progress" : "pending",
+        enteredAt: i === 0 ? new Date() : null,
+      }).returning();
+      created.push(row);
+    }
+
+    // Set order's production stage
+    await db.update(orders).set({ productionStage: "order_received", updatedAt: new Date() }).where(eq(orders.id, orderId));
+
+    return created;
+  }
+
+  // Quality Checks
+  async getQualityChecks(orderId: string): Promise<QualityCheck[]> {
+    return await db.select().from(qualityChecks)
+      .where(eq(qualityChecks.orderId, orderId))
+      .orderBy(desc(qualityChecks.createdAt));
+  }
+
+  async getQualityCheck(id: string): Promise<QualityCheck | undefined> {
+    const [check] = await db.select().from(qualityChecks).where(eq(qualityChecks.id, id));
+    return check;
+  }
+
+  async createQualityCheck(check: InsertQualityCheck): Promise<QualityCheck> {
+    const [row] = await db.insert(qualityChecks).values(check).returning();
+    return row;
+  }
+
+  async updateQualityCheck(id: string, data: Partial<InsertQualityCheck>): Promise<QualityCheck | undefined> {
+    const [row] = await db.update(qualityChecks).set(data).where(eq(qualityChecks.id, id)).returning();
+    return row;
+  }
+
+  // Order Messages
+  async getOrderMessages(orderId: string): Promise<OrderMessage[]> {
+    return await db.select().from(orderMessages)
+      .where(eq(orderMessages.orderId, orderId))
+      .orderBy(orderMessages.createdAt);
+  }
+
+  async createOrderMessage(message: InsertOrderMessage): Promise<OrderMessage> {
+    const [row] = await db.insert(orderMessages).values(message).returning();
+    return row;
+  }
+
+  // Order Activity
+  async getOrderActivityLog(orderId: string): Promise<OrderActivity[]> {
+    return await db.select().from(orderActivity)
+      .where(eq(orderActivity.orderId, orderId))
+      .orderBy(desc(orderActivity.createdAt));
+  }
+
+  async logOrderActivity(activity: InsertOrderActivity): Promise<OrderActivity> {
+    const [row] = await db.insert(orderActivity).values(activity).returning();
+    return row;
   }
 }
 

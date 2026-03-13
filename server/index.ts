@@ -7,6 +7,7 @@ import { createServer } from "http";
 import { WebhookHandlers } from "./webhookHandlers";
 
 const app = express();
+app.set("trust proxy", 1); // Trust first proxy (needed for secure cookies behind proxy)
 const httpServer = createServer(app);
 
 export function log(message: string, source = "express") {

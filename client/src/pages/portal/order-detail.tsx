@@ -1,10 +1,14 @@
 import { useState, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PortalLayout } from "@/components/portal-layout";
 import { useParams, Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
-import { ArrowLeft, Upload, FileText, ExternalLink, RefreshCw, Check, X, AlertCircle } from "lucide-react";
+import { ArrowLeft, Upload, FileText, ExternalLink, RefreshCw, AlertCircle, Receipt, Truck, MapPin } from "lucide-react";
 import { upload } from "@vercel/blob/client";
+import { ProductionTracker } from "@/components/production-tracker";
+import { OrderChat } from "@/components/order-chat";
+import { QualityChecksView } from "@/components/quality-checks";
+import { SizeBreakdownView } from "@/components/size-breakdown";
 
 interface OrderItem {
   id: string;
@@ -38,6 +42,40 @@ interface DesignComment {
   createdAt: string;
 }
 
+interface ProductionStage {
+  id: string;
+  stage: string;
+  status: string;
+  enteredAt: string | null;
+  completedAt: string | null;
+  notes: string | null;
+  estimatedDate: string | null;
+}
+
+interface QualityCheck {
+  id: string;
+  orderId: string;
+  productionStageId: string | null;
+  checkType: string;
+  status: string;
+  checkedBy: string | null;
+  notes: string | null;
+  photoUrls: string[] | null;
+  issues: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+interface OrderSizeBreakdown {
+  id: string;
+  orderItemId: string;
+  size: string;
+  quantity: number;
+  playerName: string | null;
+  playerNumber: string | null;
+  notes: string | null;
+}
+
 interface Order {
   id: string;
   orderNumber: string;
@@ -46,6 +84,10 @@ interface Order {
   storeSlug: string;
   status: string;
   designStatus: string | null;
+  productionStage: string | null;
+  trackingNumber: string | null;
+  trackingUrl: string | null;
+  estimatedDeliveryDate: string | null;
   total: number;
   subtotal: number;
   shipping: number;
@@ -60,6 +102,11 @@ interface OrderDetail {
   items: OrderItem[];
   designs: DesignFile[];
   comments: DesignComment[];
+  stages: ProductionStage[];
+  qcChecks: QualityCheck[];
+  sizeBreakdowns: OrderSizeBreakdown[];
+  messages: any[];
+  activity: any[];
 }
 
 const DESIGN_LABELS = ["jersey", "shorts", "socks", "logo", "other"] as const;
@@ -104,13 +151,11 @@ function DesignUploadForm({ orderId, onSuccess, reuploadFile }: {
     setError("");
 
     try {
-      // Upload to Vercel Blob
       const blob = await upload(file.name, file, {
         access: "public",
         handleUploadUrl: "/api/uploads/token",
       });
 
-      // Create design file record
       const url = reuploadFile
         ? `/api/portal/orders/${orderId}/designs/${reuploadFile.id}/reupload`
         : `/api/portal/orders/${orderId}/designs`;
@@ -145,14 +190,9 @@ function DesignUploadForm({ orderId, onSuccess, reuploadFile }: {
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             style={{
-              padding: "10px 12px",
-              fontSize: "13px",
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: "6px",
-              color: "#fff",
-              outline: "none",
-              width: "200px",
+              padding: "10px 12px", fontSize: "13px",
+              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: "6px", color: "#fff", outline: "none", width: "200px",
             }}
           >
             {DESIGN_LABELS.map((l) => (
@@ -163,31 +203,17 @@ function DesignUploadForm({ orderId, onSuccess, reuploadFile }: {
       )}
 
       <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*,application/pdf,.zip"
-          style={{
-            fontSize: "13px",
-            color: "rgba(255,255,255,0.6)",
-            flex: 1,
-          }}
-        />
+        <input ref={fileRef} type="file" accept="image/*,application/pdf,.zip" style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)", flex: 1 }} />
         <button
           onClick={handleUpload}
           disabled={uploading}
           style={{
-            padding: "10px 20px",
-            fontSize: "13px",
-            fontWeight: 600,
+            padding: "10px 20px", fontSize: "13px", fontWeight: 600,
             background: uploading ? "rgba(255,255,255,0.06)" : "#fff",
             color: uploading ? "rgba(255,255,255,0.4)" : "#000",
-            border: "none",
-            borderRadius: "6px",
+            border: "none", borderRadius: "6px",
             cursor: uploading ? "not-allowed" : "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
+            display: "flex", alignItems: "center", gap: "6px",
           }}
         >
           <Upload size={14} />
@@ -209,6 +235,7 @@ export default function PortalOrderDetail() {
   const queryClient = useQueryClient();
   const [showUpload, setShowUpload] = useState(false);
   const [reuploadFile, setReuploadFile] = useState<DesignFile | null>(null);
+  const [activeTab, setActiveTab] = useState<"overview" | "production" | "designs" | "chat">("overview");
 
   const { data, isLoading } = useQuery<OrderDetail>({
     queryKey: [`/api/portal/orders/${params.id}`],
@@ -230,21 +257,19 @@ export default function PortalOrderDetail() {
     return <PortalLayout><div style={{ color: "rgba(255,255,255,0.5)", padding: "40px", textAlign: "center" }}>Order not found</div></PortalLayout>;
   }
 
-  const { order, items, designs, comments } = data;
+  const { order, items, designs, comments, stages, qcChecks, sizeBreakdowns } = data;
 
-  // Group designs by label, show latest version
-  const latestByLabel = new Map<string, DesignFile>();
-  for (const d of designs) {
-    const existing = latestByLabel.get(d.label);
-    if (!existing || new Date(d.createdAt) > new Date(existing.createdAt)) {
-      latestByLabel.set(d.label, d);
-    }
-  }
+  const tabs = [
+    { key: "overview", label: "Overview" },
+    { key: "production", label: "Production" },
+    { key: "designs", label: `Designs (${designs.length})` },
+    { key: "chat", label: "Chat" },
+  ] as const;
 
   return (
     <PortalLayout>
       {/* Header */}
-      <div style={{ marginBottom: "32px" }}>
+      <div style={{ marginBottom: "24px" }}>
         <Link href="/portal/orders">
           <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px", marginBottom: "16px" }}>
             <ArrowLeft size={14} /> Back to Orders
@@ -260,69 +285,171 @@ export default function PortalOrderDetail() {
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: "24px" }}>
-        {/* Left column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px", minWidth: 0 }}>
-          {/* Order Items */}
-          <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", overflow: "hidden" }}>
-            <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#fff", padding: "20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              Order Items ({items.length})
-            </h2>
-            {items.map((item) => (
-              <div key={item.id} style={{ display: "flex", alignItems: "center", gap: "16px", padding: "16px 24px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                {item.productImage && (
-                  <img src={item.productImage} alt="" style={{ width: "48px", height: "48px", borderRadius: "6px", objectFit: "cover" }} />
-                )}
-                <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: "14px", color: "#fff", fontWeight: 500 }}>{item.productName}</p>
-                  {item.size && <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>Size: {item.size}</p>}
+      {/* Tracking info banner */}
+      {order.trackingNumber && (
+        <div style={{
+          background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.15)",
+          borderRadius: "10px", padding: "14px 20px", marginBottom: "24px",
+          display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap",
+        }}>
+          <Truck size={18} color="#a855f7" />
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: "13px", color: "#fff", fontWeight: 500 }}>Tracking: {order.trackingNumber}</p>
+            {order.estimatedDeliveryDate && (
+              <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>
+                Est. delivery: {new Date(order.estimatedDeliveryDate).toLocaleDateString()}
+              </p>
+            )}
+          </div>
+          {order.trackingUrl && (
+            <a href={order.trackingUrl} target="_blank" rel="noopener noreferrer"
+              style={{
+                padding: "6px 14px", fontSize: "12px", fontWeight: 600,
+                background: "rgba(168,85,247,0.15)", color: "#a855f7",
+                borderRadius: "6px", textDecoration: "none",
+                display: "flex", alignItems: "center", gap: "6px",
+              }}>
+              <MapPin size={12} /> Track Package
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* Tab navigation */}
+      <div style={{ display: "flex", gap: "4px", marginBottom: "24px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "0" }}>
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: "10px 20px", fontSize: "13px", fontWeight: 500,
+              background: "transparent", border: "none",
+              color: activeTab === tab.key ? "#fff" : "rgba(255,255,255,0.4)",
+              borderBottom: activeTab === tab.key ? "2px solid #fff" : "2px solid transparent",
+              cursor: "pointer", marginBottom: "-1px",
+              transition: "color 0.2s, border-color 0.2s",
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* TAB: Overview */}
+      {activeTab === "overview" && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: "24px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "24px", minWidth: 0 }}>
+            {/* Production Progress (compact) */}
+            {stages.length > 0 && <ProductionTracker stages={stages} />}
+
+            {/* Order Items */}
+            <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", overflow: "hidden" }}>
+              <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#fff", padding: "20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                Order Items ({items.length})
+              </h2>
+              {items.map((item) => (
+                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: "16px", padding: "16px 24px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                  {item.productImage && (
+                    <img src={item.productImage} alt="" style={{ width: "48px", height: "48px", borderRadius: "6px", objectFit: "cover" }} />
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: "14px", color: "#fff", fontWeight: 500 }}>{item.productName}</p>
+                    {item.size && <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>Size: {item.size}</p>}
+                  </div>
+                  <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)" }}>x{item.quantity}</p>
+                  <p style={{ fontSize: "14px", color: "#fff", fontWeight: 500, minWidth: "80px", textAlign: "right" }}>
+                    ${((item.unitAmount * item.quantity) / 100).toFixed(2)}
+                  </p>
                 </div>
-                <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)" }}>x{item.quantity}</p>
-                <p style={{ fontSize: "14px", color: "#fff", fontWeight: 500, minWidth: "80px", textAlign: "right" }}>
-                  ${((item.unitAmount * item.quantity) / 100).toFixed(2)}
-                </p>
+              ))}
+              <div style={{ padding: "16px 24px", display: "flex", justifyContent: "flex-end" }}>
+                <span style={{ fontSize: "14px", fontWeight: 600, color: "#fff" }}>
+                  Total: ${(order.total / 100).toFixed(2)} {order.currency?.toUpperCase()}
+                </span>
               </div>
-            ))}
-            <div style={{ padding: "16px 24px", display: "flex", justifyContent: "flex-end" }}>
-              <span style={{ fontSize: "14px", fontWeight: 600, color: "#fff" }}>
-                Total: ${(order.total / 100).toFixed(2)} {order.currency?.toUpperCase()}
-              </span>
             </div>
+
+            {/* Size & Player Details */}
+            {sizeBreakdowns.length > 0 && (
+              <SizeBreakdownView items={items} breakdowns={sizeBreakdowns} />
+            )}
+
+            {/* QC Checks (if any) */}
+            {qcChecks.length > 0 && (
+              <QualityChecksView checks={qcChecks} />
+            )}
           </div>
 
-          {/* Design Files */}
+          {/* Right sidebar */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px" }}>
+              <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>Order Summary</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "rgba(255,255,255,0.5)" }}>Subtotal</span>
+                  <span style={{ color: "#fff" }}>${(order.subtotal / 100).toFixed(2)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "rgba(255,255,255,0.5)" }}>Shipping</span>
+                  <span style={{ color: "#fff" }}>${(order.shipping / 100).toFixed(2)}</span>
+                </div>
+                {order.tax > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "rgba(255,255,255,0.5)" }}>Tax</span>
+                    <span style={{ color: "#fff" }}>${(order.tax / 100).toFixed(2)}</span>
+                  </div>
+                )}
+                <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "12px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  <span style={{ color: "#fff", fontWeight: 600 }}>Total</span>
+                  <span style={{ color: "#fff", fontWeight: 600 }}>${(order.total / 100).toFixed(2)} {order.currency?.toUpperCase()}</span>
+                </div>
+              </div>
+
+              <Link href={`/portal/orders/${order.id}/invoice`}>
+                <button style={{
+                  width: "100%", marginTop: "16px", padding: "10px",
+                  fontSize: "13px", fontWeight: 500,
+                  background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)",
+                  border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px",
+                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+                }}>
+                  <Receipt size={14} /> View Invoice
+                </button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: Production */}
+      {activeTab === "production" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "24px", maxWidth: "700px" }}>
+          <ProductionTracker stages={stages} />
+          {qcChecks.length > 0 && <QualityChecksView checks={qcChecks} />}
+        </div>
+      )}
+
+      {/* TAB: Designs */}
+      {activeTab === "designs" && (
+        <div style={{ maxWidth: "800px" }}>
           <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#fff" }}>
-                Design Files ({designs.length})
-              </h2>
+              <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#fff" }}>Design Files ({designs.length})</h2>
               <button
                 onClick={() => { setShowUpload(!showUpload); setReuploadFile(null); }}
                 style={{
-                  padding: "8px 16px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  background: "rgba(255,255,255,0.06)",
-                  color: "rgba(255,255,255,0.7)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
+                  padding: "8px 16px", fontSize: "12px", fontWeight: 600,
+                  background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)",
+                  border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px",
+                  cursor: "pointer", display: "flex", alignItems: "center", gap: "6px",
                 }}
               >
                 <Upload size={14} /> Upload Design
               </button>
             </div>
 
-            {/* Upload form */}
             {(showUpload || reuploadFile) && (
-              <DesignUploadForm
-                orderId={order.id}
-                onSuccess={handleUploadSuccess}
-                reuploadFile={reuploadFile}
-              />
+              <DesignUploadForm orderId={order.id} onSuccess={handleUploadSuccess} reuploadFile={reuploadFile} />
             )}
 
             {designs.length === 0 ? (
@@ -346,23 +473,15 @@ export default function PortalOrderDetail() {
                     </a>
                   </div>
 
-                  {/* Re-upload button for rejected files */}
                   {file.status === "rejected" && (
                     <div style={{ marginLeft: "28px", marginTop: "8px" }}>
                       <button
                         onClick={() => { setReuploadFile(file); setShowUpload(false); }}
                         style={{
-                          padding: "6px 14px",
-                          fontSize: "12px",
-                          fontWeight: 500,
-                          background: "rgba(239,68,68,0.1)",
-                          color: "#ef4444",
-                          border: "1px solid rgba(239,68,68,0.2)",
-                          borderRadius: "6px",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
+                          padding: "6px 14px", fontSize: "12px", fontWeight: 500,
+                          background: "rgba(239,68,68,0.1)", color: "#ef4444",
+                          border: "1px solid rgba(239,68,68,0.2)", borderRadius: "6px",
+                          cursor: "pointer", display: "flex", alignItems: "center", gap: "6px",
                         }}
                       >
                         <RefreshCw size={12} /> Re-upload
@@ -370,14 +489,10 @@ export default function PortalOrderDetail() {
                     </div>
                   )}
 
-                  {/* Comments for this file */}
                   {comments.filter(c => c.designFileId === file.id).map((c) => (
                     <div key={c.id} style={{
-                      marginTop: "8px",
-                      marginLeft: "28px",
-                      padding: "8px 12px",
-                      background: "rgba(255,255,255,0.02)",
-                      borderRadius: "6px",
+                      marginTop: "8px", marginLeft: "28px", padding: "8px 12px",
+                      background: "rgba(255,255,255,0.02)", borderRadius: "6px",
                       borderLeft: `3px solid ${c.action === "approved" ? "#22c55e" : c.action === "rejected" ? "#ef4444" : "rgba(255,255,255,0.1)"}`,
                     }}>
                       <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.6)" }}>{c.comment}</p>
@@ -389,52 +504,14 @@ export default function PortalOrderDetail() {
             )}
           </div>
         </div>
+      )}
 
-        {/* Right sidebar - Order Summary */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px" }}>
-            <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>Order Summary</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgba(255,255,255,0.5)" }}>Subtotal</span>
-                <span style={{ color: "#fff" }}>${(order.subtotal / 100).toFixed(2)}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "rgba(255,255,255,0.5)" }}>Shipping</span>
-                <span style={{ color: "#fff" }}>${(order.shipping / 100).toFixed(2)}</span>
-              </div>
-              {order.tax > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "rgba(255,255,255,0.5)" }}>Tax</span>
-                  <span style={{ color: "#fff" }}>${(order.tax / 100).toFixed(2)}</span>
-                </div>
-              )}
-              <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "12px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                <span style={{ color: "#fff", fontWeight: 600 }}>Total</span>
-                <span style={{ color: "#fff", fontWeight: 600 }}>${(order.total / 100).toFixed(2)} {order.currency?.toUpperCase()}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Design status guide */}
-          <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px" }}>
-            <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>Design Status Guide</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "12px" }}>
-              {[
-                { status: "not_started", desc: "No designs uploaded yet" },
-                { status: "pending", desc: "Waiting for admin review" },
-                { status: "approved", desc: "Design approved" },
-                { status: "rejected", desc: "Needs changes — re-upload" },
-              ].map(({ status, desc }) => (
-                <div key={status} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <StatusBadge status={status} />
-                  <span style={{ color: "rgba(255,255,255,0.4)" }}>{desc}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+      {/* TAB: Chat */}
+      {activeTab === "chat" && (
+        <div style={{ maxWidth: "700px" }}>
+          <OrderChat orderId={order.id} userRole="customer" apiPrefix="/api/portal" />
         </div>
-      </div>
+      )}
 
       <style>{`
         @media (max-width: 900px) {
