@@ -67,15 +67,38 @@ Sideline NZ (sidelinenz.com) — custom sportswear brand. Full website rebuild w
 
 ### What's Next
 
-**Phase 4 PRIORITY — Mockup Automation Engine: ✅ READY TO BUILD**
-- Lead submits quote form → AI generates 4 custom mockups in <5 min
-- Gemini 2.5 Flash API enabled + connected
-- ffmpeg video + Eleven Labs voiceover
-- Automated email with mockup video + customizer link
-- GHL + ClickUp integration
-- Competitive advantage: 5 min vs 24-48h competitors
-- **See:** PHASE-4-MOCKUP-ENGINE.md (full specification)
-- **Status:** All APIs connected, ready for Claude Code to build
+**Phase 4 PRIORITY — Mockup Automation Engine + Smart Form: ✅ READY TO BUILD**
+
+**Smart Form (Customer-Guided, AI-Assisted):**
+- Team name input (customer types)
+- Sport selector + reference gallery (customer chooses)
+- Color picker + example teams (customer picks colors)
+- Logo upload (customer provides)
+- Products selector (jersey/shorts/tracksuit/etc - customer checks boxes)
+- Design style + reference examples (customer selects style)
+- Inspiration gallery (optional reference images)
+- Form validation + preview before submit
+
+**Stock Template Library:**
+- Rugby: jersey, shorts, socks, tracksuit (standard templates)
+- Netball: singlet, skirt, warmup top
+- Football: jersey, shorts
+- Basketball: jersey, shorts
+- All templates consistent (same proportions, design language)
+
+**Mockup Generation:**
+- Template selection (match sport + products)
+- Color + logo injection (image manipulation)
+- Generate 4 variations (A/B/C/D using template swaps)
+- All use same template (professional consistency)
+- Gemini API for final polish + voiceover
+- Video montage (ffmpeg)
+- Email + GHL + ClickUp integration
+
+**Competitive Advantage:** 5 min vs 24-48h competitors, professional consistency
+
+**See:** PHASE-4-MOCKUP-ENGINE.md (full specification - updated)
+**Status:** All APIs connected, smart form spec complete, ready for Claude Code
 
 **Phase 4 Secondary — Customer Portal + File Uploads:**
 - Vercel Blob upload flow (POST /api/uploads/token → client uploads to Blob → POST design record)
