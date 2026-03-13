@@ -67,7 +67,15 @@ Sideline NZ (sidelinenz.com) — custom sportswear brand. Full website rebuild w
 
 ### What's Next
 
-**Phase 3 — Customer Portal + File Uploads:**
+**Phase 4 PRIORITY — Mockup Automation Engine:**
+- Lead submits quote form → AI generates 4 custom mockups in <5 min
+- Gemini image gen + ffmpeg video + Eleven Labs voiceover
+- Automated email with mockup video + customizer link
+- GHL + ClickUp integration
+- Competitive advantage: 5 min vs 24-48h competitors
+- **See:** PHASE-4-MOCKUP-ENGINE.md (full specification)
+
+**Phase 4 Secondary — Customer Portal + File Uploads:**
 - Vercel Blob upload flow (POST /api/uploads/token → client uploads to Blob → POST design record)
 - Customer API endpoints (server/routes/customer.ts — currently stub)
 - Customer frontend pages (dashboard, orders, order-detail, profile)
@@ -94,6 +102,24 @@ Sideline NZ (sidelinenz.com) — custom sportswear brand. Full website rebuild w
 - **Communication:** Approve/reject with comments (no full chat yet)
 - **Email:** Pluggable interface with console stub — provider TBD (Resend/SendGrid)
 - **Route structure:** /api/auth, /api/admin, /api/portal, /api/uploads, /api/ghl, /api/shopify, /api (store)
+
+---
+
+## Phase 5 — Expanded Product Range
+
+**What's Next (Post-Mockup Engine):**
+- Extend mockup generation to all product types:
+  - Headwear (beanies, caps, winter wear)
+  - Hoodies + training wear
+  - Supporter tees (casual fan wear)
+  - Accessories (armbands, wristbands, bags)
+- Two-tier team store strategy:
+  - **Basic:** Jersey + shorts + socks (current)
+  - **Full:** Basic + headwear + hoodies + casual + accessories
+- Update Shopify collections (reference: Moana Pasifika, Dynasty Sport examples)
+- Higher AOV per customer, multiple purchase occasions
+
+**Timeline:** After Phase 4 mockup engine ships (proven jersey mockups working)
 
 ---
 
