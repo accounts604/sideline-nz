@@ -60,6 +60,13 @@ export async function createGhlContact(contactData: any, tags: string[] = []) {
     enquiry_type: "enquiry_type",
     message: "message",
     submitted_at: "submitted_at",
+    // Smart Quote fields
+    quote_number: "quote_number",
+    quote_total: "quote_total",
+    quote_status: "quote_status",
+    quote_items: "quote_items",
+    quote_valid_until: "quote_valid_until",
+    quote_url: "quote_url",
   };
 
   for (const [formKey, ghlKey] of Object.entries(customFieldMappings)) {

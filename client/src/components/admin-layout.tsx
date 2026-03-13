@@ -6,6 +6,7 @@ import {
   Users,
   Palette,
   Wand2,
+  FileText,
   LogOut,
   Menu,
   X,
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
   { href: "/admin/customers", label: "Customers", icon: Users },
   { href: "/admin/designs", label: "Design Review", icon: Palette },
+  { href: "/admin/quotes", label: "Smart Quotes", icon: FileText },
   { href: "/admin/mockups", label: "Mockup Engine", icon: Wand2 },
 ];
 

@@ -33,6 +33,11 @@ import AdminPurchaseOrder from "@/pages/admin/purchase-order";
 import AdminCreatePO from "@/pages/admin/create-po";
 import AdminMockups from "@/pages/admin/mockups";
 import AdminMockupDetail from "@/pages/admin/mockup-detail";
+import AdminQuotes from "@/pages/admin/quotes";
+import AdminQuoteDetail from "@/pages/admin/quote-detail";
+import AdminCreateQuote from "@/pages/admin/create-quote";
+import AdminQuoteTemplates from "@/pages/admin/quote-templates";
+import QuoteViewPage from "@/pages/quote-view";
 import GetMockupPage from "@/pages/get-mockup";
 import PortalDashboard from "@/pages/portal/dashboard";
 import PortalOrders from "@/pages/portal/orders";
@@ -69,6 +74,7 @@ function Router() {
         <Route path="/quote" component={Quote} />
         <Route path="/contact" component={Contact} />
         <Route path="/get-mockup" component={GetMockupPage} />
+        <Route path="/quote-view/:token" component={QuoteViewPage} />
 
         {/* Auth pages */}
         <Route path="/login" component={LoginPage} />
@@ -96,6 +102,18 @@ function Router() {
         </Route>
         <Route path="/admin/designs">
           {() => <AdminRoute><AdminDesignReview /></AdminRoute>}
+        </Route>
+        <Route path="/admin/quotes/create">
+          {() => <AdminRoute><AdminCreateQuote /></AdminRoute>}
+        </Route>
+        <Route path="/admin/quotes/templates">
+          {() => <AdminRoute><AdminQuoteTemplates /></AdminRoute>}
+        </Route>
+        <Route path="/admin/quotes/:id">
+          {() => <AdminRoute><AdminQuoteDetail /></AdminRoute>}
+        </Route>
+        <Route path="/admin/quotes">
+          {() => <AdminRoute><AdminQuotes /></AdminRoute>}
         </Route>
         <Route path="/admin/mockups/:id">
           {() => <AdminRoute><AdminMockupDetail /></AdminRoute>}

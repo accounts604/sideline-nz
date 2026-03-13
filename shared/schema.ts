@@ -326,6 +326,87 @@ export const insertMockupDesignSchema = createInsertSchema(mockupDesigns).omit({
 export type InsertMockupDesign = z.infer<typeof insertMockupDesignSchema>;
 export type MockupDesign = typeof mockupDesigns.$inferSelect;
 
+// Quote templates — reusable product/pricing bundles for quick quoting
+export const quoteTemplates = pgTable("quote_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(), // "Rugby Club Full Kit", "School Sports Package"
+  description: text("description"),
+  sport: text("sport"), // rugby, netball, etc. or null for generic
+  category: text("category").notNull().default("custom"), // custom, club, school, events
+  items: jsonb("items").notNull(), // [{ name, description, unitPrice, minQty, sizes, brandingMethod }]
+  validUntilDays: integer("valid_until_days").default(30),
+  isActive: boolean("is_active").default(true),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertQuoteTemplateSchema = createInsertSchema(quoteTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertQuoteTemplate = z.infer<typeof insertQuoteTemplateSchema>;
+export type QuoteTemplate = typeof quoteTemplates.$inferSelect;
+
+// Quotes — generated proposals sent to customers
+export const quotes = pgTable("quotes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  quoteNumber: text("quote_number").notNull().unique(), // QT-001
+  templateId: varchar("template_id").references(() => quoteTemplates.id),
+  // Customer info
+  customerName: text("customer_name").notNull(),
+  customerEmail: text("customer_email").notNull(),
+  customerPhone: text("customer_phone"),
+  teamName: text("team_name"),
+  sport: text("sport"),
+  // Quote details
+  status: text("status").notNull().default("draft"), // draft, sent, viewed, accepted, rejected, expired
+  subtotal: integer("subtotal").notNull().default(0), // cents
+  discount: integer("discount").default(0), // cents
+  discountLabel: text("discount_label"), // "10% Volume Discount"
+  shipping: integer("shipping").default(0),
+  tax: integer("tax").default(0),
+  total: integer("total").notNull().default(0), // cents
+  currency: text("currency").default("nzd"),
+  // Notes / terms
+  adminNotes: text("admin_notes"), // internal notes
+  customerNotes: text("customer_notes"), // visible to customer
+  terms: text("terms"), // terms and conditions
+  validUntil: timestamp("valid_until"),
+  // Tracking
+  sentAt: timestamp("sent_at"),
+  viewedAt: timestamp("viewed_at"),
+  acceptedAt: timestamp("accepted_at"),
+  rejectedAt: timestamp("rejected_at"),
+  rejectionReason: text("rejection_reason"),
+  convertedToOrderId: varchar("converted_to_order_id").references(() => orders.id),
+  // Access
+  accessToken: text("access_token").notNull(), // public URL token for customer viewing
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertQuoteSchema = createInsertSchema(quotes).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertQuote = z.infer<typeof insertQuoteSchema>;
+export type Quote = typeof quotes.$inferSelect;
+
+// Quote items — line items on a quote
+export const quoteItems = pgTable("quote_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  quoteId: varchar("quote_id").notNull().references(() => quotes.id),
+  productName: text("product_name").notNull(),
+  description: text("description"),
+  quantity: integer("quantity").notNull().default(1),
+  unitPrice: integer("unit_price").notNull(), // cents
+  totalPrice: integer("total_price").notNull(), // cents (qty * unit)
+  sizes: text("sizes"), // "S, M, L, XL"
+  brandingMethod: text("branding_method"),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertQuoteItemSchema = createInsertSchema(quoteItems).omit({ id: true, createdAt: true });
+export type InsertQuoteItem = z.infer<typeof insertQuoteItemSchema>;
+export type QuoteItem = typeof quoteItems.$inferSelect;
+
 // Notifications
 export const notifications = pgTable("notifications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
