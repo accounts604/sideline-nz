@@ -19,13 +19,18 @@
 ## THE FLOW
 
 ```
-Customer submits quote form with:
-  - Team name
-  - Sport (rugby/netball/football/basketball)
-  - Colors (primary, secondary, accent)
-  - Logo (uploaded)
-  - Custom requests (optional)
+Customer fills SMART QUOTE FORM (guided, not autonomous):
+  1. Team name? (customer types)
+  2. Sport? (customer selects from dropdown)
+  3. AI shows reference teams in similar sports (gallery)
+  4. Colors? (pick from color library + see examples of teams in those colors)
+  5. Logo? (upload or paste club website link for reference)
+  6. Products? (jersey/shorts/tracksuit/t-shirt - select from gallery)
+  7. Design style? (classic/modern/aggressive/minimalist - show reference examples)
+  8. Inspiration gallery? (clickable reference images of similar teams)
     ↓
+Form submitted with complete customer input (customer-guided, AI-assisted)
+  ↓
 Webhook triggers Sideline sub-agent:
   1. Fetch customer data + logo
   2. Fetch past orders (if repeat customer)
@@ -261,23 +266,145 @@ Sideline NZ Team
 
 ---
 
+## SMART QUOTE FORM (Customer-Guided, AI-Assisted)
+
+**Form Flow (customer leads, AI guides):**
+
+1. **Team Name** (customer types)
+2. **Sport Selection** (dropdown: Rugby, Netball, Football, Basketball)
+   - On select → show reference gallery of teams in that sport
+3. **Colors Picker** (guided, not autonomous)
+   - Pre-loaded color library (navy, gold, red, green, white, black, etc.)
+   - Each color shows "example teams" wearing that color
+   - Customer selects primary, secondary, accent
+4. **Logo Input** (customer provides)
+   - Option A: Upload logo file
+   - Option B: Paste club website/Instagram link (for reference only, customer confirms colors)
+5. **Products Selection** (gallery-based)
+   - Show options: Jersey, Shorts, Socks, Tracksuit, T-shirt, Hoodie
+   - Customer checks boxes (what they want designed)
+6. **Design Style** (reference examples)
+   - Classic (traditional, timeless)
+   - Modern (sleek, contemporary)
+   - Aggressive (bold, competitive)
+   - Minimalist (clean, simple)
+   - Show 2-3 reference team examples for each style
+7. **Inspiration Gallery** (optional)
+   - "Teams that inspire you?" (clickable reference images)
+   - Customer can select similar teams as design reference
+
+**Form Validation:**
+- All fields required before submission
+- Preview: "We'll create 4 mockups like [reference teams] with your [colors] and [products]"
+
+**Result:** Complete customer input → no guessing, no autonomous scraping
+
+---
+
+## STOCK MOCKUP TEMPLATE LIBRARY
+
+**Core Templates (by Sport + Product):**
+
+### RUGBY
+- **Jersey Template** (standard fit, professional proportions)
+  - Front chest placement for logo
+  - Shoulder stripe patterns
+  - Sleeve trim options
+- **Shorts Template** (standard rugby fit)
+  - Side stripe, centered logo placement
+- **Socks Template** (crew height)
+  - Calf stripe, toe placement options
+- **Tracksuit Template** (jacket + pants)
+  - Jacket chest logo, pants side stripe
+  - Collar/trim customization
+
+### NETBALL
+- **Singlet Template** (athletic cut)
+  - Chest logo centered
+  - Shoulder trim
+- **Skirt Template** (A-line, sports cut)
+  - Side stripe, waistband trim
+- **Warmup Top Template** (fitted)
+  - Chest/back logo options
+
+### FOOTBALL
+- **Jersey Template** (football-specific fit)
+  - Chest centered logo
+  - Sleeve stripe, collar trim
+- **Shorts Template** (football cut)
+  - Side stripe, centered logo
+
+### BASKETBALL
+- **Jersey Template** (sleeveless, athletic)
+  - Chest + back logo options
+  - Arm hole trim
+- **Shorts Template** (basketball cut)
+  - Side stripe, longer inseam
+
+**Template Consistency:**
+- All use same design language (proportions, trim placement, logo sizing)
+- Swap colors + logo, keep design structure
+- Ensures professional, consistent output
+
+**Mockup Generation Process:**
+1. Customer submits form (colors, products, style)
+2. Claude Code selects matching templates (sport + products)
+3. Generate 4 variations by:
+   - Variation A: Template + customer colors + logo (default)
+   - Variation B: Template + customer colors + alternative logo placement
+   - Variation C: Template + accent color swap (secondary becomes primary)
+   - Variation D: Template + customer colors + customer style preference
+4. All 4 use same template base (consistent quality)
+5. Generate video montage showing all variations
+
+---
+
 ## IMPLEMENTATION CHECKLIST
 
+**Smart Form Builder:**
+- [ ] Create enhanced quote form component (React)
+  - [ ] Team name input
+  - [ ] Sport dropdown + reference gallery
+  - [ ] Color picker with example teams gallery
+  - [ ] Logo upload or website reference field
+  - [ ] Products multi-select (jersey/shorts/tracksuit/etc)
+  - [ ] Design style selector + reference examples
+  - [ ] Inspiration gallery (optional)
+  - [ ] Form validation (all fields required)
+  - [ ] Preview message before submit
+- [ ] Store form submission data (PostgreSQL)
+
+**Template Library:**
+- [ ] Create mockup template assets (by sport)
+  - [ ] Rugby: jersey, shorts, socks, tracksuit
+  - [ ] Netball: singlet, skirt, warmup top
+  - [ ] Football: jersey, shorts
+  - [ ] Basketball: jersey, shorts
+- [ ] Store templates as base images (Vercel Blob or local)
+- [ ] Document logo placement coordinates (per template)
+- [ ] Document color application zones (primary, secondary, accent)
+
+**Mockup Generation Engine:**
 - [ ] Create `/api/mockup/generate` endpoint (express route)
 - [ ] Build mockup sub-agent trigger (sessions_spawn)
-- [ ] Engineer Gemini prompts (sport-specific library)
+- [ ] Template selection logic (match sport + products)
+- [ ] Color + logo injection into templates (image manipulation)
+- [ ] Engineer Gemini prompts (sport-specific library, template-based)
 - [ ] Implement image generation (Gemini API call)
-- [ ] Build video montage logic (ffmpeg wrapper)
+- [ ] Generate 4 variations (A/B/C/D based on template + color swaps)
+- [ ] Build video montage logic (ffmpeg, show all 4 variations)
 - [ ] Integrate Eleven Labs TTS (voiceover generation)
-- [ ] Upload to Vercel Blob (storage)
+- [ ] Upload video to Vercel Blob (storage)
+
+**Integration & Delivery:**
 - [ ] Email template + sending (nodemailer or similar)
 - [ ] GHL API sync (tag + custom fields + task creation)
 - [ ] ClickUp API integration (task creation)
-- [ ] Quote form webhook (trigger mockup generation)
-- [ ] Admin dashboard button (manual mockup generation)
-- [ ] Error handling (failed image gen, blob upload, etc.)
-- [ ] Logging (track mockup creation, send success/failure)
-- [ ] Testing (test with sample customer data)
+- [ ] Quote form webhook (trigger mockup generation on submit)
+- [ ] Admin dashboard button (manual mockup generation for existing customers)
+- [ ] Error handling (failed image gen, blob upload, template missing, etc.)
+- [ ] Logging (track mockup creation, send success/failure, timing)
+- [ ] Testing (test with Top Bulldogs sample data)
 
 ---
 
