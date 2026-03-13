@@ -21,6 +21,26 @@ async function shopifyFetch(query: string, variables?: Record<string, unknown>) 
   return json.data;
 }
 
+router.get("/status", async (_req, res) => {
+  const configured = !!(SHOPIFY_STORE_URL && SHOPIFY_TOKEN);
+  if (!configured) {
+    return res.status(503).json({
+      ok: false,
+      error: "Shopify environment variables not set",
+      vars: {
+        VITE_SHOPIFY_STORE_URL: SHOPIFY_STORE_URL ? "set" : "missing",
+        VITE_SHOPIFY_TOKEN: SHOPIFY_TOKEN ? "set" : "missing",
+      },
+    });
+  }
+  try {
+    await shopifyFetch(`query { shop { name } }`);
+    res.json({ ok: true, store: SHOPIFY_STORE_URL });
+  } catch (e: any) {
+    res.status(502).json({ ok: false, error: e.message });
+  }
+});
+
 router.get("/collections", async (_req, res) => {
   try {
     const data = await shopifyFetch(`
