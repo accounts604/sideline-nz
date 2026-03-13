@@ -299,6 +299,17 @@ export default function AdminOrderDetail() {
 
           {/* Right sidebar */}
           <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            {/* PO View */}
+            <Link href={`/admin/orders/${order.id}/po`}>
+              <button style={{
+                width: "100%", padding: "12px", fontSize: "13px", fontWeight: 600,
+                background: "#fff", color: "#000", border: "none", borderRadius: "6px",
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+              }}>
+                <FileText size={14} /> View Purchase Order
+              </button>
+            </Link>
+
             {/* Order Status */}
             <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px" }}>
               <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>Order Status</h3>

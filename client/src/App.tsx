@@ -29,6 +29,8 @@ import AdminOrderDetail from "@/pages/admin/order-detail";
 import AdminCustomers from "@/pages/admin/customers";
 import AdminCustomerDetail from "@/pages/admin/customer-detail";
 import AdminDesignReview from "@/pages/admin/design-review";
+import AdminPurchaseOrder from "@/pages/admin/purchase-order";
+import AdminCreatePO from "@/pages/admin/create-po";
 import PortalDashboard from "@/pages/portal/dashboard";
 import PortalOrders from "@/pages/portal/orders";
 import PortalOrderDetail from "@/pages/portal/order-detail";
@@ -70,6 +72,12 @@ function Router() {
         <Route path="/accept-invite" component={AcceptInvitePage} />
 
         {/* Admin portal */}
+        <Route path="/admin/orders/create-po">
+          {() => <AdminRoute><AdminCreatePO /></AdminRoute>}
+        </Route>
+        <Route path="/admin/orders/:id/po">
+          {() => <AdminRoute><AdminPurchaseOrder /></AdminRoute>}
+        </Route>
         <Route path="/admin/orders/:id">
           {() => <AdminRoute><AdminOrderDetail /></AdminRoute>}
         </Route>

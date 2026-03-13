@@ -52,7 +52,7 @@ router.get("/orders/:id", async (req, res) => {
   }
 });
 
-// PATCH /orders/:id — update status, admin notes
+// PATCH /orders/:id — update status, admin notes, PO fields, tracking
 const updateOrderSchema = z.object({
   status: z.string().optional(),
   designStatus: z.string().optional(),
@@ -60,6 +60,14 @@ const updateOrderSchema = z.object({
   trackingNumber: z.string().optional(),
   trackingUrl: z.string().optional(),
   estimatedDeliveryDate: z.string().transform(v => v ? new Date(v) : undefined).optional(),
+  poReference: z.string().optional(),
+  accountName: z.string().optional(),
+  isRepeatOrder: z.boolean().optional(),
+  poComments: z.string().optional(),
+  deliveryAttention: z.string().optional(),
+  deliveryAddress: z.string().optional(),
+  deliveryEmail: z.string().optional(),
+  deliveryPhone: z.string().optional(),
 });
 
 router.patch("/orders/:id", async (req, res) => {
@@ -276,6 +284,139 @@ router.get("/orders/:id/invoice", async (req, res) => {
   } catch (err) {
     console.error("Admin invoice error:", err);
     res.status(500).json({ error: "Failed to load invoice" });
+  }
+});
+
+// ============ ORDER ITEM PRODUCT-LINE DETAILS ============
+
+// PATCH /orders/:id/items/:itemId — update product-line design details
+const updateItemSchema = z.object({
+  productColors: z.array(z.object({ hex: z.string(), name: z.string().optional() })).optional(),
+  brandingMethod: z.string().optional(),
+  frontDesignUrl: z.string().optional(),
+  backDesignUrl: z.string().optional(),
+  elementUrls: z.array(z.object({ name: z.string(), url: z.string() })).optional(),
+  gradeGroup: z.string().optional(),
+  designNotes: z.string().optional(),
+});
+
+router.patch("/orders/:id/items/:itemId", async (req, res) => {
+  try {
+    const data = updateItemSchema.parse(req.body);
+    const user = (req as any).user;
+    const updated = await storage.updateOrderItem(req.params.itemId, data);
+    if (!updated) return res.status(404).json({ error: "Item not found" });
+
+    await storage.logOrderActivity({
+      orderId: req.params.id,
+      userId: user.userId,
+      action: "item_updated",
+      details: { itemId: req.params.itemId, fields: Object.keys(data) },
+    });
+
+    res.json(updated);
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin update item error:", err);
+    res.status(500).json({ error: "Failed to update item" });
+  }
+});
+
+// POST /orders/create-po — create a new purchase order from scratch (admin-initiated)
+const createPoSchema = z.object({
+  storeSlug: z.string(),
+  customerEmail: z.string().email().optional(),
+  customerName: z.string().optional(),
+  poReference: z.string(),
+  accountName: z.string().optional(),
+  isRepeatOrder: z.boolean().optional(),
+  poComments: z.string().optional(),
+  deliveryAttention: z.string().optional(),
+  deliveryAddress: z.string().optional(),
+  deliveryEmail: z.string().optional(),
+  deliveryPhone: z.string().optional(),
+  items: z.array(z.object({
+    productName: z.string(),
+    quantity: z.number().int().min(1),
+    unitAmount: z.number().int().min(0),
+    gradeGroup: z.string().optional(),
+    brandingMethod: z.string().optional(),
+  })).min(1),
+});
+
+router.post("/orders/create-po", async (req, res) => {
+  try {
+    const data = createPoSchema.parse(req.body);
+    const user = (req as any).user;
+
+    // Generate PO number
+    const ts = Date.now().toString(36).toUpperCase();
+    const rand = Math.random().toString(36).substring(2, 5).toUpperCase();
+    const orderNumber = `SNZ-${ts}-${rand}`;
+
+    // Calculate totals
+    const subtotal = data.items.reduce((sum, i) => sum + (i.unitAmount * i.quantity), 0);
+
+    // Create order
+    const order = await storage.createOrder({
+      orderNumber,
+      storeSlug: data.storeSlug,
+      status: "processing",
+      subtotal,
+      total: subtotal,
+      currency: "nzd",
+      customerEmail: data.customerEmail ?? null,
+      customerName: data.customerName ?? null,
+      poReference: data.poReference,
+      accountName: data.accountName ?? null,
+      isRepeatOrder: data.isRepeatOrder ?? false,
+      poComments: data.poComments ?? null,
+      deliveryAttention: data.deliveryAttention ?? null,
+      deliveryAddress: data.deliveryAddress ?? null,
+      deliveryEmail: data.deliveryEmail ?? null,
+      deliveryPhone: data.deliveryPhone ?? null,
+    } as any);
+
+    // Create order items
+    for (const item of data.items) {
+      await storage.createOrderItem({
+        orderId: order.id,
+        productId: "manual",
+        priceId: "manual",
+        productName: item.productName,
+        quantity: item.quantity,
+        unitAmount: item.unitAmount,
+        currency: "nzd",
+        gradeGroup: item.gradeGroup ?? null,
+        brandingMethod: item.brandingMethod ?? null,
+      } as any);
+    }
+
+    // Link to customer if email matches
+    if (data.customerEmail) {
+      const customer = await storage.getUserByEmail(data.customerEmail);
+      if (customer) {
+        await storage.updateOrder(order.id, {} as any);
+        // Set userId directly via raw update
+        await storage.linkOrdersByEmail(data.customerEmail, customer.id);
+      }
+    }
+
+    // Initialize production pipeline
+    await storage.initializeProductionPipeline(order.id);
+
+    await storage.logOrderActivity({
+      orderId: order.id,
+      userId: user.userId,
+      action: "po_created",
+      details: { poReference: data.poReference, itemCount: data.items.length },
+    });
+
+    res.status(201).json(order);
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin create PO error:", err);
+    res.status(500).json({ error: "Failed to create purchase order" });
   }
 });
 

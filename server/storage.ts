@@ -56,6 +56,7 @@ export interface IStorage {
   // Order Items
   getOrderItems(orderId: string): Promise<OrderItem[]>;
   createOrderItem(item: InsertOrderItem): Promise<OrderItem>;
+  updateOrderItem(id: string, data: Partial<InsertOrderItem>): Promise<OrderItem | undefined>;
   
   // Stripe data queries (from stripe schema)
   getStripeProducts(storeSlug?: string): Promise<any[]>;
@@ -76,7 +77,7 @@ export interface IStorage {
     sizeBreakdowns: OrderSizeBreakdown[]; stages: ProductionStage[];
     qcChecks: QualityCheck[]; messages: OrderMessage[]; activity: OrderActivity[];
   } | null>;
-  updateOrder(orderId: string, data: { status?: string; designStatus?: string; adminNotes?: string; productionStage?: string; trackingNumber?: string; trackingUrl?: string; estimatedDeliveryDate?: Date | null }): Promise<Order | undefined>;
+  updateOrder(orderId: string, data: Partial<Record<string, any>>): Promise<Order | undefined>;
   getAllCustomers(opts: { search?: string; limit?: number; offset?: number }): Promise<{ customers: User[]; total: number }>;
   getCustomerWithOrders(userId: string): Promise<{ customer: User; orders: Order[] } | null>;
   updateCustomer(userId: string, data: { teamName?: string; contactPhone?: string }): Promise<User | undefined>;
@@ -298,6 +299,11 @@ export class DatabaseStorage implements IStorage {
     return newItem;
   }
 
+  async updateOrderItem(id: string, data: Partial<InsertOrderItem>): Promise<OrderItem | undefined> {
+    const [item] = await db.update(orderItems).set(data).where(eq(orderItems.id, id)).returning();
+    return item;
+  }
+
   // Stripe data queries (direct Stripe API — replaces stripe-replit-sync)
   async getStripeProducts(storeSlug?: string): Promise<any[]> {
     try {
@@ -470,7 +476,7 @@ export class DatabaseStorage implements IStorage {
     return { order, items, designs, comments, sizeBreakdowns, stages, qcChecks, messages, activity: activityLog };
   }
 
-  async updateOrder(orderId: string, data: { status?: string; designStatus?: string; adminNotes?: string; productionStage?: string; trackingNumber?: string; trackingUrl?: string; estimatedDeliveryDate?: Date | null }): Promise<Order | undefined> {
+  async updateOrder(orderId: string, data: Partial<Record<string, any>>): Promise<Order | undefined> {
     const [order] = await db.update(orders)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(orders.id, orderId))

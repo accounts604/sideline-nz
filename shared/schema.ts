@@ -85,10 +85,19 @@ export const orders = pgTable("orders", {
   shippingAddress: jsonb("shipping_address"),
   designStatus: text("design_status").default("not_started"), // not_started, pending_review, approved, needs_revision
   adminNotes: text("admin_notes"),
-  productionStage: text("production_stage").default("order_received"), // Current production stage
+  productionStage: text("production_stage").default("order_received"),
   trackingNumber: text("tracking_number"),
   trackingUrl: text("tracking_url"),
   estimatedDeliveryDate: timestamp("estimated_delivery_date"),
+  // PO-specific fields
+  poReference: text("po_reference"), // e.g. "Onewhero Rugby Juniors 2026"
+  accountName: text("account_name"), // Account / team name on PO
+  isRepeatOrder: boolean("is_repeat_order").default(false),
+  poComments: text("po_comments"), // e.g. "Bulk Order"
+  deliveryAttention: text("delivery_attention"), // Attention: person name
+  deliveryAddress: text("delivery_address"), // Full delivery address text
+  deliveryEmail: text("delivery_email"),
+  deliveryPhone: text("delivery_phone"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   paidAt: timestamp("paid_at"),
@@ -98,7 +107,7 @@ export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, cre
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type Order = typeof orders.$inferSelect;
 
-// Order items
+// Order items — each represents a product line on the PO (e.g. "Rugby Jersey Grade 6,7,8")
 export const orderItems = pgTable("order_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orderId: varchar("order_id").notNull().references(() => orders.id),
@@ -110,6 +119,14 @@ export const orderItems = pgTable("order_items", {
   quantity: integer("quantity").notNull(),
   unitAmount: integer("unit_amount").notNull(),
   currency: text("currency").notNull().default("nzd"),
+  // PO product-line fields
+  productColors: jsonb("product_colors"), // [{ hex: "#333561", name: "Navy" }]
+  brandingMethod: text("branding_method"), // "Full Sublimation", "Screen Print", "Embroidery", etc.
+  frontDesignUrl: text("front_design_url"), // Front design proof image
+  backDesignUrl: text("back_design_url"), // Back design proof image
+  elementUrls: jsonb("element_urls"), // [{ name: "Onewhero RFC", url: "..." }, { name: "Summit Homes", url: "..." }]
+  gradeGroup: text("grade_group"), // "Grade 6,7,8", "Grade 9", "Grade 13", "Seniors"
+  designNotes: text("design_notes"), // Any notes about this product line
 });
 
 export const insertOrderItemSchema = createInsertSchema(orderItems).omit({ id: true });
