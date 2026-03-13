@@ -59,6 +59,29 @@ Romero gets:
 
 ## TECHNICAL ARCHITECTURE
 
+### GHL ARCHITECTURE (KIG Master Location)
+
+**All Sideline quote submissions route to KIG master location, not Sideline location.**
+
+**Why:** Single CRM for all brands. Cross-sell visibility. One source of truth.
+
+**KIG Location ID:** `pDSz4XY8gwQEWCmiAkzW`
+
+**Custom Fields (to create in GHL):**
+- `quote_number` (Text) — Unique quote ID
+- `quote_total` (Text) — Deal value
+- `quote_status` (Text) — "pending", "sent", "approved", "declined"
+- `quote_items` (Text) — JSON: ["jersey", "shorts", "tracksuit"]
+- `quote_valid_until` (Text) — Expiry date
+- `quote_url` (Text) — Link to mockup video
+
+**When form submitted:**
+1. Create/update contact in KIG location (not Sideline)
+2. Populate custom fields with quote data
+3. Tag: `["sideline", "mockup_request"]`
+4. Move to pipeline stage: "Design Review"
+5. Sync to PostgreSQL locally
+
 ### 1. TRIGGER (Quote Form Webhook)
 
 **Endpoint:** `POST /api/mockup/generate`
@@ -238,12 +261,14 @@ Thanks,
 Sideline NZ Team
 ```
 
-### 6. GHL SYNC
+### 6. GHL SYNC (KIG Master Location)
 
-**Update customer record:**
+**Update customer record in KIG location (pDSz4XY8gwQEWCmiAkzW):**
 - Tag: `mockup_sent`
-- Custom field: `mockup_video_url` = [Blob URL]
-- Custom field: `mockup_generated_at` = [timestamp]
+- Custom field: `quote_url` = [Vercel Blob video URL]
+- Custom field: `quote_status` = "sent"
+- Custom field: `quote_number` = [unique ID from form]
+- Custom field: `quote_items` = JSON: ["jersey", "shorts", "tracksuit"]
 - Pipeline stage: Move to "Design Review" (if not already there)
 
 **Create follow-up:**
