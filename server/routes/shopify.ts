@@ -2,8 +2,8 @@ import { Router } from "express";
 
 const router = Router();
 
-const SHOPIFY_STORE_URL = process.env.VITE_SHOPIFY_STORE_URL || "";
-const SHOPIFY_TOKEN = process.env.VITE_SHOPIFY_TOKEN || "";
+const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL || "";
+const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN || "";
 const shopifyEndpoint = `https://${SHOPIFY_STORE_URL}/api/2025-01/graphql.json`;
 
 async function shopifyFetch(query: string, variables?: Record<string, unknown>) {
