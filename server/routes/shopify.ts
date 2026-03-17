@@ -1,31 +1,10 @@
 import { Router } from "express";
 
-// Ensure fetch is available (Node.js 18+ should have it globally)
-if (!globalThis.fetch) {
-  console.error("[Shopify] WARNING: fetch not available! This should not happen on Node 18+");
-}
-
 const router = Router();
 
 const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL || "sideline-nz-2.myshopify.com";
 const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN || "53a3ae5ea0eeacac29d10e09646a7cac";
 const shopifyEndpoint = `https://${SHOPIFY_STORE_URL}/api/2025-01/graphql.json`;
-
-// Startup diagnostics (safe logging)
-try {
-  const logData = {
-    storeUrl: SHOPIFY_STORE_URL,
-    tokenPrefix: SHOPIFY_TOKEN ? SHOPIFY_TOKEN.substring(0, 8) + "..." : "MISSING",
-    endpoint: shopifyEndpoint,
-    envSource: {
-      url: process.env.SHOPIFY_STORE_URL ? "env" : "fallback",
-      token: process.env.SHOPIFY_TOKEN ? "env" : "fallback",
-    },
-  };
-  console.log("[Shopify] Config loaded:", JSON.stringify(logData));
-} catch (e) {
-  console.error("[Shopify] Failed to log startup diagnostics:", e);
-}
 
 async function shopifyFetch(query: string, variables?: Record<string, unknown>) {
   const queryPreview = query.replace(/\s+/g, " ").substring(0, 60) + "...";
@@ -61,11 +40,7 @@ async function shopifyFetch(query: string, variables?: Record<string, unknown>) 
 }
 
 router.get("/ping", (_req, res) => {
-  try {
-    res.json({ ok: true, msg: "Shopify router active" });
-  } catch (e: any) {
-    res.status(500).json({ error: "Failed to respond" });
-  }
+  res.json({ ok: true });
 });
 
 router.get("/status", async (_req, res) => {
