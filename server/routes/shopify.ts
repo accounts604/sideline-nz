@@ -1,5 +1,10 @@
 import { Router } from "express";
 
+// Ensure fetch is available (Node.js 18+ should have it globally)
+if (!globalThis.fetch) {
+  console.error("[Shopify] WARNING: fetch not available! This should not happen on Node 18+");
+}
+
 const router = Router();
 
 const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL || "sideline-nz-2.myshopify.com";
@@ -55,6 +60,10 @@ async function shopifyFetch(query: string, variables?: Record<string, unknown>) 
     throw err;
   }
 }
+
+router.get("/ping", (_req, res) => {
+  res.json({ status: "Shopify router is alive", timestamp: new Date().toISOString() });
+});
 
 router.get("/status", async (_req, res) => {
   console.log("[Shopify] /status endpoint hit");
