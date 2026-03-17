@@ -2,35 +2,94 @@ import { Router } from "express";
 
 const router = Router();
 
-const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL || "";
-const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN || "";
+const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL || "sideline-nz-2.myshopify.com";
+const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN || "53a3ae5ea0eeacac29d10e09646a7cac";
 const shopifyEndpoint = `https://${SHOPIFY_STORE_URL}/api/2025-01/graphql.json`;
 
+// Startup diagnostics
+console.log("[Shopify] Config loaded:", {
+  storeUrl: SHOPIFY_STORE_URL,
+  tokenPrefix: SHOPIFY_TOKEN ? SHOPIFY_TOKEN.substring(0, 8) + "..." : "MISSING",
+  endpoint: shopifyEndpoint,
+  envSource: {
+    url: process.env.SHOPIFY_STORE_URL ? "env" : "fallback",
+    token: process.env.SHOPIFY_TOKEN ? "env" : "fallback",
+  },
+});
+
 async function shopifyFetch(query: string, variables?: Record<string, unknown>) {
-  const res = await fetch(shopifyEndpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Storefront-Access-Token": SHOPIFY_TOKEN,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  if (!res.ok) throw new Error("Shopify API error: " + res.status);
-  const json = await res.json();
-  if (json.errors) throw new Error("Shopify GraphQL error: " + JSON.stringify(json.errors));
-  return json.data;
+  const queryPreview = query.trim().substring(0, 80).replace(/\s+/g, " ");
+  console.log("[Shopify] Fetching:", { endpoint: shopifyEndpoint, queryPreview, variables });
+
+  try {
+    const res = await fetch(shopifyEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Storefront-Access-Token": SHOPIFY_TOKEN,
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+
+    console.log("[Shopify] Response status:", res.status, res.statusText);
+
+    if (!res.ok) {
+      const errorBody = await res.text();
+      console.error("[Shopify] HTTP error response body:", errorBody);
+      throw new Error(`Shopify API error: ${res.status} ${res.statusText} - ${errorBody}`);
+    }
+
+    const json = await res.json();
+
+    if (json.errors) {
+      console.error("[Shopify] GraphQL errors:", JSON.stringify(json.errors, null, 2));
+      throw new Error("Shopify GraphQL error: " + JSON.stringify(json.errors));
+    }
+
+    console.log("[Shopify] Success. Data keys:", Object.keys(json.data || {}));
+    return json.data;
+  } catch (err: any) {
+    if (err.cause) {
+      console.error("[Shopify] Fetch network error cause:", err.cause);
+    }
+    throw err;
+  }
 }
 
+router.get("/status", async (_req, res) => {
+  console.log("[Shopify] /status endpoint hit");
+  const configured = !!(SHOPIFY_STORE_URL && SHOPIFY_TOKEN);
+  if (!configured) {
+    return res.status(503).json({
+      ok: false,
+      error: "Shopify environment variables not set",
+      vars: {
+        SHOPIFY_STORE_URL: SHOPIFY_STORE_URL ? "set" : "missing",
+        SHOPIFY_TOKEN: SHOPIFY_TOKEN ? "set" : "missing",
+      },
+    });
+  }
+  try {
+    const data = await shopifyFetch(`query { shop { name } }`);
+    res.json({ ok: true, store: SHOPIFY_STORE_URL, shopName: data?.shop?.name });
+  } catch (e: any) {
+    res.status(502).json({ ok: false, error: e.message, endpoint: shopifyEndpoint });
+  }
+});
+
 router.get("/collections", async (_req, res) => {
+  console.log("[Shopify] /collections endpoint hit");
   try {
     const data = await shopifyFetch(`
       query { collections(first: 50) { edges { node {
         handle title description image { url altText }
       } } } }
     `);
-    res.json(data.collections.edges.map((e: any) => e.node));
+    const collections = data.collections.edges.map((e: any) => e.node);
+    console.log("[Shopify] Collections found:", collections.length, collections.map((c: any) => c.handle));
+    res.json(collections);
   } catch (e: any) {
-    console.error("Shopify collections error:", e.message);
+    console.error("[Shopify] Collections error:", e.message);
     res.status(500).json({ error: e.message });
   }
 });
