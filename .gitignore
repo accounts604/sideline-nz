@@ -4,3 +4,5 @@ dist/
 .env.local
 .vercel
 *.log
+# esbuild output — bundled API for Vercel
+api/index.js
