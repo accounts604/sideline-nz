@@ -62,7 +62,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4">
+            <Link href="/free-mockup">
+              <span className="text-xs tracking-wider uppercase font-medium bg-white text-black px-4 py-2 rounded-[4px] hover:bg-white/90 transition-colors cursor-pointer hidden sm:inline">
+                Get free mockup
+              </span>
+            </Link>
             <Link href="/quote">
               <span className="text-xs tracking-wider uppercase font-medium text-white/40 hover:text-white transition-colors cursor-pointer hidden sm:inline">
                 Get a Quote

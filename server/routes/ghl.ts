@@ -35,6 +35,7 @@ export async function createGhlContact(contactData: any, tags: string[] = []) {
     member_count: "member_count",
     current_supplier: "current_supplier",
     sports: "sports",
+    sport: "sport",
     mockup_interest: "mockup_interest",
     needs: "needs",
     estimated_quantity: "estimated_quantity",
@@ -67,6 +68,17 @@ export async function createGhlContact(contactData: any, tags: string[] = []) {
     quote_items: "quote_items",
     quote_valid_until: "quote_valid_until",
     quote_url: "quote_url",
+    // Free Mockup Intake fields
+    club_type: "club_type",
+    contact_name: "contact_name",
+    quantity_range: "quantity_range",
+    primary_colour: "primary_colour",
+    secondary_colour: "secondary_colour",
+    timeline: "timeline",
+    design_direction: "design_direction",
+    logo_status: "logo_status",
+    logo_notes: "logo_notes",
+    design_notes: "design_notes",
   };
 
   for (const [formKey, ghlKey] of Object.entries(customFieldMappings)) {
@@ -240,6 +252,80 @@ router.post("/mockup-request", async (req, res) => {
     res.json({ ok: true, id: result.contactId || crypto.randomUUID() });
   } catch (e: any) {
     console.error("Mockup request error:", e);
+    res.status(500).json({ error: e.message || "Server error" });
+  }
+});
+
+const intakeFormSchema = z.object({
+  club_type: z.string().min(1, "Club type is required"),
+  organization: z.string().min(1, "Organization name is required"),
+  sport: z.array(z.string()).min(1, "At least one sport is required"),
+  contact_name: z.string().min(1, "Contact name is required"),
+  role: z.string().min(1, "Role is required"),
+  email: z.string().email("Valid email is required"),
+  phone: z.string().optional(),
+  kit_items: z.array(z.string()).min(1, "At least one kit item is required"),
+  quantity_range: z.string().min(1, "Quantity range is required"),
+  primary_colour: z.string().min(1, "Primary colour is required"),
+  secondary_colour: z.string().optional(),
+  timeline: z.string().min(1, "Timeline is required"),
+  current_supplier: z.string().optional(),
+  design_direction: z.string().min(1, "Design direction is required"),
+  logo_status: z.string().min(1, "Logo status is required"),
+  logo_notes: z.string().optional(),
+  design_notes: z.string().optional(),
+  terms_agreed: z.boolean(),
+});
+
+router.post("/intake", async (req, res) => {
+  try {
+    const parsed = intakeFormSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const firstError = parsed.error.errors[0]?.message || "Invalid submission data";
+      return res.status(400).json({ error: firstError });
+    }
+
+    const payload = parsed.data;
+
+    // Build tags: include "free-mockup-request", first sport lowercased+hyphenated, and quantity range
+    const tags = [
+      "free-mockup-request",
+      payload.sport[0]?.toLowerCase().replace(/\s+/g, "-") || "sport",
+      payload.quantity_range,
+    ];
+
+    // Map form data to GHL contact structure
+    const enriched = {
+      name: payload.contact_name,
+      email: payload.email,
+      phone: payload.phone || "",
+      club_type: payload.club_type,
+      organization: payload.organization,
+      sport: payload.sport.join(", "),
+      role: payload.role,
+      kit_items: payload.kit_items.join(", "),
+      quantity_range: payload.quantity_range,
+      primary_colour: payload.primary_colour,
+      secondary_colour: payload.secondary_colour || "",
+      timeline: payload.timeline,
+      current_supplier: payload.current_supplier || "",
+      design_direction: payload.design_direction,
+      logo_status: payload.logo_status,
+      logo_notes: payload.logo_notes || "",
+      design_notes: payload.design_notes || "",
+      source: "sidelinenz.com free-mockup-intake",
+      submitted_at: new Date().toISOString(),
+    };
+
+    const result = await createGhlContact(enriched, tags);
+
+    if (!result.success && result.reason === "credentials_missing") {
+      console.log("GHL not configured - intake form logged above");
+    }
+
+    res.json({ ok: true, id: result.contactId || crypto.randomUUID() });
+  } catch (e: any) {
+    console.error("Intake form error:", e);
     res.status(500).json({ error: e.message || "Server error" });
   }
 });

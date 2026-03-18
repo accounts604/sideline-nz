@@ -39,6 +39,7 @@ import AdminCreateQuote from "@/pages/admin/create-quote";
 import AdminQuoteTemplates from "@/pages/admin/quote-templates";
 import QuoteViewPage from "@/pages/quote-view";
 import GetMockupPage from "@/pages/get-mockup";
+import FreeMockup from "@/pages/free-mockup";
 import PortalDashboard from "@/pages/portal/dashboard";
 import PortalOrders from "@/pages/portal/orders";
 import PortalOrderDetail from "@/pages/portal/order-detail";
@@ -73,6 +74,7 @@ function Router() {
         <Route path="/sponsor-placement" component={SponsorPlacement} />
         <Route path="/quote" component={Quote} />
         <Route path="/contact" component={Contact} />
+        <Route path="/free-mockup" component={FreeMockup} />
         <Route path="/get-mockup" component={GetMockupPage} />
         <Route path="/quote-view/:token" component={QuoteViewPage} />
 
