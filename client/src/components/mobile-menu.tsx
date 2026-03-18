@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { X, Instagram, Facebook, Twitter } from "lucide-react";
+import { X, Instagram, Facebook, Twitter, LogIn, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/lib/auth-context";
 
 const TikTokIcon = ({ className }: { className?: string }) => (
   <svg
@@ -37,6 +38,7 @@ const navLinks = [
 
 export function MobileMenu({ isOpen, onClose }: MobileMenuProps) {
   const [location] = useLocation();
+  const { user } = useAuth();
 
   useEffect(() => {
     if (isOpen) {
@@ -85,13 +87,23 @@ export function MobileMenu({ isOpen, onClose }: MobileMenuProps) {
             ))}
           </nav>
 
-          <div className="px-6 py-4">
+          <div className="px-6 py-4 space-y-3">
             <Link href="/quote">
-              <Button 
+              <Button
                 className="w-full bg-black text-white hover:bg-black/80 font-display uppercase tracking-wide rounded-full"
                 onClick={onClose}
               >
                 Start a Project
+              </Button>
+            </Link>
+            <Link href={user ? (user.role === "admin" ? "/admin" : "/portal") : "/login"}>
+              <Button
+                variant="outline"
+                className="w-full border-black/20 text-black hover:bg-black/5 font-display uppercase tracking-wide rounded-full mt-2"
+                onClick={onClose}
+              >
+                {user ? <User className="mr-2 h-4 w-4" /> : <LogIn className="mr-2 h-4 w-4" />}
+                {user ? "My Portal" : "Login"}
               </Button>
             </Link>
           </div>
