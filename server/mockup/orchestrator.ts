@@ -10,7 +10,8 @@ import { mockupRequests, mockupDesigns } from "../../shared/schema";
 import { eq } from "drizzle-orm";
 import { generateMockupImage, type GeminiGenerateOptions } from "./gemini";
 import { generateVoiceover } from "./elevenlabs";
-import { createVideoMontage } from "./video";
+// Dynamic import to avoid loading child_process at module level (crashes Vercel serverless)
+const lazyVideoImport = () => import("./video").then((m) => m.createVideoMontage);
 import { createClickUpTask } from "./clickup";
 import { syncGhlTag } from "../ghl-sync";
 import { emailService } from "../email";
@@ -209,6 +210,7 @@ export async function runMockupPipeline(requestId: string): Promise<MockupPipeli
     try {
       if (audioBuffer && imageBuffers.length >= 2) {
         console.log(`[Mockup] Creating video montage...`);
+        const createVideoMontage = await lazyVideoImport();
         const videoResult = await createVideoMontage({
           images: imageBuffers,
           audio: audioBuffer,
