@@ -1,14 +1,16 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Menu } from "lucide-react";
+import { Menu, LogIn, User } from "lucide-react";
 import { useState } from "react";
 import logo from "@assets/Sideline_Logo_1765694323892.png";
 import logoHorizontal from "@assets/Sideline_NZ_logo_Horizontal_Wite_1767355724062.png";
 import { MobileMenu } from "./mobile-menu";
+import { useAuth } from "@/lib/auth-context";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { user } = useAuth();
 
   const navLinks = [
     { href: "/clubs", label: "Clubs" },
@@ -60,11 +62,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
 
-          <Link href="/quote">
-            <span className="text-xs tracking-wider uppercase font-medium text-white/40 hover:text-white transition-colors cursor-pointer hidden sm:inline">
-              Get a Quote
-            </span>
-          </Link>
+          <div className="flex items-center gap-6">
+            <Link href="/quote">
+              <span className="text-xs tracking-wider uppercase font-medium text-white/40 hover:text-white transition-colors cursor-pointer hidden sm:inline">
+                Get a Quote
+              </span>
+            </Link>
+            <Link href={user ? (user.role === "admin" ? "/admin" : "/portal") : "/login"}>
+              <span className="flex items-center gap-1.5 text-xs tracking-wider uppercase font-medium text-white/40 hover:text-white transition-colors cursor-pointer">
+                {user ? <User size={14} /> : <LogIn size={14} />}
+                <span className="hidden sm:inline">{user ? "Portal" : "Login"}</span>
+              </span>
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -90,6 +100,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </Link>
               ))}
             </div>
+
+            <Link href={user ? (user.role === "admin" ? "/admin" : "/portal") : "/login"}>
+              <span className="text-xs tracking-wider uppercase text-white/25 hover:text-white transition-colors cursor-pointer mb-6 block">
+                {user ? "My Portal" : "Login"}
+              </span>
+            </Link>
 
             <p className="text-xs text-white/20 tracking-wider">
               &copy; {new Date().getFullYear()} Sideline Custom Goods Ltd
