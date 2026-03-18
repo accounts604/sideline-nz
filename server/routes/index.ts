@@ -14,6 +14,11 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Health check for Railway/monitoring
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
   // GHL form submissions + product sync
   app.use("/api/ghl", ghlRouter);
 
