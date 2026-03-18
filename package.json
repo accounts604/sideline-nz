@@ -8,7 +8,7 @@
     "dev:server": "NODE_ENV=development tsx server/index.ts",
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "vite build",
-    "build:vercel": "vite build",
+    "build:vercel": "vite build && node scripts/bundle-api.mjs",
     "build:legacy": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
