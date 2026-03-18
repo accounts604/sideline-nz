@@ -2,6 +2,8 @@
 import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { createServer } from "http";
+import { registerRoutes } from "../server/routes/index";
+import { WebhookHandlers } from "../server/webhookHandlers";
 
 const app = express();
 const httpServer = createServer(app);
@@ -12,7 +14,6 @@ app.post(
   express.raw({ type: 'application/json' }),
   async (req, res) => {
     try {
-      const { WebhookHandlers } = await import("../server/webhookHandlers");
       const signature = req.headers['stripe-signature'];
       if (!signature) {
         return res.status(400).json({ error: 'Missing stripe-signature' });
@@ -42,18 +43,19 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   res.status(status).json({ message });
 });
 
-// Register all API routes lazily on first request (avoids loading
-// native modules like bcrypt at module-init time on Vercel)
+// Register all API routes (lazy, once per cold start)
 let routesRegistered = false;
+async function ensureRoutes() {
+  if (!routesRegistered) {
+    await registerRoutes(httpServer, app);
+    routesRegistered = true;
+  }
+}
 
 // Vercel serverless handler
 export default async function handler(req: any, res: any) {
   try {
-    if (!routesRegistered) {
-      const { registerRoutes } = await import("../server/routes/index");
-      await registerRoutes(httpServer, app);
-      routesRegistered = true;
-    }
+    await ensureRoutes();
   } catch (e: any) {
     console.error("[Vercel] Route registration failed:", e.message, e.stack);
     return res.status(500).json({

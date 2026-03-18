@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-// Dynamic import to avoid native module crash on Vercel serverless
-const lazyBcrypt = () => import("bcrypt").then((m) => m.default);
+import bcrypt from "bcryptjs";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 const JWT_EXPIRES_IN = "7d";
@@ -67,11 +66,9 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  const bcrypt = await lazyBcrypt();
   return bcrypt.hash(password, 10);
 }
 
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  const bcrypt = await lazyBcrypt();
   return bcrypt.compare(password, hash);
 }

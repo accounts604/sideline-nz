@@ -10,7 +10,7 @@ import "dotenv/config";
 import { db } from "../server/db";
 import { users } from "../shared/schema";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "romero@sidelinenz.com";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "changeme123";
