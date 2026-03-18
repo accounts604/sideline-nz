@@ -13,9 +13,11 @@ import {
   type QualityCheck, type InsertQualityCheck,
   type OrderMessage, type InsertOrderMessage,
   type OrderActivity, type InsertOrderActivity,
+  type ClubAccount, type InsertClubAccount,
   users, carts, cartItems, orders, orderItems, ghlProducts,
   designFiles, designComments, notifications,
-  orderSizeBreakdowns, productionStages, qualityChecks, orderMessages, orderActivity
+  orderSizeBreakdowns, productionStages, qualityChecks, orderMessages, orderActivity,
+  clubAccounts
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, desc, count, ilike } from "drizzle-orm";
@@ -31,6 +33,13 @@ export interface IStorage {
   updateUserStripeInfo(userId: string, stripeCustomerId: string): Promise<User | undefined>;
   acceptInvite(userId: string, hashedPassword: string): Promise<User | undefined>;
   linkOrdersByEmail(email: string, userId: string): Promise<void>;
+
+  // Club Accounts (Club Portal)
+  getClubAccount(id: string): Promise<ClubAccount | undefined>;
+  getClubAccountByEmail(email: string): Promise<ClubAccount | undefined>;
+  createClubAccount(account: InsertClubAccount): Promise<ClubAccount>;
+  updateClubAccount(id: string, data: Partial<InsertClubAccount>): Promise<ClubAccount | undefined>;
+  getClubOrder(clubAccountId: string): Promise<Order | undefined>;
   
   // Carts
   getCart(id: string): Promise<Cart | undefined>;
@@ -185,6 +194,38 @@ export class DatabaseStorage implements IStorage {
     await db.update(orders)
       .set({ userId })
       .where(and(eq(orders.customerEmail, email), sql`${orders.userId} IS NULL`));
+  }
+
+  // Club Accounts
+  async getClubAccount(id: string): Promise<ClubAccount | undefined> {
+    const [account] = await db.select().from(clubAccounts).where(eq(clubAccounts.id, id));
+    return account;
+  }
+
+  async getClubAccountByEmail(email: string): Promise<ClubAccount | undefined> {
+    const [account] = await db.select().from(clubAccounts).where(eq(clubAccounts.email, email));
+    return account;
+  }
+
+  async createClubAccount(account: InsertClubAccount): Promise<ClubAccount> {
+    const [created] = await db.insert(clubAccounts).values(account).returning();
+    return created;
+  }
+
+  async updateClubAccount(id: string, data: Partial<InsertClubAccount>): Promise<ClubAccount | undefined> {
+    const [updated] = await db.update(clubAccounts)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(clubAccounts.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getClubOrder(clubAccountId: string): Promise<Order | undefined> {
+    const [order] = await db.select().from(orders)
+      .where(eq(orders.clubAccountId, clubAccountId))
+      .orderBy(desc(orders.createdAt))
+      .limit(1);
+    return order;
   }
 
   // Carts

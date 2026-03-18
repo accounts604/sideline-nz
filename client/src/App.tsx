@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ClientShell } from "@/components/client-shell";
 import { AuthProvider } from "@/lib/auth-context";
-import { ProtectedRoute, AdminRoute } from "@/components/protected-route";
+import { ProtectedRoute, AdminRoute, ClubPortalRoute } from "@/components/protected-route";
 import NotFound from "@/pages/not-found";
 
 import Home from "@/pages/home";
@@ -46,6 +46,11 @@ import PortalOrderDetail from "@/pages/portal/order-detail";
 import PortalProfile from "@/pages/portal/profile";
 import PortalNotifications from "@/pages/portal/notifications";
 import PortalInvoice from "@/pages/portal/invoice";
+import ClubPortalIndex from "@/pages/club-portal/index";
+import ClubPortalLogin from "@/pages/club-portal/login";
+import ClubPortalDashboard from "@/pages/club-portal/dashboard";
+import MockupReviewPage from "@/pages/club-portal/mockup-review";
+import OrderTrackingPage from "@/pages/club-portal/order-tracking";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -145,6 +150,21 @@ function Router() {
         </Route>
         <Route path="/portal">
           {() => <ProtectedRoute><PortalDashboard /></ProtectedRoute>}
+        </Route>
+
+        {/* Club Portal */}
+        <Route path="/club-portal/login" component={ClubPortalLogin} />
+        <Route path="/club-portal/mockup-review">
+          {() => <ClubPortalRoute><MockupReviewPage /></ClubPortalRoute>}
+        </Route>
+        <Route path="/club-portal/order-tracking">
+          {() => <ClubPortalRoute><OrderTrackingPage /></ClubPortalRoute>}
+        </Route>
+        <Route path="/club-portal/dashboard">
+          {() => <ClubPortalRoute><ClubPortalDashboard /></ClubPortalRoute>}
+        </Route>
+        <Route path="/club-portal">
+          {() => <ClubPortalRoute><ClubPortalIndex /></ClubPortalRoute>}
         </Route>
 
         <Route component={NotFound} />

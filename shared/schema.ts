@@ -71,6 +71,7 @@ export const orders = pgTable("orders", {
   orderNumber: text("order_number").notNull().unique(), // Human-readable order number
   sessionId: text("session_id"),
   userId: varchar("user_id").references(() => users.id),
+  clubAccountId: varchar("club_account_id").references(() => clubAccounts.id), // Club portal orders
   storeSlug: text("store_slug").notNull(),
   stripeCheckoutSessionId: text("stripe_checkout_session_id"),
   stripePaymentIntentId: text("stripe_payment_intent_id"),
@@ -89,6 +90,11 @@ export const orders = pgTable("orders", {
   trackingNumber: text("tracking_number"),
   trackingUrl: text("tracking_url"),
   estimatedDeliveryDate: timestamp("estimated_delivery_date"),
+  // Club Portal fields
+  clubPortalStatus: text("club_portal_status").default("brief_received"), // brief_received, mockup_in_progress, mockup_ready, revision_in_progress, design_approved, in_production, shipped, delivered
+  mockupUrl: text("mockup_url"), // Vercel Blob URL for mockup image
+  revisionNotes: text("revision_notes"), // Club's revision notes
+  mockupApprovedAt: timestamp("mockup_approved_at"),
   // PO-specific fields
   poReference: text("po_reference"), // e.g. "Onewhero Rugby Juniors 2026"
   accountName: text("account_name"), // Account / team name on PO
@@ -272,6 +278,22 @@ export const orderActivity = pgTable("order_activity", {
 export const insertOrderActivitySchema = createInsertSchema(orderActivity).omit({ id: true, createdAt: true });
 export type InsertOrderActivity = z.infer<typeof insertOrderActivitySchema>;
 export type OrderActivity = typeof orderActivity.$inferSelect;
+
+// Club Portal Accounts — separate login system for clubs who paid $297
+export const clubAccounts = pgTable("club_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  clubName: text("club_name").notNull(),
+  contactId: text("contact_id"), // GHL contact ID
+  shopifyStoreUrl: text("shopify_store_url"), // Their Shopify store URL
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertClubAccountSchema = createInsertSchema(clubAccounts).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertClubAccount = z.infer<typeof insertClubAccountSchema>;
+export type ClubAccount = typeof clubAccounts.$inferSelect;
 
 // Mockup requests — lead form submissions that trigger AI mockup generation
 export const mockupRequests = pgTable("mockup_requests", {

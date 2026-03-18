@@ -9,6 +9,7 @@ import customerRouter from "./customer";
 import uploadsRouter from "./uploads";
 import { mockupPublicRouter, adminMockupRouter } from "./mockups";
 import { adminQuoteRouter, templateRouter, publicQuoteRouter } from "./quotes";
+import clubPortalRouter from "./club-portal";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -50,6 +51,9 @@ export async function registerRoutes(
   app.use("/api/admin/quotes", adminQuoteRouter);
   app.use("/api/admin/quote-templates", templateRouter);
   app.use("/api/quotes", publicQuoteRouter);
+
+  // Club Portal (Phase 4)
+  app.use("/api/club-portal", clubPortalRouter);
 
   return httpServer;
 }

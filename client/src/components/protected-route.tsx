@@ -1,6 +1,8 @@
 import { Redirect } from "wouter";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { useQuery } from "@tanstack/react-query";
+import { getQueryFn } from "@/lib/queryClient";
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -37,6 +39,28 @@ export function AdminRoute({ children }: { children: React.ReactNode }) {
 
   if (user.role !== "admin") {
     return <Redirect to="/portal" />;
+  }
+
+  return <>{children}</>;
+}
+
+export function ClubPortalRoute({ children }: { children: React.ReactNode }) {
+  const { data: me, isLoading } = useQuery({
+    queryKey: ["/api/club-portal/me"],
+    queryFn: getQueryFn({ on401: "returnNull" }),
+    retry: false,
+  });
+
+  if (isLoading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!me) {
+    return <Redirect to="/club-portal/login" />;
   }
 
   return <>{children}</>;

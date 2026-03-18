@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { storage } from "../storage";
 import { getUncachableStripeClient } from "../stripeClient";
+import { emailService } from "../email";
 import { z } from "zod";
 
 const router = Router();
@@ -79,6 +80,7 @@ export async function createGhlContact(contactData: any, tags: string[] = []) {
     logo_status: "logo_status",
     logo_notes: "logo_notes",
     design_notes: "design_notes",
+    logo_file_url: "logo_file_url",
   };
 
   for (const [formKey, ghlKey] of Object.entries(customFieldMappings)) {
@@ -274,6 +276,7 @@ const intakeFormSchema = z.object({
   logo_status: z.string().min(1, "Logo status is required"),
   logo_notes: z.string().optional(),
   design_notes: z.string().optional(),
+  logo_file_url: z.string().optional(),
   terms_agreed: z.boolean(),
 });
 
@@ -287,12 +290,17 @@ router.post("/intake", async (req, res) => {
 
     const payload = parsed.data;
 
-    // Build tags: include "free-mockup-request", first sport lowercased+hyphenated, and quantity range
+    // Build tags: include "free-mockup-request", first sport lowercased+hyphenated, quantity range, and logo-recreation-needed if applicable
     const tags = [
       "free-mockup-request",
       payload.sport[0]?.toLowerCase().replace(/\s+/g, "-") || "sport",
       payload.quantity_range,
     ];
+
+    // Add tag if user needs logo recreation
+    if (payload.logo_status === "No logo yet") {
+      tags.push("logo-recreation-needed");
+    }
 
     // Map form data to GHL contact structure
     const enriched = {
@@ -313,17 +321,58 @@ router.post("/intake", async (req, res) => {
       logo_status: payload.logo_status,
       logo_notes: payload.logo_notes || "",
       design_notes: payload.design_notes || "",
+      logo_file_url: payload.logo_file_url || "",
       source: "sidelinenz.com free-mockup-intake",
       submitted_at: new Date().toISOString(),
     };
 
     const result = await createGhlContact(enriched, tags);
+    const contactId = result.contactId || crypto.randomUUID();
+
+    // Send email notification if logo file was uploaded
+    if (payload.logo_file_url) {
+      const subject = `Logo Upload — ${payload.organization} — ${contactId}`;
+      const html = `
+        <h2>Free Mockup Intake — Logo Upload</h2>
+        <p><strong>Organization:</strong> ${payload.organization}</p>
+        <p><strong>Contact Name:</strong> ${payload.contact_name}</p>
+        <p><strong>Email:</strong> ${payload.email}</p>
+        <p><strong>Phone:</strong> ${payload.phone || "N/A"}</p>
+        <hr />
+        <p><strong>Club Type:</strong> ${payload.club_type}</p>
+        <p><strong>Sport:</strong> ${payload.sport.join(", ")}</p>
+        <p><strong>Role:</strong> ${payload.role}</p>
+        <p><strong>Kit Items:</strong> ${payload.kit_items.join(", ")}</p>
+        <p><strong>Quantity Range:</strong> ${payload.quantity_range}</p>
+        <hr />
+        <p><strong>Primary Colour:</strong> ${payload.primary_colour}</p>
+        <p><strong>Secondary Colour:</strong> ${payload.secondary_colour || "N/A"}</p>
+        <p><strong>Timeline:</strong> ${payload.timeline}</p>
+        <p><strong>Design Direction:</strong> ${payload.design_direction}</p>
+        <p><strong>Logo Status:</strong> ${payload.logo_status}</p>
+        <hr />
+        <p><strong>Logo File:</strong> <a href="${payload.logo_file_url}">${payload.logo_file_url}</a></p>
+        <p><strong>Logo Notes:</strong> ${payload.logo_notes || "N/A"}</p>
+        <p><strong>Design Notes:</strong> ${payload.design_notes || "N/A"}</p>
+        <p><strong>Current Supplier:</strong> ${payload.current_supplier || "N/A"}</p>
+        <hr />
+        <p><strong>GHL Contact ID:</strong> ${contactId}</p>
+        <p><strong>Submitted:</strong> ${new Date().toISOString()}</p>
+      `;
+
+      await emailService.send({
+        to: "info@sidelinenz.com",
+        subject,
+        text: `Free Mockup Intake — Logo Upload\n\nOrganization: ${payload.organization}\nEmail: ${payload.email}\nLogo: ${payload.logo_file_url}\nContact ID: ${contactId}`,
+        html,
+      });
+    }
 
     if (!result.success && result.reason === "credentials_missing") {
       console.log("GHL not configured - intake form logged above");
     }
 
-    res.json({ ok: true, id: result.contactId || crypto.randomUUID() });
+    res.json({ ok: true, id: contactId });
   } catch (e: any) {
     console.error("Intake form error:", e);
     res.status(500).json({ error: e.message || "Server error" });
