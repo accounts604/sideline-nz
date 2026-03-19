@@ -531,4 +531,98 @@ router.get("/products/:storeSlug", async (req, res) => {
   }
 });
 
+// ====== Shopify Team Store Ready Webhook ======
+
+const shopifyTeamStoreWebhookSchema = z.object({
+  contactId: z.string(),
+  eventType: z.string(),
+  contact: z.object({
+    id: z.string(),
+    firstName: z.string().optional(),
+    lastName: z.string().optional(),
+    email: z.string().optional(),
+    customFields: z.array(z.object({
+      key: z.string(),
+      field_value: z.string().optional(),
+    })).optional().default([]),
+  }).optional(),
+});
+
+router.post("/shopify-team-store-ready", async (req, res) => {
+  try {
+    // Verify webhook signature if secret is provided
+    const webhookSecret = process.env.GHL_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const signature = req.headers["x-ghl-signature"] as string;
+      if (!signature || signature !== webhookSecret) {
+        console.error("GHL webhook: Invalid signature");
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+    }
+
+    const payload = shopifyTeamStoreWebhookSchema.parse(req.body);
+    
+    console.log(`[GHL Webhook] Shopify team store ready: ${payload.contactId}`);
+
+    // Extract club name and handle from contact custom fields
+    let clubName = "";
+    let clubHandle = "";
+    
+    if (payload.contact?.customFields) {
+      const customFields = payload.contact.customFields.reduce((acc: any, field: any) => {
+        acc[field.key] = field.field_value;
+        return acc;
+      }, {});
+      
+      clubName = customFields.organization || customFields.club_name || "";
+      clubHandle = clubName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    }
+
+    // Fallback: use contact name if organization not found
+    if (!clubName && payload.contact?.firstName) {
+      clubName = `${payload.contact.firstName} ${payload.contact.lastName || ""}`.trim();
+      clubHandle = clubName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    }
+
+    if (!clubName || !clubHandle) {
+      console.error("[GHL Webhook] Missing club name or handle data");
+      return res.status(400).json({ error: "Missing club name or handle" });
+    }
+
+    // Call the Shopify collection creation endpoint (internal call)
+    const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${process.env.PORT || 3000}`;
+    const collectionEndpoint = `${baseUrl}/api/shopify/create-collection`;
+
+    console.log(`[GHL Webhook] Creating Shopify collection: ${clubName} (${clubHandle})`);
+
+    const collectionResponse = await fetch(collectionEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        club_name: clubName,
+        club_handle: clubHandle,
+        description: `${clubName} Team Store`,
+      }),
+    });
+
+    const collectionData = await collectionResponse.json().catch(() => ({}));
+
+    if (!collectionResponse.ok) {
+      console.error(`[GHL Webhook] Collection creation failed:`, collectionData);
+      // Log error but don't fail the webhook — continue with normal flow
+    } else {
+      console.log(`[GHL Webhook] Collection created successfully:`, collectionData);
+    }
+
+    // Return 200 immediately — webhook is processed
+    res.json({ ok: true, contactId: payload.contactId, collection: collectionData });
+  } catch (e: any) {
+    console.error("GHL shopify-team-store-ready webhook error:", e);
+    // Still return 200 to acknowledge webhook was received
+    res.status(200).json({ ok: false, error: e.message || "Processing error" });
+  }
+});
+
 export default router;

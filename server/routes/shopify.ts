@@ -105,4 +105,64 @@ router.post("/cart", async (req, res) => {
   }
 });
 
+// ====== APIEase Shopify Collection Creation ======
+
+router.post("/create-collection", async (req, res) => {
+  try {
+    const { club_name, club_handle, description } = req.body;
+
+    // Validate inputs
+    if (!club_name || !club_handle) {
+      return res.status(400).json({ error: "club_name and club_handle are required" });
+    }
+
+    const apiKey = process.env.APIEASE_API_KEY;
+    const baseUrl = process.env.APIEASE_BASE_URL || "https://app-admin.apiease.com";
+    const shopName = process.env.APIEASE_SHOP_NAME || "sideline-nz";
+
+    if (!apiKey) {
+      console.error("APIEASE_API_KEY not configured");
+      return res.status(503).json({ error: "APIEase not configured" });
+    }
+
+    const proxyUrl = `${baseUrl}/api/proxy/${shopName}/create-collection`;
+    
+    console.log(`[Shopify] Creating collection via APIEase: club_name=${club_name}, club_handle=${club_handle}`);
+
+    const response = await fetch(proxyUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        club_name,
+        club_handle,
+        description: description || `${club_name} Team Store`,
+      }),
+    });
+
+    const responseData = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const errorMsg = responseData.error || responseData.message || `HTTP ${response.status}`;
+      console.error(`[Shopify] APIEase error: ${errorMsg}`, responseData);
+      return res.status(response.status || 500).json({ error: errorMsg });
+    }
+
+    console.log(`[Shopify] Collection created successfully:`, responseData);
+    
+    const collectionUrl = `https://${SHOPIFY_STORE_URL}/collections/club-${club_handle}`;
+    res.json({
+      ok: true,
+      collection: responseData.collection,
+      collectionUrl,
+    });
+  } catch (e: any) {
+    console.error(`[Shopify] Collection creation failed:`, e.message);
+    // Log but don't crash — continue with normal flow
+    res.status(500).json({ error: String(e.message).substring(0, 300) });
+  }
+});
+
 export default router;
