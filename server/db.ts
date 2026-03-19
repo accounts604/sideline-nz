@@ -10,7 +10,7 @@ function getDb() {
       throw new Error("DATABASE_URL environment variable is required. Create a .env file — see .env.example");
     }
     const client = postgres(process.env.DATABASE_URL, {
-      ssl: process.env.NODE_ENV === "production" ? "require" : undefined,
+      ssl: "require", // Always require SSL for Neon
       max: process.env.VERCEL ? 1 : 10,
     });
     _db = drizzle(client, { schema });
