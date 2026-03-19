@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { storage } from "../storage";
-import { hashPassword, verifyPassword, setAuthCookie } from "../auth";
+import { hashPassword, verifyPassword, setAuthCookie, clearAuthCookie } from "../auth";
 import { emailService } from "../email";
 
 const router = Router();
@@ -223,7 +223,7 @@ router.post("/request-revision", requireClubAuth, async (req: Request, res: Resp
 
 // ====== LOGOUT ======
 router.post("/logout", (req: Request, res: Response) => {
-  res.clearCookie("auth_token");
+  clearAuthCookie(res);
   res.json({ success: true });
 });
 
