@@ -1,0 +1,320 @@
+/**
+ * Horizon Theme Override CSS
+ * 
+ * Maps Horizon Shopify theme variables to Sideline club portal
+ * dark design system: black background, white text, minimal aesthetics
+ * 
+ * Design system constraints:
+ * - Background: #0a0a0a (black)
+ * - Text: #ffffff (white)
+ * - Borders: rgba(255, 255, 255, 0.08) - white with 8% opacity
+ * - Inputs: rgba(255, 255, 255, 0.12) - white with 12% opacity
+ * - No gradients, shadows, orange, or blue
+ * - Mobile responsive (750px breakpoint matches Horizon)
+ */
+
+/* ============================================================================
+   Horizon CSS Variable Foundation
+   ========================================================================== */
+
+:root {
+  /* Color Palette - Dark Theme */
+  --color-background: #0a0a0a;
+  --color-foreground: #ffffff;
+  --color-foreground-rgb: 255, 255, 255;
+  
+  /* Primary Actions - White on Black */
+  --color-primary: #ffffff;
+  --color-primary-rgb: 255, 255, 255;
+  
+  /* Semantic Colors */
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+  
+  /* UI Elements */
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-rgb: 255, 255, 255;
+  --opacity-border: 0.08;
+  
+  --color-input-background: rgba(255, 255, 255, 0.04);
+  --color-input-hover-background: rgba(255, 255, 255, 0.08);
+  --color-input-focus-background: rgba(255, 255, 255, 0.12);
+  --color-input-border: rgba(255, 255, 255, 0.12);
+  --color-input-focus-border: rgba(255, 255, 255, 0.3);
+  
+  /* Surface & Cards */
+  --color-surface: #0a0a0a;
+  --color-surface-elevated: #141414;
+  --color-surface-overlay: rgba(0, 0, 0, 0.8);
+  
+  /* Text Hierarchy */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: rgba(255, 255, 255, 0.7);
+  --color-text-tertiary: rgba(255, 255, 255, 0.5);
+  --color-text-disabled: rgba(255, 255, 255, 0.3);
+  
+  /* Shadow - Minimal */
+  --color-shadow: rgba(0, 0, 0, 0.3);
+  --color-shadow-light: rgba(0, 0, 0, 0.1);
+  
+  /* Opacity Scale */
+  --opacity-0: 0;
+  --opacity-5: 0.05;
+  --opacity-8: 0.08;
+  --opacity-10: 0.1;
+  --opacity-12: 0.12;
+  --opacity-20: 0.2;
+  --opacity-30: 0.3;
+  --opacity-40: 0.4;
+  --opacity-50: 0.5;
+  --opacity-60: 0.6;
+  --opacity-70: 0.7;
+  --opacity-80: 0.8;
+  --opacity-90: 0.9;
+  --opacity-100: 1;
+  
+  /* Typography */
+  --font-family-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'DM Sans', sans-serif;
+  --font-family-heading: 'Peloric', 'Bebas Neue', 'Oswald', sans-serif;
+  --font-size-base: 16px;
+  --font-size-sm: 14px;
+  --font-size-xs: 12px;
+  --font-size-lg: 18px;
+  --font-size-xl: 24px;
+  --font-size-2xl: 32px;
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.5;
+  --line-height-loose: 1.75;
+  
+  /* Spacing Scale */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+  --spacing-3xl: 48px;
+  --spacing-4xl: 64px;
+  
+  /* Border & Radius */
+  --border-width-1: 1px;
+  --border-width-2: 2px;
+  --border-radius-sm: 4px;
+  --border-radius-md: 6px;
+  --border-radius-lg: 8px;
+  --style-border-radius-inputs: 4px;
+  
+  /* Transitions */
+  --transition-duration-fast: 150ms;
+  --transition-duration-base: 200ms;
+  --transition-duration-slow: 300ms;
+  --transition-timing-ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out-quad: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  
+  /* Hover Effects */
+  --hover-lift-amount: 2px;
+  --hover-scale-amount: 1.02;
+  --hover-subtle-zoom-amount: 1.01;
+  --hover-shadow-color: rgba(0, 0, 0, 0.3);
+  --hover-transition-duration: 0.2s;
+  --hover-transition-timing: ease-out;
+  
+  /* Surface Transitions */
+  --surface-transition-duration: 0.2s;
+  --surface-transition-timing: var(--ease-out-quad);
+  
+  /* Submenu Animation */
+  --submenu-animation-speed: 200ms;
+  --submenu-animation-easing: cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+/* ============================================================================
+   Base Element Overrides
+   ========================================================================== */
+
+html {
+  /* Firefox scrollbar styling */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) #0a0a0a;
+  scroll-behavior: smooth;
+}
+
+html[scroll-lock] {
+  overflow: hidden;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* ============================================================================
+   Form Elements
+   ========================================================================== */
+
+input,
+textarea,
+select,
+[type="text"],
+[type="email"],
+[type="password"],
+[type="number"],
+[type="tel"],
+[type="search"],
+[type="url"],
+[type="date"],
+[type="time"] {
+  font: inherit;
+  background-color: var(--color-input-background);
+  color: var(--color-foreground);
+  border: var(--border-width-1) solid var(--color-input-border);
+  border-radius: var(--style-border-radius-inputs);
+  padding: 8px 12px;
+  transition: all var(--transition-duration-base) var(--transition-timing-ease-out);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+input:hover,
+textarea:hover,
+select:hover {
+  background-color: var(--color-input-hover-background);
+  border-color: var(--color-input-border);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  background-color: var(--color-input-focus-background);
+  border-color: var(--color-input-focus-border);
+  box-shadow: inset 0 0 0 1px var(--color-input-focus-border);
+}
+
+select {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 16px;
+  padding-right: 32px;
+  appearance: none;
+}
+
+/* ============================================================================
+   Scrollbar Styling (Webkit Browsers)
+   ========================================================================== */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* ============================================================================
+   Utility Classes for Portal Integration
+   ========================================================================== */
+
+/* Border utilities matching portal design */
+.border-white-08 {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.border-white-12 {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.bg-white-04 {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.bg-white-08 {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.bg-white-12 {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+.text-white-70 {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.text-white-50 {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Hover states */
+.hover-bg-white-08:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.hover-text-white-100:hover {
+  color: #ffffff;
+}
+
+/* Transition utilities */
+.transition-fast {
+  transition: all var(--transition-duration-fast) var(--transition-timing-ease-out);
+}
+
+.transition-base {
+  transition: all var(--transition-duration-base) var(--transition-timing-ease-out);
+}
+
+.transition-slow {
+  transition: all var(--transition-duration-slow) var(--transition-timing-ease-out);
+}
+
+/* ============================================================================
+   Responsive Design
+   ========================================================================== */
+
+/* Horizon 750px breakpoint equivalent to Tailwind's md: */
+@media (max-width: 749px) {
+  :root {
+    --font-size-base: 14px;
+    --spacing-lg: 12px;
+  }
+  
+  body {
+    font-size: var(--font-size-base);
+  }
+}
+
+@media (min-width: 750px) {
+  /* Desktop spacing and sizing */
+  :root {
+    --font-size-base: 16px;
+  }
+}
+
+/* Dark mode forced (no light mode variant needed for portal) */
+@media (prefers-color-scheme: dark) {
+  /* Maintain dark theme regardless of system preference */
+  :root {
+    color-scheme: dark;
+  }
+}

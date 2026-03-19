@@ -2,6 +2,8 @@ import { Link, useLocation } from "wouter";
 import { useState } from "react";
 import { LayoutDashboard, Palette, Package, ShoppingBag, LogOut, Menu, X } from "lucide-react";
 import { SidelineLogo } from "./sideline-logo";
+import "../styles/horizon-theme-override.css";
+import "../styles/horizon-components.css";
 
 interface ClubPortalLayoutProps {
   clubName?: string;
@@ -32,22 +34,7 @@ function NavLink({
 }) {
   return (
     <Link href={href} onClick={onClick}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "12px",
-          padding: "10px 16px",
-          borderRadius: "6px",
-          fontSize: "14px",
-          fontWeight: active ? 600 : 400,
-          color: active ? "#fff" : "rgba(255,255,255,0.6)",
-          background: active ? "rgba(255,255,255,0.08)" : "transparent",
-          borderLeft: active ? "3px solid #ffffff" : "3px solid transparent",
-          cursor: "pointer",
-          transition: "all 0.15s ease",
-        }}
-      >
+      <div className={`nav-item ${active ? "active" : ""}`}>
         <Icon size={18} />
         {label}
       </div>
@@ -73,21 +60,11 @@ export function ClubPortalLayout({
   const sidebarContent = (
     <>
       {/* Logo + Club Name */}
-      <div style={{ padding: "24px 20px 32px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="sidebar-header">
         <Link href="/club-portal/dashboard">
           <div style={{ cursor: "pointer" }}>
             <SidelineLogo subtitle="Club Hub" />
-            <p
-              style={{
-                marginTop: "12px",
-                fontSize: "14px",
-                fontWeight: 600,
-                color: "#fff",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
+            <p className="club-name" title={clubName}>
               {clubName}
             </p>
           </div>
@@ -95,7 +72,7 @@ export function ClubPortalLayout({
       </div>
 
       {/* Navigation */}
-      <nav style={{ padding: "16px 12px", flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+      <nav className="sidebar-nav">
         {NAV_ITEMS.map((item) => (
           <NavLink
             key={item.href}
@@ -108,31 +85,12 @@ export function ClubPortalLayout({
 
       {/* Store Link */}
       {shopifyStoreUrl && (
-        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ padding: "12px 16px", borderTop: "var(--border-width-1) solid var(--color-border)", borderBottom: "var(--border-width-1) solid var(--color-border)" }}>
           <a
             href={shopifyStoreUrl}
             target="_blank"
             rel="noopener noreferrer"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              padding: "10px 16px",
-              borderRadius: "6px",
-              fontSize: "14px",
-              color: "rgba(255,255,255,0.6)",
-              textDecoration: "none",
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(255,255,255,0.08)";
-              e.currentTarget.style.color = "#fff";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "rgba(255,255,255,0.6)";
-            }}
+            className="nav-item"
           >
             <ShoppingBag size={18} />
             My Store
@@ -141,35 +99,16 @@ export function ClubPortalLayout({
       )}
 
       {/* Email + Logout */}
-      <div style={{ padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-        <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)", marginBottom: "12px", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {clubEmail}
-        </p>
+      <div className="sidebar-footer">
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: "12px", color: "var(--color-text-disabled)", margin: "0 0 12px", overflow: "hidden", textOverflow: "ellipsis" }} title={clubEmail}>
+            {clubEmail}
+          </p>
+        </div>
         <button
           onClick={onLogout}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            width: "100%",
-            padding: "8px 12px",
-            fontSize: "13px",
-            fontWeight: 500,
-            color: "rgba(255,255,255,0.6)",
-            background: "transparent",
-            border: "none",
-            borderRadius: "6px",
-            cursor: "pointer",
-            transition: "all 0.15s ease",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(255,255,255,0.08)";
-            e.currentTarget.style.color = "#fff";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.color = "rgba(255,255,255,0.6)";
-          }}
+          className="btn btn-secondary btn-sm"
+          style={{ gap: "8px" }}
         >
           <LogOut size={16} />
           Sign Out
@@ -179,71 +118,40 @@ export function ClubPortalLayout({
   );
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#000" }}>
-      {/* Desktop Sidebar */}
-      <div
-        style={{
-          display: "none",
-          "@media (min-width: 1024px)": { display: "flex" },
-          flexDirection: "column",
-          width: "260px",
-          background: "#111",
-          borderRight: "1px solid rgba(255,255,255,0.06)",
-        }}
-        className="lg:flex"
-      >
+    <div className="layout-container">
+      {/* Desktop Sidebar - Visible at 750px+ (Horizon breakpoint) */}
+      <aside className="sidebar hidden-mobile" style={{ display: "none" }}>
         {sidebarContent}
-      </div>
+      </aside>
 
-      {/* Mobile Sidebar */}
-      {mobileOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 40,
-          }}
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
+      {/* Mobile Overlay Backdrop */}
       <div
-        style={{
-          position: "fixed",
-          left: 0,
-          top: 0,
-          height: "100vh",
-          width: "260px",
-          background: "#111",
-          borderRight: "1px solid rgba(255,255,255,0.06)",
-          transform: mobileOpen ? "translateX(0)" : "translateX(-100%)",
-          transition: "transform 0.3s ease",
-          zIndex: 50,
-          display: "flex",
-          flexDirection: "column",
-          "@media (min-width: 1024px)": { display: "none" },
-        }}
-        className="lg:hidden"
-      >
-        {sidebarContent}
-      </div>
+        className={`sidebar-backdrop ${mobileOpen ? "open" : ""}`}
+        onClick={() => setMobileOpen(false)}
+      />
 
-      {/* Main Content */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        {/* Mobile Header */}
+      {/* Mobile Sidebar - Overlay drawer */}
+      <aside className={`sidebar ${mobileOpen ? "open" : ""}`} style={{ display: mobileOpen ? "flex" : "none" }}>
+        {sidebarContent}
+      </aside>
+
+      {/* Main Content Area */}
+      <main className="layout-main">
+        {/* Mobile Header - Hidden at 750px+ */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "16px",
-            background: "#111",
-            borderBottom: "1px solid rgba(255,255,255,0.06)",
-            "@media (min-width: 1024px)": { display: "none" },
+            padding: "var(--spacing-lg)",
+            background: "var(--color-surface-elevated)",
+            borderBottom: "var(--border-width-1) solid var(--color-border)",
           }}
-          className="lg:hidden"
+          className="hidden-desktop"
         >
-          <h1 style={{ fontSize: "16px", fontWeight: 600, color: "#fff" }}>Sideline Club Hub</h1>
+          <h1 style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-foreground)", margin: 0 }}>
+            Sideline Club Hub
+          </h1>
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
             style={{
@@ -254,19 +162,22 @@ export function ClubPortalLayout({
               height: "40px",
               background: "transparent",
               border: "none",
-              color: "#fff",
+              color: "var(--color-foreground)",
               cursor: "pointer",
+              transition: "all var(--transition-duration-base) var(--transition-timing-ease-out)",
             }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)"}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
           >
             {mobileOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
 
         {/* Page Content */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "32px 24px" }}>
+        <div className="content-wrapper">
           {children}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

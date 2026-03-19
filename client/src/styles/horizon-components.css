@@ -1,0 +1,757 @@
+/**
+ * Horizon Components CSS
+ * 
+ * Adapt Horizon Shopify theme component patterns to Sideline club portal
+ * Maps Horizon's component library to portal design tokens
+ */
+
+/* ============================================================================
+   Button Components - Horizon Button Patterns
+   ============================================================================ */
+
+.btn,
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: 10px 16px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  line-height: var(--line-height-tight);
+  border-radius: var(--border-radius-md);
+  border: var(--border-width-1) solid transparent;
+  transition: all var(--transition-duration-base) var(--transition-timing-ease-out);
+  cursor: pointer;
+  user-select: none;
+  text-decoration: none;
+}
+
+.btn:disabled,
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn svg,
+.button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Primary Button - White background, black text (inverted for dark portal) */
+.btn-primary,
+.button--primary {
+  background-color: var(--color-primary);
+  color: #0a0a0a;
+  border-color: var(--color-primary);
+  font-weight: 600;
+}
+
+.btn-primary:hover:not(:disabled),
+.button--primary:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.9);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.btn-primary:active:not(:disabled),
+.button--primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Secondary Button - Outline style */
+.btn-secondary,
+.button--secondary {
+  background-color: transparent;
+  color: var(--color-foreground);
+  border-color: var(--color-border);
+}
+
+.btn-secondary:hover:not(:disabled),
+.button--secondary:hover:not(:disabled) {
+  background-color: var(--color-input-hover-background);
+  border-color: var(--color-input-focus-border);
+  color: var(--color-foreground);
+}
+
+.btn-secondary:active:not(:disabled),
+.button--secondary:active:not(:disabled) {
+  background-color: var(--color-input-focus-background);
+}
+
+/* Tertiary Button - Minimal style */
+.btn-tertiary,
+.button--tertiary {
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  border: none;
+}
+
+.btn-tertiary:hover:not(:disabled),
+.button--tertiary:hover:not(:disabled) {
+  color: var(--color-foreground);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+/* Button Sizes */
+.btn-sm,
+.button--small {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.btn-lg,
+.button--large {
+  padding: 14px 24px;
+  font-size: 16px;
+}
+
+/* ============================================================================
+   Input & Form Components
+   ============================================================================ */
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.form-label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-foreground);
+  display: block;
+  margin-bottom: var(--spacing-xs);
+}
+
+.form-label.required::after {
+  content: ' *';
+  color: var(--color-error);
+}
+
+.form-input,
+.form-textarea,
+.form-select {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  background-color: var(--color-input-background);
+  color: var(--color-foreground);
+  border: var(--border-width-1) solid var(--color-input-border);
+  border-radius: var(--border-radius-sm);
+  transition: all var(--transition-duration-base) var(--transition-timing-ease-out);
+}
+
+.form-input::placeholder,
+.form-textarea::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.form-input:hover,
+.form-textarea:hover,
+.form-select:hover {
+  background-color: var(--color-input-hover-background);
+  border-color: var(--color-input-border);
+}
+
+.form-input:focus,
+.form-textarea:focus,
+.form-select:focus {
+  outline: none;
+  background-color: var(--color-input-focus-background);
+  border-color: var(--color-input-focus-border);
+  box-shadow: inset 0 0 0 1px var(--color-input-focus-border);
+}
+
+.form-input:disabled,
+.form-textarea:disabled,
+.form-select:disabled {
+  background-color: rgba(255, 255, 255, 0.02);
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.form-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 16px;
+  padding-right: 32px;
+}
+
+/* Form error states */
+.form-error {
+  color: var(--color-error);
+  font-size: 12px;
+  margin-top: var(--spacing-xs);
+}
+
+.form-input.error,
+.form-textarea.error,
+.form-select.error {
+  border-color: var(--color-error);
+  background-color: rgba(239, 68, 68, 0.04);
+}
+
+/* ============================================================================
+   Card Components - Horizon Surface Pattern
+   ============================================================================ */
+
+.card {
+  background-color: var(--color-surface-elevated);
+  border: var(--border-width-1) solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-lg);
+  transition: all var(--transition-duration-base) var(--transition-timing-ease-out);
+}
+
+.card:hover {
+  background-color: rgba(20, 20, 20, 0.9);
+  border-color: var(--color-input-border);
+}
+
+.card-header {
+  padding: var(--spacing-lg);
+  border-bottom: var(--border-width-1) solid var(--color-border);
+  margin: -16px -16px 16px -16px;
+}
+
+.card-header h3 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.card-body {
+  padding: 0;
+}
+
+.card-footer {
+  padding: var(--spacing-lg);
+  border-top: var(--border-width-1) solid var(--color-border);
+  margin: 16px -16px -16px -16px;
+  display: flex;
+  gap: var(--spacing-md);
+  justify-content: flex-end;
+}
+
+/* ============================================================================
+   8-Stage Pipeline Tracker - Order Status Visualization
+   ============================================================================ */
+
+.pipeline-tracker,
+.order-stages,
+.order-tracker {
+  display: flex;
+  gap: var(--spacing-lg);
+  margin: var(--spacing-xl) 0;
+  padding: var(--spacing-xl);
+  background-color: var(--color-surface-elevated);
+  border: var(--border-width-1) solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  overflow-x: auto;
+  position: relative;
+  scrollbar-width: thin;
+  -ms-overflow-style: auto;
+}
+
+.pipeline-tracker::-webkit-scrollbar,
+.order-stages::-webkit-scrollbar,
+.order-tracker::-webkit-scrollbar {
+  height: 4px;
+}
+
+.pipeline-tracker::-webkit-scrollbar-track,
+.order-stages::-webkit-scrollbar-track,
+.order-tracker::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pipeline-tracker::-webkit-scrollbar-thumb,
+.order-stages::-webkit-scrollbar-thumb,
+.order-tracker::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.stage,
+.pipeline-step,
+.tracker-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-shrink: 0;
+  min-width: 80px;
+  position: relative;
+  padding: 0;
+}
+
+.stage:not(:last-child)::after,
+.pipeline-step:not(:last-child)::after,
+.tracker-stage:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  width: calc(100% + var(--spacing-lg));
+  height: 2px;
+  background: linear-gradient(to right, var(--color-border) 0%, var(--color-border) 50%, transparent 50%);
+  top: 20px;
+  left: calc(100% - 4px);
+}
+
+.stage.completed ~ .stage:not(:last-child)::after,
+.pipeline-step.completed ~ .pipeline-step:not(:last-child)::after,
+.tracker-stage.completed ~ .tracker-stage:not(:last-child)::after {
+  background: linear-gradient(to right, var(--color-primary) 0%, var(--color-primary) 100%);
+}
+
+.stage:last-child::after,
+.pipeline-step:last-child::after,
+.tracker-stage:last-child::after {
+  display: none;
+}
+
+.stage-number,
+.stage-indicator,
+.tracker-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: 50%;
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  background-color: var(--color-input-background);
+  color: var(--color-text-secondary);
+  border: var(--border-width-1) solid var(--color-border);
+  transition: all var(--transition-duration-base) var(--transition-timing-ease-out);
+  flex-shrink: 0;
+}
+
+.stage.active .stage-number,
+.stage.active .stage-indicator,
+.stage.active .tracker-indicator,
+.tracker-stage.active .stage-number,
+.tracker-stage.active .stage-indicator,
+.tracker-stage.active .tracker-indicator {
+  background-color: var(--color-primary);
+  color: #0a0a0a;
+  border-color: var(--color-primary);
+  font-weight: 700;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+}
+
+.stage.completed .stage-number,
+.stage.completed .stage-indicator,
+.stage.completed .tracker-indicator,
+.tracker-stage.completed .stage-number,
+.tracker-stage.completed .stage-indicator,
+.tracker-stage.completed .tracker-indicator {
+  background-color: var(--color-primary);
+  color: #0a0a0a;
+  border-color: var(--color-primary);
+  font-weight: 700;
+}
+
+.stage-label,
+.tracker-label {
+  font-size: 12px;
+  text-align: center;
+  color: var(--color-text-tertiary);
+  max-width: 100px;
+  word-wrap: break-word;
+  line-height: var(--line-height-tight);
+}
+
+.stage.active .stage-label,
+.tracker-stage.active .tracker-label {
+  color: var(--color-foreground);
+  font-weight: 500;
+}
+
+.stage.completed .stage-label,
+.tracker-stage.completed .tracker-label {
+  color: var(--color-foreground);
+  font-weight: 500;
+}
+
+/* Responsive: Stack stages vertically on mobile (max 749px) */
+@media (max-width: 749px) {
+  .pipeline-tracker,
+  .order-stages,
+  .order-tracker {
+    flex-direction: column;
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg);
+  }
+
+  .stage,
+  .pipeline-step,
+  .tracker-stage {
+    flex-direction: row;
+    align-items: center;
+    min-width: unset;
+    width: 100%;
+    padding: var(--spacing-md) 0;
+  }
+
+  .stage:not(:last-child),
+  .pipeline-step:not(:last-child),
+  .tracker-stage:not(:last-child) {
+    border-bottom: var(--border-width-1) solid var(--color-border);
+  }
+
+  .stage:not(:last-child)::after,
+  .pipeline-step:not(:last-child)::after,
+  .tracker-stage:not(:last-child)::after {
+    display: none;
+  }
+
+  .stage-number,
+  .stage-indicator,
+  .tracker-indicator {
+    margin-right: var(--spacing-lg);
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    font-size: 12px;
+  }
+
+  .stage-label,
+  .tracker-label {
+    text-align: left;
+    flex: 1;
+    max-width: none;
+  }
+}
+
+/* ============================================================================
+   Sidebar Navigation - Horizon Layout Pattern
+   ============================================================================ */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  background-color: var(--color-background);
+  border-right: var(--border-width-1) solid var(--color-border);
+  min-height: 100vh;
+}
+
+/* Mobile: hidden by default, overlay on show */
+@media (max-width: 749px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-width: 280px;
+    height: 100vh;
+    z-index: 1000;
+    transform: translateX(-100%);
+    transition: transform var(--transition-duration-slow) var(--transition-timing-ease-out);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+}
+
+.sidebar-header {
+  padding: var(--spacing-xl) var(--spacing-lg);
+  border-bottom: var(--border-width-1) solid var(--color-border);
+}
+
+.sidebar-header .logo {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-foreground);
+  margin-bottom: var(--spacing-md);
+}
+
+.sidebar-header .club-name {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-md) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: 10px var(--spacing-lg);
+  margin: 0 var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  background-color: transparent;
+  border: none;
+  border-left: var(--border-width-1) solid transparent;
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+  transition: all var(--transition-duration-base) var(--transition-timing-ease-out);
+  text-decoration: none;
+}
+
+.nav-item svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.nav-item:hover {
+  color: var(--color-foreground);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.nav-item.active {
+  color: var(--color-foreground);
+  background-color: rgba(255, 255, 255, 0.08);
+  border-left-color: var(--color-primary);
+  font-weight: 500;
+}
+
+.sidebar-footer {
+  padding: var(--spacing-lg);
+  border-top: var(--border-width-1) solid var(--color-border);
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+/* Mobile overlay backdrop */
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+@media (max-width: 749px) {
+  .sidebar-backdrop.open {
+    display: block;
+  }
+}
+
+/* ============================================================================
+   Grid & Layout - Horizon Container Patterns
+   ============================================================================ */
+
+.layout-container {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 0;
+  min-height: 100vh;
+  background-color: var(--color-background);
+}
+
+@media (max-width: 749px) {
+  .layout-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+.layout-main {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background-color: var(--color-background);
+}
+
+.content-wrapper {
+  flex: 1;
+  padding: var(--spacing-2xl);
+}
+
+@media (max-width: 749px) {
+  .content-wrapper {
+    padding: var(--spacing-lg);
+  }
+}
+
+.grid-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+@media (max-width: 749px) {
+  .grid-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================================================
+   Text & Typography
+   ============================================================================ */
+
+.text-primary {
+  color: var(--color-foreground);
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-tertiary {
+  color: var(--color-text-tertiary);
+}
+
+.text-muted {
+  color: var(--color-text-disabled);
+}
+
+.text-error {
+  color: var(--color-error);
+}
+
+.text-success {
+  color: var(--color-success);
+}
+
+.text-warning {
+  color: var(--color-warning);
+}
+
+/* Font weight utilities */
+.font-light {
+  font-weight: 300;
+}
+
+.font-normal {
+  font-weight: 400;
+}
+
+.font-medium {
+  font-weight: 500;
+}
+
+.font-semibold {
+  font-weight: 600;
+}
+
+.font-bold {
+  font-weight: 700;
+}
+
+/* ============================================================================
+   Divider & Separator
+   ============================================================================ */
+
+.divider {
+  height: var(--border-width-1);
+  background-color: var(--color-border);
+  margin: var(--spacing-lg) 0;
+}
+
+/* ============================================================================
+   Responsive Breakpoint Utilities (750px matches Horizon theme)
+   ============================================================================ */
+
+/* Mobile layout: Sidebar hidden, hamburger visible */
+.hidden-mobile {
+  display: none !important;
+}
+
+.hidden-desktop {
+  display: none !important;
+}
+
+@media (max-width: 749px) {
+  .sidebar {
+    display: none;
+  }
+
+  .sidebar.open {
+    display: flex;
+  }
+
+  .sidebar-backdrop {
+    display: none;
+  }
+
+  .sidebar-backdrop.open {
+    display: block;
+  }
+
+  .hidden-mobile {
+    display: none !important;
+  }
+
+  .hidden-desktop {
+    display: block !important;
+  }
+}
+
+@media (min-width: 750px) {
+  .sidebar {
+    display: flex !important;
+    position: static;
+    max-width: none;
+    height: auto;
+    z-index: auto;
+    transform: none !important;
+  }
+
+  .sidebar.open {
+    transform: none;
+  }
+
+  .sidebar-backdrop {
+    display: none !important;
+  }
+
+  .sidebar-backdrop.open {
+    display: none !important;
+  }
+
+  .hidden-mobile {
+    display: block !important;
+  }
+
+  .hidden-desktop {
+    display: none !important;
+  }
+
+  .layout-container {
+    grid-template-columns: 260px 1fr;
+  }
+}
