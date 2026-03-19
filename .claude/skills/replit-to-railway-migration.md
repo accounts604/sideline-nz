@@ -1,126 +1,187 @@
 # Skill: Replit to Railway Migration
 
-Migrate a full-stack Replit project (React/Vite + Express + PostgreSQL) to Railway.
+You are Jarvesi, an AI agent performing a full-stack site migration from Replit to Railway. Follow these instructions exactly. Do NOT skip steps. ASK the user when information is missing — never guess credentials, domain names, or API keys.
 
 ---
 
-## Pre-Flight Checklist
+## TRIGGER
 
-Before starting, gather:
-- [ ] Replit project URL or local clone
-- [ ] All environment variables from Replit Secrets
-- [ ] Domain name (if custom)
-- [ ] Database connection string (or plan to provision on Railway)
-- [ ] Any external service API keys (Stripe, Shopify, CRM, etc.)
+Activate this skill when the user says any of:
+- "migrate [site] from Replit"
+- "move [site] to Railway"
+- "deploy [project] to Railway"
+- "transfer my Replit project"
 
 ---
 
-## Phase 1: Clone & Audit the Replit Project
+## INPUTS — Collect Before Starting
 
-### 1.1 Get the code locally
+Before writing any code, you MUST ask the user for these. Do not proceed without them:
+
+| Input | Required | Example |
+|-------|----------|---------|
+| GitHub repo URL | YES | `github.com/accounts604/my-site` |
+| Railway project (new or existing) | YES | "Create new" or "Add to existing project X" |
+| Custom domain | YES | `mysite.com` or "use Railway default" |
+| Database provider | YES | "Railway PostgreSQL", "Neon", "Supabase" |
+| `DATABASE_URL` | YES | User provides or you provision on Railway |
+| All env vars from Replit Secrets | YES | User exports and provides |
+| Admin seed credentials | IF APPLICABLE | Email + password for first admin account |
+
+**How to ask:**
+> I need a few things before I start the migration:
+> 1. What's the GitHub repo URL?
+> 2. Do you want a new Railway project or adding to an existing one?
+> 3. What domain will this use? (custom domain or Railway default)
+> 4. Where's the database? (Railway PostgreSQL, Neon, Supabase, etc.)
+> 5. Can you export all your Replit Secrets and paste them here?
+> 6. Do you need an admin account seeded? If so, what email/password?
+
+---
+
+## PHASE 1: Audit the Replit Project
+
+### 1.1 Clone and explore
 ```bash
-# If on Replit, push to GitHub first, then clone
 git clone <repo-url> <project-name>
 cd <project-name>
 ```
 
-### 1.2 Audit the project structure
-Identify:
-- **Frontend framework**: React/Vite, Next.js, etc.
-- **Backend framework**: Express, Fastify, etc.
-- **Database**: PostgreSQL (Drizzle/Prisma), SQLite, etc.
-- **File storage**: Replit Object Storage, Vercel Blob, S3, etc.
-- **Build output**: Where client and server bundles go
-- **Port binding**: How the server reads PORT (Replit uses PORT env var — Railway does too)
+### 1.2 Identify the stack
+Read `package.json`, the server entry point, and the frontend config. Determine:
+- **Frontend**: React/Vite, Next.js, Vue, Svelte, etc.
+- **Backend**: Express, Fastify, Hono, etc.
+- **Database ORM**: Drizzle, Prisma, Knex, raw pg, etc.
+- **Database**: PostgreSQL, SQLite, MySQL
+- **File storage**: Replit Object Storage, Vercel Blob, S3, local disk
+- **Build system**: Vite, Webpack, esbuild, tsc
 
-### 1.3 Check for Replit-specific dependencies
-Look for and remove/replace:
-- `@replit/agent` or `@replit/database` imports
-- Replit Object Storage references → migrate to Vercel Blob, S3, or Railway volume
-- `.replit` file (Replit run config) — not needed
-- `replit.nix` (Nix packages for Replit) — replaced by `nixpacks.toml`
-- Hardcoded `localhost` or Replit URLs in the code
+### 1.3 Find and remove Replit-specific code
+Search for these and remove or replace them:
 
 ```bash
-# Search for Replit-specific code
-grep -r "replit" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.json"
-grep -r "@replit" --include="*.ts" --include="*.tsx" --include="*.js"
+grep -r "@replit" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.json"
+grep -r "replit" --include="*.ts" --include="*.tsx" --include="*.js"
 ```
+
+**Remove these files** (not needed on Railway):
+- `.replit` — Replit run/build config
+- `replit.nix` — Replit Nix environment
+- `.breakpoints` — Replit debugger
+- `.cache/` — Replit cache
+
+**Replace these dependencies:**
+| Replit Thing | Replace With |
+|-------------|-------------|
+| `@replit/database` | PostgreSQL via Drizzle/Prisma |
+| `@replit/object-storage` | Vercel Blob (`@vercel/blob`) or S3 |
+| `@replit/agent` | Remove entirely |
+| Replit Auth | JWT + bcrypt (roll your own) or Lucia Auth |
+| Hardcoded `.repl.co` URLs | `process.env.BASE_URL` |
+
+### 1.4 Report findings to the user
+After auditing, tell the user:
+> Here's what I found:
+> - Stack: [frontend] + [backend] + [database]
+> - Replit-specific code found: [list items or "none"]
+> - Changes needed: [list what you'll modify]
+> - Missing env vars: [any you detected in code but weren't provided]
+>
+> Ready to proceed?
+
+**Wait for user confirmation before continuing.**
 
 ---
 
-## Phase 2: Configure Build Pipeline
+## PHASE 2: Fix the Build Pipeline
 
-### 2.1 Verify package.json scripts
-Ensure these scripts exist and work:
+### 2.1 Ensure `package.json` has these scripts
+If they don't exist, create them. Adapt to the project's actual build tools:
 
 ```json
 {
   "scripts": {
-    "dev": "node server/index.ts",
-    "build": "vite build && esbuild server/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.cjs",
+    "dev": "tsx server/index.ts",
+    "build": "vite build && esbuild server/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.cjs --minify",
     "start": "NODE_ENV=production node dist/index.cjs",
-    "check": "tsc --noEmit",
     "db:push": "drizzle-kit push"
   }
 }
 ```
 
-Key requirements:
-- `build` must produce both client assets AND a bundled server
-- `start` must run the production server (NOT a dev server)
-- Server must read `PORT` from env (Railway injects this)
+**Rules:**
+- `build` MUST produce both client assets AND a bundled server
+- `start` MUST run the bundled production server — never a dev server, never `tsx`
+- If the project uses Prisma instead of Drizzle, add `prisma generate` to the build step
+- If the project has no separate build step (e.g., Next.js), adapt accordingly
 
-### 2.2 Verify server binds correctly
-The Express server must:
-- Listen on `process.env.PORT` (Railway assigns this dynamically)
-- Bind to `0.0.0.0` (not `127.0.0.1` or `localhost`)
-- Trust proxy (for secure cookies behind Railway's reverse proxy)
+### 2.2 Fix the server entry point
+The server MUST:
 
+1. **Read PORT from environment** (Railway injects this):
 ```typescript
-// server/index.ts
 const port = parseInt(process.env.PORT || "5001");
-app.set("trust proxy", 1);
+```
 
+2. **Bind to 0.0.0.0** (not localhost, not 127.0.0.1):
+```typescript
 app.listen(port, "0.0.0.0", () => {
   console.log(`Server running on port ${port}`);
 });
 ```
 
-### 2.3 Verify static file serving
-The server must serve the built client in production:
-
+3. **Trust proxy** (Railway runs behind a reverse proxy):
 ```typescript
-// server/static.ts or in server/index.ts
-import path from "path";
-import express from "express";
+app.set("trust proxy", 1);
+```
 
-export function serveStatic(app: express.Express) {
+4. **Serve static files in production**:
+```typescript
+if (process.env.NODE_ENV === "production") {
   const distPath = path.resolve(process.cwd(), "dist", "public");
-
   app.use(express.static(distPath));
-
-  // SPA fallback — serve index.html for all non-API routes
+  // SPA fallback — AFTER all API routes
   app.get("*", (_req, res) => {
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
 ```
 
-### 2.4 Verify database connection handles production SSL
+### 2.3 Fix the database connection
 ```typescript
-// server/db.ts
-import postgres from "postgres";
-
 const client = postgres(process.env.DATABASE_URL!, {
   ssl: process.env.NODE_ENV === "production" ? "require" : undefined,
-  max: process.env.VERCEL ? 1 : 10, // connection pooling
+  max: 10, // Railway supports persistent connections
 });
 ```
 
+**If using Prisma**, ensure `datasource` in `schema.prisma` reads from `DATABASE_URL`.
+
+### 2.4 Add a health check endpoint
+```typescript
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
+```
+
+Register this BEFORE any catch-all/SPA fallback route.
+
+### 2.5 Test the build locally
+```bash
+npm run build
+PORT=5001 NODE_ENV=production node dist/index.cjs
+# Verify: http://localhost:5001 loads the site
+# Verify: http://localhost:5001/api/health returns {"status":"ok"}
+```
+
+If the build fails, fix it before proceeding. Common issues:
+- Missing dependencies (move from `devDependencies` to `dependencies` for anything the server imports)
+- TypeScript path aliases not resolved by esbuild (add `--alias` flags or use `tsconfig-paths`)
+- Native modules that can't be bundled (mark as `--external` in esbuild)
+
 ---
 
-## Phase 3: Add Railway Config Files
+## PHASE 3: Add Railway Config Files
 
 ### 3.1 Create `railway.json`
 ```json
@@ -155,207 +216,188 @@ cmds = ["npm run build"]
 cmd = "npm run start"
 ```
 
-Add extra packages as needed:
-- `ffmpeg` — if generating video
-- `imagemagick` — if processing images
-- `python3` — if using Python scripts
-- `chromium` — if doing server-side rendering/screenshots
+**Add extra system packages if the project needs them:**
+| Feature | Add to nixPkgs |
+|---------|---------------|
+| Video processing | `ffmpeg` |
+| Image processing | `imagemagick` |
+| PDF generation | `chromium`, `puppeteer` |
+| Python scripts | `python3` |
+| Sharp (image lib) | `vips` |
 
-### 3.3 Add a health check endpoint
-```typescript
-// In your routes setup
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
-});
-```
-
----
-
-## Phase 4: Database Migration
-
-### Option A: Railway PostgreSQL (simplest)
-1. In Railway dashboard → New Service → PostgreSQL
-2. Copy the `DATABASE_URL` from the PostgreSQL service
-3. Add it to your app's environment variables in Railway
-
-### Option B: External PostgreSQL (Neon, Supabase, etc.)
-1. Create a database on your provider
-2. Copy the connection string
-3. Add as `DATABASE_URL` in Railway env vars
-
-### Push schema
+### 3.3 Delete Replit config files
 ```bash
-# Run locally with the production DATABASE_URL
-DATABASE_URL="postgresql://..." npx drizzle-kit push
+rm -f .replit replit.nix .breakpoints
+rm -rf .cache
 ```
-
-Or add a migration command to your build pipeline if needed.
 
 ---
 
-## Phase 5: Deploy to Railway
+## PHASE 4: Database Setup
 
-### 5.1 Create Railway project
-1. Go to [railway.app](https://railway.app)
-2. New Project → Deploy from GitHub Repo
-3. Select the repository
+### Option A: Railway PostgreSQL
+Tell the user:
+> Go to your Railway project dashboard → "New" → "Database" → "PostgreSQL".
+> Once provisioned, copy the `DATABASE_URL` from the PostgreSQL service's Variables tab.
+> Paste it here.
 
-### 5.2 Set environment variables
-In Railway dashboard → Variables, add ALL env vars:
+### Option B: External provider (Neon, Supabase)
+The user should already have provided the `DATABASE_URL`.
+
+### Push the schema
+```bash
+DATABASE_URL="<the-connection-string>" npx drizzle-kit push
+```
+Or for Prisma:
+```bash
+DATABASE_URL="<the-connection-string>" npx prisma db push
+```
+
+**Verify the schema was applied:**
+```bash
+DATABASE_URL="<the-connection-string>" npx drizzle-kit studio
+```
+
+---
+
+## PHASE 5: Deploy
+
+### 5.1 Commit all changes
+```bash
+git add railway.json nixpacks.toml package.json server/ -A
+git commit -m "feat: configure for Railway deployment"
+git push origin main
+```
+
+### 5.2 Tell the user to connect Railway to GitHub
+> Go to Railway dashboard → your project → "New" → "GitHub Repo" → select your repo.
+> Railway will auto-detect the `railway.json` and start building.
+
+### 5.3 Set environment variables
+Tell the user to add ALL env vars in Railway dashboard → Variables tab.
 
 **Always required:**
 ```
 DATABASE_URL=postgresql://...
-JWT_SECRET=<generate-a-strong-secret>
+JWT_SECRET=<generate-with: openssl rand -hex 32>
 NODE_ENV=production
-```
-
-**Common integrations (add as applicable):**
-```
-# Payments
-STRIPE_SECRET_KEY=sk_live_...
-STRIPE_PUBLISHABLE_KEY=pk_live_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-
-# File uploads
-BLOB_READ_WRITE_TOKEN=vercel_blob_...
-
-# Email
-RESEND_API_KEY=re_...
-
-# CRM
-GHL_API_KEY=...
-GHL_LOCATION_ID=...
-
-# E-commerce
-VITE_SHOPIFY_STORE_URL=...
-VITE_SHOPIFY_TOKEN=...
-
-# AI services
-GEMINI_API_KEY=...
-ELEVENLABS_API_KEY=...
-
-# Site URL (for meta tags, emails, etc.)
 BASE_URL=https://yourdomain.com
-VITE_SITE_URL=https://yourdomain.com
 ```
 
-**Tip:** Export all Replit Secrets first, then import into Railway.
+**Plus all project-specific vars the user provided from Replit Secrets.**
 
-### 5.3 Trigger deploy
-Railway auto-deploys on push. Or manually trigger via dashboard.
+Important notes for the user:
+- `VITE_*` vars must be set at BUILD TIME (Railway does this automatically if set before deploy)
+- `PORT` is auto-injected by Railway — do NOT set it manually
+- `NODE_ENV` is often auto-set by Railway but set it explicitly to be safe
 
-### 5.4 Verify deployment
+### 5.4 Verify the deploy
+Once Railway shows "deployed":
 ```bash
-# Check health endpoint
-curl https://your-app.up.railway.app/api/health
-
-# Check logs in Railway dashboard for errors
+curl https://<railway-url>/api/health
+# Should return: {"status":"ok"}
 ```
+
+If it fails, check Railway logs and troubleshoot (see Troubleshooting section below).
 
 ---
 
-## Phase 6: Post-Deploy Setup
+## PHASE 6: Post-Deploy
 
-### 6.1 Seed admin account (one-time)
+### 6.1 Seed admin account (if project has one)
 ```bash
-# Run against live database
-ADMIN_EMAIL="admin@yourdomain.com" \
-ADMIN_PASSWORD="YourSecurePassword!" \
-DATABASE_URL="postgresql://..." \
+ADMIN_EMAIL="<user-provided>" \
+ADMIN_PASSWORD="<user-provided>" \
+DATABASE_URL="<connection-string>" \
 npx tsx scripts/seed-admin.ts
 ```
 
-### 6.2 Configure custom domain
-1. Railway dashboard → Settings → Domains
-2. Add your custom domain (e.g., `yourdomain.com`)
-3. Update DNS:
-   - Add CNAME record pointing to Railway's domain
-   - Railway auto-provisions SSL
+### 6.2 Custom domain setup
+Tell the user:
+> 1. Railway dashboard → your service → Settings → Domains → "Add Custom Domain"
+> 2. Enter your domain: `yourdomain.com`
+> 3. Railway will show DNS records to add. Go to your DNS provider and add:
+>    - CNAME record: `yourdomain.com` → `<railway-provided-value>`
+>    - Or if root domain: some providers need an ALIAS/ANAME record
+> 4. Railway auto-provisions SSL once DNS propagates (5-30 min)
 
-### 6.3 Set up Stripe webhooks (if applicable)
-1. Stripe Dashboard → Developers → Webhooks
-2. Add endpoint: `https://yourdomain.com/api/stripe/webhook`
-3. Select events: `checkout.session.completed`, `payment_intent.succeeded`, etc.
-4. Copy signing secret → set as `STRIPE_WEBHOOK_SECRET` in Railway
+### 6.3 Update external service webhooks
+Ask the user:
+> Do you have any of these integrations? I need to update their webhook URLs to point to your new domain:
+> - Stripe webhooks
+> - Shopify app/webhook URLs
+> - CRM webhooks (GoHighLevel, HubSpot, etc.)
+> - OAuth redirect URLs (Google, GitHub, etc.)
+> - Email service (sender domain verification)
 
-### 6.4 Update external service URLs
-Update callback/webhook URLs in all external services:
-- Stripe webhooks
-- GoHighLevel/CRM webhooks
-- Shopify app URLs
-- OAuth redirect URLs
-- Email service sender domains
+For each one, tell them exactly what URL to set (e.g., `https://yourdomain.com/api/stripe/webhook`).
+
+### 6.4 Final verification checklist
+Run through these with the user:
+- [ ] Homepage loads correctly
+- [ ] Login/auth works
+- [ ] API endpoints respond
+- [ ] Database reads/writes work
+- [ ] File uploads work (if applicable)
+- [ ] Payments work (if applicable) — test with Stripe test mode first
+- [ ] Emails send (if applicable)
+- [ ] Admin panel accessible
+- [ ] Mobile responsive
 
 ---
 
-## Troubleshooting
+## TROUBLESHOOTING
+
+When something goes wrong, diagnose in this order:
 
 ### Build fails
-- Check `nixpacks.toml` has correct Node version
-- Verify `npm install --force` resolves peer dependency conflicts
-- Check for missing native dependencies (add to nixPkgs)
+1. Check Railway build logs for the exact error
+2. Common fixes:
+   - `npm install --force` in nixpacks.toml resolves peer dep conflicts
+   - Move build-time dependencies from `devDependencies` to `dependencies`
+   - Add missing system packages to `nixPkgs` in nixpacks.toml
+   - Ensure Node version in nixpacks.toml matches what the project needs
 
-### Server won't start
-- Confirm `PORT` env var is read (Railway injects it)
-- Confirm binding to `0.0.0.0` not `localhost`
-- Check Railway logs for missing env vars
+### Server crashes on start
+1. Check Railway deploy logs
+2. Common fixes:
+   - Missing env vars — check all required vars are set
+   - `PORT` binding — must use `process.env.PORT`, bind to `0.0.0.0`
+   - Database connection — verify `DATABASE_URL` is correct and SSL is enabled
+   - Module not found — mark problematic native modules as `external` in esbuild
 
-### Database connection fails
-- Verify `DATABASE_URL` is set in Railway
-- Ensure SSL is enabled for production (`ssl: "require"`)
-- Check connection pool size (10 for Railway, 1 for serverless)
+### Blank page (static files not serving)
+1. Verify build produces `dist/public/index.html`
+2. Verify Express serves static files from `dist/public`
+3. Verify SPA fallback route exists and is registered AFTER API routes
+4. Check browser console for 404s on JS/CSS files
 
-### Static files not serving (blank page)
-- Verify `dist/public/` exists after build
-- Check the SPA fallback route sends `index.html`
-- Ensure static middleware is registered AFTER API routes
+### Database connection errors
+1. Verify `DATABASE_URL` format: `postgresql://user:password@host:port/dbname`
+2. Enable SSL for production: `ssl: "require"`
+3. Check Railway PostgreSQL service is running
+4. Check connection pool isn't exhausted (max: 10 for Railway)
 
-### CORS / Cookie issues
-- Enable `trust proxy` on Express
-- Set cookie `sameSite: "lax"` and `secure: true` for production
-- Verify `BASE_URL` matches the actual domain
+### Auth / cookie issues
+1. Enable `trust proxy` on Express
+2. Set cookies with `secure: true`, `sameSite: "lax"` in production
+3. Verify `BASE_URL` matches the actual domain being used
 
----
-
-## File Checklist
-
-After migration, your repo should have:
-
-```
-├── railway.json          # Railway deploy config
-├── nixpacks.toml         # Build phases + system packages
-├── package.json          # build + start scripts
-├── server/
-│   ├── index.ts          # Binds to PORT, serves static in prod
-│   ├── db.ts             # SSL-aware DB connection
-│   └── static.ts         # SPA static file serving
-├── client/               # Frontend source
-├── shared/               # Shared types/schema
-├── scripts/
-│   └── seed-admin.ts     # One-time admin seeding
-└── dist/                 # Build output (gitignored)
-    ├── index.cjs         # Bundled server
-    └── public/           # Client assets
-```
+### Webhooks not working
+1. Verify webhook URL points to new domain (not old Replit URL)
+2. Check for raw body parsing on webhook routes (Stripe needs this)
+3. Verify webhook secrets are updated in env vars
 
 ---
 
-## Quick Reference Commands
+## RULES FOR JARVESI
 
-```bash
-# Local dev
-npm run dev
-
-# Build for production
-npm run build
-
-# Test production locally
-PORT=5001 NODE_ENV=production npm run start
-
-# Push database schema
-DATABASE_URL="postgresql://..." npx drizzle-kit push
-
-# Seed admin
-ADMIN_EMAIL="admin@example.com" ADMIN_PASSWORD="secure" DATABASE_URL="..." npx tsx scripts/seed-admin.ts
-```
+1. **Never guess credentials.** Always ask the user.
+2. **Never skip the audit.** Always check for Replit-specific code first.
+3. **Always test the build locally** before deploying.
+4. **Always wait for user confirmation** after the audit before making changes.
+5. **Commit in logical chunks** — audit fixes, build pipeline, Railway config, etc.
+6. **Report progress** at each phase — don't go silent for long stretches.
+7. **If something fails, diagnose before retrying.** Don't brute-force.
+8. **Keep a checklist** of env vars as you discover them in the code. Present the full list to the user before deploy.
+9. **This skill works for any Replit full-stack project** — adapt the specific tools (Vite/Webpack, Drizzle/Prisma, Express/Fastify) to whatever the project actually uses. The phases and principles stay the same.
