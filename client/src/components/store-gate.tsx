@@ -23,9 +23,10 @@ function unlockStore() {
 interface StoreGateProps {
   children: React.ReactNode;
   storeName?: string;
+  storeHandle?: string;
 }
 
-export function StoreGate({ children, storeName }: StoreGateProps) {
+export function StoreGate({ children, storeName, storeHandle }: StoreGateProps) {
   const [unlocked, setUnlocked] = useState(() => isStoreUnlocked());
 
   if (unlocked) {
@@ -35,6 +36,7 @@ export function StoreGate({ children, storeName }: StoreGateProps) {
   return (
     <StoreGateOverlay
       storeName={storeName}
+      storeHandle={storeHandle}
       onUnlock={() => {
         unlockStore();
         setUnlocked(true);
@@ -45,9 +47,11 @@ export function StoreGate({ children, storeName }: StoreGateProps) {
 
 function StoreGateOverlay({
   storeName,
+  storeHandle,
   onUnlock,
 }: {
   storeName?: string;
+  storeHandle?: string;
   onUnlock: () => void;
 }) {
   const [name, setName] = useState("");
@@ -88,6 +92,12 @@ function StoreGateOverlay({
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Something went wrong");
+      }
+
+      // Redirect to Shopify team store after successful lead capture
+      if (storeHandle) {
+        window.location.href = `https://teamstore.sidelinenz.com/collections/${storeHandle}`;
+        return;
       }
 
       onUnlock();

@@ -150,7 +150,7 @@ export default function TeamStoreDetailPage() {
   const { collection, products } = data;
 
   return (
-    <StoreGate storeName={collection.title}>
+    <StoreGate storeName={collection.title} storeHandle={handle}>
     <Layout>
       {/* Hero / Feature Image */}
       {collection.image && (
