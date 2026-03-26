@@ -88,12 +88,21 @@ export function MobileMenu({ isOpen, onClose }: MobileMenuProps) {
           </nav>
 
           <div className="px-6 py-4 space-y-3">
-            <Link href="/quote">
+            <Link href="/free-mockup">
               <Button
                 className="w-full bg-black text-white hover:bg-black/80 font-display uppercase tracking-wide rounded-full"
                 onClick={onClose}
               >
-                Start a Project
+                Get Free Mockup
+              </Button>
+            </Link>
+            <Link href="/quote">
+              <Button
+                variant="outline"
+                className="w-full border-black/20 text-black hover:bg-black/5 font-display uppercase tracking-wide rounded-full mt-2"
+                onClick={onClose}
+              >
+                Get a Quote
               </Button>
             </Link>
             <Link href={user ? (user.role === "admin" ? "/admin" : "/portal") : "/login"}>

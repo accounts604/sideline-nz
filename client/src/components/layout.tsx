@@ -32,7 +32,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
           <div className="flex items-center gap-8">
             <button
-              className="md:hidden p-2 text-white/60 hover:text-white transition-colors -ml-2"
+              className="lg:hidden p-2 text-white/60 hover:text-white transition-colors -ml-2"
               onClick={() => setIsMobileMenuOpen(true)}
             >
               <Menu size={24} />
@@ -45,7 +45,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </Link>
           </div>
 
-          <nav className="hidden md:flex items-center gap-8">
+          <nav className="hidden lg:flex items-center gap-8">
             {navLinks.map((link) => (
               <Link key={link.href} href={link.href}>
                 <span
@@ -64,19 +64,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
           <div className="flex items-center gap-4">
             <Link href="/free-mockup">
-              <span className="text-xs tracking-wider uppercase font-medium bg-white text-black px-4 py-2 rounded-[4px] hover:bg-white/90 transition-colors cursor-pointer hidden sm:inline">
+              <span className="text-xs tracking-wider uppercase font-medium bg-white text-black px-4 py-2 rounded-[4px] hover:bg-white/90 transition-colors cursor-pointer hidden lg:inline">
                 Get free mockup
               </span>
             </Link>
             <Link href="/quote">
-              <span className="text-xs tracking-wider uppercase font-medium text-white/40 hover:text-white transition-colors cursor-pointer hidden sm:inline">
+              <span className="text-xs tracking-wider uppercase font-medium text-white/40 hover:text-white transition-colors cursor-pointer hidden lg:inline">
                 Get a Quote
               </span>
             </Link>
             <Link href={user ? (user.role === "admin" ? "/admin" : "/portal") : "/login"}>
               <span className="flex items-center gap-1.5 text-xs tracking-wider uppercase font-medium text-white/40 hover:text-white transition-colors cursor-pointer">
                 {user ? <User size={14} /> : <LogIn size={14} />}
-                <span className="hidden sm:inline">{user ? "Portal" : "Login"}</span>
+                <span className="hidden lg:inline">{user ? "Portal" : "Login"}</span>
               </span>
             </Link>
           </div>
