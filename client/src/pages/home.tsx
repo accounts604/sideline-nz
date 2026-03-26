@@ -222,7 +222,7 @@ export default function Home() {
             className="hide-scrollbar home-scroll-track"
           >
             {featuredProducts.map((product, i) => (
-              <Link key={product.id} href="/team-stores">
+              <a key={product.id} href={`https://teamstore.sidelinenz.com/products/${product.handle}`} target="_blank" rel="noopener noreferrer">
                 <div
                   data-testid={"card-product-" + i}
                   style={{ minWidth: "200px", width: "200px", borderRadius: "6px", overflow: "hidden", cursor: "pointer", scrollSnapAlign: "start", flexShrink: 0, background: "#fff", border: "1px solid rgba(0,0,0,0.08)", transition: "transform .3s, box-shadow .3s" }}
@@ -245,16 +245,16 @@ export default function Home() {
                     <p style={{ fontSize: "12px", color: "rgba(0,0,0,0.4)", marginBottom: "14px" }}>
                       {formatPrice(product.priceRange.minVariantPrice.amount, product.priceRange.minVariantPrice.currencyCode)}
                     </p>
-                    <button
+                    <span
                       data-testid={"button-add-to-cart-" + i}
-                      style={{ width: "100%", padding: "9px", borderRadius: "4px", background: "#111", color: "#fff", border: "1px solid #111", cursor: "pointer", fontSize: "10px", fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", fontFamily: "inherit", transition: "all .2s" }}
+                      style={{ display: "block", width: "100%", padding: "9px", borderRadius: "4px", background: "#111", color: "#fff", border: "1px solid #111", cursor: "pointer", fontSize: "10px", fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", fontFamily: "inherit", transition: "all .2s", textAlign: "center" }}
                       className="group-hover:bg-black group-hover:border-black"
                     >
                       View
-                    </button>
+                    </span>
                   </div>
                 </div>
-              </Link>
+              </a>
             ))}
           </div>
         </div>
