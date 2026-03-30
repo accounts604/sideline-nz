@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Loader2, X, Ruler } from "lucide-react";
-import { Link } from "wouter";
+import { Loader2, X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { createShopifyCart, formatPrice, type ShopifyProduct } from "@/lib/shopify";
 
 interface ProductModalProps {
@@ -42,7 +42,7 @@ export function ProductModal({ product, open, onClose }: ProductModalProps) {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent
-        className="sm:max-w-lg p-0 overflow-hidden"
+        className="sm:max-w-lg p-0 overflow-hidden max-h-[90vh] flex flex-col"
         style={{ borderRadius: "8px" }}
       >
         <button
@@ -53,7 +53,7 @@ export function ProductModal({ product, open, onClose }: ProductModalProps) {
         </button>
 
         {/* Product Image */}
-        <div className="aspect-square bg-white overflow-hidden">
+        <div className="aspect-square bg-white overflow-hidden shrink-0">
           {product.featuredImage ? (
             <img
               src={product.featuredImage.url}
@@ -67,83 +67,172 @@ export function ProductModal({ product, open, onClose }: ProductModalProps) {
           )}
         </div>
 
-        {/* Details */}
-        <div className="p-6 space-y-4">
-          <div>
-            <h3 className="text-lg font-bold text-[#111] uppercase tracking-wide">
-              {product.title}
-            </h3>
-            <p className="text-xl font-bold text-[#111] mt-1">
-              {activeVariant
-                ? formatPrice(activeVariant.price.amount, activeVariant.price.currencyCode)
-                : formatPrice(
-                    product.priceRange.minVariantPrice.amount,
-                    product.priceRange.minVariantPrice.currencyCode
-                  )}
-            </p>
+        {/* Scrollable details + accordion */}
+        <div className="overflow-y-auto flex-1">
+          {/* Details */}
+          <div className="p-6 space-y-4">
+            <div>
+              <h3 className="text-lg font-bold text-[#111] uppercase tracking-wide">
+                {product.title}
+              </h3>
+              <p className="text-xl font-bold text-[#111] mt-1">
+                {activeVariant
+                  ? formatPrice(activeVariant.price.amount, activeVariant.price.currencyCode)
+                  : formatPrice(
+                      product.priceRange.minVariantPrice.amount,
+                      product.priceRange.minVariantPrice.currencyCode
+                    )}
+              </p>
+            </div>
+
+            {/* Variant / Size Selection */}
+            {hasMultipleVariants && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Size / Option
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {variants.map((v) => {
+                    const isSelected = (selectedVariant || variants[0]?.id) === v.id;
+                    return (
+                      <button
+                        key={v.id}
+                        onClick={() => setSelectedVariant(v.id)}
+                        disabled={!v.availableForSale}
+                        className={
+                          "px-4 py-2 text-sm border rounded transition-all " +
+                          (isSelected
+                            ? "bg-[#111] text-white border-[#111]"
+                            : v.availableForSale
+                              ? "bg-white text-[#333] border-gray-200 hover:border-[#111]"
+                              : "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed line-through")
+                        }
+                      >
+                        {v.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <p className="text-sm text-red-600">{error}</p>
+            )}
+
+            <Button
+              onClick={handleBuyNow}
+              disabled={loading || !activeVariant?.availableForSale}
+              className="w-full bg-[#111] hover:bg-[#333] text-white font-semibold py-6 text-sm uppercase tracking-wider"
+              style={{ borderRadius: "6px" }}
+            >
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : activeVariant?.availableForSale ? (
+                "Buy Now — Checkout"
+              ) : (
+                "Sold Out"
+              )}
+            </Button>
           </div>
 
-          {product.description && (
-            <p className="text-sm text-gray-600 leading-relaxed line-clamp-3">
-              {product.description}
-            </p>
-          )}
-
-          {/* Variant / Size Selection */}
-          {hasMultipleVariants && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                Size / Option
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {variants.map((v) => {
-                  const isSelected = (selectedVariant || variants[0]?.id) === v.id;
-                  return (
-                    <button
-                      key={v.id}
-                      onClick={() => setSelectedVariant(v.id)}
-                      disabled={!v.availableForSale}
-                      className={
-                        "px-4 py-2 text-sm border rounded transition-all " +
-                        (isSelected
-                          ? "bg-[#111] text-white border-[#111]"
-                          : v.availableForSale
-                            ? "bg-white text-[#333] border-gray-200 hover:border-[#111]"
-                            : "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed line-through")
-                      }
-                    >
-                      {v.title}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <Link href="/size-chart">
-            <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-[#111] transition-colors cursor-pointer">
-              <Ruler size={13} /> View Size Chart
-            </span>
-          </Link>
-
-          {error && (
-            <p className="text-sm text-red-600">{error}</p>
-          )}
-
-          <Button
-            onClick={handleBuyNow}
-            disabled={loading || !activeVariant?.availableForSale}
-            className="w-full bg-[#111] hover:bg-[#333] text-white font-semibold py-6 text-sm uppercase tracking-wider"
-            style={{ borderRadius: "6px" }}
+          {/* Accordion sections */}
+          <Accordion
+            type="single"
+            collapsible
+            defaultValue="description"
+            className="bg-[#111] text-white"
           >
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : activeVariant?.availableForSale ? (
-              "Buy Now — Checkout"
-            ) : (
-              "Sold Out"
-            )}
-          </Button>
+            <AccordionItem value="description" className="border-b border-white/10 px-6">
+              <AccordionTrigger className="text-white hover:no-underline text-xs uppercase tracking-widest font-semibold [&>svg]:text-white">
+                Description
+              </AccordionTrigger>
+              <AccordionContent className="text-gray-300 text-sm leading-relaxed">
+                {product.description || "No description available."}
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="size-guide" className="border-b border-white/10 px-6">
+              <AccordionTrigger className="text-white hover:no-underline text-xs uppercase tracking-widest font-semibold [&>svg]:text-white">
+                Size Guide
+              </AccordionTrigger>
+              <AccordionContent className="text-gray-300 text-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/10">
+                        <th className="text-left py-2 pr-4 text-gray-400 font-semibold uppercase tracking-wider">Size</th>
+                        <th className="text-left py-2 pr-4 text-gray-400 font-semibold uppercase tracking-wider">Chest (cm)</th>
+                        <th className="text-left py-2 pr-4 text-gray-400 font-semibold uppercase tracking-wider">Waist (cm)</th>
+                        <th className="text-left py-2 text-gray-400 font-semibold uppercase tracking-wider">Hips (cm)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        ["XS / 8", "76–81", "61–66", "84–89"],
+                        ["S / 10", "82–87", "67–72", "90–95"],
+                        ["M / 12", "88–93", "73–78", "96–101"],
+                        ["L / 14", "94–99", "79–84", "102–107"],
+                        ["XL / 16", "100–106", "85–91", "108–114"],
+                        ["2XL", "107–113", "92–98", "115–121"],
+                        ["3XL", "114–120", "99–105", "122–128"],
+                      ].map(([size, chest, waist, hips]) => (
+                        <tr key={size} className="border-b border-white/5">
+                          <td className="py-2 pr-4 font-medium text-white">{size}</td>
+                          <td className="py-2 pr-4">{chest}</td>
+                          <td className="py-2 pr-4">{waist}</td>
+                          <td className="py-2">{hips}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-3 text-gray-400 text-xs italic">
+                  Measure your body, not your clothing. If between sizes, size up.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="shipping" className="border-b border-white/10 px-6">
+              <AccordionTrigger className="text-white hover:no-underline text-xs uppercase tracking-widest font-semibold [&>svg]:text-white">
+                Shipping & Delivery
+              </AccordionTrigger>
+              <AccordionContent className="text-gray-300 text-sm leading-relaxed space-y-2">
+                <p>All orders are made to order. Estimated delivery 4–5 weeks from campaign close date.</p>
+                <p>New Zealand delivery only. Shipping is covered by Sideline NZ.</p>
+                <p>All orders tracked and confirmed via email.</p>
+                <p>Auckland local pickup available — dates announced at campaign close.</p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="profit-share" className="border-b border-white/10 px-6">
+              <AccordionTrigger className="text-white hover:no-underline text-xs uppercase tracking-widest font-semibold [&>svg]:text-white">
+                Club Profit Share
+              </AccordionTrigger>
+              <AccordionContent className="text-gray-300 text-sm leading-relaxed space-y-2">
+                <p>Every order earns your club a return. Profit share is calculated after all production costs at campaign close.</p>
+                <p>Minimum 50 units required. Tiers:</p>
+                <ul className="mt-1 space-y-1 text-xs">
+                  <li className="flex justify-between border-b border-white/5 py-1"><span>50–99 units</span><span className="text-white font-semibold">6%</span></li>
+                  <li className="flex justify-between border-b border-white/5 py-1"><span>100–149 units</span><span className="text-white font-semibold">8%</span></li>
+                  <li className="flex justify-between border-b border-white/5 py-1"><span>150–199 units</span><span className="text-white font-semibold">10%</span></li>
+                  <li className="flex justify-between py-1"><span>200+ units</span><span className="text-white font-semibold">12%</span></li>
+                </ul>
+                <p className="text-xs text-gray-400 mt-2">Paid to club treasurer once all orders fulfilled.</p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="returns" className="px-6">
+              <AccordionTrigger className="text-white hover:no-underline text-xs uppercase tracking-widest font-semibold [&>svg]:text-white">
+                Returns & Faulty Items
+              </AccordionTrigger>
+              <AccordionContent className="text-gray-300 text-sm leading-relaxed space-y-2">
+                <p>All items are custom made to order — no returns unless faulty or incorrect.</p>
+                <p>Faulty or incorrect items must be reported within 7 days of delivery with photo evidence.</p>
+                <p>Contact <span className="text-white">info@sidelinenz.com</span></p>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </div>
       </DialogContent>
     </Dialog>
