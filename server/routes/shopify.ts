@@ -79,9 +79,9 @@ router.get("/collections/:handle", async (req, res) => {
 router.get("/products", async (_req, res) => {
   try {
     const f = `id handle title description tags featuredImage { url altText } priceRange { minVariantPrice { amount currencyCode } } variants(first: 20) { edges { node { id title availableForSale price { amount currencyCode } } } }`;
-    const data = await shopifyFetch(`query { products(first: 10) { edges { node { ${f} } } } }`);
+    const data = await shopifyFetch(`query { products(first: 12, sortKey: BEST_SELLING) { edges { node { ${f} } } } }`);
     const products = (data?.products?.edges || []).map((e: any) => e?.node).filter(Boolean);
-    res.json(products.slice(0, 10));
+    res.json(products.slice(0, 12));
   } catch (e: any) {
     res.status(500).json({ error: String(e.message).substring(0, 300) });
   }
