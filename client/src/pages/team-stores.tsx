@@ -7,7 +7,7 @@ import type { ShopifyCollection } from "@/lib/shopify";
 
 function TeamStoreCard({ store }: { store: ShopifyCollection }) {
   return (
-    <Link href={"/team-stores/" + store.handle}>
+    <a href={"https://teamstore.sidelinenz.com/collections/" + store.handle} target="_blank" rel="noopener noreferrer">
       <div
         className="group relative cursor-pointer overflow-hidden border border-[#e5e5e5] hover:border-[#111] transition-colors"
         style={{ borderRadius: "8px" }}
@@ -38,7 +38,7 @@ function TeamStoreCard({ store }: { store: ShopifyCollection }) {
           </div>
         </div>
       </div>
-    </Link>
+    </a>
   );
 }
 

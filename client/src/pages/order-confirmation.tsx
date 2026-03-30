@@ -1,4 +1,4 @@
-import { useParams, Link } from "wouter";
+import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import Layout from "@/components/layout";
 import { CheckCircle, Package, Truck, ArrowLeft, ShoppingBag } from "lucide-react";
@@ -65,12 +65,12 @@ export default function OrderConfirmationPage() {
           <Package className="h-16 w-16 text-muted-foreground mb-4" />
           <h1 className="text-2xl font-bold text-primary mb-2">Order Not Found</h1>
           <p className="text-muted-foreground mb-6">We couldn't find this order.</p>
-          <Link href={`/team-stores/${params.slug}`}>
+          <a href={`https://teamstore.sidelinenz.com/collections/${params.slug}`} target="_blank" rel="noopener noreferrer">
             <Button>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Store
             </Button>
-          </Link>
+          </a>
         </div>
       </Layout>
     );
@@ -82,11 +82,11 @@ export default function OrderConfirmationPage() {
     <Layout>
       <section className={`py-12 sm:py-16 bg-gradient-to-b from-primary to-primary/95`}>
         <div className="container mx-auto px-4">
-          <Link href={`/team-stores/${params.slug}`}>
+          <a href={`https://teamstore.sidelinenz.com/collections/${params.slug}`} target="_blank" rel="noopener noreferrer">
             <span className="inline-flex items-center text-white/70 hover:text-white mb-6 cursor-pointer text-sm">
               <ArrowLeft size={16} className="mr-1" /> Back to {storeName || "Store"}
             </span>
-          </Link>
+          </a>
 
           <div className="flex flex-col items-center text-center text-white">
             <div className={`w-20 h-20 rounded-full ${isPaid ? "bg-green-500" : "bg-yellow-500"} flex items-center justify-center mb-6`}>
@@ -189,11 +189,11 @@ export default function OrderConfirmationPage() {
           )}
 
           <div className="mt-8 text-center">
-            <Link href={`/team-stores/${params.slug}`}>
+            <a href={`https://teamstore.sidelinenz.com/collections/${params.slug}`} target="_blank" rel="noopener noreferrer">
               <Button variant="outline" className="mr-4">
                 Continue Shopping
               </Button>
-            </Link>
+            </a>
           </div>
         </div>
       </section>

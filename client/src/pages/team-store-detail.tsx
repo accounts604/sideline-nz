@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/dialog";
 import { useCollectionByHandle } from "@/hooks/use-shopify";
 import { formatPrice, type ShopifyProduct } from "@/lib/shopify";
-import { ProductModal } from "@/components/product-modal";
 import { StoreGate } from "@/components/store-gate";
 
 function TeamStoreExplainerModal({
@@ -79,16 +78,18 @@ function TeamStoreExplainerModal({
 
 function ProductCard({
   product,
-  onSelect,
+  storeHandle,
 }: {
   product: ShopifyProduct;
-  onSelect: (product: ShopifyProduct) => void;
+  storeHandle: string;
 }) {
   return (
-    <button
-      onClick={() => onSelect(product)}
+    <a
+      href={`https://teamstore.sidelinenz.com/collections/${storeHandle}/products/${product.handle}`}
+      target="_blank"
+      rel="noopener noreferrer"
       data-testid={"product-card-" + product.handle}
-      style={{ cursor: "pointer", textAlign: "center", display: "block", background: "none", border: "none", padding: 0 }}
+      style={{ cursor: "pointer", textAlign: "center", display: "block", textDecoration: "none" }}
       className="group w-full"
     >
       <div style={{
@@ -112,7 +113,7 @@ function ProductCard({
           display: "flex", alignItems: "center", justifyContent: "center",
           opacity: 0, transition: "opacity 0.3s",
         }} className="group-hover:!opacity-100">
-          <ShoppingBag size={14} style={{ color: "#fff" }} />
+          <ArrowRight size={14} style={{ color: "#fff" }} />
         </div>
       </div>
       <h4 style={{ fontSize: "13px", fontWeight: 600, color: "#111", marginBottom: "4px", lineHeight: 1.3, textTransform: "uppercase" }}>
@@ -121,7 +122,7 @@ function ProductCard({
       <p style={{ fontSize: "15px", fontWeight: 700, color: "#111" }}>
         {formatPrice(product.priceRange.minVariantPrice.amount, product.priceRange.minVariantPrice.currencyCode)}
       </p>
-    </button>
+    </a>
   );
 }
 
@@ -131,7 +132,6 @@ export default function TeamStoreDetailPage() {
   const { data, isLoading, error } = useCollectionByHandle(handle);
 
   const [explainerModalOpen, setExplainerModalOpen] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<ShopifyProduct | null>(null);
 
   if (isLoading) {
     return (
@@ -191,6 +191,16 @@ export default function TeamStoreDetailPage() {
               >
                 How it works
               </button>
+              <a
+                href={`https://teamstore.sidelinenz.com/collections/${handle}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="button-shop-now"
+                style={{ fontSize: "13px", fontWeight: 600, color: "#fff", background: "#111", border: "1px solid #111", borderRadius: "6px", padding: "10px 20px", cursor: "pointer", whiteSpace: "nowrap", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                className="hover:opacity-80 transition-opacity"
+              >
+                Shop Now <ArrowRight size={14} />
+              </a>
             </div>
           </div>
         </div>
@@ -225,7 +235,7 @@ export default function TeamStoreDetailPage() {
                 <ProductCard
                   key={product.id}
                   product={product}
-                  onSelect={setSelectedProduct}
+                  storeHandle={handle}
                 />
               ))}
             </div>
@@ -439,12 +449,6 @@ export default function TeamStoreDetailPage() {
       <TeamStoreExplainerModal
         isOpen={explainerModalOpen}
         onClose={() => setExplainerModalOpen(false)}
-      />
-
-      <ProductModal
-        product={selectedProduct}
-        open={!!selectedProduct}
-        onClose={() => setSelectedProduct(null)}
       />
 
       <style>{`

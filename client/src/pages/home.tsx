@@ -109,7 +109,7 @@ export default function Home() {
             className="hide-scrollbar home-scroll-track"
           >
             {collections.map((col, i) => (
-              <Link key={col.handle} href={"/team-stores/" + col.handle}>
+              <a key={col.handle} href={"https://teamstore.sidelinenz.com/collections/" + col.handle} target="_blank" rel="noopener noreferrer">
                 <div
                   data-testid={"card-store-" + i}
                   style={{
@@ -134,7 +134,7 @@ export default function Home() {
                     <p style={{ fontSize: "14px", fontWeight: 600, color: "#f0f0f0" }}>{col.title}</p>
                   </div>
                 </div>
-              </Link>
+              </a>
             ))}
           </div>
         </div>
