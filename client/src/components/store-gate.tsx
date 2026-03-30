@@ -94,6 +94,7 @@ function StoreGateOverlay({
 
       // Redirect to Shopify team store after successful lead capture
       if (storeHandle) {
+        onUnlock();
         window.location.href = `https://teamstore.sidelinenz.com/collections/${storeHandle}`;
         return;
       }
