@@ -371,32 +371,14 @@ export default function SizeChartPage() {
             ))}
           </div>
 
-          {/* Diagram + How to Measure */}
-          <div className="grid md:grid-cols-2 gap-8 py-10" style={{ borderBottom: "1px solid #e5e5e5" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#fafafa", borderRadius: "8px", padding: "20px" }}>
+          {/* Full-width Diagram */}
+          <div className="py-8" style={{ borderBottom: "1px solid #e5e5e5" }}>
+            <div style={{ background: "#fafafa", borderRadius: "8px", padding: "16px", overflow: "hidden" }}>
               <img
                 src={diagramSrc}
-                alt={GARMENT_LABELS[activeGarment] + " measurement diagram"}
-                style={{ maxWidth: "100%", maxHeight: "400px", objectFit: "contain" }}
+                alt={GARMENT_LABELS[activeGarment] + " size chart with measurements and how to measure guide"}
+                style={{ width: "100%", height: "auto", display: "block", borderRadius: "4px" }}
               />
-            </div>
-            <div>
-              <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#111", marginBottom: "16px", textTransform: "uppercase", letterSpacing: "1px" }}>
-                How to Measure
-              </h3>
-              <ol style={{ fontSize: "14px", color: "#444", lineHeight: 1.8, paddingLeft: "20px" }}>
-                <li>Take a garment you own that fits well.</li>
-                <li>Lay it flat on a smooth surface — don't stretch it.</li>
-                <li>Measure ½ chest from left to right, 1cm underneath the arm pit.</li>
-                <li>Measure the length from the top of the shoulder to the bottom of the hem.</li>
-                <li>Match your measurements against the chart below to find your size.</li>
-              </ol>
-              <div style={{ marginTop: "20px", padding: "16px", background: "#fffbeb", borderRadius: "8px", border: "1px solid #fde68a" }}>
-                <p style={{ fontSize: "13px", color: "#92400e", fontWeight: 600, marginBottom: "4px" }}>Important</p>
-                <p style={{ fontSize: "13px", color: "#92400e", lineHeight: 1.6 }}>
-                  All garments are made to order. Please double-check your size before ordering — we cannot swap or refund for incorrect sizing.
-                </p>
-              </div>
             </div>
           </div>
 
