@@ -83,9 +83,7 @@ function StoreGateOverlay({
           email: email.trim(),
           phone: phone.trim(),
           enquiry_type: "team-store-gate",
-          message: organization.trim()
-            ? `Organization: ${organization.trim()}`
-            : undefined,
+          organization: organization.trim() || undefined,
         }),
       });
 

@@ -119,6 +119,44 @@ export async function createGhlContact(contactData: any, tags: string[] = []) {
   }
 }
 
+async function createGhlOpportunity(contactId: string, name: string, pipelineId: string, stageId: string) {
+  const apiKey = process.env.SIDELINE_GHL_API_KEY;
+  const locationId = process.env.SIDELINE_GHL_LOCATION_ID;
+  if (!apiKey || !locationId) return;
+
+  try {
+    const res = await fetch(`${GHL_API_BASE}/opportunities/`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        Version: "2021-07-28",
+      },
+      body: JSON.stringify({
+        pipelineId,
+        pipelineStageId: stageId,
+        locationId,
+        contactId,
+        name,
+        status: "open",
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("GHL opportunity creation error:", res.status, text);
+    } else {
+      const data = await res.json();
+      console.log("GHL opportunity created:", data.opportunity?.id || data.id);
+    }
+  } catch (err) {
+    console.error("GHL opportunity request failed:", err);
+  }
+}
+
+// Sideline - Merch Orders pipeline
+const SIDELINE_PIPELINE_ID = "bne386ArJCVV5iuUs86h";
+const SIDELINE_STAGE_LEAD_RECEIVED = "0c31b3f0-5191-4fe8-912b-3cf469a01511";
+
 // ====== Form Submissions ======
 
 const projectSubmissionSchema = z.object({
@@ -191,6 +229,7 @@ const contactFormSchema = z.object({
   phone: z.string().min(1, "Phone is required"),
   enquiry_type: z.string().optional(),
   message: z.string().optional(),
+  organization: z.string().optional(),
 });
 
 router.post("/contact", async (req, res) => {
@@ -208,10 +247,22 @@ router.post("/contact", async (req, res) => {
       submitted_at: new Date().toISOString(),
     };
 
-    const result = await createGhlContact(enriched, ["Website Lead", "Contact Form"]);
+    const tags = payload.enquiry_type === "team-store-gate"
+      ? ["Website Lead", "Team Store Gate"]
+      : ["Website Lead", "Contact Form"];
+
+    const result = await createGhlContact(enriched, tags);
 
     if (!result.success && result.reason === "credentials_missing") {
       console.log("GHL not configured - form data logged above");
+    }
+
+    // Add to Sideline pipeline for gate signups and general contact leads
+    if (result.contactId) {
+      const opportunityName = payload.enquiry_type === "team-store-gate"
+        ? `Team Store Signup — ${payload.name}`
+        : `Contact Enquiry — ${payload.name}`;
+      await createGhlOpportunity(result.contactId, opportunityName, SIDELINE_PIPELINE_ID, SIDELINE_STAGE_LEAD_RECEIVED);
     }
 
     res.json({ ok: true, id: result.contactId || crypto.randomUUID() });
