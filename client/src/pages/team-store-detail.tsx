@@ -92,7 +92,7 @@ function ProductCard({
       className="group w-full"
     >
       <div style={{
-        aspectRatio: "1", background: "#f5f5f5", borderRadius: "8px", overflow: "hidden",
+        aspectRatio: "1", background: "#ffffff", borderRadius: "8px", overflow: "hidden",
         display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "12px",
         position: "relative",
       }}>
@@ -154,7 +154,7 @@ export default function TeamStoreDetailPage() {
     <Layout>
       {/* Hero / Feature Image */}
       {collection.image && (
-        <section style={{ position: "relative", width: "100%", background: "#000" }}>
+        <section style={{ position: "relative", width: "100%", background: "#fff" }}>
           <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
             <img
               src={collection.image.url}

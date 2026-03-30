@@ -9,11 +9,11 @@ function TeamStoreCard({ store }: { store: ShopifyCollection }) {
   return (
     <Link href={"/team-stores/" + store.handle}>
       <div
-        className="group relative cursor-pointer overflow-hidden"
-        style={{ borderRadius: "6px" }}
+        className="group relative cursor-pointer overflow-hidden border border-[#e5e5e5] hover:border-[#111] transition-colors"
+        style={{ borderRadius: "8px" }}
         data-testid={"card-team-store-" + store.handle}
       >
-        <div className="relative h-[240px] md:h-[360px] bg-[#111] overflow-hidden">
+        <div className="relative h-[240px] md:h-[360px] bg-[#f5f5f5] overflow-hidden">
           {store.image ? (
             <img
               src={store.image.url}
@@ -21,9 +21,9 @@ function TeamStoreCard({ store }: { store: ShopifyCollection }) {
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-white/40 text-sm">No image</div>
+            <div className="w-full h-full flex items-center justify-center text-[#ccc] text-sm">No image</div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
         </div>
 
         <div className="absolute bottom-0 left-0 right-0 p-5">
@@ -54,26 +54,26 @@ export default function TeamStoresPage() {
 
   return (
     <Layout>
-      <section className="pt-32 pb-16 md:pb-20 bg-black text-white">
+      <section className="pt-32 pb-16 md:pb-20 bg-white text-[#111]">
         <div className="container mx-auto px-5 md:px-[52px] text-center">
           <h1
-            className="text-4xl sm:text-5xl md:text-6xl text-white mb-4 uppercase tracking-wider mt-2"
+            className="text-4xl sm:text-5xl md:text-6xl text-[#111] mb-4 uppercase tracking-wider mt-2"
             style={{ fontFamily: "'Bebas Neue', sans-serif" }}
           >
             Team Stores
           </h1>
-          <p className="text-lg text-white/60 max-w-2xl mx-auto mb-10">
+          <p className="text-lg text-[#666] max-w-2xl mx-auto mb-10">
             Browse our online team stores for clubs and schools partnered with Sideline.
           </p>
 
           <div className="relative max-w-md mx-auto">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={20} />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#999]" size={20} />
             <input
               type="text"
               placeholder="Search by club or school..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-4 text-white bg-[#111] border border-white/10 focus:border-white/30 outline-none text-[16px]"
+              className="w-full pl-12 pr-4 py-4 text-[#111] bg-[#f5f5f5] border border-[#e5e5e5] focus:border-[#111] outline-none text-[16px]"
               style={{ borderRadius: "6px" }}
               data-testid="input-search-stores"
             />
@@ -81,20 +81,20 @@ export default function TeamStoresPage() {
         </div>
       </section>
 
-      <section className="py-12 md:py-20 bg-black">
+      <section className="py-12 md:py-20 bg-white">
         <div className="container mx-auto px-5 md:px-[52px]">
           {isLoading ? (
             <div className="text-center py-16">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto text-white/40 mb-4" />
-              <p className="text-white/40">Loading stores...</p>
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-[#999] mb-4" />
+              <p className="text-[#999]">Loading stores...</p>
             </div>
           ) : error ? (
             <div className="text-center py-16">
-              <p className="text-white/40 text-lg">Unable to load stores right now. Please try again later.</p>
+              <p className="text-[#999] text-lg">Unable to load stores right now. Please try again later.</p>
             </div>
           ) : filteredStores.length === 0 ? (
             <div className="text-center py-16">
-              <p className="text-white/40 text-lg">
+              <p className="text-[#999] text-lg">
                 {searchQuery ? 'No stores found matching "' + searchQuery + '"' : "No stores available yet."}
               </p>
             </div>
@@ -107,11 +107,11 @@ export default function TeamStoresPage() {
           )}
 
           <div className="mt-12 text-center">
-            <p className="text-white/50 mb-4">
+            <p className="text-[#999] mb-4">
               Want your club or school to have their own store?
             </p>
             <Link href="/quote?teamStore=yes">
-              <span className="inline-flex items-center text-white font-medium hover:text-white/80 cursor-pointer transition-colors">
+              <span className="inline-flex items-center text-[#111] font-medium hover:text-[#666] cursor-pointer transition-colors">
                 Start a Team Store Project <ArrowRight size={16} className="ml-1" />
               </span>
             </Link>

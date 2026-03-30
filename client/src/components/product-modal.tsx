@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Loader2, X } from "lucide-react";
+import { Loader2, X, Ruler } from "lucide-react";
+import { Link } from "wouter";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { createShopifyCart, formatPrice, type ShopifyProduct } from "@/lib/shopify";
@@ -52,7 +53,7 @@ export function ProductModal({ product, open, onClose }: ProductModalProps) {
         </button>
 
         {/* Product Image */}
-        <div className="aspect-square bg-[#f5f5f5] overflow-hidden">
+        <div className="aspect-square bg-white overflow-hidden">
           {product.featuredImage ? (
             <img
               src={product.featuredImage.url}
@@ -118,6 +119,12 @@ export function ProductModal({ product, open, onClose }: ProductModalProps) {
               </div>
             </div>
           )}
+
+          <Link href="/size-chart">
+            <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-[#111] transition-colors cursor-pointer">
+              <Ruler size={13} /> View Size Chart
+            </span>
+          </Link>
 
           {error && (
             <p className="text-sm text-red-600">{error}</p>
