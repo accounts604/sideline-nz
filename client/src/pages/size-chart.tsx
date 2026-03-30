@@ -1,184 +1,33 @@
 import { useState } from "react";
 import Layout from "@/components/layout";
-import { Ruler, ChevronDown } from "lucide-react";
 
-type GarmentType = "tshirt" | "hoodie" | "shorts" | "trackpants" | "singlet";
+type GarmentType = "tshirt" | "hoodie" | "singlet" | "shorts" | "trackpants" | "rain-jacket" | "tracksuit-jacket" | "baseball-jersey" | "rugby-jersey" | "socks";
 
 const GARMENT_LABELS: Record<GarmentType, string> = {
   tshirt: "T-Shirts",
   hoodie: "Hoodies",
-  shorts: "Football Shorts",
-  trackpants: "Trackpants",
   singlet: "Singlets",
+  shorts: "Shorts",
+  trackpants: "Trackpants",
+  "rain-jacket": "Rain Jackets",
+  "tracksuit-jacket": "Tracksuit Jackets",
+  "baseball-jersey": "Baseball Jersey",
+  "rugby-jersey": "Rugby Jersey",
+  socks: "Socks",
 };
 
-/* ------------------------------------------------------------------ */
-/*  SVG measurement diagrams — clean, no branding                      */
-/* ------------------------------------------------------------------ */
-
-function TShirtDiagram() {
-  return (
-    <svg viewBox="0 0 340 260" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full max-w-[320px] mx-auto">
-      {/* Front */}
-      <text x="80" y="16" fontSize="11" fill="#666" textAnchor="middle" fontWeight="500">Front</text>
-      <path d="M40 30 L20 60 L40 70 L40 180 L120 180 L120 70 L140 60 L120 30 L100 40 L80 42 L60 40 Z" stroke="#111" strokeWidth="1.5" fill="#f9f9f9" />
-      {/* A — 1/2 Chest */}
-      <line x1="42" y1="80" x2="118" y2="80" stroke="#2563eb" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="80" y="74" fontSize="10" fill="#2563eb" textAnchor="middle" fontWeight="600">A</text>
-      {/* B — Centre back length */}
-      <line x1="130" y1="32" x2="130" y2="180" stroke="#dc2626" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="136" y="110" fontSize="10" fill="#dc2626" fontWeight="600">B</text>
-
-      {/* Back */}
-      <text x="250" y="16" fontSize="11" fill="#666" textAnchor="middle" fontWeight="500">Back</text>
-      <path d="M210 30 L190 60 L210 70 L210 180 L290 180 L290 70 L310 60 L290 30 L270 40 L250 42 L230 40 Z" stroke="#111" strokeWidth="1.5" fill="#f9f9f9" />
-      {/* A — 1/2 Chest */}
-      <line x1="212" y1="80" x2="288" y2="80" stroke="#2563eb" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="250" y="74" fontSize="10" fill="#2563eb" textAnchor="middle" fontWeight="600">A</text>
-      {/* B — Centre back */}
-      <line x1="300" y1="32" x2="300" y2="180" stroke="#dc2626" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="306" y="110" fontSize="10" fill="#dc2626" fontWeight="600">B</text>
-
-      {/* Legend */}
-      <rect x="30" y="200" width="12" height="3" fill="#2563eb" rx="1" />
-      <text x="46" y="204" fontSize="9" fill="#444">A — ½ Chest (underarm to underarm)</text>
-      <rect x="30" y="216" width="12" height="3" fill="#dc2626" rx="1" />
-      <text x="46" y="220" fontSize="9" fill="#444">B — Centre Back Length (shoulder to hem)</text>
-    </svg>
-  );
-}
-
-function HoodieDiagram() {
-  return (
-    <svg viewBox="0 0 340 280" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full max-w-[320px] mx-auto">
-      {/* Front */}
-      <text x="80" y="16" fontSize="11" fill="#666" textAnchor="middle" fontWeight="500">Front</text>
-      {/* Hood */}
-      <path d="M60 30 Q80 18 100 30" stroke="#111" strokeWidth="1.5" fill="none" />
-      {/* Body */}
-      <path d="M40 30 L10 70 L40 80 L40 190 L120 190 L120 80 L150 70 L120 30 Z" stroke="#111" strokeWidth="1.5" fill="#f9f9f9" />
-      {/* A — Centre back length */}
-      <line x1="130" y1="32" x2="130" y2="190" stroke="#dc2626" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="136" y="115" fontSize="10" fill="#dc2626" fontWeight="600">A</text>
-      {/* B — 1/2 Chest */}
-      <line x1="42" y1="100" x2="118" y2="100" stroke="#2563eb" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="80" y="94" fontSize="10" fill="#2563eb" textAnchor="middle" fontWeight="600">B</text>
-
-      {/* Back */}
-      <text x="250" y="16" fontSize="11" fill="#666" textAnchor="middle" fontWeight="500">Back</text>
-      <path d="M230 30 Q250 18 270 30" stroke="#111" strokeWidth="1.5" fill="none" />
-      <path d="M210 30 L180 70 L210 80 L210 190 L290 190 L290 80 L320 70 L290 30 Z" stroke="#111" strokeWidth="1.5" fill="#f9f9f9" />
-      {/* C — Sleeve (neck to cuff) */}
-      <line x1="250" y1="30" x2="320" y2="70" stroke="#16a34a" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="290" y="42" fontSize="10" fill="#16a34a" fontWeight="600">C</text>
-
-      {/* Legend */}
-      <rect x="30" y="210" width="12" height="3" fill="#dc2626" rx="1" />
-      <text x="46" y="214" fontSize="9" fill="#444">A — Centre Back Length</text>
-      <rect x="30" y="226" width="12" height="3" fill="#2563eb" rx="1" />
-      <text x="46" y="230" fontSize="9" fill="#444">B — ½ Chest (underarm to underarm)</text>
-      <rect x="30" y="242" width="12" height="3" fill="#16a34a" rx="1" />
-      <text x="46" y="246" fontSize="9" fill="#444">C — Sleeve (neck to cuff)</text>
-    </svg>
-  );
-}
-
-function ShortsDiagram() {
-  return (
-    <svg viewBox="0 0 340 280" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full max-w-[320px] mx-auto">
-      {/* Front */}
-      <text x="80" y="16" fontSize="11" fill="#666" textAnchor="middle" fontWeight="500">Front</text>
-      <path d="M40 30 L40 160 L70 160 L80 80 L90 160 L120 160 L120 30 Z" stroke="#111" strokeWidth="1.5" fill="#f9f9f9" />
-      {/* A — 1/2 Waist */}
-      <line x1="42" y1="32" x2="118" y2="32" stroke="#2563eb" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="80" y="27" fontSize="10" fill="#2563eb" textAnchor="middle" fontWeight="600">A</text>
-      {/* D — Front Rise */}
-      <line x1="130" y1="30" x2="130" y2="80" stroke="#f59e0b" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="136" y="58" fontSize="10" fill="#f59e0b" fontWeight="600">D</text>
-      {/* F — Inseam */}
-      <line x1="80" y1="82" x2="80" y2="158" stroke="#8b5cf6" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="86" y="125" fontSize="10" fill="#8b5cf6" fontWeight="600">F</text>
-
-      {/* Back */}
-      <text x="250" y="16" fontSize="11" fill="#666" textAnchor="middle" fontWeight="500">Back</text>
-      <path d="M210 30 L210 160 L240 160 L250 80 L260 160 L290 160 L290 30 Z" stroke="#111" strokeWidth="1.5" fill="#f9f9f9" />
-      {/* B — 1/2 Hip */}
-      <line x1="206" y1="60" x2="294" y2="60" stroke="#dc2626" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="250" y="54" fontSize="10" fill="#dc2626" textAnchor="middle" fontWeight="600">B</text>
-      {/* C — Leg Opening */}
-      <line x1="212" y1="158" x2="238" y2="158" stroke="#16a34a" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="225" y="172" fontSize="10" fill="#16a34a" textAnchor="middle" fontWeight="600">C</text>
-      {/* E — Back Rise */}
-      <line x1="300" y1="30" x2="300" y2="80" stroke="#ea580c" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="306" y="58" fontSize="10" fill="#ea580c" fontWeight="600">E</text>
-
-      {/* Legend */}
-      <rect x="20" y="190" width="12" height="3" fill="#2563eb" rx="1" />
-      <text x="36" y="194" fontSize="9" fill="#444">A — ½ Waist</text>
-      <rect x="20" y="204" width="12" height="3" fill="#dc2626" rx="1" />
-      <text x="36" y="208" fontSize="9" fill="#444">B — ½ Hip</text>
-      <rect x="20" y="218" width="12" height="3" fill="#16a34a" rx="1" />
-      <text x="36" y="222" fontSize="9" fill="#444">C — Leg Opening</text>
-      <rect x="170" y="190" width="12" height="3" fill="#f59e0b" rx="1" />
-      <text x="186" y="194" fontSize="9" fill="#444">D — Front Rise</text>
-      <rect x="170" y="204" width="12" height="3" fill="#ea580c" rx="1" />
-      <text x="186" y="208" fontSize="9" fill="#444">E — Back Rise</text>
-      <rect x="170" y="218" width="12" height="3" fill="#8b5cf6" rx="1" />
-      <text x="186" y="222" fontSize="9" fill="#444">F — Inseam</text>
-    </svg>
-  );
-}
-
-function TrackpantsDiagram() {
-  return (
-    <svg viewBox="0 0 200 280" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full max-w-[200px] mx-auto">
-      <path d="M50 20 L50 240 L80 240 L100 100 L120 240 L150 240 L150 20 Z" stroke="#111" strokeWidth="1.5" fill="#f9f9f9" />
-      {/* A — 1/2 Waist */}
-      <line x1="52" y1="22" x2="148" y2="22" stroke="#2563eb" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="100" y="16" fontSize="10" fill="#2563eb" textAnchor="middle" fontWeight="600">A</text>
-      {/* B — Outside leg */}
-      <line x1="160" y1="20" x2="160" y2="240" stroke="#dc2626" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="166" y="130" fontSize="10" fill="#dc2626" fontWeight="600">B</text>
-      {/* C — Leg opening */}
-      <line x1="52" y1="238" x2="78" y2="238" stroke="#16a34a" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="65" y="254" fontSize="10" fill="#16a34a" textAnchor="middle" fontWeight="600">C</text>
-
-      {/* Legend */}
-      <rect x="10" y="266" width="10" height="3" fill="#2563eb" rx="1" />
-      <text x="24" y="270" fontSize="8" fill="#444">A — ½ Waist</text>
-      <rect x="80" y="266" width="10" height="3" fill="#dc2626" rx="1" />
-      <text x="94" y="270" fontSize="8" fill="#444">B — Outside Leg</text>
-      <rect x="152" y="266" width="10" height="3" fill="#16a34a" rx="1" />
-      <text x="166" y="270" fontSize="8" fill="#444">C — Leg Opening</text>
-    </svg>
-  );
-}
-
-function SingletDiagram() {
-  return (
-    <svg viewBox="0 0 340 260" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full max-w-[320px] mx-auto">
-      {/* Front */}
-      <text x="80" y="16" fontSize="11" fill="#666" textAnchor="middle" fontWeight="500">Front</text>
-      <path d="M50 30 L50 180 L110 180 L110 30 L95 25 L80 35 L65 25 Z" stroke="#111" strokeWidth="1.5" fill="#f9f9f9" />
-      {/* A — 1/2 Chest */}
-      <line x1="52" y1="60" x2="108" y2="60" stroke="#2563eb" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="80" y="54" fontSize="10" fill="#2563eb" textAnchor="middle" fontWeight="600">A</text>
-
-      {/* Back */}
-      <text x="250" y="16" fontSize="11" fill="#666" textAnchor="middle" fontWeight="500">Back</text>
-      <path d="M220 30 L220 180 L280 180 L280 30 L265 28 L250 30 L235 28 Z" stroke="#111" strokeWidth="1.5" fill="#f9f9f9" />
-      {/* B — Back Length */}
-      <line x1="290" y1="30" x2="290" y2="180" stroke="#dc2626" strokeWidth="1.2" strokeDasharray="4 2" />
-      <text x="296" y="110" fontSize="10" fill="#dc2626" fontWeight="600">B</text>
-
-      {/* Legend */}
-      <rect x="30" y="200" width="12" height="3" fill="#2563eb" rx="1" />
-      <text x="46" y="204" fontSize="9" fill="#444">A — ½ Chest (underarm to underarm)</text>
-      <rect x="30" y="216" width="12" height="3" fill="#dc2626" rx="1" />
-      <text x="46" y="220" fontSize="9" fill="#444">B — Back Length (shoulder to hem)</text>
-    </svg>
-  );
-}
+const DIAGRAM_IMAGES: Record<GarmentType, string> = {
+  tshirt: "/size-charts/tshirt-diagram.png",
+  hoodie: "/size-charts/hoodie-diagram.png",
+  singlet: "/size-charts/singlet-diagram.png",
+  shorts: "/size-charts/shorts-diagram.png",
+  trackpants: "/size-charts/trackpants-diagram.png",
+  "rain-jacket": "/size-charts/rain-jacket-diagram.png",
+  "tracksuit-jacket": "/size-charts/tracksuit-jacket-diagram.png",
+  "baseball-jersey": "/size-charts/baseball-jersey-diagram.png",
+  "rugby-jersey": "/size-charts/rugby-jersey-diagram.png",
+  socks: "/size-charts/socks-diagram.png",
+};
 
 /* ------------------------------------------------------------------ */
 /*  Size data tables                                                   */
@@ -240,6 +89,28 @@ const SIZE_DATA: Record<GarmentType, SizeTable[]> = {
       tolerance: "± 2.0cm",
     },
   ],
+  singlet: [
+    {
+      title: "Youth",
+      headers: ["", "Y2", "Y3", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16"],
+      rows: [
+        { label: "A. ½ Chest", values: [33.5,35.5,37.5,39.5,41.5,43.5,45.5,47.5,49.5] },
+        { label: "B. Back Length", values: [40.5,44.5,48.5,52.5,56.5,60.5,64.5,68.5,72.5] },
+        { label: "B. Back Length (Tall)", values: [43.5,47.5,51.5,55.5,59.5,63.5,67.5,71.5,75.5] },
+      ],
+      tolerance: "± 1.0cm",
+    },
+    {
+      title: "Adult Unisex",
+      headers: ["", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      rows: [
+        { label: "A. ½ Chest", values: [52,54.5,57,59.5,62,64.5,67,69.5,72] },
+        { label: "B. Back Length", values: [72.5,74.5,76.5,78.5,80.5,84.5,86,"—","—"] },
+        { label: "B. Back Length (Tall)", values: [77.5,79.5,81.5,83.5,85.5,89.5,91,93,95] },
+      ],
+      tolerance: "± 1.0cm",
+    },
+  ],
   shorts: [
     {
       title: "Adult Football Shorts",
@@ -292,36 +163,106 @@ const SIZE_DATA: Record<GarmentType, SizeTable[]> = {
       tolerance: "± 1.5cm",
     },
   ],
-  singlet: [
+  "rain-jacket": [
     {
-      title: "Youth",
-      headers: ["", "Y2", "Y3", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16"],
+      title: "Youth / Adult Unisex",
+      headers: ["", "YXS", "YS", "YM", "YL", "YXL", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"],
       rows: [
-        { label: "A. ½ Chest", values: [33.5,35.5,37.5,39.5,41.5,43.5,45.5,47.5,49.5] },
-        { label: "B. Back Length", values: [40.5,44.5,48.5,52.5,56.5,60.5,64.5,68.5,72.5] },
-        { label: "B. Back Length (Tall)", values: [43.5,47.5,51.5,55.5,59.5,63.5,67.5,71.5,75.5] },
+        { label: "A. ½ Chest", values: [41,44,47,50,53,55,59,62,65,68,71,74,77] },
+        { label: "B. Centre Back Length", values: [54,58,62,66,70,74,78.5,80,81.5,83,84.5,87,90] },
+        { label: "C. Sleeve (neck to cuff)", values: [57,60,62,65,68,71,74,77,81,84,87,90,93] },
       ],
-      tolerance: "± 1.0cm",
+      tolerance: "± 2.0cm",
     },
     {
-      title: "Adult Unisex",
-      headers: ["", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      title: "Women",
+      headers: ["", "W3XS", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
       rows: [
-        { label: "A. ½ Chest", values: [52,54.5,57,59.5,62,64.5,67,69.5,72] },
-        { label: "B. Back Length", values: [72.5,74.5,76.5,78.5,80.5,84.5,86,"—","—"] },
-        { label: "B. Back Length (Tall)", values: [77.5,79.5,81.5,83.5,85.5,89.5,91,93,95] },
+        { label: "A. ½ Chest", values: [43,45.5,48,50.5,54.5,58.5,62.5,66.5,70.5,74.5,78.5] },
+        { label: "B. Centre Back Length", values: [60,63.5,67,70.5,74,77.5,81,84.5,88,91,94] },
+        { label: "C. Sleeve (neck to cuff)", values: [65,68,71,73,75,77,79,82,85,88,91] },
       ],
-      tolerance: "± 1.0cm",
+      tolerance: "± 2.0cm",
     },
   ],
-};
-
-const DIAGRAMS: Record<GarmentType, () => JSX.Element> = {
-  tshirt: TShirtDiagram,
-  hoodie: HoodieDiagram,
-  shorts: ShortsDiagram,
-  trackpants: TrackpantsDiagram,
-  singlet: SingletDiagram,
+  "tracksuit-jacket": [
+    {
+      title: "Youth / Adult Unisex",
+      headers: ["", "4", "6", "8", "10", "12", "14", "S", "M", "L", "XL", "2XL", "3XL", "4XL"],
+      rows: [
+        { label: "A. Length", values: [51,55,58,61,64,67,70,73,76,79,82,85,"—"] },
+        { label: "B. ½ Chest", values: [41,44,47,50,53,56,59,62,65,68,71,74,77] },
+        { label: "C. Sleeve Length", values: [57,60,62,65,68,71,74,77,81,84,87,90,93] },
+      ],
+      tolerance: "± 2.0cm",
+    },
+    {
+      title: "Women",
+      headers: ["", "W3XS", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
+      rows: [
+        { label: "A. Length", values: [56,59,62,65,68,71,74,77,80,83,86] },
+        { label: "B. ½ Chest", values: [43,45.5,48,50.5,54.5,58.5,62.5,66.5,70.5,74.5,78.5] },
+        { label: "C. Sleeve Length", values: [65,68,71,73,75,77,79,82,85,88,91] },
+      ],
+      tolerance: "± 2.0cm",
+    },
+  ],
+  "baseball-jersey": [
+    {
+      title: "Youth / Adult Unisex",
+      headers: ["", "Y2", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      rows: [
+        { label: "A. ½ Chest", values: [32,34,36,38,40,42,44,46,49,51,53,56,58,61,64,67,70] },
+        { label: "B. Centre Back", values: [42,46,50,54,57,62,66,70,66,68,70,73,75,77,79,80,81] },
+        { label: "B. Centre Back (Tall)", values: [45,49,53,57,60,65,69,73,71,73,75,78,80,82,84,85,86] },
+      ],
+      tolerance: "± 1.5cm",
+    },
+    {
+      title: "Women",
+      headers: ["", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL"],
+      rows: [
+        { label: "A. ½ Chest", values: [40,42,45,48,51,53,55,56,59] },
+        { label: "B. Centre Back", values: [58,60,62,64,67,69,71,73,74] },
+        { label: "B. Centre Back (Tall)", values: [63,65,67,69,72,74,76,78,79] },
+      ],
+      tolerance: "± 1.5cm",
+    },
+  ],
+  "rugby-jersey": [
+    {
+      title: "Rugby Jersey",
+      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
+      rows: [
+        { label: "A. ½ Chest", values: [35,37,39,41,43,45,43.5,46,48.5,51,53.5,56,58.5,61,63.5,66,68.5] },
+        { label: "B. Length", values: [50,54,58,62,66,70,72,74,76,78,80,82,84,86,88,90,92] },
+      ],
+      tolerance: "± 2.0cm",
+    },
+    {
+      title: "Rugby Shorts",
+      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
+      rows: [
+        { label: "A. ½ Waist", values: [26,28,30,32,34,36,40,42,44,45,48,50,52,54,56,58,"—"] },
+        { label: "B. Outside Leg", values: [27.5,28.5,29.5,30.5,31.5,32.5,33.5,34.5,35.5,36.5,37.5,38.5,39.5,40.5,41.5,42.5,43.5] },
+      ],
+      tolerance: "± 2.0cm",
+    },
+  ],
+  socks: [
+    {
+      title: "Rugby Socks",
+      headers: ["", "XXS", "XS", "S", "M", "L", "XL", "XXL"],
+      rows: [
+        { label: "A. Heel", values: [14,15,18,21,24,27,29] },
+        { label: "B. Heel Flap", values: [34,37,40,45,50,54,57] },
+        { label: "C. Cuff", values: [8,8,9,9,10,10,10] },
+        { label: "D. Ribbed Top", values: [10,10,10,12,12,12,12] },
+        { label: "Shoe Size", values: ["9-12","13-3","2-7","7-11","11-14","—","—"] },
+      ],
+      tolerance: "± 2.0cm",
+    },
+  ],
 };
 
 function SizeTableComponent({ table }: { table: SizeTable }) {
@@ -364,10 +305,7 @@ function SizeTableComponent({ table }: { table: SizeTable }) {
                   {row.label}
                 </td>
                 {row.values.map((v, vi) => (
-                  <td
-                    key={vi}
-                    style={{ padding: "9px 8px", textAlign: "center", color: "#444", borderBottom: "1px solid #eee" }}
-                  >
+                  <td key={vi} style={{ padding: "9px 8px", textAlign: "center", color: "#444", borderBottom: "1px solid #eee" }}>
                     {v}
                   </td>
                 ))}
@@ -386,16 +324,14 @@ function SizeTableComponent({ table }: { table: SizeTable }) {
 export default function SizeChartPage() {
   const [activeGarment, setActiveGarment] = useState<GarmentType>("tshirt");
 
-  const Diagram = DIAGRAMS[activeGarment];
+  const diagramSrc = DIAGRAM_IMAGES[activeGarment];
   const tables = SIZE_DATA[activeGarment];
 
   return (
     <Layout>
       <section style={{ background: "#fff", paddingTop: "120px", paddingBottom: "40px" }}>
         <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "0 20px", textAlign: "center" }}>
-          <h1
-            style={{ fontSize: "clamp(32px, 5vw, 48px)", fontWeight: 700, color: "#111", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "12px" }}
-          >
+          <h1 style={{ fontSize: "clamp(32px, 5vw, 48px)", fontWeight: 700, color: "#111", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "12px" }}>
             Size Chart
           </h1>
           <p style={{ fontSize: "15px", color: "#666", maxWidth: "560px", margin: "0 auto 8px" }}>
@@ -410,14 +346,14 @@ export default function SizeChartPage() {
       <section style={{ background: "#fff", borderTop: "1px solid #e5e5e5" }}>
         <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "0 20px" }}>
           {/* Garment Type Tabs */}
-          <div className="flex overflow-x-auto gap-1 py-4 -mx-5 px-5 md:mx-0 md:px-0 md:justify-center" style={{ borderBottom: "1px solid #e5e5e5" }}>
+          <div className="flex overflow-x-auto gap-1 py-4 -mx-5 px-5 md:mx-0 md:px-0" style={{ borderBottom: "1px solid #e5e5e5" }}>
             {(Object.keys(GARMENT_LABELS) as GarmentType[]).map((key) => (
               <button
                 key={key}
                 onClick={() => setActiveGarment(key)}
                 style={{
-                  padding: "10px 20px",
-                  fontSize: "13px",
+                  padding: "10px 16px",
+                  fontSize: "12px",
                   fontWeight: activeGarment === key ? 700 : 500,
                   color: activeGarment === key ? "#111" : "#999",
                   background: activeGarment === key ? "#f5f5f5" : "transparent",
@@ -437,8 +373,12 @@ export default function SizeChartPage() {
 
           {/* Diagram + How to Measure */}
           <div className="grid md:grid-cols-2 gap-8 py-10" style={{ borderBottom: "1px solid #e5e5e5" }}>
-            <div>
-              <Diagram />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#fafafa", borderRadius: "8px", padding: "20px" }}>
+              <img
+                src={diagramSrc}
+                alt={GARMENT_LABELS[activeGarment] + " measurement diagram"}
+                style={{ maxWidth: "100%", maxHeight: "400px", objectFit: "contain" }}
+              />
             </div>
             <div>
               <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#111", marginBottom: "16px", textTransform: "uppercase", letterSpacing: "1px" }}>
@@ -463,7 +403,7 @@ export default function SizeChartPage() {
           {/* Size Tables */}
           <div className="py-10">
             {tables.map((table, i) => (
-              <SizeTableComponent key={i} table={table} />
+              <SizeTableComponent key={activeGarment + "-" + i} table={table} />
             ))}
           </div>
         </div>
