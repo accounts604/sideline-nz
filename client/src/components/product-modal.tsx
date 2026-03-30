@@ -83,6 +83,10 @@ export function ProductModal({ product, open, onClose }: ProductModalProps) {
                       product.priceRange.minVariantPrice.currencyCode
                     )}
               </p>
+              <p className="text-sm text-gray-500 mt-1">
+                or 4 x ${(Math.ceil(parseFloat(activeVariant ? activeVariant.price.amount : product.priceRange.minVariantPrice.amount) / 4 * 100) / 100).toFixed(2)} with{" "}
+                <span style={{ color: "#B2FCE4", fontWeight: 700 }}>Afterpay</span>
+              </p>
             </div>
 
             {/* Variant / Size Selection */}
