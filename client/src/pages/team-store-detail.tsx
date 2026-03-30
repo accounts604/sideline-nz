@@ -233,6 +233,172 @@ export default function TeamStoreDetailPage() {
         </div>
       </section>
 
+      {/* Ordering, Shipping & Club Profit Share */}
+      <section style={{ background: "#111", color: "#fff" }}>
+        <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "72px 20px" }}>
+
+          {/* Section Heading */}
+          <p style={{ fontSize: "11px", letterSpacing: "3px", textTransform: "uppercase", color: "#888", marginBottom: "8px" }}>Information</p>
+          <h2 style={{ fontSize: "clamp(22px, 3vw, 32px)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", marginBottom: "64px", borderBottom: "1px solid #2a2a2a", paddingBottom: "24px" }}>
+            Ordering, Shipping &amp; Club Profit Share
+          </h2>
+
+          <div style={{ display: "grid", gap: "56px" }}>
+
+            {/* Your club earns */}
+            <div>
+              <h3 style={{ fontSize: "13px", letterSpacing: "2.5px", textTransform: "uppercase", color: "#e5e5e5", marginBottom: "16px", fontWeight: 700 }}>
+                Your Club Earns Every Time Someone Orders
+              </h3>
+              <p style={{ fontSize: "15px", color: "#aaa", lineHeight: 1.8, maxWidth: "700px" }}>
+                Every order placed through this store generates a cash return for your club. No fundraisers. No admin. Your community orders their gear — your club gets paid. Profit share is calculated after each order is fulfilled, based on actual production costs. Paid to your club treasurer at the close of each campaign.
+              </p>
+            </div>
+
+            {/* What Sideline Covers */}
+            <div>
+              <h3 style={{ fontSize: "13px", letterSpacing: "2.5px", textTransform: "uppercase", color: "#e5e5e5", marginBottom: "20px", fontWeight: 700 }}>
+                What Sideline Covers
+              </h3>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "10px" }}>
+                {["Custom gear production", "Order fulfilment & direct shipping", "Social media campaign to drive orders"].map((item) => (
+                  <li key={item} style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "15px", color: "#aaa" }}>
+                    <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#fff", flexShrink: 0, display: "inline-block" }} />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <p style={{ fontSize: "14px", fontWeight: 700, color: "#fff", textTransform: "uppercase", letterSpacing: "1px", marginTop: "20px" }}>
+                Your club just collects the return.
+              </p>
+            </div>
+
+            {/* Profit Share Table */}
+            <div>
+              <h3 style={{ fontSize: "13px", letterSpacing: "2.5px", textTransform: "uppercase", color: "#e5e5e5", marginBottom: "12px", fontWeight: 700 }}>
+                Club Profit Share
+              </h3>
+              <p style={{ fontSize: "14px", color: "#888", lineHeight: 1.7, maxWidth: "640px", marginBottom: "24px" }}>
+                Profit share is calculated after all costs are confirmed at the close of each campaign — including production, shipping, and campaign costs.
+              </p>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", maxWidth: "540px", borderCollapse: "collapse", fontSize: "14px" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #2a2a2a" }}>
+                      <th style={{ textAlign: "left", padding: "10px 16px 10px 0", color: "#888", fontWeight: 600, textTransform: "uppercase", letterSpacing: "1px", fontSize: "11px" }}>Units Ordered (Per Campaign)</th>
+                      <th style={{ textAlign: "left", padding: "10px 0", color: "#888", fontWeight: 600, textTransform: "uppercase", letterSpacing: "1px", fontSize: "11px" }}>Profit Share</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { units: "50–99 units", share: "6% of profits" },
+                      { units: "100–149 units", share: "8% of profits" },
+                      { units: "150–199 units", share: "10% of profits" },
+                      { units: "200+ units", share: "12% of profits" },
+                    ].map((row, i) => (
+                      <tr key={row.units} style={{ borderBottom: "1px solid #1e1e1e", background: i % 2 === 0 ? "transparent" : "#161616" }}>
+                        <td style={{ padding: "14px 16px 14px 0", color: "#ccc" }}>{row.units}</td>
+                        <td style={{ padding: "14px 0", color: "#fff", fontWeight: 600 }}>{row.share}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p style={{ fontSize: "12px", color: "#666", marginTop: "14px", lineHeight: 1.6, maxWidth: "540px" }}>
+                *Minimum 50 units per campaign required to trigger payout. Paid directly to the club once all orders in the campaign are fulfilled.
+              </p>
+            </div>
+
+            {/* How Ordering Works */}
+            <div>
+              <h3 style={{ fontSize: "13px", letterSpacing: "2.5px", textTransform: "uppercase", color: "#e5e5e5", marginBottom: "20px", fontWeight: 700 }}>
+                How Ordering Works
+              </h3>
+              <ol style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "12px" }}>
+                {[
+                  "Campaign opens — your community places orders through the store",
+                  "Campaign closes — production begins on all confirmed orders",
+                  "Gear is produced and shipped directly to each customer",
+                  "Profit is calculated and paid to the club",
+                ].map((step, i) => (
+                  <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: "16px", fontSize: "15px", color: "#aaa", lineHeight: 1.6 }}>
+                    <span style={{ minWidth: "24px", height: "24px", borderRadius: "50%", border: "1px solid #333", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", color: "#888", fontWeight: 700, marginTop: "1px" }}>
+                      {i + 1}
+                    </span>
+                    {step}
+                  </li>
+                ))}
+              </ol>
+              <p style={{ fontSize: "13px", color: "#888", marginTop: "20px" }}>
+                Estimated delivery: <span style={{ color: "#ccc", fontWeight: 600 }}>4–5 weeks from campaign close date</span>
+              </p>
+            </div>
+
+            {/* Shipping & Pickup */}
+            <div style={{ display: "grid", gap: "32px" }} className="shipping-grid">
+              <div>
+                <h3 style={{ fontSize: "13px", letterSpacing: "2.5px", textTransform: "uppercase", color: "#e5e5e5", marginBottom: "16px", fontWeight: 700 }}>
+                  Shipping
+                </h3>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "10px" }}>
+                  {[
+                    "New Zealand delivery only",
+                    "Shipping costs are covered by Sideline NZ as part of the campaign",
+                    "All orders are tracked and confirmed via email",
+                  ].map((item) => (
+                    <li key={item} style={{ display: "flex", alignItems: "flex-start", gap: "12px", fontSize: "15px", color: "#aaa", lineHeight: 1.6 }}>
+                      <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#555", flexShrink: 0, marginTop: "8px", display: "inline-block" }} />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h3 style={{ fontSize: "13px", letterSpacing: "2.5px", textTransform: "uppercase", color: "#e5e5e5", marginBottom: "16px", fontWeight: 700 }}>
+                  Local Pickup — Auckland
+                </h3>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "10px" }}>
+                  {[
+                    "Selected pickup days will be announced at the close of each campaign",
+                    "Pickup location: Sideline NZ HQ",
+                    "Pickup option available at checkout for local orders",
+                  ].map((item) => (
+                    <li key={item} style={{ display: "flex", alignItems: "flex-start", gap: "12px", fontSize: "15px", color: "#aaa", lineHeight: 1.6 }}>
+                      <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#555", flexShrink: 0, marginTop: "8px", display: "inline-block" }} />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {/* Terms & Conditions */}
+            <div style={{ borderTop: "1px solid #1e1e1e", paddingTop: "40px" }}>
+              <h3 style={{ fontSize: "13px", letterSpacing: "2.5px", textTransform: "uppercase", color: "#e5e5e5", marginBottom: "20px", fontWeight: 700 }}>
+                Terms &amp; Conditions
+              </h3>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "10px" }}>
+                {[
+                  "All items are made to order — no returns on custom gear unless faulty or incorrect",
+                  "Faulty or incorrect items must be reported within 7 days of delivery with photo evidence",
+                  "Profit share applies to fulfilled and delivered orders only",
+                  "Cancelled or refunded orders are excluded from profit share calculations",
+                  "Production, shipping, and campaign costs are deducted before profit share is calculated",
+                  "Sideline NZ reserves the right to update pricing and terms with reasonable notice",
+                  "By placing an order through this store you agree to these terms",
+                ].map((term) => (
+                  <li key={term} style={{ display: "flex", alignItems: "flex-start", gap: "12px", fontSize: "14px", color: "#777", lineHeight: 1.7 }}>
+                    <span style={{ width: "4px", height: "4px", borderRadius: "50%", background: "#444", flexShrink: 0, marginTop: "9px", display: "inline-block" }} />
+                    {term}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
       {/* Section Divider */}
       <div style={{ height: "1px", background: "#e5e5e5" }} />
 
@@ -292,6 +458,9 @@ export default function TeamStoreDetailPage() {
           .store-products-grid {
             grid-template-columns: repeat(4, 1fr) !important;
             gap: 48px 32px !important;
+          }
+          .shipping-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
           }
         }
       `}</style>
