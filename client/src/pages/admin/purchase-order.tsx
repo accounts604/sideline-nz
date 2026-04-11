@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { ArrowLeft, Printer } from "lucide-react";
+import { SidelineMark } from "@/components/sideline-logo";
 
 interface OrderItem {
   id: string;
@@ -80,90 +81,101 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
   }
   const totalQty = Array.from(sizeSummary.values()).reduce((a, b) => a + b, 0) || item.quantity;
 
+  const elements = (item.elementUrls as { name: string; url: string }[] | null) ?? [];
+  const hasDesignSpecs = !!(item.frontDesignUrl || item.backDesignUrl || elements.length > 0);
+
   return (
-    <div style={{ pageBreakInside: "avoid", marginBottom: "24px" }}>
+    <div style={{ pageBreakInside: "avoid", marginBottom: "20px" }}>
       {/* Product header bar */}
-      <div style={{ background: "#1a1a1a", color: "#fff", padding: "8px 16px", fontSize: "13px", fontWeight: 700, textAlign: "center" }}>
-        {item.gradeGroup ? `${item.productName} ${item.gradeGroup}` : item.productName}
+      <div style={{ background: "#000", color: "#fff", padding: "8px 16px", fontSize: "13px", fontWeight: 700, textAlign: "center", letterSpacing: "0.3px" }}>
+        {item.productName && item.gradeGroup
+          ? `${item.productName.replace(/Rugby Jersey ?/i, "").trim() || "Jersey"} ${item.gradeGroup}`.replace(/^\s+|\s+$/g, "")
+          : (item.gradeGroup || item.productName)}
       </div>
 
-      {/* Product info row */}
-      <div style={{ display: "flex", border: "1px solid #ddd", borderTop: "none" }}>
+      {/* Product info row — LEFT: details | CENTER: mockups together | RIGHT: size/count */}
+      <div style={{ display: "flex" }}>
         {/* Left: product details */}
-        <div style={{ flex: 1, padding: "12px 16px", fontSize: "12px", borderRight: "1px solid #ddd" }}>
-          <div style={{ marginBottom: "8px" }}>
-            <span style={{ fontWeight: 600 }}>Product Name</span>
-            <span style={{ marginLeft: "12px" }}>{item.productName}</span>
+        <div style={{ width: "220px", padding: "14px 16px", fontSize: "12px", color: "#000" }}>
+          <div style={{ marginBottom: "10px" }}>
+            <div style={{ fontWeight: 700, marginBottom: "2px" }}>Product Name</div>
+            <div>{item.productName}</div>
           </div>
           {item.productColors && item.productColors.length > 0 && (
-            <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontWeight: 600 }}>Product Colours</span>
-              {(item.productColors as { hex: string; name?: string }[]).map((c, i) => (
-                <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                  <span style={{ width: "16px", height: "16px", background: c.hex, border: "1px solid #ccc", display: "inline-block" }} />
-                  <span style={{ fontSize: "11px" }}>{c.hex}</span>
-                </span>
-              ))}
+            <div style={{ marginBottom: "10px" }}>
+              <div style={{ fontWeight: 700, marginBottom: "4px" }}>Product Colours</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                {(item.productColors as { hex: string; name?: string }[]).map((c, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ width: "28px", height: "14px", background: c.hex, border: "1px solid #999", display: "inline-block" }} />
+                    <span style={{ fontSize: "11px" }}>{c.hex}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           {item.brandingMethod && (
             <div>
-              <span style={{ fontWeight: 600 }}>Branding Method</span>
-              <br />
-              <span style={{ fontWeight: 600 }}>Customisation</span>
-              <span style={{ marginLeft: "12px", color: "#0ea5e9" }}>{item.brandingMethod}</span>
+              <div style={{ fontWeight: 700 }}>Branding Method</div>
+              <div style={{ fontWeight: 700, marginBottom: "2px" }}>Customisation</div>
+              <div style={{ color: "#0ea5e9" }}>{item.brandingMethod}</div>
             </div>
           )}
         </div>
 
-        {/* Center: product images */}
-        <div style={{ width: "300px", display: "flex", justifyContent: "center", alignItems: "center", gap: "8px", padding: "8px", borderRight: "1px solid #ddd" }}>
-          {item.frontDesignUrl && <img src={item.frontDesignUrl} alt="Front" style={{ maxHeight: "120px", maxWidth: "130px", objectFit: "contain" }} />}
-          {item.backDesignUrl && <img src={item.backDesignUrl} alt="Back" style={{ maxHeight: "120px", maxWidth: "130px", objectFit: "contain" }} />}
+        {/* Center: mockup designs together — front + back side by side, big */}
+        <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", gap: "16px", padding: "12px 8px", minHeight: "220px" }}>
+          {item.frontDesignUrl && (
+            <img src={item.frontDesignUrl} alt="Front mockup" style={{ maxHeight: "200px", maxWidth: "220px", objectFit: "contain" }} />
+          )}
+          {item.backDesignUrl && (
+            <img src={item.backDesignUrl} alt="Back mockup" style={{ maxHeight: "200px", maxWidth: "220px", objectFit: "contain" }} />
+          )}
         </div>
 
         {/* Right: size/count breakdown */}
-        <div style={{ width: "180px", padding: "12px 16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 600, borderBottom: "1px solid #ddd", paddingBottom: "4px", marginBottom: "4px" }}>
+        <div style={{ width: "200px", padding: "14px 16px", borderLeft: "1px solid #eee" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 700, marginBottom: "6px" }}>
             <span>Size</span>
             <span>Count</span>
           </div>
           {Array.from(sizeSummary.entries()).map(([size, qty]) => (
-            <div key={size} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", padding: "2px 0" }}>
+            <div key={size} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", padding: "3px 0", color: "#000" }}>
               <span>{size}</span>
               <span>{qty}</span>
             </div>
           ))}
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 700, borderTop: "1px solid #ddd", paddingTop: "4px", marginTop: "4px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 700, marginTop: "10px" }}>
             <span>Total</span>
             <span>{totalQty}</span>
           </div>
         </div>
       </div>
 
-      {/* Design Specifications */}
-      {(item.frontDesignUrl || item.backDesignUrl || (item.elementUrls && (item.elementUrls as any[]).length > 0)) && (
+      {/* Design Specifications — big mockups + elements column, sits flush below */}
+      {hasDesignSpecs && (
         <>
-          <div style={{ background: "#1a1a1a", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 600, textAlign: "center" }}>
+          <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center", letterSpacing: "0.3px" }}>
             Design Specifications
           </div>
-          <div style={{ display: "flex", border: "1px solid #ddd", borderTop: "none", minHeight: "200px" }}>
-            {/* Front Design */}
-            <div style={{ flex: 1, padding: "8px", textAlign: "center", borderRight: "1px solid #ddd" }}>
-              <p style={{ fontSize: "11px", fontWeight: 600, marginBottom: "8px" }}>Front Design</p>
-              {item.frontDesignUrl && <img src={item.frontDesignUrl} alt="Front Design" style={{ maxHeight: "180px", maxWidth: "100%", objectFit: "contain" }} />}
+          <div style={{ display: "flex", minHeight: "260px", alignItems: "stretch" }}>
+            <div style={{ flex: 1, padding: "12px 8px", textAlign: "center", display: "flex", flexDirection: "column" }}>
+              <p style={{ fontSize: "11px", fontWeight: 700, marginBottom: "8px" }}>Front Design</p>
+              {item.frontDesignUrl && (
+                <img src={item.frontDesignUrl} alt="Front Design" style={{ flex: 1, minHeight: 0, maxHeight: "260px", objectFit: "contain", width: "100%" }} />
+              )}
             </div>
-            {/* Back Design */}
-            <div style={{ flex: 1, padding: "8px", textAlign: "center", borderRight: "1px solid #ddd" }}>
-              <p style={{ fontSize: "11px", fontWeight: 600, marginBottom: "8px" }}>Back Design</p>
-              {item.backDesignUrl && <img src={item.backDesignUrl} alt="Back Design" style={{ maxHeight: "180px", maxWidth: "100%", objectFit: "contain" }} />}
+            <div style={{ flex: 1, padding: "12px 8px", textAlign: "center", display: "flex", flexDirection: "column" }}>
+              <p style={{ fontSize: "11px", fontWeight: 700, marginBottom: "8px" }}>Back Design</p>
+              {item.backDesignUrl && (
+                <img src={item.backDesignUrl} alt="Back Design" style={{ flex: 1, minHeight: 0, maxHeight: "260px", objectFit: "contain", width: "100%" }} />
+              )}
             </div>
-            {/* Elements */}
-            <div style={{ width: "200px", padding: "8px", textAlign: "center" }}>
-              <p style={{ fontSize: "11px", fontWeight: 600, marginBottom: "8px" }}>Elements</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
-                {item.elementUrls && (item.elementUrls as { name: string; url: string }[]).map((el, i) => (
-                  <img key={i} src={el.url} alt={el.name} title={el.name} style={{ maxHeight: "50px", maxWidth: "160px", objectFit: "contain" }} />
+            <div style={{ width: "200px", padding: "12px 8px", textAlign: "center", borderLeft: "1px solid #eee" }}>
+              <p style={{ fontSize: "11px", fontWeight: 700, marginBottom: "8px" }}>Elements</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", alignItems: "center" }}>
+                {elements.map((el, i) => (
+                  <img key={i} src={el.url} alt={el.name} title={el.name} style={{ maxHeight: "55px", maxWidth: "170px", objectFit: "contain" }} />
                 ))}
               </div>
             </div>
@@ -171,33 +183,36 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
         </>
       )}
 
-      {/* Sizing Guide */}
-      <div style={{ background: "#1a1a1a", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 600, textAlign: "center" }}>
+      {/* Sizing Guide — flush below design specs */}
+      <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center", letterSpacing: "0.3px" }}>
         Sizing Guide
       </div>
-      <div style={{ border: "1px solid #ddd", borderTop: "none", overflowX: "auto" }}>
-        <p style={{ fontSize: "12px", fontWeight: 700, padding: "8px 16px" }}>JERSEY</p>
+      <div style={{ overflowX: "auto" }}>
+        <p style={{ fontSize: "12px", fontWeight: 800, padding: "8px 16px 4px", margin: 0 }}>JERSEY</p>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "10px" }}>
           <thead>
             <tr>
-              <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #ddd", background: "#f5f5f5" }}></th>
+              <th style={{ textAlign: "left", padding: "4px 8px", background: "#fff" }}></th>
               {JERSEY_SIZING_GUIDE.headers.map(h => (
-                <th key={h} style={{ padding: "4px 4px", borderBottom: "1px solid #ddd", background: "#f5f5f5", textAlign: "center", fontWeight: 600 }}>{h}</th>
+                <th key={h} style={{ padding: "4px 4px", background: "#c9d9ea", textAlign: "center", fontWeight: 700, border: "1px solid #ddd" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {JERSEY_SIZING_GUIDE.measurements.map(row => (
               <tr key={row.label}>
-                <td style={{ padding: "3px 8px", borderBottom: "1px solid #eee", fontWeight: 500, whiteSpace: "nowrap" }}>{row.label}</td>
+                <td style={{ padding: "3px 8px", fontWeight: 600, whiteSpace: "nowrap", border: "1px solid #ddd" }}>{row.label}</td>
                 {row.values.map((v, i) => (
-                  <td key={i} style={{ padding: "3px 4px", borderBottom: "1px solid #eee", textAlign: "center" }}>{v}</td>
+                  <td key={i} style={{ padding: "3px 4px", textAlign: "center", border: "1px solid #ddd" }}>{v}</td>
                 ))}
               </tr>
             ))}
           </tbody>
         </table>
-        <p style={{ fontSize: "9px", color: "#888", padding: "4px 16px" }}>Measurements in cm &nbsp;&nbsp;&nbsp; Tolerance +/- 2cm</p>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9px", color: "#666", padding: "4px 16px" }}>
+          <span>Measurements in cm</span>
+          <span>Tolerance +/- 2cm</span>
+        </div>
       </div>
     </div>
   );
@@ -250,54 +265,79 @@ export default function PurchaseOrderView() {
       {/* PO Document */}
       <div style={{ maxWidth: "900px", margin: "0 auto", padding: "32px 40px", fontFamily: "'Segoe UI', Arial, sans-serif", color: "#000" }}>
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
           <div>
-            <h1 style={{ fontSize: "28px", fontWeight: 800, margin: 0, letterSpacing: "-0.5px", fontFamily: "'Bebas Neue', sans-serif" }}>
-              <span style={{ color: "#f97316" }}>S</span>IDELINE
-            </h1>
-            <div style={{ fontSize: "11px", color: "#555", marginTop: "8px", lineHeight: "1.6" }}>
+            <div style={{ marginBottom: "12px" }}>
+              <SidelineMark size={60} color="#000" />
+            </div>
+            <div style={{ fontSize: "11px", color: "#333", lineHeight: "1.6" }}>
               Sideline NZ (Sideline Custom Goods Ltd)<br />
               Unit 2, 66 Cavendish Drive Manukau<br />
               Auckland, 2104<br />
               022 412 7205<br />
               info@sidelinenz.com<br />
-              www.sidelinenz.com
+              <span style={{ color: "#0ea5e9" }}>www.sidelinenz.com</span>
             </div>
           </div>
-          <div style={{ textAlign: "right" }}>
-            <h2 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 12px 0" }}>PURCHASE ORDER</h2>
-            <table style={{ fontSize: "12px", marginLeft: "auto" }}>
+          <div style={{ textAlign: "right", minWidth: "360px" }}>
+            <h2 style={{ fontSize: "15px", fontWeight: 800, margin: "0 0 16px 0", letterSpacing: "0.5px" }}>PURCHASE ORDER</h2>
+            <table style={{ fontSize: "12px", marginLeft: "auto", borderCollapse: "collapse" }}>
               <tbody>
-                <tr><td style={{ fontWeight: 600, padding: "2px 12px 2px 0", textAlign: "right" }}>DATE</td><td style={{ border: "1px solid #ddd", padding: "2px 8px" }}>{dateStr}</td></tr>
-                <tr><td style={{ fontWeight: 600, padding: "2px 12px 2px 0", textAlign: "right" }}>PO/Order Reference:</td><td style={{ border: "1px solid #ddd", padding: "2px 8px" }}>{order.poReference || order.orderNumber}</td></tr>
-                <tr><td style={{ fontWeight: 600, padding: "2px 12px 2px 0", textAlign: "right" }}>Account</td><td style={{ border: "1px solid #ddd", padding: "2px 8px" }}>{order.accountName || "—"}</td></tr>
-                <tr><td style={{ fontWeight: 600, padding: "2px 12px 2px 0", textAlign: "right" }}>New or Repeat Order:</td><td style={{ border: "1px solid #ddd", padding: "2px 8px" }}>{order.isRepeatOrder ? "Repeat" : "New"}</td></tr>
-                <tr><td style={{ fontWeight: 600, padding: "2px 12px 2px 0", textAlign: "right" }}>Comments:</td><td style={{ border: "1px solid #ddd", padding: "2px 8px" }}>{order.poComments || "—"}</td></tr>
+                <tr>
+                  <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>DATE</td>
+                  <td style={{ background: "#f2f2f2", padding: "4px 10px", minWidth: "200px", textAlign: "left" }}>{dateStr}</td>
+                </tr>
+                <tr>
+                  <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>PO/Order Reference:</td>
+                  <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>{order.poReference || order.orderNumber}</td>
+                </tr>
+                <tr>
+                  <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>Account</td>
+                  <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>{order.accountName || ""}</td>
+                </tr>
+                <tr>
+                  <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>New or Repeat Order:</td>
+                  <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>{order.isRepeatOrder ? "Repeat" : "New"}</td>
+                </tr>
+                <tr>
+                  <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>Comments:</td>
+                  <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>{order.poComments || ""}</td>
+                </tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* Customer / Delivery row */}
-        <div style={{ display: "flex", gap: "0", marginBottom: "24px", border: "1px solid #ddd" }}>
-          <div style={{ flex: 1, padding: "10px 16px", borderRight: "1px solid #ddd" }}>
-            <div style={{ fontSize: "12px", fontWeight: 700, background: "#f5f5f5", margin: "-10px -16px 8px", padding: "6px 16px" }}>Customer</div>
-            <p style={{ fontSize: "12px", margin: "2px 0" }}>{order.customerName || "—"}</p>
-            <p style={{ fontSize: "12px", margin: "2px 0", color: "#555" }}>{order.customerEmail || ""}</p>
+        {/* Customer / Delivery row — black bar headers match the PDF */}
+        <div style={{ marginBottom: "20px" }}>
+          <div style={{ display: "flex" }}>
+            <div style={{ flex: 1, background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700 }}>Customer</div>
+            <div style={{ flex: 1, background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700 }}>Delivery Address</div>
           </div>
-          <div style={{ flex: 1, padding: "10px 16px" }}>
-            <div style={{ fontSize: "12px", fontWeight: 700, background: "#f5f5f5", margin: "-10px -16px 8px", padding: "6px 16px" }}>Delivery Address</div>
-            {order.deliveryAttention && <p style={{ fontSize: "12px", margin: "2px 0" }}>Attention: {order.deliveryAttention}</p>}
-            {order.deliveryAddress ? (
-              <p style={{ fontSize: "12px", margin: "2px 0", color: "#555", whiteSpace: "pre-line" }}>{order.deliveryAddress}</p>
-            ) : (
-              <>
-                <p style={{ fontSize: "12px", margin: "2px 0", color: "#555" }}>Sideline NZ (Sideline Custom Goods Ltd)</p>
-                <p style={{ fontSize: "12px", margin: "2px 0", color: "#555" }}>41 Oakland Rd Karaka, Auckland New Zealand</p>
-              </>
-            )}
-            {order.deliveryEmail && <p style={{ fontSize: "12px", margin: "2px 0", color: "#555" }}>{order.deliveryEmail}</p>}
-            {order.deliveryPhone && <p style={{ fontSize: "12px", margin: "2px 0", color: "#555" }}>{order.deliveryPhone}</p>}
+          <div style={{ display: "flex" }}>
+            <div style={{ flex: 1, padding: "10px 16px", fontSize: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "12px" }}>
+                <span style={{ color: "#000" }}>{order.customerName || ""}</span>
+                <span style={{ color: "#0ea5e9" }}>{order.customerEmail || ""}</span>
+              </div>
+            </div>
+            <div style={{ flex: 1, padding: "10px 16px", fontSize: "12px" }}>
+              {order.deliveryAttention && (
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "12px" }}>
+                  <span>Attention: {order.deliveryAttention}</span>
+                  {order.deliveryEmail && <span style={{ color: "#0ea5e9" }}>{order.deliveryEmail}</span>}
+                </div>
+              )}
+              {order.deliveryAddress ? (
+                <p style={{ margin: "2px 0", whiteSpace: "pre-line" }}>{order.deliveryAddress}</p>
+              ) : (
+                <>
+                  <p style={{ margin: "2px 0" }}>Sideline NZ (Sideline Custom Goods Ltd)</p>
+                  <p style={{ margin: "2px 0" }}>41 Oakland Rd Karaka, Auckland New Zealand 2580</p>
+                </>
+              )}
+              {order.deliveryPhone && <p style={{ margin: "2px 0" }}>{order.deliveryPhone}</p>}
+            </div>
           </div>
         </div>
 
