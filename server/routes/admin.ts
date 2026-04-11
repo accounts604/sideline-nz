@@ -10,6 +10,7 @@ import { orders, orderActivity, designFiles } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { updateGhlOpportunityStage } from "./ghl";
 import { createApprovalToken } from "./approvals";
+import { withPoNumberRetry } from "../po-number";
 
 const router = Router();
 
@@ -394,33 +395,34 @@ router.post("/orders/create-po", async (req, res) => {
     const data = createPoSchema.parse(req.body);
     const user = (req as any).user;
 
-    // Generate PO number
-    const ts = Date.now().toString(36).toUpperCase();
-    const rand = Math.random().toString(36).substring(2, 5).toUpperCase();
-    const orderNumber = `SNZ-${ts}-${rand}`;
-
     // Calculate totals
     const subtotal = data.items.reduce((sum, i) => sum + (i.unitAmount * i.quantity), 0);
 
-    // Create order
-    const order = await storage.createOrder({
-      orderNumber,
-      storeSlug: data.storeSlug,
-      status: "processing",
-      subtotal,
-      total: subtotal,
-      currency: "nzd",
-      customerEmail: data.customerEmail ?? null,
-      customerName: data.customerName ?? null,
-      poReference: data.poReference,
-      accountName: data.accountName ?? null,
-      isRepeatOrder: data.isRepeatOrder ?? false,
-      poComments: data.poComments ?? null,
-      deliveryAttention: data.deliveryAttention ?? null,
-      deliveryAddress: data.deliveryAddress ?? null,
-      deliveryEmail: data.deliveryEmail ?? null,
-      deliveryPhone: data.deliveryPhone ?? null,
-    } as any);
+    // PO number: SL-YYYY-[CLIENT]-[SEQ] (see server/po-number.ts).
+    // Slug is derived from accountName if present (usually the team/club name),
+    // falling back to customerName. withPoNumberRetry handles the rare race
+    // where two admins create POs at the same time and collide on the sequence.
+    const clientForSlug = data.accountName || data.customerName || null;
+    const order = await withPoNumberRetry(clientForSlug, async (orderNumber) =>
+      storage.createOrder({
+        orderNumber,
+        storeSlug: data.storeSlug,
+        status: "processing",
+        subtotal,
+        total: subtotal,
+        currency: "nzd",
+        customerEmail: data.customerEmail ?? null,
+        customerName: data.customerName ?? null,
+        poReference: data.poReference,
+        accountName: data.accountName ?? null,
+        isRepeatOrder: data.isRepeatOrder ?? false,
+        poComments: data.poComments ?? null,
+        deliveryAttention: data.deliveryAttention ?? null,
+        deliveryAddress: data.deliveryAddress ?? null,
+        deliveryEmail: data.deliveryEmail ?? null,
+        deliveryPhone: data.deliveryPhone ?? null,
+      } as any),
+    );
 
     // Create order items
     for (const item of data.items) {
