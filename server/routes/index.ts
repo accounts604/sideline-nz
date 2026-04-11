@@ -10,6 +10,8 @@ import uploadsRouter from "./uploads";
 import { mockupPublicRouter, adminMockupRouter } from "./mockups";
 import { adminQuoteRouter, templateRouter, publicQuoteRouter } from "./quotes";
 import clubPortalRouter from "./club-portal";
+import supplierRouter from "./supplier";
+import { publicApprovalRouter } from "./approvals";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -54,6 +56,12 @@ export async function registerRoutes(
 
   // Club Portal (Phase 4)
   app.use("/api/club-portal", clubPortalRouter);
+
+  // Supplier portal (Phase 5 — sideline order management portal)
+  app.use("/api/supplier", supplierRouter);
+
+  // Public client-approval links (no auth — validated by random URL token)
+  app.use("/api/approve", publicApprovalRouter);
 
   return httpServer;
 }

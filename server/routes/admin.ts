@@ -4,7 +4,12 @@ import { storage } from "../storage";
 import { hashPassword } from "../auth";
 import { z } from "zod";
 import { notifyDesignApproved, notifyDesignRejected, notifyOrderStatusChange } from "../notifications";
-import { sendInviteEmail } from "../email";
+import { sendInviteEmail, sendSupplierPoRaisedEmail } from "../email";
+import { db } from "../db";
+import { orders, orderActivity, designFiles } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { updateGhlOpportunityStage } from "./ghl";
+import { createApprovalToken } from "./approvals";
 
 const router = Router();
 
@@ -249,6 +254,46 @@ router.post("/customers/invite", async (req, res) => {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin invite error:", err);
     res.status(500).json({ error: "Failed to create invite" });
+  }
+});
+
+// POST /suppliers/invite — create supplier account + invite link
+// Same pattern as /customers/invite but creates a user with role="supplier".
+// The supplier accepts the invite at /supplier/accept-invite/:token and lands on /supplier after setting a password.
+const supplierInviteSchema = z.object({
+  email: z.string().email(),
+  supplierName: z.string().min(1, "Supplier name is required"), // stored on users.teamName
+});
+
+router.post("/suppliers/invite", async (req, res) => {
+  try {
+    const { email, supplierName } = supplierInviteSchema.parse(req.body);
+
+    const existing = await storage.getUserByEmail(email);
+    if (existing) return res.status(409).json({ error: "An account with this email already exists" });
+
+    const user = await storage.createInvite(email, supplierName, "supplier");
+
+    // Send the same invite email — sendInviteEmail already builds a /accept-invite?token=... link.
+    // Once the supplier clicks it, the /supplier/accept-invite page will handle the redirect to /supplier.
+    // (If you want supplier-specific copy, we can fork sendInviteEmail later.)
+    if (user.inviteToken) {
+      sendInviteEmail(email, user.inviteToken, supplierName).catch(err =>
+        console.error("Failed to send supplier invite email:", err),
+      );
+    }
+
+    res.status(201).json({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      inviteToken: user.inviteToken,
+      inviteExpiresAt: user.inviteExpiresAt,
+    });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin supplier invite error:", err);
+    res.status(500).json({ error: "Failed to create supplier invite" });
   }
 });
 
@@ -751,6 +796,287 @@ router.get("/designs/pending", async (_req, res) => {
   } catch (err) {
     console.error("Admin pending designs error:", err);
     res.status(500).json({ error: "Failed to load pending designs" });
+  }
+});
+
+// ====== Supplier management (Sideline portal step 4) ======
+
+// GET /suppliers — list all users with role = supplier.
+// Returns the data the admin UI needs to pick a supplier from a dropdown
+// when raising a PO. Small list, no pagination needed (typically a handful).
+router.get("/suppliers", async (_req, res) => {
+  try {
+    const list = await storage.listSuppliers();
+    res.json({
+      suppliers: list.map((u) => ({
+        id: u.id,
+        email: u.email,
+        supplierName: u.teamName,
+        // `password === ""` means the invite hasn't been accepted yet
+        inviteAccepted: u.password !== "",
+        createdAt: u.createdAt,
+      })),
+    });
+  } catch (err) {
+    console.error("Admin list suppliers error:", err);
+    res.status(500).json({ error: "Failed to load suppliers" });
+  }
+});
+
+// POST /orders/:id/assign-supplier — set orders.assignedSupplierId.
+// Separate from raise-po so you can pre-assign before raising (or reassign after).
+// Does NOT push to GHL — assignment alone isn't a pipeline event.
+const assignSupplierSchema = z.object({
+  supplierId: z.string().min(1, "supplierId is required"),
+});
+
+router.post("/orders/:id/assign-supplier", async (req, res) => {
+  try {
+    const { supplierId } = assignSupplierSchema.parse(req.body);
+
+    // Validate the target user exists and is a supplier
+    const supplier = await storage.getUser(supplierId);
+    if (!supplier || supplier.role !== "supplier") {
+      return res.status(400).json({ error: "Invalid supplier ID" });
+    }
+
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const previousSupplierId = order.assignedSupplierId;
+    await db.update(orders)
+      .set({ assignedSupplierId: supplierId, updatedAt: new Date() })
+      .where(eq(orders.id, order.id));
+
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId: (req as any).user?.userId,
+      action: "supplier_assigned",
+      details: { from: previousSupplierId, to: supplierId, supplierName: supplier.teamName },
+    });
+
+    res.json({ ok: true, supplierId });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin assign supplier error:", err);
+    res.status(500).json({ error: "Failed to assign supplier" });
+  }
+});
+
+// POST /orders/:id/raise-po — the main action that ties step 2 (GHL sync) and
+// step 3 (supplier portal) together:
+//   1. Validates the order has a supplier assigned (body.supplierId or order.assignedSupplierId)
+//   2. Sets orders.assignedSupplierId if not already set
+//   3. Pushes GHL opportunity to "PO Raised" stage (GHL webhook then mirrors
+//      it back into orders.pipelineStage — we don't write pipelineStage ourselves)
+//   4. Emails the supplier with a link to the portal
+//   5. Writes an activity log row
+//
+// If GHL push fails (creds missing, network, etc), the order is still marked
+// PO-raised internally via orderActivity — GHL sync will catch up on the next
+// manual stage move. Don't fail the whole request just because GHL is down.
+const raisePoSchema = z.object({
+  supplierId: z.string().optional(), // optional if already assigned
+});
+
+router.post("/orders/:id/raise-po", async (req, res) => {
+  try {
+    const { supplierId: bodySupplierId } = raisePoSchema.parse(req.body ?? {});
+
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const supplierId = bodySupplierId || order.assignedSupplierId;
+    if (!supplierId) {
+      return res.status(400).json({ error: "No supplier assigned — pass supplierId in the body or assign first" });
+    }
+
+    const supplier = await storage.getUser(supplierId);
+    if (!supplier || supplier.role !== "supplier") {
+      return res.status(400).json({ error: "Invalid supplier ID" });
+    }
+
+    // 1. Assign if not already
+    if (order.assignedSupplierId !== supplierId) {
+      await db.update(orders)
+        .set({ assignedSupplierId: supplierId, updatedAt: new Date() })
+        .where(eq(orders.id, order.id));
+    }
+
+    // 2. Push GHL to PO Raised (if the order is linked to a GHL opportunity)
+    let ghlPushResult: { success: boolean; reason?: string } = { success: false, reason: "no_ghl_link" };
+    if (order.ghlOpportunityId) {
+      ghlPushResult = await updateGhlOpportunityStage(order.ghlOpportunityId, "PO Raised");
+    }
+
+    // 3. Email the supplier
+    if (supplier.email) {
+      sendSupplierPoRaisedEmail(
+        supplier.email,
+        order.orderNumber,
+        order.poReference,
+        order.deliveryAddress,
+      ).catch((err) => console.error("Failed to send supplier PO email:", err));
+    }
+
+    // 4. Log the action
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId: (req as any).user?.userId,
+      action: "po_raised_to_supplier",
+      details: {
+        supplierId,
+        supplierName: supplier.teamName,
+        supplierEmail: supplier.email,
+        ghlPushed: ghlPushResult.success,
+        ghlPushReason: ghlPushResult.reason,
+      },
+    });
+
+    res.json({
+      ok: true,
+      supplierId,
+      ghlPushed: ghlPushResult.success,
+      ghlPushReason: ghlPushResult.reason,
+    });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin raise PO error:", err);
+    res.status(500).json({ error: "Failed to raise PO" });
+  }
+});
+
+// ====== File vault (Sideline portal step 7) ======
+//
+// Admin-side upload of design files with folder tagging. Mirrors the customer
+// upload flow (server/routes/customer.ts) but without the order-ownership check
+// and with a required `folder` field so files land in the right bucket:
+//   - mockups   → visible to clients via the approval link
+//   - tech-pack → visible to assigned suppliers
+//   - logos / size-run / other → admin only
+//
+// The client uses @vercel/blob client upload against /api/uploads/token to
+// push the file, then POSTs the metadata here.
+const adminUploadDesignSchema = z.object({
+  label: z.string().min(1),
+  folder: z.enum(["logos", "mockups", "size-run", "tech-pack", "other"]),
+  fileName: z.string(),
+  fileUrl: z.string().url(),
+  fileSize: z.number().optional(),
+  mimeType: z.string().optional(),
+});
+
+router.post("/orders/:id/designs", async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const data = adminUploadDesignSchema.parse(req.body);
+
+    const designFile = await storage.createDesignFile({
+      orderId: order.id,
+      userId: user.userId,
+      label: data.label,
+      folder: data.folder,
+      fileName: data.fileName,
+      fileUrl: data.fileUrl,
+      fileSize: data.fileSize ?? null,
+      mimeType: data.mimeType ?? null,
+      status: "approved", // admin-uploaded files don't need review
+      version: 1,
+    });
+
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId: user.userId,
+      action: "admin_uploaded_file",
+      details: { fileId: designFile.id, folder: data.folder, fileName: data.fileName },
+    });
+
+    res.status(201).json(designFile);
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin upload design error:", err);
+    res.status(500).json({ error: "Failed to upload design" });
+  }
+});
+
+// PATCH /designs/:id/folder — move an existing file between folders.
+// Useful for re-tagging files uploaded before folders existed, or fixing mistakes.
+const updateFolderSchema = z.object({
+  folder: z.enum(["logos", "mockups", "size-run", "tech-pack", "other"]).nullable(),
+});
+
+router.patch("/designs/:id/folder", async (req, res) => {
+  try {
+    const { folder } = updateFolderSchema.parse(req.body);
+    const [updated] = await db
+      .update(designFiles)
+      .set({ folder })
+      .where(eq(designFiles.id, req.params.id))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Design file not found" });
+    res.json({ ok: true, folder: updated.folder });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin update folder error:", err);
+    res.status(500).json({ error: "Failed to update folder" });
+  }
+});
+
+// POST /orders/:id/send-for-approval — issues a tokenized approval link,
+// emails the client, and pushes GHL to "Mockup Sent".
+// Client clicks the link, lands on /approve/:token (public), approves or
+// requests changes. See server/routes/approvals.ts for the full lifecycle.
+const sendForApprovalSchema = z.object({
+  clientEmail: z.string().email().optional(), // defaults to order.customerEmail if omitted
+});
+
+router.post("/orders/:id/send-for-approval", async (req, res) => {
+  try {
+    const { clientEmail: bodyEmail } = sendForApprovalSchema.parse(req.body ?? {});
+
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const clientEmail = bodyEmail || order.customerEmail || order.deliveryEmail;
+    if (!clientEmail) {
+      return res.status(400).json({
+        error: "No client email on file — pass clientEmail in the body or set customerEmail on the order",
+      });
+    }
+
+    // Sanity check: is there at least one mockup file on the order?
+    const files = await storage.getDesignFilesByOrder(order.id);
+    const hasMockup = files.some((f) => f.folder === "mockups");
+    if (!hasMockup) {
+      return res.status(400).json({
+        error: "No mockup files uploaded yet. Upload at least one file with folder=mockups first.",
+      });
+    }
+
+    const { token, expiresAt } = await createApprovalToken({
+      orderId: order.id,
+      createdBy: (req as any).user?.userId,
+      clientEmail,
+      clientName: order.customerName,
+      orderNumber: order.orderNumber,
+      ghlOpportunityId: order.ghlOpportunityId,
+    });
+
+    const baseUrl = process.env.BASE_URL || "https://sidelinenz.com";
+    res.json({
+      ok: true,
+      token,
+      expiresAt,
+      link: `${baseUrl}/approve/${token}`,
+      clientEmail,
+    });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin send-for-approval error:", err);
+    res.status(500).json({ error: "Failed to send approval link" });
   }
 });
 

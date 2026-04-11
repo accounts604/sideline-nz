@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
 import { useParams, Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
+import { upload } from "@vercel/blob/client";
 import {
   ArrowLeft, Check, X, MessageSquare, FileText, ExternalLink,
-  Play, Plus, Shield, Truck, Users, Hash,
+  Play, Plus, Shield, Truck, Users, Hash, Upload,
 } from "lucide-react";
 import { ProductionTracker } from "@/components/production-tracker";
 import { OrderChat } from "@/components/order-chat";
@@ -26,6 +27,7 @@ interface OrderItem {
 interface DesignFile {
   id: string;
   label: string;
+  folder: string | null;
   fileName: string;
   fileUrl: string;
   fileSize: number | null;
@@ -34,6 +36,9 @@ interface DesignFile {
   version: number;
   createdAt: string;
 }
+
+const DESIGN_FOLDERS = ["logos", "mockups", "size-run", "tech-pack", "other"] as const;
+type DesignFolder = (typeof DESIGN_FOLDERS)[number];
 
 interface DesignComment {
   id: string;
@@ -64,6 +69,17 @@ interface Order {
   currency: string;
   createdAt: string;
   paidAt: string | null;
+  // Sideline order portal fields
+  pipelineStage: string | null;
+  ghlOpportunityId: string | null;
+  assignedSupplierId: string | null;
+}
+
+interface SupplierOption {
+  id: string;
+  email: string;
+  supplierName: string | null;
+  inviteAccepted: boolean;
 }
 
 interface OrderDetail {
@@ -130,6 +146,16 @@ export default function AdminOrderDetail() {
   const [trackingNumber, setTrackingNumber] = useState("");
   const [trackingUrl, setTrackingUrl] = useState("");
 
+  // File vault upload state
+  const uploadFileRef = useRef<HTMLInputElement>(null);
+  const [uploadFolder, setUploadFolder] = useState<DesignFolder>("mockups");
+  const [uploadLabel, setUploadLabel] = useState("jersey");
+  const [uploadError, setUploadError] = useState("");
+
+  // Portal actions state
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
+  const [portalActionMessage, setPortalActionMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: [`/api/admin/orders/${params.id}`] });
   };
@@ -145,6 +171,93 @@ export default function AdminOrderDetail() {
       return res.json();
     },
     onSuccess: () => { invalidate(); setReviewComment(""); setReviewingFileId(null); },
+  });
+
+  const uploadFileMutation = useMutation({
+    mutationFn: async () => {
+      const file = uploadFileRef.current?.files?.[0];
+      if (!file) throw new Error("Pick a file first");
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/uploads/token",
+      });
+      const res = await apiRequest("POST", `/api/admin/orders/${params.id}/designs`, {
+        label: uploadLabel,
+        folder: uploadFolder,
+        fileName: file.name,
+        fileUrl: blob.url,
+        fileSize: file.size,
+        mimeType: file.type,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidate();
+      if (uploadFileRef.current) uploadFileRef.current.value = "";
+      setUploadError("");
+    },
+    onError: (err: any) => setUploadError(err?.message || "Upload failed"),
+  });
+
+  const updateFolderMutation = useMutation({
+    mutationFn: async ({ fileId, folder }: { fileId: string; folder: DesignFolder | null }) => {
+      const res = await apiRequest("PATCH", `/api/admin/designs/${fileId}/folder`, { folder });
+      return res.json();
+    },
+    onSuccess: invalidate,
+  });
+
+  // Portal actions: list suppliers, send for approval, raise PO to supplier
+  const { data: suppliersData } = useQuery<{ suppliers: SupplierOption[] }>({
+    queryKey: ["/api/admin/suppliers"],
+  });
+  const suppliers = suppliersData?.suppliers ?? [];
+
+  const sendForApprovalMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/orders/${params.id}/send-for-approval`, {});
+      return res.json();
+    },
+    onSuccess: (res: any) => {
+      invalidate();
+      setPortalActionMessage({ kind: "ok", text: `Approval link sent · ${res.link}` });
+    },
+    onError: (err: any) => {
+      const msg = err?.message || "Failed to send approval link";
+      try {
+        const parsed = JSON.parse(msg.split(": ").slice(1).join(": "));
+        setPortalActionMessage({ kind: "err", text: parsed.error || msg });
+      } catch {
+        setPortalActionMessage({ kind: "err", text: msg });
+      }
+    },
+  });
+
+  const raisePoMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/orders/${params.id}/raise-po`, {
+        supplierId: selectedSupplierId || undefined,
+      });
+      return res.json();
+    },
+    onSuccess: (res: any) => {
+      invalidate();
+      setPortalActionMessage({
+        kind: "ok",
+        text: res.ghlPushed
+          ? "PO raised · supplier emailed · GHL moved to PO Raised"
+          : `PO raised · supplier emailed · GHL skipped (${res.ghlPushReason || "no link"})`,
+      });
+    },
+    onError: (err: any) => {
+      const msg = err?.message || "Failed to raise PO";
+      try {
+        const parsed = JSON.parse(msg.split(": ").slice(1).join(": "));
+        setPortalActionMessage({ kind: "err", text: parsed.error || msg });
+      } catch {
+        setPortalActionMessage({ kind: "err", text: msg });
+      }
+    },
   });
 
   const updateMutation = useMutation({
@@ -309,6 +422,99 @@ export default function AdminOrderDetail() {
                 <FileText size={14} /> View Purchase Order
               </button>
             </Link>
+
+            {/* Sideline Portal Actions */}
+            <div style={{ background: "#111", border: "1px solid rgba(201,168,76,0.25)", borderRadius: "12px", padding: "20px 24px" }}>
+              <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#C9A84C", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.8px" }}>
+                Portal Actions
+              </h3>
+              <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", marginBottom: "16px" }}>
+                {order.pipelineStage ? `Stage: ${order.pipelineStage}` : "No GHL stage yet"}
+                {!order.ghlOpportunityId && " · not linked to GHL"}
+              </p>
+
+              {/* Send for approval */}
+              <div style={{ marginBottom: "16px" }}>
+                <button
+                  onClick={() => { setPortalActionMessage(null); sendForApprovalMutation.mutate(); }}
+                  disabled={sendForApprovalMutation.isPending || !designs.some((d) => d.folder === "mockups")}
+                  title={!designs.some((d) => d.folder === "mockups") ? "Upload a file with folder=mockups first (Designs tab)" : ""}
+                  style={{
+                    width: "100%", padding: "10px 12px", fontSize: "12px", fontWeight: 600,
+                    background: !designs.some((d) => d.folder === "mockups") ? "rgba(255,255,255,0.04)" : "rgba(201,168,76,0.12)",
+                    color: !designs.some((d) => d.folder === "mockups") ? "rgba(255,255,255,0.3)" : "#C9A84C",
+                    border: "1px solid rgba(201,168,76,0.4)",
+                    borderRadius: "6px",
+                    cursor: sendForApprovalMutation.isPending || !designs.some((d) => d.folder === "mockups") ? "not-allowed" : "pointer",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  {sendForApprovalMutation.isPending ? "Sending…" : "Send for Client Approval"}
+                </button>
+                <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", marginTop: "4px" }}>
+                  Emails the client an /approve/:token link · pushes GHL → Mockup Sent
+                </p>
+              </div>
+
+              {/* Raise PO to supplier */}
+              <div style={{ marginBottom: "8px" }}>
+                <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Supplier
+                </label>
+                <select
+                  value={selectedSupplierId || order.assignedSupplierId || ""}
+                  onChange={(e) => setSelectedSupplierId(e.target.value)}
+                  style={{ ...inputStyle, marginBottom: "8px" }}
+                >
+                  <option value="" style={{ background: "#111" }}>
+                    {suppliers.length === 0 ? "No suppliers yet — invite one via /admin/suppliers" : "— pick a supplier —"}
+                  </option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id} style={{ background: "#111" }}>
+                      {s.supplierName || s.email}
+                      {!s.inviteAccepted && " (invite pending)"}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => { setPortalActionMessage(null); raisePoMutation.mutate(); }}
+                  disabled={raisePoMutation.isPending || (!selectedSupplierId && !order.assignedSupplierId)}
+                  style={{
+                    width: "100%", padding: "10px 12px", fontSize: "12px", fontWeight: 600,
+                    background: (!selectedSupplierId && !order.assignedSupplierId) ? "rgba(255,255,255,0.04)" : "#C9A84C",
+                    color: (!selectedSupplierId && !order.assignedSupplierId) ? "rgba(255,255,255,0.3)" : "#0A1628",
+                    border: "none",
+                    borderRadius: "6px",
+                    cursor: raisePoMutation.isPending || (!selectedSupplierId && !order.assignedSupplierId) ? "not-allowed" : "pointer",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  {raisePoMutation.isPending ? "Raising PO…" : "Raise PO to Supplier"}
+                </button>
+                <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", marginTop: "4px" }}>
+                  Assigns supplier · emails PO link · pushes GHL → PO Raised
+                </p>
+              </div>
+
+              {portalActionMessage && (
+                <div
+                  style={{
+                    marginTop: "12px",
+                    padding: "10px 12px",
+                    fontSize: "11px",
+                    borderRadius: "6px",
+                    background: portalActionMessage.kind === "ok" ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
+                    color: portalActionMessage.kind === "ok" ? "#22c55e" : "#ef4444",
+                    border: `1px solid ${portalActionMessage.kind === "ok" ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
+                    wordBreak: "break-all",
+                  }}
+                >
+                  {portalActionMessage.text}
+                </div>
+              )}
+            </div>
 
             {/* Order Status */}
             <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px" }}>
@@ -570,6 +776,61 @@ export default function AdminOrderDetail() {
       {/* TAB: Designs */}
       {activeTab === "designs" && (
         <div style={{ maxWidth: "800px" }}>
+          <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", overflow: "hidden", marginBottom: "20px" }}>
+            <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#fff", padding: "20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              Upload to file vault
+            </h2>
+            <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                <div>
+                  <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Folder</label>
+                  <select
+                    value={uploadFolder}
+                    onChange={(e) => setUploadFolder(e.target.value as DesignFolder)}
+                    style={{ padding: "10px 12px", fontSize: "13px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", outline: "none", minWidth: "140px" }}
+                  >
+                    {DESIGN_FOLDERS.map((f) => (
+                      <option key={f} value={f} style={{ background: "#111" }}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Label</label>
+                  <input
+                    type="text"
+                    value={uploadLabel}
+                    onChange={(e) => setUploadLabel(e.target.value)}
+                    placeholder="jersey, shorts, logo…"
+                    style={{ padding: "10px 12px", fontSize: "13px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", outline: "none", minWidth: "140px" }}
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: "200px" }}>
+                  <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>File</label>
+                  <input
+                    ref={uploadFileRef}
+                    type="file"
+                    style={{ padding: "8px", fontSize: "13px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", outline: "none", width: "100%" }}
+                  />
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <button
+                  onClick={() => uploadFileMutation.mutate()}
+                  disabled={uploadFileMutation.isPending}
+                  style={{ padding: "10px 18px", fontSize: "13px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: uploadFileMutation.isPending ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+                >
+                  <Upload size={14} />
+                  {uploadFileMutation.isPending ? "Uploading…" : "Upload"}
+                </button>
+                {uploadError && <span style={{ fontSize: "12px", color: "#ef4444" }}>{uploadError}</span>}
+                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>
+                  mockups → client approval · tech-pack → supplier portal
+                </span>
+              </div>
+            </div>
+          </div>
           <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", overflow: "hidden" }}>
             <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#fff", padding: "20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               Design Files ({designs.length})
@@ -587,6 +848,35 @@ export default function AdminOrderDetail() {
                         {file.label} &middot; v{file.version} &middot; {new Date(file.createdAt).toLocaleString()}
                       </p>
                     </div>
+                    <select
+                      value={file.folder ?? ""}
+                      onChange={(e) =>
+                        updateFolderMutation.mutate({
+                          fileId: file.id,
+                          folder: (e.target.value || null) as DesignFolder | null,
+                        })
+                      }
+                      title="File vault folder"
+                      style={{
+                        padding: "6px 8px",
+                        fontSize: "11px",
+                        background: file.folder ? "rgba(201,168,76,0.12)" : "rgba(255,255,255,0.04)",
+                        border: `1px solid ${file.folder ? "rgba(201,168,76,0.4)" : "rgba(255,255,255,0.1)"}`,
+                        borderRadius: "4px",
+                        color: file.folder ? "#C9A84C" : "rgba(255,255,255,0.5)",
+                        outline: "none",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <option value="" style={{ background: "#111" }}>unfiled</option>
+                      {DESIGN_FOLDERS.map((f) => (
+                        <option key={f} value={f} style={{ background: "#111" }}>
+                          {f}
+                        </option>
+                      ))}
+                    </select>
                     <StatusBadge status={file.status} />
                     <a href={file.fileUrl} target="_blank" rel="noopener noreferrer" style={{ color: "rgba(255,255,255,0.4)" }}>
                       <ExternalLink size={16} />

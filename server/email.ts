@@ -69,6 +69,63 @@ export async function sendOrderShippedEmail(to: string, orderNumber: string) {
   });
 }
 
+export async function sendMockupApprovalRequest(
+  to: string,
+  orderNumber: string,
+  link: string,
+  clientName: string | null,
+) {
+  const greeting = clientName ? `Hi ${clientName},` : "Hi,";
+  return emailService.send({
+    to,
+    subject: `Mockup ready for your approval — ${orderNumber}`,
+    text: `${greeting}\n\nYour mockup for ${orderNumber} is ready. Review it and let us know if it's approved or if you'd like changes.\n\n${link}\n\nThis link expires in 14 days.`,
+    html: `<p>${greeting}</p>
+<p>Your mockup for <strong>${orderNumber}</strong> is ready. Review it and let us know if it's approved or if you'd like changes.</p>
+<p><a href="${link}">Review your mockup</a></p>
+<p><small>This link expires in 14 days.</small></p>`,
+  });
+}
+
+export async function sendClientApprovalResult(
+  to: string,
+  orderNumber: string,
+  decision: "approved" | "changes_requested",
+  changesNotes: string | null,
+) {
+  const label = decision === "approved" ? "APPROVED" : "CHANGES REQUESTED";
+  const subject = decision === "approved"
+    ? `Client approved mockup — ${orderNumber}`
+    : `Client requested changes — ${orderNumber}`;
+  const notesBlock = changesNotes ? `\n\nClient notes:\n${changesNotes}` : "";
+  return emailService.send({
+    to,
+    subject,
+    text: `${label}: ${orderNumber}${notesBlock}\n\nCheck the admin order detail page for the full activity log.`,
+    html: `<p><strong>${label}</strong>: ${orderNumber}</p>${changesNotes ? `<p><em>Client notes:</em> ${changesNotes}</p>` : ""}<p>Check the admin order detail page for the full activity log.</p>`,
+  });
+}
+
+export async function sendSupplierPoRaisedEmail(
+  to: string,
+  orderNumber: string,
+  poReference: string | null,
+  deliveryAddress: string | null,
+) {
+  const baseUrl = process.env.BASE_URL || "https://sidelinenz.com";
+  const link = `${baseUrl}/supplier`;
+  const refLine = poReference ? `\nRef: ${poReference}` : "";
+  const addrLine = deliveryAddress ? `\nDelivery: ${deliveryAddress}` : "";
+  return emailService.send({
+    to,
+    subject: `New PO — ${orderNumber}`,
+    text: `A new purchase order has been raised to you.\n\nPO: ${orderNumber}${refLine}${addrLine}\n\nLog in to your supplier portal to download tech-pack files and mark progress: ${link}`,
+    html: `<p>A new purchase order has been raised to you.</p>
+<p><strong>PO:</strong> ${orderNumber}${poReference ? `<br/><strong>Ref:</strong> ${poReference}` : ""}${deliveryAddress ? `<br/><strong>Delivery:</strong> ${deliveryAddress}` : ""}</p>
+<p><a href="${link}">Log in to your supplier portal</a> to download tech-pack files and mark progress.</p>`,
+  });
+}
+
 export async function sendInviteEmail(to: string, inviteToken: string, teamName?: string) {
   const baseUrl = process.env.BASE_URL || "https://sidelinenz.com";
   const link = `${baseUrl}/accept-invite?token=${inviteToken}`;

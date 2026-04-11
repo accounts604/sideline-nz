@@ -8,7 +8,7 @@ const COOKIE_NAME = "snz_token";
 
 export interface JwtPayload {
   userId: string;
-  role: "admin" | "customer";
+  role: "admin" | "customer" | "supplier";
 }
 
 export function signToken(payload: JwtPayload): string {
@@ -60,6 +60,16 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   requireAuth(req, res, () => {
     if ((req as any).user?.role !== "admin") {
       return res.status(403).json({ error: "Admin access required" });
+    }
+    next();
+  });
+}
+
+// Middleware: require supplier role (used by /api/supplier/* routes)
+export function requireSupplier(req: Request, res: Response, next: NextFunction) {
+  requireAuth(req, res, () => {
+    if ((req as any).user?.role !== "supplier") {
+      return res.status(403).json({ error: "Supplier access required" });
     }
     next();
   });

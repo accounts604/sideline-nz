@@ -17,7 +17,9 @@ export default function AcceptInvitePage() {
   const [submitting, setSubmitting] = useState(false);
 
   if (user) {
-    navigate(user.role === "admin" ? "/admin" : "/portal");
+    navigate(
+      user.role === "admin" ? "/admin" : user.role === "supplier" ? "/supplier" : "/portal",
+    );
     return null;
   }
 
@@ -60,7 +62,9 @@ export default function AcceptInvitePage() {
 
     try {
       const result = await acceptInvite(token, password);
-      navigate(result.role === "admin" ? "/admin" : "/portal");
+      navigate(
+        result.role === "admin" ? "/admin" : result.role === "supplier" ? "/supplier" : "/portal",
+      );
     } catch (err: any) {
       const msg = err.message || "Failed to accept invite";
       try {

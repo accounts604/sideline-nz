@@ -5,7 +5,7 @@ import { apiRequest, getQueryFn } from "./queryClient";
 interface AuthUser {
   id: string;
   email: string;
-  role: "admin" | "customer";
+  role: "admin" | "customer" | "supplier";
   teamName?: string | null;
   contactPhone?: string | null;
 }

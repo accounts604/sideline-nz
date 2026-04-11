@@ -9,7 +9,7 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   password: text("password").notNull(), // bcrypt hash
   email: text("email").unique(),
-  role: text("role").notNull().default("customer"), // "admin" | "customer"
+  role: text("role").notNull().default("customer"), // "admin" | "customer" | "supplier"
   teamName: text("team_name"),
   contactPhone: text("contact_phone"),
   stripeCustomerId: text("stripe_customer_id"),
@@ -104,6 +104,10 @@ export const orders = pgTable("orders", {
   deliveryAddress: text("delivery_address"), // Full delivery address text
   deliveryEmail: text("delivery_email"),
   deliveryPhone: text("delivery_phone"),
+  // Sideline order portal — GHL-mirrored pipeline + supplier assignment
+  ghlOpportunityId: text("ghl_opportunity_id"), // GHL deal ID — links order to its pipeline card
+  pipelineStage: text("pipeline_stage"), // Mirror of GHL stage name from shared/pipeline.ts; GHL is source of truth
+  assignedSupplierId: varchar("assigned_supplier_id").references(() => users.id), // users.role = "supplier"
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   paidAt: timestamp("paid_at"),
@@ -166,7 +170,8 @@ export const designFiles = pgTable("design_files", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orderId: varchar("order_id").notNull().references(() => orders.id),
   userId: varchar("user_id").notNull().references(() => users.id),
-  label: text("label").notNull(), // "jersey", "shorts", "socks", "logo", "other"
+  label: text("label").notNull(), // "jersey", "shorts", "socks", "logo", "other" — garment/subject
+  folder: text("folder"), // "logos" | "mockups" | "size-run" | "tech-pack" | "other" — file vault folder (role-scoped reads)
   fileName: text("file_name").notNull(),
   fileUrl: text("file_url").notNull(), // Vercel Blob URL
   fileSize: integer("file_size"),
@@ -445,3 +450,23 @@ export const notifications = pgTable("notifications", {
 export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
+
+// Approval tokens — one-time/short-lived links for clients to approve mockups
+// without logging in. Issued when admin clicks "Send for approval"; consumed
+// when the client clicks Approve or Request Changes on /approve/:token.
+export const approvalTokens = pgTable("approval_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id").notNull().references(() => orders.id),
+  token: text("token").notNull().unique(), // random URL-safe string
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  // Outcome (set when the client submits)
+  decision: text("decision"), // "approved" | "changes_requested" | null
+  changesNotes: text("changes_notes"),
+  createdBy: varchar("created_by").references(() => users.id), // admin who issued the link
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertApprovalTokenSchema = createInsertSchema(approvalTokens).omit({ id: true, createdAt: true });
+export type InsertApprovalToken = z.infer<typeof insertApprovalTokenSchema>;
+export type ApprovalToken = typeof approvalTokens.$inferSelect;

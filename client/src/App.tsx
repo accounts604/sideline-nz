@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ClientShell } from "@/components/client-shell";
 import { AuthProvider } from "@/lib/auth-context";
-import { ProtectedRoute, AdminRoute, ClubPortalRoute } from "@/components/protected-route";
+import { ProtectedRoute, AdminRoute, ClubPortalRoute, SupplierRoute } from "@/components/protected-route";
 import NotFound from "@/pages/not-found";
 
 import Home from "@/pages/home";
@@ -52,6 +52,10 @@ import ClubPortalLogin from "@/pages/club-portal/login";
 import ClubPortalDashboard from "@/pages/club-portal/dashboard";
 import MockupReviewPage from "@/pages/club-portal/mockup-review";
 import OrderTrackingPage from "@/pages/club-portal/order-tracking";
+import SupplierLoginPage from "@/pages/supplier/login";
+import SupplierDashboard from "@/pages/supplier/dashboard";
+import SupplierOrderDetail from "@/pages/supplier/order-detail";
+import ApprovePage from "@/pages/approve";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -152,6 +156,18 @@ function Router() {
         </Route>
         <Route path="/portal">
           {() => <ProtectedRoute><PortalDashboard /></ProtectedRoute>}
+        </Route>
+
+        {/* Public client approval (no auth — token in URL) */}
+        <Route path="/approve/:token" component={ApprovePage} />
+
+        {/* Supplier Portal */}
+        <Route path="/supplier/login" component={SupplierLoginPage} />
+        <Route path="/supplier/orders/:id">
+          {() => <SupplierRoute><SupplierOrderDetail /></SupplierRoute>}
+        </Route>
+        <Route path="/supplier">
+          {() => <SupplierRoute><SupplierDashboard /></SupplierRoute>}
         </Route>
 
         {/* Club Portal */}

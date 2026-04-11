@@ -90,8 +90,10 @@ export interface IStorage {
   getAllCustomers(opts: { search?: string; limit?: number; offset?: number }): Promise<{ customers: User[]; total: number }>;
   getCustomerWithOrders(userId: string): Promise<{ customer: User; orders: Order[] } | null>;
   updateCustomer(userId: string, data: { teamName?: string; contactPhone?: string }): Promise<User | undefined>;
-  createInvite(email: string, teamName?: string): Promise<User>;
+  createInvite(email: string, teamName?: string, role?: "customer" | "supplier"): Promise<User>;
   getOrdersByUser(userId: string): Promise<Order[]>;
+  getOrdersByAssignedSupplier(supplierId: string): Promise<Order[]>;
+  listSuppliers(): Promise<User[]>;
 
   // Dashboard stats
   getDashboardStats(): Promise<{ totalOrders: number; pendingOrders: number; pendingDesigns: number; totalCustomers: number }>;
@@ -563,7 +565,7 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async createInvite(email: string, teamName?: string): Promise<User> {
+  async createInvite(email: string, teamName?: string, role: "customer" | "supplier" = "customer"): Promise<User> {
     const crypto = await import("crypto");
     const inviteToken = crypto.randomBytes(32).toString("hex");
     const inviteExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
@@ -572,7 +574,7 @@ export class DatabaseStorage implements IStorage {
       username: email,
       email,
       password: "", // No password until invite accepted
-      role: "customer",
+      role,
       teamName: teamName || null,
       inviteToken,
       inviteExpiresAt,
@@ -584,6 +586,18 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(orders)
       .where(eq(orders.userId, userId))
       .orderBy(desc(orders.createdAt));
+  }
+
+  async getOrdersByAssignedSupplier(supplierId: string): Promise<Order[]> {
+    return await db.select().from(orders)
+      .where(eq(orders.assignedSupplierId, supplierId))
+      .orderBy(desc(orders.createdAt));
+  }
+
+  async listSuppliers(): Promise<User[]> {
+    return await db.select().from(users)
+      .where(eq(users.role, "supplier"))
+      .orderBy(desc(users.createdAt));
   }
 
   // Dashboard stats
@@ -619,6 +633,7 @@ export class DatabaseStorage implements IStorage {
       orderId: designFiles.orderId,
       userId: designFiles.userId,
       label: designFiles.label,
+      folder: designFiles.folder,
       fileName: designFiles.fileName,
       fileUrl: designFiles.fileUrl,
       fileSize: designFiles.fileSize,

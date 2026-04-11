@@ -85,12 +85,14 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    const role = (user.role === "admin" ? "admin" : "customer") as "admin" | "customer";
+    // Preserve the user's actual role (admin | customer | supplier); default unknown values to customer
+    const role: "admin" | "customer" | "supplier" =
+      user.role === "admin" || user.role === "supplier" ? user.role : "customer";
     const token = signToken({ userId: user.id, role });
     setAuthCookie(res, token);
 
-    // Auto-link any guest orders with matching email
-    if (user.email) {
+    // Auto-link any guest orders with matching email (only meaningful for customers)
+    if (role === "customer" && user.email) {
       await storage.linkOrdersByEmail(user.email, user.id);
     }
 
@@ -160,7 +162,8 @@ router.post("/accept-invite", async (req, res) => {
     const hashed = await hashPassword(password);
     await storage.acceptInvite(user.id, hashed);
 
-    const role = (user.role === "admin" ? "admin" : "customer") as "admin" | "customer";
+    const role: "admin" | "customer" | "supplier" =
+      user.role === "admin" || user.role === "supplier" ? user.role : "customer";
     const authToken = signToken({ userId: user.id, role });
     setAuthCookie(res, authToken);
 

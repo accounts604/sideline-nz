@@ -3,6 +3,11 @@ import { storage } from "../storage";
 import { getUncachableStripeClient } from "../stripeClient";
 import { emailService } from "../email";
 import { z } from "zod";
+import { db } from "../db";
+import { orders, orderActivity } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { SIDELINE_PIPELINE_ID, SIDELINE_STAGE_IDS, SIDELINE_STAGE_NAMES } from "../ghl-config";
+import { isSidelinePipelineStage, type SidelinePipelineStage } from "@shared/pipeline";
 
 const router = Router();
 
@@ -153,9 +158,47 @@ async function createGhlOpportunity(contactId: string, name: string, pipelineId:
   }
 }
 
-// Sideline - Merch Orders pipeline
-const SIDELINE_PIPELINE_ID = "bne386ArJCVV5iuUs86h";
-const SIDELINE_STAGE_LEAD_RECEIVED = "0c31b3f0-5191-4fe8-912b-3cf469a01511";
+// Sideline - Merch Orders pipeline — IDs imported from ../ghl-config
+const SIDELINE_STAGE_LEAD_RECEIVED = SIDELINE_STAGE_IDS["Lead Received"];
+
+// Push: move a GHL opportunity to a new stage (used by portal actions).
+// GHL is source of truth, so portal handlers trigger this when the user takes
+// an action that should advance the deal — the GHL webhook then mirrors the
+// new stage back into `orders.pipelineStage` so everything stays in sync.
+export async function updateGhlOpportunityStage(
+  opportunityId: string,
+  stage: SidelinePipelineStage,
+): Promise<{ success: boolean; reason?: string }> {
+  const apiKey = process.env.SIDELINE_GHL_API_KEY;
+  if (!apiKey) return { success: false, reason: "credentials_missing" };
+
+  const stageId = SIDELINE_STAGE_IDS[stage];
+  if (!stageId) return { success: false, reason: "unknown_stage" };
+
+  try {
+    const res = await fetch(`${GHL_API_BASE}/opportunities/${opportunityId}`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        Version: "2021-07-28",
+      },
+      body: JSON.stringify({
+        pipelineId: SIDELINE_PIPELINE_ID,
+        pipelineStageId: stageId,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("GHL stage update error:", res.status, text);
+      return { success: false, reason: "api_error" };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error("GHL stage update request failed:", err.message);
+    return { success: false, reason: "request_failed" };
+  }
+}
 
 // ====== Form Submissions ======
 
@@ -672,6 +715,128 @@ router.post("/shopify-team-store-ready", async (req, res) => {
   } catch (e: any) {
     console.error("GHL shopify-team-store-ready webhook error:", e);
     // Still return 200 to acknowledge webhook was received
+    res.status(200).json({ ok: false, error: e.message || "Processing error" });
+  }
+});
+
+// ====== GHL → Portal: Opportunity Stage Changed Webhook ======
+//
+// How to wire this in GHL:
+//   1. Create a workflow triggered on "Opportunity Stage Changed"
+//      (filter to the Sideline - Merch Orders pipeline).
+//   2. Add a "Custom Webhook" action pointing to:
+//        POST https://<host>/api/ghl/webhook/opportunity-stage
+//   3. In the webhook payload mapping, include at minimum:
+//        opportunityId  → {{opportunity.id}}
+//        pipelineId     → {{opportunity.pipeline_id}}
+//        stageId        → {{opportunity.pipeline_stage_id}}
+//        stageName      → {{opportunity.pipeline_stage_name}}  (optional but helpful)
+//   4. Set the `x-ghl-signature` header to GHL_WEBHOOK_SECRET (same pattern
+//      already used by /shopify-team-store-ready).
+//
+// Behavior:
+//   - If pipelineId is present and isn't the Sideline pipeline, ignore (200 ok).
+//     Prevents RTS/Popup pipeline events from clobbering Sideline orders.
+//   - Looks up the order by orders.ghlOpportunityId. If no match, log + 200 ok
+//     (GHL opportunities can exist before we've linked them to an order).
+//   - Updates orders.pipelineStage and writes an orderActivity row with
+//     action "pipeline_stage_changed" and details { from, to, source }.
+
+const opportunityStageWebhookSchema = z.object({
+  opportunityId: z.string().min(1),
+  pipelineId: z.string().optional(),
+  stageId: z.string().optional(),
+  stageName: z.string().optional(),
+}).refine((v) => !!(v.stageId || v.stageName), {
+  message: "Either stageId or stageName must be provided",
+});
+
+router.post("/webhook/opportunity-stage", async (req, res) => {
+  try {
+    // Optional signature verification (same pattern as /shopify-team-store-ready)
+    const webhookSecret = process.env.GHL_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const signature = req.headers["x-ghl-signature"] as string;
+      if (!signature || signature !== webhookSecret) {
+        console.error("[GHL stage webhook] Invalid signature");
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+    }
+
+    const parsed = opportunityStageWebhookSchema.safeParse(req.body);
+    if (!parsed.success) {
+      console.error("[GHL stage webhook] Invalid payload:", parsed.error.errors);
+      return res.status(400).json({ error: "Invalid payload" });
+    }
+    const payload = parsed.data;
+
+    // Ignore events from other pipelines — don't clobber Sideline orders.pipelineStage
+    if (payload.pipelineId && payload.pipelineId !== SIDELINE_PIPELINE_ID) {
+      return res.status(200).json({ ok: true, ignored: "not_sideline_pipeline" });
+    }
+
+    // Resolve the stage name from stageId (preferred) or stageName (fallback)
+    let stageName: SidelinePipelineStage | undefined;
+    if (payload.stageId && SIDELINE_STAGE_NAMES[payload.stageId]) {
+      stageName = SIDELINE_STAGE_NAMES[payload.stageId];
+    } else if (payload.stageName && isSidelinePipelineStage(payload.stageName)) {
+      stageName = payload.stageName;
+    }
+
+    if (!stageName) {
+      console.error("[GHL stage webhook] Could not resolve stage:", {
+        stageId: payload.stageId,
+        stageName: payload.stageName,
+      });
+      // 200 so GHL doesn't retry forever on a stage we don't know
+      return res.status(200).json({ ok: true, ignored: "unknown_stage" });
+    }
+
+    // Find the order linked to this GHL opportunity
+    const [order] = await db
+      .select({ id: orders.id, pipelineStage: orders.pipelineStage })
+      .from(orders)
+      .where(eq(orders.ghlOpportunityId, payload.opportunityId))
+      .limit(1);
+
+    if (!order) {
+      console.log(
+        `[GHL stage webhook] No linked order for opportunity ${payload.opportunityId} (stage → ${stageName}) — ignoring`,
+      );
+      return res.status(200).json({ ok: true, ignored: "no_linked_order" });
+    }
+
+    const previousStage = order.pipelineStage;
+    if (previousStage === stageName) {
+      // No-op — GHL webhook echoed a stage we already have
+      return res.status(200).json({ ok: true, noop: true });
+    }
+
+    // Update the order and log the activity
+    await db
+      .update(orders)
+      .set({ pipelineStage: stageName, updatedAt: new Date() })
+      .where(eq(orders.id, order.id));
+
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId: null,
+      action: "pipeline_stage_changed",
+      details: {
+        from: previousStage,
+        to: stageName,
+        source: "ghl_webhook",
+        ghlOpportunityId: payload.opportunityId,
+      },
+    });
+
+    console.log(
+      `[GHL stage webhook] Order ${order.id}: ${previousStage || "(null)"} → ${stageName}`,
+    );
+    res.status(200).json({ ok: true, orderId: order.id, stage: stageName });
+  } catch (e: any) {
+    console.error("[GHL stage webhook] Error:", e);
+    // 200 so GHL doesn't retry on our bugs — log is the alert
     res.status(200).json({ ok: false, error: e.message || "Processing error" });
   }
 });

@@ -1,11 +1,17 @@
-import { useState } from "react";
-import { Link, useLocation } from "wouter";
-import { useAuth } from "@/lib/auth-context";
-import { Button } from "@/components/ui/button";
-import { Loader2, ArrowRight } from "lucide-react";
-import { SidelineMark } from "@/components/sideline-logo";
+// Supplier login page — scoped to /supplier/login.
+// Navy + gold theme (the portal theme). Hits the same /api/auth/login endpoint
+// as the marketing login but looks different and never links to /register.
+// Suppliers bookmark THIS url, not /login.
 
-export default function LoginPage() {
+import { useState } from "react";
+import { useLocation } from "wouter";
+import { useAuth } from "@/lib/auth-context";
+import { Loader2, ArrowRight } from "lucide-react";
+
+const NAVY = "#0A1628";
+const GOLD = "#C9A84C";
+
+export default function SupplierLoginPage() {
   const { login, user } = useAuth();
   const [, navigate] = useLocation();
   const [email, setEmail] = useState("");
@@ -13,10 +19,10 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Redirect if already logged in
+  // If already logged in, route based on role
   if (user) {
     navigate(
-      user.role === "admin" ? "/admin" : user.role === "supplier" ? "/supplier" : "/portal",
+      user.role === "supplier" ? "/supplier" : user.role === "admin" ? "/admin" : "/portal",
     );
     return null;
   }
@@ -25,22 +31,22 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setSubmitting(true);
-
     try {
       const result = await login(email, password);
-      navigate(
-        result.role === "admin" ? "/admin" : result.role === "supplier" ? "/supplier" : "/portal",
-      );
+      if (result.role !== "supplier") {
+        setError("This login is for suppliers only. Please use the main login.");
+        setSubmitting(false);
+        return;
+      }
+      navigate("/supplier");
     } catch (err: any) {
       const msg = err.message || "Login failed";
-      // Extract JSON error if present
       try {
         const parsed = JSON.parse(msg.split(": ").slice(1).join(": "));
         setError(parsed.error || msg);
       } catch {
         setError(msg.includes("401") ? "Invalid email or password" : "Login failed. Please try again.");
       }
-    } finally {
       setSubmitting(false);
     }
   }
@@ -49,7 +55,7 @@ export default function LoginPage() {
     <div
       style={{
         minHeight: "100vh",
-        background: "#000",
+        background: NAVY,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -57,14 +63,9 @@ export default function LoginPage() {
       }}
     >
       <div style={{ width: "100%", maxWidth: "400px", textAlign: "center" }}>
-        <Link href="/">
-          <div style={{ cursor: "pointer", display: "inline-block", marginBottom: "12px" }}>
-            <SidelineMark size={48} />
-          </div>
-        </Link>
-        <h1
+        <div
           style={{
-            fontSize: "clamp(24px, 5vw, 32px)",
+            fontSize: "clamp(22px, 4vw, 28px)",
             fontWeight: 700,
             color: "#fff",
             textTransform: "uppercase",
@@ -73,10 +74,10 @@ export default function LoginPage() {
             marginBottom: "4px",
           }}
         >
-          Sideline
-        </h1>
-        <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.5)", marginBottom: "32px" }}>
-          Sign in to your account
+          Sideline — Supplier Portal
+        </div>
+        <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.6)", marginBottom: "32px" }}>
+          Sign in to view your assigned orders
         </p>
 
         <form onSubmit={handleSubmit}>
@@ -92,8 +93,8 @@ export default function LoginPage() {
                 width: "100%",
                 padding: "14px 16px",
                 fontSize: "15px",
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.15)",
                 borderRadius: "6px",
                 color: "#fff",
                 outline: "none",
@@ -109,8 +110,8 @@ export default function LoginPage() {
                 width: "100%",
                 padding: "14px 16px",
                 fontSize: "15px",
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.15)",
                 borderRadius: "6px",
                 color: "#fff",
                 outline: "none",
@@ -122,21 +123,24 @@ export default function LoginPage() {
             <p style={{ fontSize: "13px", color: "#ef4444", marginBottom: "16px" }}>{error}</p>
           )}
 
-          <Button
+          <button
             type="submit"
             disabled={submitting}
             style={{
               width: "100%",
-              background: "#f97316",
-              color: "#fff",
+              background: submitting ? "rgba(201,168,76,0.5)" : GOLD,
+              color: NAVY,
               borderRadius: "6px",
               fontSize: "14px",
               fontWeight: 600,
               letterSpacing: "0.5px",
               padding: "16px 32px",
-              height: "auto",
               cursor: submitting ? "not-allowed" : "pointer",
               border: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
             }}
           >
             {submitting ? (
@@ -144,19 +148,14 @@ export default function LoginPage() {
             ) : (
               <>
                 Sign In
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="h-4 w-4" />
               </>
             )}
-          </Button>
+          </button>
         </form>
 
-        <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.4)", marginTop: "24px" }}>
-          Don't have an account?{" "}
-          <Link href="/register">
-            <span style={{ color: "#fff", cursor: "pointer", textDecoration: "underline" }}>
-              Create one
-            </span>
-          </Link>
+        <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)", marginTop: "28px" }}>
+          Haven't received an invite? Contact info@sidelinenz.com
         </p>
       </div>
     </div>
