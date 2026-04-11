@@ -1,18 +1,21 @@
-import { useState, useRef } from "react";
+// Admin order detail — single scrollable editable sheet.
+// Sections: PO header, Customer/Delivery, Garment Lines (with inline image upload),
+// File Vault (drag-and-drop), Portal Actions, Admin Notes, Activity Log.
+// No tabs. No chat. No production stages.
+
+import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
 import { useParams, Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { upload } from "@vercel/blob/client";
+import { getQueryFn } from "@/lib/queryClient";
 import {
-  ArrowLeft, Check, X, MessageSquare, FileText, ExternalLink,
-  Play, Plus, Shield, Truck, Users, Hash, Upload,
+  ArrowLeft, FileText, ExternalLink, Upload, Download,
+  Check, X, MessageSquare, Printer, Plus, Trash2,
 } from "lucide-react";
-import { ProductionTracker } from "@/components/production-tracker";
-import { OrderChat } from "@/components/order-chat";
-import { QualityChecksView } from "@/components/quality-checks";
-import { SizeBreakdownView } from "@/components/size-breakdown";
-import { ActivityLog } from "@/components/activity-log";
+
+// ─── Types ───────────────────────────────────────────────────────────
 
 interface OrderItem {
   id: string;
@@ -22,6 +25,13 @@ interface OrderItem {
   quantity: number;
   unitAmount: number;
   currency: string;
+  productColors: { hex: string; name?: string }[] | null;
+  brandingMethod: string | null;
+  frontDesignUrl: string | null;
+  backDesignUrl: string | null;
+  elementUrls: { name: string; url: string }[] | null;
+  gradeGroup: string | null;
+  designNotes: string | null;
 }
 
 interface DesignFile {
@@ -37,16 +47,21 @@ interface DesignFile {
   createdAt: string;
 }
 
-const DESIGN_FOLDERS = ["logos", "mockups", "size-run", "tech-pack", "other"] as const;
-type DesignFolder = (typeof DESIGN_FOLDERS)[number];
-
 interface DesignComment {
   id: string;
   designFileId: string;
-  userId: string;
   comment: string;
   action: string | null;
   createdAt: string;
+}
+
+interface SizeBreakdown {
+  id: string;
+  orderItemId: string;
+  size: string;
+  quantity: number;
+  playerName: string | null;
+  playerNumber: string | null;
 }
 
 interface Order {
@@ -61,7 +76,6 @@ interface Order {
   productionStage: string | null;
   trackingNumber: string | null;
   trackingUrl: string | null;
-  estimatedDeliveryDate: string | null;
   total: number;
   subtotal: number;
   shipping: number;
@@ -69,10 +83,17 @@ interface Order {
   currency: string;
   createdAt: string;
   paidAt: string | null;
-  // Sideline order portal fields
   pipelineStage: string | null;
   ghlOpportunityId: string | null;
   assignedSupplierId: string | null;
+  poReference: string | null;
+  accountName: string | null;
+  isRepeatOrder: boolean | null;
+  poComments: string | null;
+  deliveryAttention: string | null;
+  deliveryAddress: string | null;
+  deliveryEmail: string | null;
+  deliveryPhone: string | null;
 }
 
 interface SupplierOption {
@@ -87,11 +108,576 @@ interface OrderDetail {
   items: OrderItem[];
   designs: DesignFile[];
   comments: DesignComment[];
-  stages: any[];
-  qcChecks: any[];
-  sizeBreakdowns: any[];
-  messages: any[];
+  sizeBreakdowns: SizeBreakdown[];
   activity: any[];
+  [key: string]: any;
+}
+
+const FOLDERS = ["logos", "mockups", "size-run", "tech-pack", "other"] as const;
+
+const inputStyle: React.CSSProperties = {
+  width: "100%", padding: "8px 10px", fontSize: "13px",
+  background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: "6px", color: "#fff", outline: "none",
+};
+
+// ─── Inline-editable text field ──────────────────────────────────────
+
+function EditableField({
+  value, onSave, placeholder, multiline, style,
+}: {
+  value: string | null | undefined;
+  onSave: (v: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+  style?: React.CSSProperties;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+
+  function start() { setDraft(value ?? ""); setEditing(true); }
+  function save() { setEditing(false); if (draft !== (value ?? "")) onSave(draft); }
+  function cancel() { setEditing(false); setDraft(value ?? ""); }
+
+  if (editing) {
+    const Tag = multiline ? "textarea" : "input";
+    return (
+      <Tag
+        autoFocus
+        value={draft}
+        onChange={(e: any) => setDraft(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e: any) => {
+          if (e.key === "Enter" && !multiline) save();
+          if (e.key === "Escape") cancel();
+        }}
+        style={{ ...inputStyle, resize: multiline ? "vertical" : undefined, minHeight: multiline ? "60px" : undefined, ...style }}
+        placeholder={placeholder}
+      />
+    );
+  }
+
+  return (
+    <span
+      onClick={start}
+      title="Click to edit"
+      style={{
+        cursor: "pointer", borderBottom: "1px dashed rgba(255,255,255,0.15)",
+        padding: "2px 0", minWidth: "40px", display: "inline-block",
+        color: value ? "#fff" : "rgba(255,255,255,0.3)", ...style,
+      }}
+    >
+      {value || placeholder || "—"}
+    </span>
+  );
+}
+
+// ─── Inline image upload (for order item front/back/elements) ────────
+
+function ImageUploadSlot({
+  label, url, onUpload, small,
+}: {
+  label: string;
+  url: string | null;
+  onUpload: (blobUrl: string) => void;
+  small?: boolean;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFile(file: File) {
+    setUploading(true);
+    try {
+      const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token" });
+      onUpload(blob.url);
+    } catch (e: any) {
+      console.error("Image upload failed:", e);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        textAlign: "center", cursor: "pointer",
+        border: "1px dashed rgba(255,255,255,0.15)", borderRadius: "8px",
+        padding: small ? "8px" : "12px", minHeight: small ? "60px" : "120px",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        background: uploading ? "rgba(201,168,76,0.08)" : "rgba(255,255,255,0.02)",
+      }}
+      onClick={() => ref.current?.click()}
+      onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+      onDragOver={(e) => e.preventDefault()}
+    >
+      <input ref={ref} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+      {uploading ? (
+        <span style={{ fontSize: "11px", color: "#C9A84C" }}>Uploading…</span>
+      ) : url ? (
+        <img src={url} alt={label} style={{ maxHeight: small ? "50px" : "120px", maxWidth: "100%", objectFit: "contain" }} />
+      ) : (
+        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>
+          <Upload size={14} style={{ marginBottom: "4px" }} /><br />{label}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Component ──────────────────────────────────────────────────
+
+export default function AdminOrderDetail() {
+  const params = useParams<{ id: string }>();
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: [`/api/admin/orders/${params.id}`] });
+
+  // File vault upload state
+  const uploadFileRef = useRef<HTMLInputElement>(null);
+  const [uploadFolder, setUploadFolder] = useState<typeof FOLDERS[number]>("mockups");
+  const [uploadLabel, setUploadLabel] = useState("jersey");
+  const [uploadError, setUploadError] = useState("");
+
+  // Design review state
+  const [reviewingFileId, setReviewingFileId] = useState<string | null>(null);
+  const [reviewComment, setReviewComment] = useState("");
+
+  // Portal actions state
+  const [selectedSupplierId, setSelectedSupplierId] = useState("");
+  const [portalMsg, setPortalMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Status edit
+  const [statusEdit, setStatusEdit] = useState("");
+
+  // ─── Queries ─────────────────────────────────────────────────
+
+  const { data, isLoading } = useQuery<OrderDetail>({
+    queryKey: [`/api/admin/orders/${params.id}`],
+    enabled: !!params.id,
+  });
+
+  const { data: suppliersData } = useQuery<{ suppliers: SupplierOption[] }>({
+    queryKey: ["/api/admin/suppliers"],
+  });
+  const suppliers = suppliersData?.suppliers ?? [];
+
+  // ─── Mutations ───────────────────────────────────────────────
+
+  const updateOrder = useMutation({
+    mutationFn: async (d: Record<string, any>) => { const r = await apiRequest("PATCH", `/api/admin/orders/${params.id}`, d); return r.json(); },
+    onSuccess: invalidate,
+  });
+
+  const updateItem = useMutation({
+    mutationFn: async ({ itemId, ...d }: Record<string, any> & { itemId: string }) => {
+      const r = await apiRequest("PATCH", `/api/admin/orders/${params.id}/items/${itemId}`, d);
+      return r.json();
+    },
+    onSuccess: invalidate,
+  });
+
+  const uploadFileMut = useMutation({
+    mutationFn: async () => {
+      const file = uploadFileRef.current?.files?.[0];
+      if (!file) throw new Error("Pick a file");
+      const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token" });
+      const r = await apiRequest("POST", `/api/admin/orders/${params.id}/designs`, {
+        label: uploadLabel, folder: uploadFolder, fileName: file.name, fileUrl: blob.url, fileSize: file.size, mimeType: file.type,
+      });
+      return r.json();
+    },
+    onSuccess: () => { invalidate(); if (uploadFileRef.current) uploadFileRef.current.value = ""; setUploadError(""); },
+    onError: (e: any) => setUploadError(e?.message || "Upload failed"),
+  });
+
+  const updateFolderMut = useMutation({
+    mutationFn: async ({ fileId, folder }: { fileId: string; folder: string | null }) => {
+      const r = await apiRequest("PATCH", `/api/admin/designs/${fileId}/folder`, { folder });
+      return r.json();
+    },
+    onSuccess: invalidate,
+  });
+
+  const reviewMut = useMutation({
+    mutationFn: async (d: { designFileId: string; action: string; comment?: string }) => {
+      const r = await apiRequest("POST", `/api/admin/orders/${params.id}/design-review`, d);
+      return r.json();
+    },
+    onSuccess: () => { invalidate(); setReviewComment(""); setReviewingFileId(null); },
+  });
+
+  const sendApprovalMut = useMutation({
+    mutationFn: async () => { const r = await apiRequest("POST", `/api/admin/orders/${params.id}/send-for-approval`, {}); return r.json(); },
+    onSuccess: (r: any) => { invalidate(); setPortalMsg({ ok: true, text: `Approval link sent · ${r.link}` }); },
+    onError: (e: any) => setPortalMsg({ ok: false, text: e?.message || "Failed" }),
+  });
+
+  const raisePoMut = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/admin/orders/${params.id}/raise-po`, { supplierId: selectedSupplierId || undefined });
+      return r.json();
+    },
+    onSuccess: (r: any) => { invalidate(); setPortalMsg({ ok: true, text: r.ghlPushed ? "PO raised · supplier emailed · GHL → PO Raised" : `PO raised · supplier emailed · GHL skipped (${r.ghlPushReason})` }); },
+    onError: (e: any) => setPortalMsg({ ok: false, text: e?.message || "Failed" }),
+  });
+
+  // Drag-and-drop handler for file vault folders
+  const handleFolderDrop = useCallback(async (folder: typeof FOLDERS[number], files: FileList) => {
+    for (const file of Array.from(files)) {
+      try {
+        const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token" });
+        await apiRequest("POST", `/api/admin/orders/${params.id}/designs`, {
+          label: file.name.split(".")[0], folder, fileName: file.name, fileUrl: blob.url, fileSize: file.size, mimeType: file.type,
+        });
+      } catch (e) {
+        console.error("Drop upload failed:", e);
+      }
+    }
+    invalidate();
+  }, [params.id]);
+
+  // ─── Loading / Not Found ─────────────────────────────────────
+
+  if (isLoading) return <AdminLayout><div style={{ padding: "40px", textAlign: "center", color: "rgba(255,255,255,0.4)" }}>Loading…</div></AdminLayout>;
+  if (!data) return <AdminLayout><div style={{ padding: "40px", textAlign: "center", color: "rgba(255,255,255,0.4)" }}>Order not found</div></AdminLayout>;
+
+  const { order, items, designs, comments, sizeBreakdowns, activity } = data;
+  const hasMockups = designs.some((d) => d.folder === "mockups");
+
+  // Group size breakdowns by item
+  const bdByItem = new Map<string, SizeBreakdown[]>();
+  for (const b of sizeBreakdowns ?? []) {
+    const list = bdByItem.get(b.orderItemId) || [];
+    list.push(b);
+    bdByItem.set(b.orderItemId, list);
+  }
+
+  // ─── Render ──────────────────────────────────────────────────
+
+  return (
+    <AdminLayout>
+      {/* Header bar */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <Link href="/admin/orders"><span style={{ color: "rgba(255,255,255,0.5)", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}><ArrowLeft size={14} /> Orders</span></Link>
+          <h1 style={{ fontSize: "20px", fontWeight: 700, margin: 0, color: "#fff" }}>{order.orderNumber}</h1>
+          <StatusBadge status={order.status} />
+          {order.pipelineStage && <StageBadge stage={order.pipelineStage} />}
+        </div>
+        <Link href={`/admin/orders/${order.id}/po`}>
+          <button style={{ padding: "8px 16px", fontSize: "12px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
+            <Printer size={14} /> View / Print PO
+          </button>
+        </Link>
+      </div>
+
+      {/* ──── PO Details ──── */}
+      <Section title="PO Details">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
+          <Field label="PO Reference"><EditableField value={order.poReference} onSave={(v) => updateOrder.mutate({ poReference: v })} placeholder="e.g. Onewhero Rugby Juniors 2026" /></Field>
+          <Field label="Account"><EditableField value={order.accountName} onSave={(v) => updateOrder.mutate({ accountName: v })} placeholder="Account name" /></Field>
+          <Field label="Comments"><EditableField value={order.poComments} onSave={(v) => updateOrder.mutate({ poComments: v })} placeholder="Notes" /></Field>
+          <Field label="Status">
+            <select value={statusEdit || order.status} onChange={(e) => { setStatusEdit(e.target.value); updateOrder.mutate({ status: e.target.value }); }} style={{ ...inputStyle, width: "auto" }}>
+              {["pending", "paid", "processing", "shipped", "delivered", "cancelled"].map((s) => <option key={s} value={s} style={{ background: "#111" }}>{s}</option>)}
+            </select>
+          </Field>
+          <Field label="New / Repeat">
+            <select value={order.isRepeatOrder ? "repeat" : "new"} onChange={(e) => updateOrder.mutate({ isRepeatOrder: e.target.value === "repeat" })} style={{ ...inputStyle, width: "auto" }}>
+              <option value="new" style={{ background: "#111" }}>New</option>
+              <option value="repeat" style={{ background: "#111" }}>Repeat</option>
+            </select>
+          </Field>
+          <Field label="Design Status"><span style={{ color: "rgba(255,255,255,0.6)", fontSize: "13px" }}>{order.designStatus || "—"}</span></Field>
+        </div>
+      </Section>
+
+      {/* ──── Customer / Delivery ──── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
+        <Section title="Customer">
+          <Field label="Name"><EditableField value={order.customerName} onSave={(v) => updateOrder.mutate({ customerName: v })} placeholder="Customer name" /></Field>
+          <Field label="Email"><EditableField value={order.customerEmail} onSave={(v) => updateOrder.mutate({ customerEmail: v })} placeholder="customer@email.com" /></Field>
+        </Section>
+        <Section title="Delivery Address">
+          <Field label="Attention"><EditableField value={order.deliveryAttention} onSave={(v) => updateOrder.mutate({ deliveryAttention: v })} placeholder="Attention" /></Field>
+          <Field label="Address"><EditableField value={order.deliveryAddress} onSave={(v) => updateOrder.mutate({ deliveryAddress: v })} placeholder="Full address" multiline /></Field>
+          <Field label="Email"><EditableField value={order.deliveryEmail} onSave={(v) => updateOrder.mutate({ deliveryEmail: v })} placeholder="delivery@email.com" /></Field>
+          <Field label="Phone"><EditableField value={order.deliveryPhone} onSave={(v) => updateOrder.mutate({ deliveryPhone: v })} placeholder="022..." /></Field>
+        </Section>
+      </div>
+
+      {/* ──── Garment Lines ──── */}
+      <Section title={`Garment Lines (${items.length})`}>
+        {items.length === 0 && <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "13px" }}>No items on this PO yet.</p>}
+        {items.map((item) => {
+          const bds = bdByItem.get(item.id) || [];
+          const sizeSummary = new Map<string, number>();
+          for (const b of bds) sizeSummary.set(b.size, (sizeSummary.get(b.size) || 0) + b.quantity);
+          const totalQty = sizeSummary.size > 0 ? Array.from(sizeSummary.values()).reduce((a, b) => a + b, 0) : item.quantity;
+
+          return (
+            <div key={item.id} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "10px", padding: "20px", marginBottom: "16px" }}>
+              {/* Item header */}
+              <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
+                <Field label="Product" style={{ flex: 2 }}><EditableField value={item.productName} onSave={(v) => updateItem.mutate({ itemId: item.id, productName: v })} /></Field>
+                <Field label="Grade" style={{ flex: 1 }}><EditableField value={item.gradeGroup} onSave={(v) => updateItem.mutate({ itemId: item.id, gradeGroup: v })} placeholder="Grade" /></Field>
+                <Field label="Branding" style={{ flex: 1 }}><EditableField value={item.brandingMethod} onSave={(v) => updateItem.mutate({ itemId: item.id, brandingMethod: v })} placeholder="Method" /></Field>
+                <Field label="Colours" style={{ flex: 1 }}>
+                  <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                    {(item.productColors ?? []).map((c, i) => (
+                      <span key={i} style={{ width: "20px", height: "14px", background: c.hex, border: "1px solid rgba(255,255,255,0.2)", borderRadius: "2px", display: "inline-block" }} title={c.hex} />
+                    ))}
+                    {!(item.productColors?.length) && <span style={{ color: "rgba(255,255,255,0.3)", fontSize: "12px" }}>—</span>}
+                  </div>
+                </Field>
+              </div>
+
+              {/* Design images — front, back, elements side by side */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+                <div>
+                  <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Front Design</p>
+                  <ImageUploadSlot
+                    label="Upload front"
+                    url={item.frontDesignUrl}
+                    onUpload={(url) => updateItem.mutate({ itemId: item.id, frontDesignUrl: url })}
+                  />
+                </div>
+                <div>
+                  <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Back Design</p>
+                  <ImageUploadSlot
+                    label="Upload back"
+                    url={item.backDesignUrl}
+                    onUpload={(url) => updateItem.mutate({ itemId: item.id, backDesignUrl: url })}
+                  />
+                </div>
+                <div>
+                  <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Elements ({(item.elementUrls ?? []).length})</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {(item.elementUrls ?? []).map((el, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <img src={el.url} alt={el.name} style={{ maxHeight: "36px", maxWidth: "80px", objectFit: "contain" }} />
+                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)" }}>{el.name}</span>
+                      </div>
+                    ))}
+                    <ImageUploadSlot
+                      label="+ Add element"
+                      url={null}
+                      small
+                      onUpload={(url) => {
+                        const name = prompt("Element name (e.g. sponsor logo):") || "Logo";
+                        const existing = (item.elementUrls ?? []) as { name: string; url: string }[];
+                        updateItem.mutate({ itemId: item.id, elementUrls: [...existing, { name, url }] });
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Size breakdown + design notes */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div>
+                  <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Size Run</p>
+                  {sizeSummary.size > 0 ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      {Array.from(sizeSummary.entries()).map(([size, qty]) => (
+                        <span key={size} style={{ fontSize: "12px", padding: "4px 8px", background: "rgba(255,255,255,0.06)", borderRadius: "4px", color: "#fff" }}>
+                          {size}: {qty}
+                        </span>
+                      ))}
+                      <span style={{ fontSize: "12px", padding: "4px 8px", background: "rgba(201,168,76,0.15)", borderRadius: "4px", color: "#C9A84C", fontWeight: 600 }}>
+                        Total: {totalQty}
+                      </span>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}>Qty: {item.quantity}</span>
+                  )}
+                </div>
+                <div>
+                  <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Design Notes</p>
+                  <EditableField value={item.designNotes} onSave={(v) => updateItem.mutate({ itemId: item.id, designNotes: v })} placeholder="Notes…" multiline />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </Section>
+
+      {/* ──── File Vault (drag & drop) ──── */}
+      <Section title="File Vault">
+        {/* Folder drop zones */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "8px", marginBottom: "16px" }}>
+          {FOLDERS.map((folder) => {
+            const folderFiles = designs.filter((d) => d.folder === folder);
+            return (
+              <FolderDropZone
+                key={folder}
+                folder={folder}
+                fileCount={folderFiles.length}
+                onDrop={(files) => handleFolderDrop(folder, files)}
+              />
+            );
+          })}
+        </div>
+
+        {/* Upload form */}
+        <div style={{ display: "flex", gap: "10px", alignItems: "end", marginBottom: "16px", flexWrap: "wrap" }}>
+          <div>
+            <label style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Folder</label>
+            <select value={uploadFolder} onChange={(e) => setUploadFolder(e.target.value as any)} style={{ ...inputStyle, width: "130px" }}>
+              {FOLDERS.map((f) => <option key={f} value={f} style={{ background: "#111" }}>{f}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Label</label>
+            <input value={uploadLabel} onChange={(e) => setUploadLabel(e.target.value)} placeholder="jersey…" style={{ ...inputStyle, width: "120px" }} />
+          </div>
+          <div style={{ flex: 1, minWidth: "180px" }}>
+            <label style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>File</label>
+            <input ref={uploadFileRef} type="file" style={{ ...inputStyle }} />
+          </div>
+          <button onClick={() => uploadFileMut.mutate()} disabled={uploadFileMut.isPending}
+            style={{ padding: "8px 16px", fontSize: "12px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", height: "36px" }}>
+            <Upload size={14} /> {uploadFileMut.isPending ? "…" : "Upload"}
+          </button>
+          {uploadError && <span style={{ fontSize: "11px", color: "#ef4444" }}>{uploadError}</span>}
+        </div>
+
+        {/* File list */}
+        {designs.length === 0 ? (
+          <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "12px" }}>No files yet. Upload or drag-and-drop onto a folder above.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            {designs.map((file) => (
+              <div key={file.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", background: "rgba(255,255,255,0.02)", borderRadius: "6px", fontSize: "13px" }}>
+                <FileText size={14} color="rgba(255,255,255,0.3)" />
+                <span style={{ flex: 1, color: "#fff" }}>{file.fileName}</span>
+                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>{file.label} · v{file.version}</span>
+                <select
+                  value={file.folder ?? ""}
+                  onChange={(e) => updateFolderMut.mutate({ fileId: file.id, folder: e.target.value || null })}
+                  style={{ padding: "4px 6px", fontSize: "10px", background: file.folder ? "rgba(201,168,76,0.12)" : "rgba(255,255,255,0.04)", border: `1px solid ${file.folder ? "rgba(201,168,76,0.4)" : "rgba(255,255,255,0.1)"}`, borderRadius: "4px", color: file.folder ? "#C9A84C" : "rgba(255,255,255,0.5)", outline: "none", textTransform: "uppercase", fontWeight: 600 }}
+                >
+                  <option value="" style={{ background: "#111" }}>unfiled</option>
+                  {FOLDERS.map((f) => <option key={f} value={f} style={{ background: "#111" }}>{f}</option>)}
+                </select>
+                <StatusBadge status={file.status} />
+                {file.status === "pending" && (
+                  reviewingFileId === file.id ? (
+                    <div style={{ display: "flex", gap: "4px" }}>
+                      <input value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Comment…" style={{ ...inputStyle, width: "120px", padding: "4px 6px", fontSize: "11px" }} />
+                      <button onClick={() => reviewMut.mutate({ designFileId: file.id, action: "approved", comment: reviewComment })} style={{ padding: "4px 8px", fontSize: "10px", background: "rgba(34,197,94,0.15)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)", borderRadius: "4px", cursor: "pointer" }}><Check size={10} /></button>
+                      <button onClick={() => reviewMut.mutate({ designFileId: file.id, action: "rejected", comment: reviewComment })} style={{ padding: "4px 8px", fontSize: "10px", background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "4px", cursor: "pointer" }}><X size={10} /></button>
+                      <button onClick={() => { setReviewingFileId(null); setReviewComment(""); }} style={{ padding: "4px 8px", fontSize: "10px", color: "rgba(255,255,255,0.4)", background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", cursor: "pointer" }}>✕</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setReviewingFileId(file.id)} style={{ padding: "4px 8px", fontSize: "10px", color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", cursor: "pointer" }}>Review</button>
+                  )
+                )}
+                <a href={file.fileUrl} target="_blank" rel="noopener noreferrer" style={{ color: "rgba(255,255,255,0.4)" }}><ExternalLink size={14} /></a>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      {/* ──── Portal Actions ──── */}
+      <Section title="Portal Actions" gold>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+          <div>
+            <button
+              onClick={() => { setPortalMsg(null); sendApprovalMut.mutate(); }}
+              disabled={sendApprovalMut.isPending || !hasMockups}
+              title={!hasMockups ? "Upload a file with folder=mockups first" : ""}
+              style={{
+                width: "100%", padding: "12px", fontSize: "12px", fontWeight: 600,
+                background: hasMockups ? "rgba(201,168,76,0.15)" : "rgba(255,255,255,0.04)",
+                color: hasMockups ? "#C9A84C" : "rgba(255,255,255,0.3)",
+                border: "1px solid rgba(201,168,76,0.4)", borderRadius: "6px",
+                cursor: sendApprovalMut.isPending || !hasMockups ? "not-allowed" : "pointer",
+                textTransform: "uppercase", letterSpacing: "0.5px",
+              }}
+            >
+              {sendApprovalMut.isPending ? "Sending…" : "Send for Client Approval"}
+            </button>
+            <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", marginTop: "4px" }}>Emails /approve/:token link · GHL → Mockup Sent</p>
+          </div>
+          <div>
+            <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+              <select
+                value={selectedSupplierId || order.assignedSupplierId || ""}
+                onChange={(e) => setSelectedSupplierId(e.target.value)}
+                style={{ ...inputStyle, flex: 1 }}
+              >
+                <option value="" style={{ background: "#111" }}>{suppliers.length ? "— pick supplier —" : "No suppliers yet"}</option>
+                {suppliers.map((s) => <option key={s.id} value={s.id} style={{ background: "#111" }}>{s.supplierName || s.email}{!s.inviteAccepted ? " (pending)" : ""}</option>)}
+              </select>
+            </div>
+            <button
+              onClick={() => { setPortalMsg(null); raisePoMut.mutate(); }}
+              disabled={raisePoMut.isPending || (!selectedSupplierId && !order.assignedSupplierId)}
+              style={{
+                width: "100%", padding: "12px", fontSize: "12px", fontWeight: 600,
+                background: (selectedSupplierId || order.assignedSupplierId) ? "#C9A84C" : "rgba(255,255,255,0.04)",
+                color: (selectedSupplierId || order.assignedSupplierId) ? "#0A1628" : "rgba(255,255,255,0.3)",
+                border: "none", borderRadius: "6px",
+                cursor: raisePoMut.isPending || (!selectedSupplierId && !order.assignedSupplierId) ? "not-allowed" : "pointer",
+                textTransform: "uppercase", letterSpacing: "0.5px",
+              }}
+            >
+              {raisePoMut.isPending ? "Raising PO…" : "Raise PO to Supplier"}
+            </button>
+            <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", marginTop: "4px" }}>Assigns supplier · emails PO · GHL → PO Raised</p>
+          </div>
+        </div>
+        {portalMsg && (
+          <div style={{ marginTop: "12px", padding: "10px", fontSize: "11px", borderRadius: "6px", background: portalMsg.ok ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)", color: portalMsg.ok ? "#22c55e" : "#ef4444", border: `1px solid ${portalMsg.ok ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`, wordBreak: "break-all" }}>
+            {portalMsg.text}
+          </div>
+        )}
+      </Section>
+
+      {/* ──── Admin Notes ──── */}
+      <Section title="Admin Notes">
+        <EditableField value={order.adminNotes} onSave={(v) => updateOrder.mutate({ adminNotes: v })} placeholder="Internal notes…" multiline style={{ width: "100%" }} />
+      </Section>
+
+      {/* ──── Activity Log ──── */}
+      <Section title="Activity Log">
+        {(activity ?? []).length === 0 ? (
+          <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "12px" }}>No activity yet.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "400px", overflowY: "auto" }}>
+            {(activity ?? []).map((a: any) => (
+              <div key={a.id} style={{ padding: "8px 12px", background: "rgba(255,255,255,0.02)", borderRadius: "6px", borderLeft: "3px solid rgba(201,168,76,0.3)", fontSize: "12px" }}>
+                <div style={{ color: "#fff", fontWeight: 500 }}>{a.action.replace(/_/g, " ")}</div>
+                {a.details && <div style={{ color: "rgba(255,255,255,0.4)", fontSize: "11px", marginTop: "2px" }}>{typeof a.details === "string" ? a.details : JSON.stringify(a.details)}</div>}
+                <div style={{ color: "rgba(255,255,255,0.25)", fontSize: "10px", marginTop: "2px" }}>{new Date(a.createdAt).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+    </AdminLayout>
+  );
+}
+
+// ─── Small presentational helpers ────────────────────────────────────
+
+function Section({ title, children, gold }: { title: string; children: React.ReactNode; gold?: boolean }) {
+  return (
+    <div style={{ background: "#111", border: `1px solid ${gold ? "rgba(201,168,76,0.25)" : "rgba(255,255,255,0.06)"}`, borderRadius: "12px", padding: "20px 24px", marginBottom: "16px" }}>
+      <h2 style={{ fontSize: "13px", fontWeight: 700, color: gold ? "#C9A84C" : "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "16px" }}>{title}</h2>
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, children, style }: { label: string; children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div style={style}>
+      <label style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</label>
+      {children}
+    </div>
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -104,849 +690,32 @@ function StatusBadge({ status }: { status: string }) {
     cancelled: { bg: "rgba(239,68,68,0.15)", text: "#ef4444" },
     approved: { bg: "rgba(34,197,94,0.15)", text: "#22c55e" },
     rejected: { bg: "rgba(239,68,68,0.15)", text: "#ef4444" },
-    not_started: { bg: "rgba(255,255,255,0.06)", text: "rgba(255,255,255,0.4)" },
-    pending_review: { bg: "rgba(234,179,8,0.15)", text: "#eab308" },
     needs_revision: { bg: "rgba(239,68,68,0.15)", text: "#ef4444" },
   };
   const c = colors[status] || { bg: "rgba(255,255,255,0.06)", text: "rgba(255,255,255,0.5)" };
-  return (
-    <span style={{ fontSize: "11px", fontWeight: 600, padding: "3px 8px", borderRadius: "4px", background: c.bg, color: c.text, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-      {status.replace(/_/g, " ")}
-    </span>
-  );
+  return <span style={{ fontSize: "10px", fontWeight: 600, padding: "3px 8px", borderRadius: "4px", background: c.bg, color: c.text, textTransform: "uppercase", letterSpacing: "0.5px" }}>{status.replace(/_/g, " ")}</span>;
 }
 
-export default function AdminOrderDetail() {
-  const params = useParams<{ id: string }>();
-  const queryClient = useQueryClient();
-  const [reviewComment, setReviewComment] = useState("");
-  const [reviewingFileId, setReviewingFileId] = useState<string | null>(null);
-  const [editingNotes, setEditingNotes] = useState(false);
-  const [notes, setNotes] = useState("");
-  const [statusEdit, setStatusEdit] = useState("");
-  const [activeTab, setActiveTab] = useState<"overview" | "production" | "designs" | "chat" | "activity">("overview");
+function StageBadge({ stage }: { stage: string }) {
+  return <span style={{ fontSize: "10px", fontWeight: 600, padding: "3px 8px", borderRadius: "4px", background: "rgba(201,168,76,0.12)", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.3)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{stage}</span>;
+}
 
-  // Size breakdown form state
-  const [showSizeForm, setShowSizeForm] = useState(false);
-  const [sizeFormItem, setSizeFormItem] = useState("");
-  const [sizeFormSize, setSizeFormSize] = useState("");
-  const [sizeFormQty, setSizeFormQty] = useState(1);
-  const [sizeFormName, setSizeFormName] = useState("");
-  const [sizeFormNumber, setSizeFormNumber] = useState("");
-
-  // QC form state
-  const [showQcForm, setShowQcForm] = useState(false);
-  const [qcType, setQcType] = useState("pre_production");
-  const [qcStatus, setQcStatus] = useState("pending");
-  const [qcNotes, setQcNotes] = useState("");
-  const [qcIssues, setQcIssues] = useState("");
-
-  // Tracking form state
-  const [showTrackingForm, setShowTrackingForm] = useState(false);
-  const [trackingNumber, setTrackingNumber] = useState("");
-  const [trackingUrl, setTrackingUrl] = useState("");
-
-  // File vault upload state
-  const uploadFileRef = useRef<HTMLInputElement>(null);
-  const [uploadFolder, setUploadFolder] = useState<DesignFolder>("mockups");
-  const [uploadLabel, setUploadLabel] = useState("jersey");
-  const [uploadError, setUploadError] = useState("");
-
-  // Portal actions state
-  const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
-  const [portalActionMessage, setPortalActionMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: [`/api/admin/orders/${params.id}`] });
-  };
-
-  const { data, isLoading } = useQuery<OrderDetail>({
-    queryKey: [`/api/admin/orders/${params.id}`],
-    enabled: !!params.id,
-  });
-
-  const reviewMutation = useMutation({
-    mutationFn: async ({ designFileId, action, comment }: { designFileId: string; action: string; comment?: string }) => {
-      const res = await apiRequest("POST", `/api/admin/orders/${params.id}/design-review`, { designFileId, action, comment });
-      return res.json();
-    },
-    onSuccess: () => { invalidate(); setReviewComment(""); setReviewingFileId(null); },
-  });
-
-  const uploadFileMutation = useMutation({
-    mutationFn: async () => {
-      const file = uploadFileRef.current?.files?.[0];
-      if (!file) throw new Error("Pick a file first");
-      const blob = await upload(file.name, file, {
-        access: "public",
-        handleUploadUrl: "/api/uploads/token",
-      });
-      const res = await apiRequest("POST", `/api/admin/orders/${params.id}/designs`, {
-        label: uploadLabel,
-        folder: uploadFolder,
-        fileName: file.name,
-        fileUrl: blob.url,
-        fileSize: file.size,
-        mimeType: file.type,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      invalidate();
-      if (uploadFileRef.current) uploadFileRef.current.value = "";
-      setUploadError("");
-    },
-    onError: (err: any) => setUploadError(err?.message || "Upload failed"),
-  });
-
-  const updateFolderMutation = useMutation({
-    mutationFn: async ({ fileId, folder }: { fileId: string; folder: DesignFolder | null }) => {
-      const res = await apiRequest("PATCH", `/api/admin/designs/${fileId}/folder`, { folder });
-      return res.json();
-    },
-    onSuccess: invalidate,
-  });
-
-  // Portal actions: list suppliers, send for approval, raise PO to supplier
-  const { data: suppliersData } = useQuery<{ suppliers: SupplierOption[] }>({
-    queryKey: ["/api/admin/suppliers"],
-  });
-  const suppliers = suppliersData?.suppliers ?? [];
-
-  const sendForApprovalMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/admin/orders/${params.id}/send-for-approval`, {});
-      return res.json();
-    },
-    onSuccess: (res: any) => {
-      invalidate();
-      setPortalActionMessage({ kind: "ok", text: `Approval link sent · ${res.link}` });
-    },
-    onError: (err: any) => {
-      const msg = err?.message || "Failed to send approval link";
-      try {
-        const parsed = JSON.parse(msg.split(": ").slice(1).join(": "));
-        setPortalActionMessage({ kind: "err", text: parsed.error || msg });
-      } catch {
-        setPortalActionMessage({ kind: "err", text: msg });
-      }
-    },
-  });
-
-  const raisePoMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/admin/orders/${params.id}/raise-po`, {
-        supplierId: selectedSupplierId || undefined,
-      });
-      return res.json();
-    },
-    onSuccess: (res: any) => {
-      invalidate();
-      setPortalActionMessage({
-        kind: "ok",
-        text: res.ghlPushed
-          ? "PO raised · supplier emailed · GHL moved to PO Raised"
-          : `PO raised · supplier emailed · GHL skipped (${res.ghlPushReason || "no link"})`,
-      });
-    },
-    onError: (err: any) => {
-      const msg = err?.message || "Failed to raise PO";
-      try {
-        const parsed = JSON.parse(msg.split(": ").slice(1).join(": "));
-        setPortalActionMessage({ kind: "err", text: parsed.error || msg });
-      } catch {
-        setPortalActionMessage({ kind: "err", text: msg });
-      }
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async (data: Record<string, any>) => {
-      const res = await apiRequest("PATCH", `/api/admin/orders/${params.id}`, data);
-      return res.json();
-    },
-    onSuccess: () => { invalidate(); setEditingNotes(false); setStatusEdit(""); setShowTrackingForm(false); },
-  });
-
-  const initPipelineMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/admin/orders/${params.id}/production/initialize`);
-      return res.json();
-    },
-    onSuccess: invalidate,
-  });
-
-  const advanceStageMutation = useMutation({
-    mutationFn: async (notes?: string | void) => {
-      const res = await apiRequest("POST", `/api/admin/orders/${params.id}/production/advance`, { notes });
-      return res.json();
-    },
-    onSuccess: invalidate,
-  });
-
-  const addSizeBreakdownMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", `/api/admin/orders/${params.id}/size-breakdowns`, data);
-      return res.json();
-    },
-    onSuccess: () => {
-      invalidate();
-      setShowSizeForm(false);
-      setSizeFormSize("");
-      setSizeFormQty(1);
-      setSizeFormName("");
-      setSizeFormNumber("");
-    },
-  });
-
-  const addQcMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", `/api/admin/orders/${params.id}/qc`, data);
-      return res.json();
-    },
-    onSuccess: () => {
-      invalidate();
-      setShowQcForm(false);
-      setQcNotes("");
-      setQcIssues("");
-    },
-  });
-
-  if (isLoading) return <AdminLayout><div style={{ color: "rgba(255,255,255,0.3)", padding: "40px", textAlign: "center" }}>Loading...</div></AdminLayout>;
-  if (!data) return <AdminLayout><div style={{ color: "rgba(255,255,255,0.5)", padding: "40px", textAlign: "center" }}>Order not found</div></AdminLayout>;
-
-  const { order, items, designs, comments, stages, qcChecks, sizeBreakdowns, activity } = data;
-
-  const tabs = [
-    { key: "overview", label: "Overview" },
-    { key: "production", label: "Production" },
-    { key: "designs", label: `Designs (${designs.length})` },
-    { key: "chat", label: "Chat" },
-    { key: "activity", label: "Activity" },
-  ] as const;
-
-  const inputStyle = {
-    width: "100%", padding: "10px 12px", fontSize: "13px",
-    background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
-    borderRadius: "6px", color: "#fff", outline: "none",
-  };
-
+function FolderDropZone({ folder, fileCount, onDrop }: { folder: string; fileCount: number; onDrop: (files: FileList) => void }) {
+  const [over, setOver] = useState(false);
   return (
-    <AdminLayout>
-      {/* Header */}
-      <div style={{ marginBottom: "24px" }}>
-        <Link href="/admin/orders">
-          <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px", marginBottom: "16px" }}>
-            <ArrowLeft size={14} /> Back to Orders
-          </span>
-        </Link>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-          <h1 style={{ fontSize: "24px", fontWeight: 700, color: "#fff" }}>Order {order.orderNumber}</h1>
-          <StatusBadge status={order.status} />
-          <StatusBadge status={order.designStatus || "not_started"} />
-          {order.productionStage && order.productionStage !== "order_received" && (
-            <StatusBadge status={order.productionStage} />
-          )}
-        </div>
-        <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.4)", marginTop: "4px" }}>
-          {order.customerName || order.customerEmail || "Guest"} &middot; {new Date(order.createdAt).toLocaleString()}
-        </p>
-      </div>
-
-      {/* Tab navigation */}
-      <div style={{ display: "flex", gap: "4px", marginBottom: "24px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            style={{
-              padding: "10px 20px", fontSize: "13px", fontWeight: 500,
-              background: "transparent", border: "none",
-              color: activeTab === tab.key ? "#fff" : "rgba(255,255,255,0.4)",
-              borderBottom: activeTab === tab.key ? "2px solid #fff" : "2px solid transparent",
-              cursor: "pointer", marginBottom: "-1px",
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* TAB: Overview */}
-      {activeTab === "overview" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: "24px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "24px", minWidth: 0 }}>
-            {/* Production Progress (compact) */}
-            {stages.length > 0 && <ProductionTracker stages={stages} />}
-
-            {/* Order Items */}
-            <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", overflow: "hidden" }}>
-              <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#fff", padding: "20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                Order Items ({items.length})
-              </h2>
-              {items.map((item) => (
-                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: "16px", padding: "16px 24px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                  {item.productImage && (
-                    <img src={item.productImage} alt="" style={{ width: "48px", height: "48px", borderRadius: "6px", objectFit: "cover" }} />
-                  )}
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: "14px", color: "#fff", fontWeight: 500 }}>{item.productName}</p>
-                    {item.size && <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>Size: {item.size}</p>}
-                  </div>
-                  <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)" }}>x{item.quantity}</p>
-                  <p style={{ fontSize: "14px", color: "#fff", fontWeight: 500, minWidth: "80px", textAlign: "right" }}>
-                    ${((item.unitAmount * item.quantity) / 100).toFixed(2)}
-                  </p>
-                </div>
-              ))}
-              <div style={{ padding: "16px 24px", display: "flex", justifyContent: "flex-end" }}>
-                <span style={{ fontSize: "14px", fontWeight: 600, color: "#fff" }}>
-                  Total: ${(order.total / 100).toFixed(2)} {order.currency?.toUpperCase()}
-                </span>
-              </div>
-            </div>
-
-            {/* Size Breakdowns */}
-            <SizeBreakdownView items={items} breakdowns={sizeBreakdowns} />
-          </div>
-
-          {/* Right sidebar */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-            {/* PO View */}
-            <Link href={`/admin/orders/${order.id}/po`}>
-              <button style={{
-                width: "100%", padding: "12px", fontSize: "13px", fontWeight: 600,
-                background: "#fff", color: "#000", border: "none", borderRadius: "6px",
-                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
-              }}>
-                <FileText size={14} /> View Purchase Order
-              </button>
-            </Link>
-
-            {/* Sideline Portal Actions */}
-            <div style={{ background: "#111", border: "1px solid rgba(201,168,76,0.25)", borderRadius: "12px", padding: "20px 24px" }}>
-              <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#C9A84C", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.8px" }}>
-                Portal Actions
-              </h3>
-              <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", marginBottom: "16px" }}>
-                {order.pipelineStage ? `Stage: ${order.pipelineStage}` : "No GHL stage yet"}
-                {!order.ghlOpportunityId && " · not linked to GHL"}
-              </p>
-
-              {/* Send for approval */}
-              <div style={{ marginBottom: "16px" }}>
-                <button
-                  onClick={() => { setPortalActionMessage(null); sendForApprovalMutation.mutate(); }}
-                  disabled={sendForApprovalMutation.isPending || !designs.some((d) => d.folder === "mockups")}
-                  title={!designs.some((d) => d.folder === "mockups") ? "Upload a file with folder=mockups first (Designs tab)" : ""}
-                  style={{
-                    width: "100%", padding: "10px 12px", fontSize: "12px", fontWeight: 600,
-                    background: !designs.some((d) => d.folder === "mockups") ? "rgba(255,255,255,0.04)" : "rgba(201,168,76,0.12)",
-                    color: !designs.some((d) => d.folder === "mockups") ? "rgba(255,255,255,0.3)" : "#C9A84C",
-                    border: "1px solid rgba(201,168,76,0.4)",
-                    borderRadius: "6px",
-                    cursor: sendForApprovalMutation.isPending || !designs.some((d) => d.folder === "mockups") ? "not-allowed" : "pointer",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  {sendForApprovalMutation.isPending ? "Sending…" : "Send for Client Approval"}
-                </button>
-                <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", marginTop: "4px" }}>
-                  Emails the client an /approve/:token link · pushes GHL → Mockup Sent
-                </p>
-              </div>
-
-              {/* Raise PO to supplier */}
-              <div style={{ marginBottom: "8px" }}>
-                <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  Supplier
-                </label>
-                <select
-                  value={selectedSupplierId || order.assignedSupplierId || ""}
-                  onChange={(e) => setSelectedSupplierId(e.target.value)}
-                  style={{ ...inputStyle, marginBottom: "8px" }}
-                >
-                  <option value="" style={{ background: "#111" }}>
-                    {suppliers.length === 0 ? "No suppliers yet — invite one via /admin/suppliers" : "— pick a supplier —"}
-                  </option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id} style={{ background: "#111" }}>
-                      {s.supplierName || s.email}
-                      {!s.inviteAccepted && " (invite pending)"}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => { setPortalActionMessage(null); raisePoMutation.mutate(); }}
-                  disabled={raisePoMutation.isPending || (!selectedSupplierId && !order.assignedSupplierId)}
-                  style={{
-                    width: "100%", padding: "10px 12px", fontSize: "12px", fontWeight: 600,
-                    background: (!selectedSupplierId && !order.assignedSupplierId) ? "rgba(255,255,255,0.04)" : "#C9A84C",
-                    color: (!selectedSupplierId && !order.assignedSupplierId) ? "rgba(255,255,255,0.3)" : "#0A1628",
-                    border: "none",
-                    borderRadius: "6px",
-                    cursor: raisePoMutation.isPending || (!selectedSupplierId && !order.assignedSupplierId) ? "not-allowed" : "pointer",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  {raisePoMutation.isPending ? "Raising PO…" : "Raise PO to Supplier"}
-                </button>
-                <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", marginTop: "4px" }}>
-                  Assigns supplier · emails PO link · pushes GHL → PO Raised
-                </p>
-              </div>
-
-              {portalActionMessage && (
-                <div
-                  style={{
-                    marginTop: "12px",
-                    padding: "10px 12px",
-                    fontSize: "11px",
-                    borderRadius: "6px",
-                    background: portalActionMessage.kind === "ok" ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
-                    color: portalActionMessage.kind === "ok" ? "#22c55e" : "#ef4444",
-                    border: `1px solid ${portalActionMessage.kind === "ok" ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
-                    wordBreak: "break-all",
-                  }}
-                >
-                  {portalActionMessage.text}
-                </div>
-              )}
-            </div>
-
-            {/* Order Status */}
-            <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px" }}>
-              <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>Order Status</h3>
-              <select
-                value={statusEdit || order.status}
-                onChange={(e) => setStatusEdit(e.target.value)}
-                style={{ ...inputStyle, marginBottom: "12px" }}
-              >
-                {["pending", "paid", "processing", "shipped", "delivered", "cancelled"].map((s) => (
-                  <option key={s} value={s} style={{ background: "#111" }}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-                ))}
-              </select>
-              {statusEdit && statusEdit !== order.status && (
-                <button
-                  onClick={() => updateMutation.mutate({ status: statusEdit })}
-                  disabled={updateMutation.isPending}
-                  style={{ width: "100%", padding: "10px", fontSize: "13px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer" }}
-                >
-                  Update Status
-                </button>
-              )}
-            </div>
-
-            {/* Tracking Info */}
-            <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#fff" }}>Tracking</h3>
-                {!showTrackingForm && (
-                  <button onClick={() => { setShowTrackingForm(true); setTrackingNumber(order.trackingNumber || ""); setTrackingUrl(order.trackingUrl || ""); }}
-                    style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
-                    {order.trackingNumber ? "Edit" : "Add"}
-                  </button>
-                )}
-              </div>
-              {showTrackingForm ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  <input placeholder="Tracking number" value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} style={inputStyle} />
-                  <input placeholder="Tracking URL (optional)" value={trackingUrl} onChange={(e) => setTrackingUrl(e.target.value)} style={inputStyle} />
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button onClick={() => updateMutation.mutate({ trackingNumber, trackingUrl })}
-                      style={{ flex: 1, padding: "8px", fontSize: "12px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer" }}>
-                      Save
-                    </button>
-                    <button onClick={() => setShowTrackingForm(false)}
-                      style={{ padding: "8px 14px", fontSize: "12px", color: "rgba(255,255,255,0.4)", background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", cursor: "pointer" }}>
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                order.trackingNumber ? (
-                  <div>
-                    <p style={{ fontSize: "13px", color: "#fff" }}><Truck size={14} style={{ marginRight: "6px", verticalAlign: "-2px" }} />{order.trackingNumber}</p>
-                    {order.trackingUrl && (
-                      <a href={order.trackingUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: "12px", color: "#3b82f6" }}>Track package</a>
-                    )}
-                  </div>
-                ) : (
-                  <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)" }}>No tracking info</p>
-                )
-              )}
-            </div>
-
-            {/* Customer Info */}
-            <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px" }}>
-              <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>Customer</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                {order.customerName && <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.7)" }}>{order.customerName}</p>}
-                {order.customerEmail && <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)" }}>{order.customerEmail}</p>}
-                <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.4)" }}>Store: {order.storeSlug}</p>
-              </div>
-            </div>
-
-            {/* Admin Notes */}
-            <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px" }}>
-              <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>Admin Notes</h3>
-              {editingNotes ? (
-                <div>
-                  <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
-                    style={{ ...inputStyle, resize: "vertical" as const, minHeight: "80px", marginBottom: "8px" }} />
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button onClick={() => updateMutation.mutate({ adminNotes: notes })} disabled={updateMutation.isPending}
-                      style={{ padding: "8px 14px", fontSize: "12px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer" }}>Save</button>
-                    <button onClick={() => setEditingNotes(false)}
-                      style={{ padding: "8px 14px", fontSize: "12px", color: "rgba(255,255,255,0.5)", background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", cursor: "pointer" }}>Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)", marginBottom: "12px", whiteSpace: "pre-wrap" }}>{order.adminNotes || "No notes yet"}</p>
-                  <button onClick={() => { setNotes(order.adminNotes || ""); setEditingNotes(true); }}
-                    style={{ padding: "6px 14px", fontSize: "12px", color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", cursor: "pointer" }}>Edit Notes</button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB: Production */}
-      {activeTab === "production" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px", maxWidth: "800px" }}>
-          {/* Pipeline controls */}
-          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-            {stages.length === 0 ? (
-              <button onClick={() => initPipelineMutation.mutate()} disabled={initPipelineMutation.isPending}
-                style={{
-                  padding: "10px 20px", fontSize: "13px", fontWeight: 600,
-                  background: "#fff", color: "#000", border: "none", borderRadius: "6px",
-                  cursor: "pointer", display: "flex", alignItems: "center", gap: "8px",
-                }}>
-                <Play size={14} /> Initialize Production Pipeline
-              </button>
-            ) : (
-              <button onClick={() => advanceStageMutation.mutate()} disabled={advanceStageMutation.isPending}
-                style={{
-                  padding: "10px 20px", fontSize: "13px", fontWeight: 600,
-                  background: "#3b82f6", color: "#fff", border: "none", borderRadius: "6px",
-                  cursor: "pointer", display: "flex", alignItems: "center", gap: "8px",
-                }}>
-                <Play size={14} /> Advance to Next Stage
-              </button>
-            )}
-
-            <button onClick={() => setShowQcForm(!showQcForm)}
-              style={{
-                padding: "10px 20px", fontSize: "13px", fontWeight: 600,
-                background: "rgba(20,184,166,0.15)", color: "#14b8a6",
-                border: "1px solid rgba(20,184,166,0.3)", borderRadius: "6px",
-                cursor: "pointer", display: "flex", alignItems: "center", gap: "8px",
-              }}>
-              <Shield size={14} /> Add QC Check
-            </button>
-          </div>
-
-          {/* QC Form */}
-          {showQcForm && (
-            <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px" }}>
-              <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>New Quality Check</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
-                <div>
-                  <label style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "4px" }}>Check Type</label>
-                  <select value={qcType} onChange={(e) => setQcType(e.target.value)} style={inputStyle}>
-                    <option value="pre_production" style={{ background: "#111" }}>Pre-Production</option>
-                    <option value="mid_production" style={{ background: "#111" }}>Mid-Production</option>
-                    <option value="final" style={{ background: "#111" }}>Final Inspection</option>
-                    <option value="packaging" style={{ background: "#111" }}>Packaging</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "4px" }}>Result</label>
-                  <select value={qcStatus} onChange={(e) => setQcStatus(e.target.value)} style={inputStyle}>
-                    <option value="pending" style={{ background: "#111" }}>Pending</option>
-                    <option value="passed" style={{ background: "#111" }}>Passed</option>
-                    <option value="failed" style={{ background: "#111" }}>Failed</option>
-                    <option value="conditional" style={{ background: "#111" }}>Conditional</option>
-                  </select>
-                </div>
-              </div>
-              <input placeholder="Notes" value={qcNotes} onChange={(e) => setQcNotes(e.target.value)} style={{ ...inputStyle, marginBottom: "8px" }} />
-              {(qcStatus === "failed" || qcStatus === "conditional") && (
-                <input placeholder="Issue description" value={qcIssues} onChange={(e) => setQcIssues(e.target.value)} style={{ ...inputStyle, marginBottom: "8px" }} />
-              )}
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button onClick={() => addQcMutation.mutate({ checkType: qcType, status: qcStatus, notes: qcNotes || undefined, issues: qcIssues || undefined })}
-                  disabled={addQcMutation.isPending}
-                  style={{ padding: "8px 16px", fontSize: "12px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer" }}>Save</button>
-                <button onClick={() => setShowQcForm(false)}
-                  style={{ padding: "8px 16px", fontSize: "12px", color: "rgba(255,255,255,0.4)", background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", cursor: "pointer" }}>Cancel</button>
-              </div>
-            </div>
-          )}
-
-          <ProductionTracker stages={stages} />
-          {qcChecks.length > 0 && <QualityChecksView checks={qcChecks} isAdmin />}
-
-          {/* Size Breakdown Management */}
-          <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <h3 style={{ fontSize: "15px", fontWeight: 600, color: "#fff" }}>Size & Player Details</h3>
-              <button onClick={() => setShowSizeForm(!showSizeForm)}
-                style={{
-                  padding: "6px 14px", fontSize: "12px", fontWeight: 600,
-                  background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)",
-                  border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px",
-                  cursor: "pointer", display: "flex", alignItems: "center", gap: "6px",
-                }}>
-                <Plus size={12} /> Add
-              </button>
-            </div>
-
-            {showSizeForm && (
-              <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
-                  <div>
-                    <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", display: "block", marginBottom: "4px" }}>Product</label>
-                    <select value={sizeFormItem} onChange={(e) => setSizeFormItem(e.target.value)} style={inputStyle}>
-                      <option value="" style={{ background: "#111" }}>Select item...</option>
-                      {items.map((i) => (
-                        <option key={i.id} value={i.id} style={{ background: "#111" }}>{i.productName}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", display: "block", marginBottom: "4px" }}>Size</label>
-                    <input value={sizeFormSize} onChange={(e) => setSizeFormSize(e.target.value)} placeholder="e.g. Medium" style={inputStyle} />
-                  </div>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginBottom: "8px" }}>
-                  <div>
-                    <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", display: "block", marginBottom: "4px" }}>Quantity</label>
-                    <input type="number" min={1} value={sizeFormQty} onChange={(e) => setSizeFormQty(parseInt(e.target.value) || 1)} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", display: "block", marginBottom: "4px" }}>Player Name</label>
-                    <input value={sizeFormName} onChange={(e) => setSizeFormName(e.target.value)} placeholder="Optional" style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", display: "block", marginBottom: "4px" }}>Number</label>
-                    <input value={sizeFormNumber} onChange={(e) => setSizeFormNumber(e.target.value)} placeholder="Optional" style={inputStyle} />
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button
-                    onClick={() => {
-                      if (!sizeFormItem || !sizeFormSize) return;
-                      addSizeBreakdownMutation.mutate({
-                        orderItemId: sizeFormItem,
-                        size: sizeFormSize,
-                        quantity: sizeFormQty,
-                        playerName: sizeFormName || undefined,
-                        playerNumber: sizeFormNumber || undefined,
-                      });
-                    }}
-                    disabled={!sizeFormItem || !sizeFormSize || addSizeBreakdownMutation.isPending}
-                    style={{ padding: "8px 16px", fontSize: "12px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer" }}>
-                    Add Entry
-                  </button>
-                  <button onClick={() => setShowSizeForm(false)}
-                    style={{ padding: "8px 16px", fontSize: "12px", color: "rgba(255,255,255,0.4)", background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", cursor: "pointer" }}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {sizeBreakdowns.length === 0 && !showSizeForm ? (
-              <div style={{ padding: "24px", textAlign: "center", color: "rgba(255,255,255,0.3)", fontSize: "13px" }}>
-                No size/player details yet. Click "Add" to enter details.
-              </div>
-            ) : (
-              <SizeBreakdownView items={items} breakdowns={sizeBreakdowns} />
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB: Designs */}
-      {activeTab === "designs" && (
-        <div style={{ maxWidth: "800px" }}>
-          <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", overflow: "hidden", marginBottom: "20px" }}>
-            <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#fff", padding: "20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              Upload to file vault
-            </h2>
-            <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                <div>
-                  <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Folder</label>
-                  <select
-                    value={uploadFolder}
-                    onChange={(e) => setUploadFolder(e.target.value as DesignFolder)}
-                    style={{ padding: "10px 12px", fontSize: "13px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", outline: "none", minWidth: "140px" }}
-                  >
-                    {DESIGN_FOLDERS.map((f) => (
-                      <option key={f} value={f} style={{ background: "#111" }}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Label</label>
-                  <input
-                    type="text"
-                    value={uploadLabel}
-                    onChange={(e) => setUploadLabel(e.target.value)}
-                    placeholder="jersey, shorts, logo…"
-                    style={{ padding: "10px 12px", fontSize: "13px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", outline: "none", minWidth: "140px" }}
-                  />
-                </div>
-                <div style={{ flex: 1, minWidth: "200px" }}>
-                  <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>File</label>
-                  <input
-                    ref={uploadFileRef}
-                    type="file"
-                    style={{ padding: "8px", fontSize: "13px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", outline: "none", width: "100%" }}
-                  />
-                </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <button
-                  onClick={() => uploadFileMutation.mutate()}
-                  disabled={uploadFileMutation.isPending}
-                  style={{ padding: "10px 18px", fontSize: "13px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: uploadFileMutation.isPending ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "6px" }}
-                >
-                  <Upload size={14} />
-                  {uploadFileMutation.isPending ? "Uploading…" : "Upload"}
-                </button>
-                {uploadError && <span style={{ fontSize: "12px", color: "#ef4444" }}>{uploadError}</span>}
-                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>
-                  mockups → client approval · tech-pack → supplier portal
-                </span>
-              </div>
-            </div>
-          </div>
-          <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", overflow: "hidden" }}>
-            <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#fff", padding: "20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              Design Files ({designs.length})
-            </h2>
-            {designs.length === 0 ? (
-              <div style={{ padding: "32px", textAlign: "center", color: "rgba(255,255,255,0.3)", fontSize: "13px" }}>No design files uploaded yet</div>
-            ) : (
-              designs.map((file) => (
-                <div key={file.id} style={{ padding: "16px 24px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
-                    <FileText size={16} color="rgba(255,255,255,0.4)" />
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: "14px", color: "#fff", fontWeight: 500 }}>{file.fileName}</p>
-                      <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>
-                        {file.label} &middot; v{file.version} &middot; {new Date(file.createdAt).toLocaleString()}
-                      </p>
-                    </div>
-                    <select
-                      value={file.folder ?? ""}
-                      onChange={(e) =>
-                        updateFolderMutation.mutate({
-                          fileId: file.id,
-                          folder: (e.target.value || null) as DesignFolder | null,
-                        })
-                      }
-                      title="File vault folder"
-                      style={{
-                        padding: "6px 8px",
-                        fontSize: "11px",
-                        background: file.folder ? "rgba(201,168,76,0.12)" : "rgba(255,255,255,0.04)",
-                        border: `1px solid ${file.folder ? "rgba(201,168,76,0.4)" : "rgba(255,255,255,0.1)"}`,
-                        borderRadius: "4px",
-                        color: file.folder ? "#C9A84C" : "rgba(255,255,255,0.5)",
-                        outline: "none",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.5px",
-                        fontWeight: 600,
-                      }}
-                    >
-                      <option value="" style={{ background: "#111" }}>unfiled</option>
-                      {DESIGN_FOLDERS.map((f) => (
-                        <option key={f} value={f} style={{ background: "#111" }}>
-                          {f}
-                        </option>
-                      ))}
-                    </select>
-                    <StatusBadge status={file.status} />
-                    <a href={file.fileUrl} target="_blank" rel="noopener noreferrer" style={{ color: "rgba(255,255,255,0.4)" }}>
-                      <ExternalLink size={16} />
-                    </a>
-                  </div>
-
-                  {file.status === "pending" && (
-                    <div style={{ marginTop: "12px", marginLeft: "28px" }}>
-                      {reviewingFileId === file.id ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                          <textarea placeholder="Add a comment (optional)..." value={reviewComment} onChange={(e) => setReviewComment(e.target.value)}
-                            style={{ ...inputStyle, resize: "vertical" as const, minHeight: "60px" }} />
-                          <div style={{ display: "flex", gap: "8px" }}>
-                            <button onClick={() => reviewMutation.mutate({ designFileId: file.id, action: "approved", comment: reviewComment })}
-                              disabled={reviewMutation.isPending}
-                              style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 600, background: "rgba(34,197,94,0.15)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)", borderRadius: "6px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
-                              <Check size={14} /> Approve
-                            </button>
-                            <button onClick={() => reviewMutation.mutate({ designFileId: file.id, action: "rejected", comment: reviewComment })}
-                              disabled={reviewMutation.isPending}
-                              style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 600, background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "6px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
-                              <X size={14} /> Reject
-                            </button>
-                            <button onClick={() => { setReviewingFileId(null); setReviewComment(""); }}
-                              style={{ padding: "8px 16px", fontSize: "13px", color: "rgba(255,255,255,0.4)", background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", cursor: "pointer" }}>Cancel</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button onClick={() => setReviewingFileId(file.id)}
-                          style={{ padding: "6px 14px", fontSize: "12px", fontWeight: 500, background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
-                          <MessageSquare size={12} /> Review
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {comments.filter(c => c.designFileId === file.id).map((c) => (
-                    <div key={c.id} style={{ marginTop: "8px", marginLeft: "28px", padding: "8px 12px", background: "rgba(255,255,255,0.02)", borderRadius: "6px", borderLeft: `3px solid ${c.action === "approved" ? "#22c55e" : c.action === "rejected" ? "#ef4444" : "rgba(255,255,255,0.1)"}` }}>
-                      <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.6)" }}>{c.comment}</p>
-                      <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", marginTop: "4px" }}>{new Date(c.createdAt).toLocaleString()}</p>
-                    </div>
-                  ))}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB: Chat */}
-      {activeTab === "chat" && (
-        <div style={{ maxWidth: "700px" }}>
-          <OrderChat orderId={order.id} userRole="admin" apiPrefix="/api/admin" />
-        </div>
-      )}
-
-      {/* TAB: Activity */}
-      {activeTab === "activity" && (
-        <div style={{ maxWidth: "700px" }}>
-          <ActivityLog activity={activity} />
-        </div>
-      )}
-
-      <style>{`
-        @media (max-width: 900px) {
-          div[style*="grid-template-columns: 1fr 360px"] {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
-    </AdminLayout>
+    <div
+      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); if (e.dataTransfer.files.length > 0) onDrop(e.dataTransfer.files); }}
+      style={{
+        padding: "16px 8px", textAlign: "center", borderRadius: "8px",
+        border: `2px dashed ${over ? "#C9A84C" : "rgba(255,255,255,0.1)"}`,
+        background: over ? "rgba(201,168,76,0.08)" : "rgba(255,255,255,0.02)",
+        cursor: "default", transition: "all 0.15s",
+      }}
+    >
+      <div style={{ fontSize: "12px", fontWeight: 600, color: over ? "#C9A84C" : "#fff", textTransform: "uppercase", letterSpacing: "0.5px" }}>{folder}</div>
+      <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)", marginTop: "4px" }}>{fileCount} file{fileCount !== 1 ? "s" : ""}</div>
+    </div>
   );
 }

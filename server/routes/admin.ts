@@ -66,6 +66,8 @@ const updateOrderSchema = z.object({
   trackingNumber: z.string().optional(),
   trackingUrl: z.string().optional(),
   estimatedDeliveryDate: z.string().transform(v => v ? new Date(v) : undefined).optional(),
+  customerName: z.string().optional(),
+  customerEmail: z.string().optional(),
   poReference: z.string().optional(),
   accountName: z.string().optional(),
   isRepeatOrder: z.boolean().optional(),
