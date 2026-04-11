@@ -11,10 +11,28 @@ router.use(requireAuth);
 router.post("/token", async (req, res) => {
   try {
     const body = req.body as HandleUploadBody;
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+
+    // Diagnostic: log whether the env var is actually reaching the function at runtime.
+    // Previously the live API returned "No token found" even though Vercel listed the
+    // var as set — this log pins down whether the var is present at call time.
+    console.log(
+      "[uploads/token] BLOB_READ_WRITE_TOKEN present:",
+      !!blobToken,
+      "length:",
+      blobToken?.length ?? 0,
+    );
+
+    if (!blobToken) {
+      return res.status(500).json({
+        error: "Vercel Blob is not configured on this environment (BLOB_READ_WRITE_TOKEN missing)",
+      });
+    }
 
     const jsonResponse = await handleUpload({
       body,
       request: req,
+      token: blobToken, // explicit — don't rely on @vercel/blob auto-env-read
       onBeforeGenerateToken: async (pathname) => {
         // Validate that the user is authenticated (already done by middleware)
         const user = (req as any).user;
