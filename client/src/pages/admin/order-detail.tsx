@@ -175,50 +175,75 @@ function EditableField({
 // ─── Inline image upload (for order item front/back/elements) ────────
 
 function ImageUploadSlot({
-  label, url, onUpload, small,
+  label, url, onUpload, small, vaultImages,
 }: {
   label: string;
   url: string | null;
   onUpload: (blobUrl: string) => void;
   small?: boolean;
+  vaultImages?: { id: string; fileUrl: string; fileName: string }[];
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
 
   async function handleFile(file: File) {
     setUploading(true);
+    setError("");
     try {
       const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token" });
       onUpload(blob.url);
     } catch (e: any) {
       console.error("Image upload failed:", e);
+      setError(e?.message || "Upload failed");
     } finally {
       setUploading(false);
     }
   }
 
   return (
-    <div
-      style={{
-        textAlign: "center", cursor: "pointer",
-        border: "1px dashed rgba(255,255,255,0.15)", borderRadius: "8px",
-        padding: small ? "8px" : "16px", minHeight: small ? "60px" : "240px",
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        background: uploading ? "rgba(201,168,76,0.08)" : "rgba(255,255,255,0.02)",
-      }}
-      onClick={() => ref.current?.click()}
-      onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-      onDragOver={(e) => e.preventDefault()}
-    >
-      <input ref={ref} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-      {uploading ? (
-        <span style={{ fontSize: "12px", color: "#C9A84C" }}>Uploading…</span>
-      ) : url ? (
-        <img src={url} alt={label} style={{ maxHeight: small ? "50px" : "260px", maxWidth: "100%", objectFit: "contain" }} />
-      ) : (
-        <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}>
-          <Upload size={20} style={{ marginBottom: "8px" }} /><br />{label}<br /><span style={{ fontSize: "10px" }}>Click or drag image</span>
-        </span>
+    <div>
+      <div
+        style={{
+          textAlign: "center", cursor: "pointer",
+          border: `1px dashed ${error ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.15)"}`, borderRadius: "8px",
+          padding: small ? "8px" : "16px", minHeight: small ? "60px" : "200px",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          background: uploading ? "rgba(201,168,76,0.08)" : error ? "rgba(239,68,68,0.04)" : "rgba(255,255,255,0.02)",
+        }}
+        onClick={() => ref.current?.click()}
+        onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+        onDragOver={(e) => e.preventDefault()}
+      >
+        <input ref={ref} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+        {uploading ? (
+          <span style={{ fontSize: "12px", color: "#C9A84C" }}>Uploading…</span>
+        ) : url ? (
+          <img src={url} alt={label} style={{ maxHeight: small ? "50px" : "220px", maxWidth: "100%", objectFit: "contain" }} />
+        ) : (
+          <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}>
+            <Upload size={18} style={{ marginBottom: "6px" }} /><br />{label}<br /><span style={{ fontSize: "10px" }}>Click or drag image</span>
+          </span>
+        )}
+      </div>
+      {error && <p style={{ fontSize: "10px", color: "#ef4444", marginTop: "4px" }}>{error}</p>}
+      {/* Pick from file vault */}
+      {!url && vaultImages && vaultImages.length > 0 && (
+        <div style={{ marginTop: "6px" }}>
+          <p style={{ fontSize: "9px", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: "4px" }}>Or use from vault:</p>
+          <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+            {vaultImages.map((v) => (
+              <img
+                key={v.id}
+                src={v.fileUrl}
+                alt={v.fileName}
+                title={`Use ${v.fileName}`}
+                onClick={(e) => { e.stopPropagation(); onUpload(v.fileUrl); }}
+                style={{ width: "48px", height: "48px", objectFit: "contain", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.1)", cursor: "pointer", background: "rgba(255,255,255,0.04)", padding: "2px" }}
+              />
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -501,6 +526,7 @@ export default function AdminOrderDetail() {
                     label="Upload front"
                     url={item.frontDesignUrl}
                     onUpload={(url) => updateItem.mutate({ itemId: item.id, frontDesignUrl: url })}
+                    vaultImages={designs.filter((d) => d.folder === "mockups" && d.mimeType?.startsWith("image/")).map((d) => ({ id: d.id, fileUrl: d.fileUrl, fileName: d.fileName }))}
                   />
                 </div>
                 <div>
@@ -509,6 +535,7 @@ export default function AdminOrderDetail() {
                     label="Upload back"
                     url={item.backDesignUrl}
                     onUpload={(url) => updateItem.mutate({ itemId: item.id, backDesignUrl: url })}
+                    vaultImages={designs.filter((d) => d.folder === "mockups" && d.mimeType?.startsWith("image/")).map((d) => ({ id: d.id, fileUrl: d.fileUrl, fileName: d.fileName }))}
                   />
                 </div>
                 <div>
@@ -529,6 +556,7 @@ export default function AdminOrderDetail() {
                         const existing = (item.elementUrls ?? []) as { name: string; url: string }[];
                         updateItem.mutate({ itemId: item.id, elementUrls: [...existing, { name, url }] });
                       }}
+                      vaultImages={designs.filter((d) => d.folder === "logos" && d.mimeType?.startsWith("image/")).map((d) => ({ id: d.id, fileUrl: d.fileUrl, fileName: d.fileName }))}
                     />
                   </div>
                 </div>
