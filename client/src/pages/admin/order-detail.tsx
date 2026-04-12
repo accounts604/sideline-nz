@@ -191,7 +191,7 @@ function ImageUploadSlot({
     setUploading(true);
     setError("");
     try {
-      const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token" });
+      const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token", addRandomSuffix: true });
       onUpload(blob.url);
     } catch (e: any) {
       console.error("Image upload failed:", e);
@@ -316,7 +316,7 @@ export default function AdminOrderDetail() {
     mutationFn: async () => {
       const file = uploadFileRef.current?.files?.[0];
       if (!file) throw new Error("Pick a file");
-      const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token" });
+      const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token", addRandomSuffix: true });
       const r = await apiRequest("POST", `/api/admin/orders/${params.id}/designs`, {
         label: uploadLabel, folder: uploadFolder, fileName: file.name, fileUrl: blob.url, fileSize: file.size, mimeType: file.type,
       });
@@ -374,7 +374,7 @@ export default function AdminOrderDetail() {
   const handleFolderDrop = useCallback(async (folder: typeof FOLDERS[number], files: FileList) => {
     for (const file of Array.from(files)) {
       try {
-        const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token" });
+        const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token", addRandomSuffix: true });
         await apiRequest("POST", `/api/admin/orders/${params.id}/designs`, {
           label: file.name.split(".")[0], folder, fileName: file.name, fileUrl: blob.url, fileSize: file.size, mimeType: file.type,
         });
