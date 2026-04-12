@@ -202,7 +202,7 @@ function ImageUploadSlot({
       style={{
         textAlign: "center", cursor: "pointer",
         border: "1px dashed rgba(255,255,255,0.15)", borderRadius: "8px",
-        padding: small ? "8px" : "12px", minHeight: small ? "60px" : "120px",
+        padding: small ? "8px" : "16px", minHeight: small ? "60px" : "240px",
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
         background: uploading ? "rgba(201,168,76,0.08)" : "rgba(255,255,255,0.02)",
       }}
@@ -212,12 +212,12 @@ function ImageUploadSlot({
     >
       <input ref={ref} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
       {uploading ? (
-        <span style={{ fontSize: "11px", color: "#C9A84C" }}>Uploading…</span>
+        <span style={{ fontSize: "12px", color: "#C9A84C" }}>Uploading…</span>
       ) : url ? (
-        <img src={url} alt={label} style={{ maxHeight: small ? "50px" : "120px", maxWidth: "100%", objectFit: "contain" }} />
+        <img src={url} alt={label} style={{ maxHeight: small ? "50px" : "260px", maxWidth: "100%", objectFit: "contain" }} />
       ) : (
-        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>
-          <Upload size={14} style={{ marginBottom: "4px" }} /><br />{label}
+        <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}>
+          <Upload size={20} style={{ marginBottom: "8px" }} /><br />{label}<br /><span style={{ fontSize: "10px" }}>Click or drag image</span>
         </span>
       )}
     </div>
@@ -453,9 +453,9 @@ export default function AdminOrderDetail() {
                   <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Elements ({(item.elementUrls ?? []).length})</p>
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                     {(item.elementUrls ?? []).map((el, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <img src={el.url} alt={el.name} style={{ maxHeight: "36px", maxWidth: "80px", objectFit: "contain" }} />
-                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)" }}>{el.name}</span>
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px", background: "rgba(255,255,255,0.02)", borderRadius: "6px" }}>
+                        <img src={el.url} alt={el.name} style={{ maxHeight: "55px", maxWidth: "120px", objectFit: "contain" }} />
+                        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)" }}>{el.name}</span>
                       </div>
                     ))}
                     <ImageUploadSlot

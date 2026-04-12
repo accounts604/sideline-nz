@@ -123,13 +123,13 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
           )}
         </div>
 
-        {/* Center: mockup designs together — front + back side by side, big */}
-        <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", gap: "16px", padding: "12px 8px", minHeight: "220px" }}>
+        {/* Center: mockup designs together — front + back side by side, filling the space */}
+        <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", gap: "20px", padding: "16px 12px", minHeight: "260px" }}>
           {item.frontDesignUrl && (
-            <img src={item.frontDesignUrl} alt="Front mockup" style={{ maxHeight: "200px", maxWidth: "220px", objectFit: "contain" }} />
+            <img src={item.frontDesignUrl} alt="Front mockup" style={{ maxHeight: "280px", flex: 1, minWidth: 0, objectFit: "contain" }} />
           )}
           {item.backDesignUrl && (
-            <img src={item.backDesignUrl} alt="Back mockup" style={{ maxHeight: "200px", maxWidth: "220px", objectFit: "contain" }} />
+            <img src={item.backDesignUrl} alt="Back mockup" style={{ maxHeight: "280px", flex: 1, minWidth: 0, objectFit: "contain" }} />
           )}
         </div>
 
@@ -158,17 +158,17 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
           <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center", letterSpacing: "0.3px" }}>
             Design Specifications
           </div>
-          <div style={{ display: "flex", minHeight: "260px", alignItems: "stretch" }}>
-            <div style={{ flex: 1, padding: "12px 8px", textAlign: "center", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", minHeight: "300px", alignItems: "stretch" }}>
+            <div style={{ flex: 1, padding: "16px 12px", textAlign: "center", display: "flex", flexDirection: "column" }}>
               <p style={{ fontSize: "11px", fontWeight: 700, marginBottom: "8px" }}>Front Design</p>
               {item.frontDesignUrl && (
-                <img src={item.frontDesignUrl} alt="Front Design" style={{ flex: 1, minHeight: 0, maxHeight: "260px", objectFit: "contain", width: "100%" }} />
+                <img src={item.frontDesignUrl} alt="Front Design" style={{ flex: 1, minHeight: 0, objectFit: "contain", width: "100%" }} />
               )}
             </div>
-            <div style={{ flex: 1, padding: "12px 8px", textAlign: "center", display: "flex", flexDirection: "column" }}>
+            <div style={{ flex: 1, padding: "16px 12px", textAlign: "center", display: "flex", flexDirection: "column" }}>
               <p style={{ fontSize: "11px", fontWeight: 700, marginBottom: "8px" }}>Back Design</p>
               {item.backDesignUrl && (
-                <img src={item.backDesignUrl} alt="Back Design" style={{ flex: 1, minHeight: 0, maxHeight: "260px", objectFit: "contain", width: "100%" }} />
+                <img src={item.backDesignUrl} alt="Back Design" style={{ flex: 1, minHeight: 0, objectFit: "contain", width: "100%" }} />
               )}
             </div>
             <div style={{ width: "200px", padding: "12px 8px", textAlign: "center", borderLeft: "1px solid #eee" }}>
