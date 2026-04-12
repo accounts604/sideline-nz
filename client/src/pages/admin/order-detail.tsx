@@ -542,6 +542,25 @@ export default function AdminOrderDetail() {
         </div>
 
         {/* File list */}
+        {/* Mockup gallery — show image files visually */}
+        {designs.filter((d) => d.mimeType?.startsWith("image/")).length > 0 && (
+          <div style={{ marginBottom: "16px" }}>
+            <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "8px" }}>Image Preview</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "12px" }}>
+              {designs.filter((d) => d.mimeType?.startsWith("image/")).map((file) => (
+                <div key={file.id} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", overflow: "hidden" }}>
+                  <img src={file.fileUrl} alt={file.fileName} style={{ width: "100%", height: "180px", objectFit: "contain", background: "#000", padding: "8px" }} />
+                  <div style={{ padding: "8px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)" }}>{file.fileName}</span>
+                    <span style={{ fontSize: "9px", textTransform: "uppercase", color: file.folder ? "#C9A84C" : "rgba(255,255,255,0.3)", fontWeight: 600 }}>{file.folder || "unfiled"}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* File list */}
         {designs.length === 0 ? (
           <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "12px" }}>No files yet. Upload or drag-and-drop onto a folder above.</p>
         ) : (

@@ -229,9 +229,13 @@ export default function PurchaseOrderView() {
   if (isLoading) return <div style={{ padding: "40px", textAlign: "center", color: "#666" }}>Loading...</div>;
   if (!data) return <div style={{ padding: "40px", textAlign: "center", color: "#666" }}>Order not found</div>;
 
-  const { order, items, sizeBreakdowns } = data;
+  const { order, items, sizeBreakdowns, designs } = data;
   const date = new Date(order.createdAt);
   const dateStr = `${date.getDate().toString().padStart(2, "0")}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getFullYear().toString().slice(2)}`;
+  // Mockup images from the file vault (used when items have no inline design URLs)
+  const mockupFiles = ((designs ?? []) as any[]).filter(
+    (f: any) => f.folder === "mockups" && f.mimeType?.startsWith("image/"),
+  );
 
   // Group breakdowns by item
   const breakdownsByItem = new Map<string, OrderSizeBreakdown[]>();
@@ -340,6 +344,23 @@ export default function PurchaseOrderView() {
             </div>
           </div>
         </div>
+
+        {/* Mockup gallery — shown when there are mockup files but no order items, or when items have no design URLs */}
+        {mockupFiles.length > 0 && (items.length === 0 || !items.some((i) => i.frontDesignUrl || i.backDesignUrl)) && (
+          <div style={{ pageBreakInside: "avoid", marginBottom: "20px" }}>
+            <div style={{ background: "#000", color: "#fff", padding: "8px 16px", fontSize: "13px", fontWeight: 700, textAlign: "center" }}>
+              Mockup Designs
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(mockupFiles.length, 3)}, 1fr)`, gap: "16px", padding: "20px 0" }}>
+              {mockupFiles.map((f: any) => (
+                <div key={f.id} style={{ textAlign: "center" }}>
+                  <img src={f.fileUrl} alt={f.fileName} style={{ maxWidth: "100%", maxHeight: "350px", objectFit: "contain" }} />
+                  <p style={{ fontSize: "10px", color: "#888", marginTop: "6px" }}>{f.fileName}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Product Lines */}
         {items.map((item) => (
