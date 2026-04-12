@@ -793,11 +793,21 @@ export default function AdminOrderDetail() {
 
 // ─── Small presentational helpers ────────────────────────────────────
 
-function Section({ title, children, gold }: { title: string; children: React.ReactNode; gold?: boolean }) {
+function Section({ title, children, gold, defaultOpen = true }: { title: string; children: React.ReactNode; gold?: boolean; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <div style={{ background: "#111", border: `1px solid ${gold ? "rgba(201,168,76,0.25)" : "rgba(255,255,255,0.06)"}`, borderRadius: "12px", padding: "20px 24px", marginBottom: "16px" }}>
-      <h2 style={{ fontSize: "13px", fontWeight: 700, color: gold ? "#C9A84C" : "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "16px" }}>{title}</h2>
-      {children}
+    <div style={{ background: "#111", border: `1px solid ${gold ? "rgba(201,168,76,0.25)" : "rgba(255,255,255,0.06)"}`, borderRadius: "12px", marginBottom: "16px", overflow: "hidden" }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          width: "100%", padding: "16px 24px", background: "none", border: "none", cursor: "pointer",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}
+      >
+        <h2 style={{ fontSize: "13px", fontWeight: 700, color: gold ? "#C9A84C" : "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "1.5px", margin: 0 }}>{title}</h2>
+        <span style={{ fontSize: "18px", color: "rgba(255,255,255,0.3)", transform: open ? "rotate(0)" : "rotate(-90deg)", transition: "transform 0.15s" }}>▾</span>
+      </button>
+      {open && <div style={{ padding: "0 24px 20px" }}>{children}</div>}
     </div>
   );
 }
