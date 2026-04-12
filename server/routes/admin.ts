@@ -469,6 +469,53 @@ router.post("/orders/create-po", async (req, res) => {
   }
 });
 
+// POST /orders/:id/items — add a single garment line item to an existing order.
+// Used from the admin single-sheet view when building up a PO incrementally
+// (vs. create-po which creates the entire order + all items at once).
+const addItemSchema = z.object({
+  productName: z.string().min(1),
+  quantity: z.number().int().min(1).default(1),
+  unitAmount: z.number().int().min(0).default(0),
+  gradeGroup: z.string().optional(),
+  brandingMethod: z.string().optional(),
+  designNotes: z.string().optional(),
+});
+
+router.post("/orders/:id/items", async (req, res) => {
+  try {
+    const data = addItemSchema.parse(req.body);
+    const user = (req as any).user;
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const item = await storage.createOrderItem({
+      orderId: order.id,
+      productId: "manual",
+      priceId: "manual",
+      productName: data.productName,
+      quantity: data.quantity,
+      unitAmount: data.unitAmount,
+      currency: "nzd",
+      gradeGroup: data.gradeGroup ?? null,
+      brandingMethod: data.brandingMethod ?? null,
+      designNotes: data.designNotes ?? null,
+    } as any);
+
+    await storage.logOrderActivity({
+      orderId: order.id,
+      userId: user.userId,
+      action: "item_added",
+      details: { itemId: item.id, productName: data.productName },
+    });
+
+    res.status(201).json(item);
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin add item error:", err);
+    res.status(500).json({ error: "Failed to add item" });
+  }
+});
+
 // ============ SIZE BREAKDOWNS ============
 
 // POST /orders/:id/size-breakdowns — add size breakdown for an order item

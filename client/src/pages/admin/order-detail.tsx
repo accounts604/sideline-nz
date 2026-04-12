@@ -248,6 +248,18 @@ export default function AdminOrderDetail() {
   // Status edit
   const [statusEdit, setStatusEdit] = useState("");
 
+  // Add item form
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [newItemName, setNewItemName] = useState("Sublimated Rugby Jersey");
+  const [newItemGrade, setNewItemGrade] = useState("");
+  const [newItemBranding, setNewItemBranding] = useState("Full Sublimation");
+  const [newItemQty, setNewItemQty] = useState(1);
+
+  // Add size breakdown
+  const [addingSizeForItem, setAddingSizeForItem] = useState<string | null>(null);
+  const [newSize, setNewSize] = useState("");
+  const [newSizeQty, setNewSizeQty] = useState(1);
+
   // ─── Queries ─────────────────────────────────────────────────
 
   const { data, isLoading } = useQuery<OrderDetail>({
@@ -309,6 +321,19 @@ export default function AdminOrderDetail() {
     mutationFn: async () => { const r = await apiRequest("POST", `/api/admin/orders/${params.id}/send-for-approval`, {}); return r.json(); },
     onSuccess: (r: any) => { invalidate(); setPortalMsg({ ok: true, text: `Approval link sent · ${r.link}` }); },
     onError: (e: any) => setPortalMsg({ ok: false, text: e?.message || "Failed" }),
+  });
+
+  const addItemMut = useMutation({
+    mutationFn: async (d: Record<string, any>) => { const r = await apiRequest("POST", `/api/admin/orders/${params.id}/items`, d); return r.json(); },
+    onSuccess: () => { invalidate(); setShowAddItem(false); setNewItemName("Sublimated Rugby Jersey"); setNewItemGrade(""); setNewItemBranding("Full Sublimation"); setNewItemQty(1); },
+  });
+
+  const addSizeMut = useMutation({
+    mutationFn: async (d: { orderItemId: string; size: string; quantity: number }) => {
+      const r = await apiRequest("POST", `/api/admin/orders/${params.id}/size-breakdowns`, d);
+      return r.json();
+    },
+    onSuccess: () => { invalidate(); setAddingSizeForItem(null); setNewSize(""); setNewSizeQty(1); },
   });
 
   const raisePoMut = useMutation({
@@ -407,7 +432,44 @@ export default function AdminOrderDetail() {
 
       {/* ──── Garment Lines ──── */}
       <Section title={`Garment Lines (${items.length})`}>
-        {items.length === 0 && <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "13px" }}>No items on this PO yet.</p>}
+        {items.length === 0 && <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "13px", marginBottom: "12px" }}>No items on this PO yet. Add one below.</p>}
+
+        {/* Add item form */}
+        {showAddItem ? (
+          <div style={{ background: "rgba(201,168,76,0.06)", border: "1px solid rgba(201,168,76,0.2)", borderRadius: "10px", padding: "16px 20px", marginBottom: "16px" }}>
+            <p style={{ fontSize: "12px", fontWeight: 700, color: "#C9A84C", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.5px" }}>New Garment Line</p>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 100px", gap: "10px", marginBottom: "12px" }}>
+              <div>
+                <label style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", display: "block", marginBottom: "3px" }}>Product Name</label>
+                <input value={newItemName} onChange={(e) => setNewItemName(e.target.value)} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", display: "block", marginBottom: "3px" }}>Grade / Group</label>
+                <input value={newItemGrade} onChange={(e) => setNewItemGrade(e.target.value)} placeholder="Grade 6,7,8" style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", display: "block", marginBottom: "3px" }}>Branding Method</label>
+                <input value={newItemBranding} onChange={(e) => setNewItemBranding(e.target.value)} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", display: "block", marginBottom: "3px" }}>Qty</label>
+                <input type="number" value={newItemQty} onChange={(e) => setNewItemQty(Number(e.target.value))} min={1} style={inputStyle} />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button onClick={() => addItemMut.mutate({ productName: newItemName, gradeGroup: newItemGrade || undefined, brandingMethod: newItemBranding || undefined, quantity: newItemQty })}
+                disabled={addItemMut.isPending || !newItemName.trim()}
+                style={{ padding: "8px 18px", fontSize: "12px", fontWeight: 600, background: "#C9A84C", color: "#0A1628", border: "none", borderRadius: "6px", cursor: "pointer" }}>
+                {addItemMut.isPending ? "Adding…" : "Add Item"}
+              </button>
+              <button onClick={() => setShowAddItem(false)} style={{ padding: "8px 14px", fontSize: "12px", color: "rgba(255,255,255,0.5)", background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", cursor: "pointer" }}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setShowAddItem(true)} style={{ marginBottom: "16px", padding: "10px 18px", fontSize: "12px", fontWeight: 600, background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.6)", border: "1px dashed rgba(255,255,255,0.15)", borderRadius: "8px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", width: "100%" }}>
+            <Plus size={14} /> Add Garment Line
+          </button>
+        )}
         {items.map((item) => {
           const bds = bdByItem.get(item.id) || [];
           const sizeSummary = new Map<string, number>();
@@ -476,19 +538,41 @@ export default function AdminOrderDetail() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                 <div>
                   <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Size Run</p>
-                  {sizeSummary.size > 0 ? (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                      {Array.from(sizeSummary.entries()).map(([size, qty]) => (
-                        <span key={size} style={{ fontSize: "12px", padding: "4px 8px", background: "rgba(255,255,255,0.06)", borderRadius: "4px", color: "#fff" }}>
-                          {size}: {qty}
-                        </span>
-                      ))}
-                      <span style={{ fontSize: "12px", padding: "4px 8px", background: "rgba(201,168,76,0.15)", borderRadius: "4px", color: "#C9A84C", fontWeight: 600 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
+                    {Array.from(sizeSummary.entries()).map(([size, qty]) => (
+                      <span key={size} style={{ fontSize: "12px", padding: "4px 10px", background: "rgba(255,255,255,0.06)", borderRadius: "4px", color: "#fff" }}>
+                        {size}: {qty}
+                      </span>
+                    ))}
+                    {sizeSummary.size > 0 && (
+                      <span style={{ fontSize: "12px", padding: "4px 10px", background: "rgba(201,168,76,0.15)", borderRadius: "4px", color: "#C9A84C", fontWeight: 600 }}>
                         Total: {totalQty}
                       </span>
+                    )}
+                    {sizeSummary.size === 0 && <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}>No sizes added yet</span>}
+                  </div>
+                  {/* Add size */}
+                  {addingSizeForItem === item.id ? (
+                    <div style={{ display: "flex", gap: "6px", alignItems: "end" }}>
+                      <div>
+                        <label style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)" }}>Size</label>
+                        <input value={newSize} onChange={(e) => setNewSize(e.target.value)} placeholder="Y8, M, XL…" style={{ ...inputStyle, width: "80px", padding: "6px 8px", fontSize: "12px" }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)" }}>Qty</label>
+                        <input type="number" value={newSizeQty} onChange={(e) => setNewSizeQty(Number(e.target.value))} min={1} style={{ ...inputStyle, width: "60px", padding: "6px 8px", fontSize: "12px" }} />
+                      </div>
+                      <button onClick={() => addSizeMut.mutate({ orderItemId: item.id, size: newSize, quantity: newSizeQty })}
+                        disabled={addSizeMut.isPending || !newSize.trim()}
+                        style={{ padding: "6px 12px", fontSize: "11px", fontWeight: 600, background: "#C9A84C", color: "#0A1628", border: "none", borderRadius: "4px", cursor: "pointer" }}>
+                        {addSizeMut.isPending ? "…" : "Add"}
+                      </button>
+                      <button onClick={() => setAddingSizeForItem(null)} style={{ padding: "6px 8px", fontSize: "11px", color: "rgba(255,255,255,0.4)", background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", cursor: "pointer" }}>✕</button>
                     </div>
                   ) : (
-                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}>Qty: {item.quantity}</span>
+                    <button onClick={() => setAddingSizeForItem(item.id)} style={{ padding: "4px 10px", fontSize: "10px", color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.04)", border: "1px dashed rgba(255,255,255,0.12)", borderRadius: "4px", cursor: "pointer" }}>
+                      + Add Size
+                    </button>
                   )}
                 </div>
                 <div>

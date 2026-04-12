@@ -232,10 +232,11 @@ export default function PurchaseOrderView() {
   const { order, items, sizeBreakdowns, designs } = data;
   const date = new Date(order.createdAt);
   const dateStr = `${date.getDate().toString().padStart(2, "0")}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getFullYear().toString().slice(2)}`;
-  // Mockup images from the file vault (used when items have no inline design URLs)
-  const mockupFiles = ((designs ?? []) as any[]).filter(
-    (f: any) => f.folder === "mockups" && f.mimeType?.startsWith("image/"),
-  );
+  // File vault images (used when items have no inline design URLs)
+  const allDesigns = (designs ?? []) as any[];
+  const mockupFiles = allDesigns.filter((f: any) => f.folder === "mockups" && f.mimeType?.startsWith("image/"));
+  const logoFiles = allDesigns.filter((f: any) => f.folder === "logos" && f.mimeType?.startsWith("image/"));
+  const hasItemDesigns = items.some((i) => i.frontDesignUrl || i.backDesignUrl);
 
   // Group breakdowns by item
   const breakdownsByItem = new Map<string, OrderSizeBreakdown[]>();
@@ -345,20 +346,67 @@ export default function PurchaseOrderView() {
           </div>
         </div>
 
-        {/* Mockup gallery — shown when there are mockup files but no order items, or when items have no design URLs */}
-        {mockupFiles.length > 0 && (items.length === 0 || !items.some((i) => i.frontDesignUrl || i.backDesignUrl)) && (
+        {/* Mockup + logo gallery — shown when items have no inline design URLs.
+            Mirrors the PO layout: black header, mockups in center, logos/elements on the side. */}
+        {mockupFiles.length > 0 && !hasItemDesigns && (
           <div style={{ pageBreakInside: "avoid", marginBottom: "20px" }}>
-            <div style={{ background: "#000", color: "#fff", padding: "8px 16px", fontSize: "13px", fontWeight: 700, textAlign: "center" }}>
-              Mockup Designs
+            {/* Product info row — structured like the Onewhero PO */}
+            <div style={{ background: "#000", color: "#fff", padding: "8px 16px", fontSize: "13px", fontWeight: 700, textAlign: "center", letterSpacing: "0.3px" }}>
+              {order.poReference || order.accountName || "Mockup Designs"}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(mockupFiles.length, 3)}, 1fr)`, gap: "16px", padding: "20px 0" }}>
-              {mockupFiles.map((f: any) => (
-                <div key={f.id} style={{ textAlign: "center" }}>
-                  <img src={f.fileUrl} alt={f.fileName} style={{ maxWidth: "100%", maxHeight: "350px", objectFit: "contain" }} />
-                  <p style={{ fontSize: "10px", color: "#888", marginTop: "6px" }}>{f.fileName}</p>
+            <div style={{ display: "flex" }}>
+              {/* Left: order-level details */}
+              <div style={{ width: "200px", padding: "14px 16px", fontSize: "12px" }}>
+                {order.poReference && (
+                  <div style={{ marginBottom: "10px" }}>
+                    <div style={{ fontWeight: 700, marginBottom: "2px" }}>PO Reference</div>
+                    <div>{order.poReference}</div>
+                  </div>
+                )}
+                {order.accountName && (
+                  <div style={{ marginBottom: "10px" }}>
+                    <div style={{ fontWeight: 700, marginBottom: "2px" }}>Account</div>
+                    <div>{order.accountName}</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Center: mockup images side by side */}
+              <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", gap: "20px", padding: "16px 12px", minHeight: "260px", flexWrap: "wrap" }}>
+                {mockupFiles.map((f: any) => (
+                  <img key={f.id} src={f.fileUrl} alt={f.fileName} style={{ maxHeight: "280px", maxWidth: "250px", objectFit: "contain" }} />
+                ))}
+              </div>
+            </div>
+
+            {/* Design Specifications — front/back mockups big + elements/logos */}
+            {(mockupFiles.length > 0 || logoFiles.length > 0) && (
+              <>
+                <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center" }}>
+                  Design Specifications
                 </div>
-              ))}
-            </div>
+                <div style={{ display: "flex", minHeight: "300px", alignItems: "stretch" }}>
+                  {/* Mockup images — each gets its own column */}
+                  {mockupFiles.slice(0, 2).map((f: any) => (
+                    <div key={f.id} style={{ flex: 1, padding: "16px 12px", textAlign: "center", display: "flex", flexDirection: "column" }}>
+                      <p style={{ fontSize: "11px", fontWeight: 700, marginBottom: "8px" }}>{f.fileName.replace(/\.[^.]+$/, "")}</p>
+                      <img src={f.fileUrl} alt={f.fileName} style={{ flex: 1, minHeight: 0, objectFit: "contain", width: "100%" }} />
+                    </div>
+                  ))}
+                  {/* Elements/logos */}
+                  {logoFiles.length > 0 && (
+                    <div style={{ width: "220px", padding: "16px 12px", textAlign: "center", borderLeft: "1px solid #eee" }}>
+                      <p style={{ fontSize: "11px", fontWeight: 700, marginBottom: "12px" }}>Elements</p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" }}>
+                        {logoFiles.map((f: any) => (
+                          <img key={f.id} src={f.fileUrl} alt={f.fileName} title={f.fileName} style={{ maxHeight: "65px", maxWidth: "180px", objectFit: "contain" }} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
 
