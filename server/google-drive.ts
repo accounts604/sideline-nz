@@ -161,12 +161,54 @@ export function getSubfolderTemplate(): string[] {
   return [
     "01. Brief",
     "02. Mockups",
-    "03. Approvals",
-    "04. Artwork",
-    "05. Production",
-    "06. Delivery",
-    "07. Invoicing",
+    "03. Logos",        // elements uploaded on garment lines land here
+    "04. Approvals",
+    "05. Artwork",
+    "06. Production",
+    "07. Delivery",
+    "08. Invoicing",
   ];
+}
+
+// Upload-routing — match by name match (case-insensitive + tolerant of
+// numbered prefixes). When the admin renames "02. Mockups" to "Mockups"
+// or "02 Mockups" we still route correctly.
+function normaliseFolderName(n: string): string {
+  return n.toLowerCase().replace(/^\d+[\.\s]*/, "").trim();
+}
+
+/**
+ * Pick the best-matching sub-folder under a PO folder for a given upload
+ * slot. Returns the target folder id (sub-folder if found, otherwise the
+ * PO root). Exported so the mirror call can route without re-implementing.
+ */
+export async function resolveUploadTarget(
+  poFolderId: string,
+  slot: "mockups" | "logos" | "artwork" | "approvals",
+): Promise<string> {
+  const targetWords: Record<typeof slot, string[]> = {
+    mockups: ["mockups", "mockup"],
+    logos: ["logos", "logo"],
+    artwork: ["artwork", "art"],
+    approvals: ["approvals", "approval"],
+  } as any;
+
+  const q = [
+    `'${poFolderId}' in parents`,
+    `mimeType = 'application/vnd.google-apps.folder'`,
+    `trashed = false`,
+  ].join(" and ");
+  const res = await driveFetch(`/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=50`);
+  if (!res?.ok) return poFolderId;
+  const data = await res.json();
+  const folders = (data.files || []) as Array<{ id: string; name: string }>;
+
+  const words = targetWords[slot];
+  for (const f of folders) {
+    const n = normaliseFolderName(f.name);
+    if (words.some((w) => n === w || n.startsWith(w))) return f.id;
+  }
+  return poFolderId;
 }
 
 async function createSubfolder(parentId: string, name: string): Promise<string | null> {
@@ -267,25 +309,27 @@ export async function findSubfolderByName(parentId: string, name: string): Promi
  */
 export async function mirrorBlobToPoFolder({
   poFolderId,
+  slot,
   subFolderName,
   blobUrl,
   fileName,
 }: {
   poFolderId: string;
-  subFolderName?: string; // e.g. "02. Mockups"
+  slot?: "mockups" | "logos" | "artwork" | "approvals";
+  subFolderName?: string; // explicit name override (takes priority over slot)
   blobUrl: string;
   fileName?: string;
 }): Promise<string | null> {
   const token = await getAccessToken();
   if (!token) return null;
 
+  // Resolve target folder: explicit name > slot resolver > PO root fallback.
   let targetFolderId = poFolderId;
   if (subFolderName) {
     const sub = await findSubfolderByName(poFolderId, subFolderName);
     if (sub) targetFolderId = sub;
-    // If the sub-folder doesn't exist (e.g. admin deleted it), we fall back
-    // to the PO root rather than erroring — Drive stays consistent with
-    // whatever the admin has set up.
+  } else if (slot) {
+    targetFolderId = await resolveUploadTarget(poFolderId, slot);
   }
 
   try {
@@ -349,6 +393,56 @@ export async function mirrorBlobToPoFolder({
     console.error("[Drive] mirror error:", err);
     return null;
   }
+}
+
+/**
+ * Flat list of every file under a folder — root + one level of sub-folders.
+ * Used by the inline PO vault so drops into "02. Mockups" / "03. Logos"
+ * are visible without clicking into each sub-folder first. Each result
+ * includes a synthesized `parentName` so the UI can label where it lives.
+ */
+export async function listFilesRecursive(rootFolderId: string): Promise<(DriveFile & { parentName?: string })[]> {
+  // 1. Root-level non-folder files
+  const rootFilesQ = [
+    `'${rootFolderId}' in parents`,
+    `mimeType != 'application/vnd.google-apps.folder'`,
+    `trashed = false`,
+  ].join(" and ");
+  const rootRes = await driveFetch(
+    `/files?q=${encodeURIComponent(rootFilesQ)}&fields=files(id,name,mimeType,webViewLink,iconLink,modifiedTime,size)&pageSize=200&orderBy=modifiedTime desc`,
+  );
+  const rootFiles: DriveFile[] = rootRes?.ok ? ((await rootRes.json()).files || []) : [];
+
+  // 2. Sub-folders
+  const foldersQ = [
+    `'${rootFolderId}' in parents`,
+    `mimeType = 'application/vnd.google-apps.folder'`,
+    `trashed = false`,
+  ].join(" and ");
+  const foldersRes = await driveFetch(`/files?q=${encodeURIComponent(foldersQ)}&fields=files(id,name)&pageSize=50`);
+  const subfolders: Array<{ id: string; name: string }> = foldersRes?.ok ? ((await foldersRes.json()).files || []) : [];
+
+  // 3. Files inside each sub-folder
+  const subFiles: (DriveFile & { parentName?: string })[] = [];
+  for (const folder of subfolders) {
+    const q = [
+      `'${folder.id}' in parents`,
+      `mimeType != 'application/vnd.google-apps.folder'`,
+      `trashed = false`,
+    ].join(" and ");
+    const res = await driveFetch(
+      `/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,webViewLink,iconLink,modifiedTime,size)&pageSize=100&orderBy=modifiedTime desc`,
+    );
+    if (!res?.ok) continue;
+    const files = (await res.json()).files || [];
+    for (const f of files) subFiles.push({ ...f, parentName: folder.name });
+  }
+
+  return [...rootFiles, ...subFiles].sort((a, b) => {
+    const at = a.modifiedTime || "";
+    const bt = b.modifiedTime || "";
+    return bt.localeCompare(at);
+  });
 }
 
 export async function listFilesInFolder(folderId: string): Promise<DriveFile[]> {

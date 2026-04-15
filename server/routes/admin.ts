@@ -14,6 +14,7 @@ import { withPoNumberRetry, buildPoReference } from "../po-number";
 import {
   createClientFolder,
   listFilesInFolder,
+  listFilesRecursive,
   isDriveConfigured,
   buildClientFolderName,
   mirrorBlobToPoFolder,
@@ -254,9 +255,33 @@ router.get("/vault/:orderId/files", async (req, res) => {
       return res.json({ order: row, files: [], missing: true });
     }
 
+    // When the admin drills into a specific sub-folder, list its contents
+    // directly. When no folderId is passed we return root folders + ALL
+    // files recursively (1 level deep) so dropped uploads in sub-folders
+    // like "02. Mockups" / "03. Logos" are visible without clicking in.
     const folderId = (req.query.folderId as string) || row.driveFolderId;
-    const files = await listFilesInFolder(folderId);
-    res.json({ order: row, files, folderId, rootFolderId: row.driveFolderId, missing: false });
+    const recursive = req.query.recursive !== "false" && !req.query.folderId;
+    const files = recursive
+      ? await listFilesRecursive(row.driveFolderId)
+      : await listFilesInFolder(folderId);
+
+    // For the root view, also include the sub-folders themselves so the UI
+    // can render browse-tiles alongside the flattened files list.
+    let subfolders: any[] = [];
+    if (recursive) {
+      const all = await listFilesInFolder(row.driveFolderId);
+      subfolders = all.filter((f) => f.mimeType === "application/vnd.google-apps.folder");
+    }
+
+    res.json({
+      order: row,
+      files,
+      subfolders,
+      folderId,
+      rootFolderId: row.driveFolderId,
+      recursive,
+      missing: false,
+    });
   } catch (err) {
     console.error("Admin vault files error:", err);
     res.status(500).json({ error: "Failed to load vault files" });
@@ -645,13 +670,17 @@ router.patch("/orders/:id/items/:itemId", async (req, res) => {
     const updated = await storage.updateOrderItem(req.params.itemId, data);
     if (!updated) return res.status(404).json({ error: "Item not found" });
 
-    // Mirror any new design-image URL into the PO's Drive folder.
-    // Fire-and-forget — we don't block the PATCH response on Drive.
-    const mirrored: string[] = [];
-    if (data.frontDesignUrl) mirrored.push(data.frontDesignUrl);
-    if (data.backDesignUrl) mirrored.push(data.backDesignUrl);
-    if (data.elementUrls?.length) mirrored.push(...data.elementUrls.map((e) => e.url));
-    if (mirrored.length) {
+    // Mirror any new design asset into the PO's Drive folder, routed by type:
+    //   front/back designs → "02. Mockups"
+    //   element uploads    → "03. Logos"
+    // Fire-and-forget — the PATCH response never blocks on Drive.
+    const mirrorJobs: Array<{ url: string; slot: "mockups" | "logos" }> = [];
+    if (data.frontDesignUrl) mirrorJobs.push({ url: data.frontDesignUrl, slot: "mockups" });
+    if (data.backDesignUrl)  mirrorJobs.push({ url: data.backDesignUrl,  slot: "mockups" });
+    if (data.elementUrls?.length) {
+      for (const el of data.elementUrls) mirrorJobs.push({ url: el.url, slot: "logos" });
+    }
+    if (mirrorJobs.length) {
       (async () => {
         const [ord] = await db
           .select({ id: orders.id, driveFolderId: orders.driveFolderId })
@@ -659,11 +688,11 @@ router.patch("/orders/:id/items/:itemId", async (req, res) => {
           .where(eq(orders.id, req.params.id))
           .limit(1);
         if (!ord?.driveFolderId) return;
-        for (const url of mirrored) {
+        for (const job of mirrorJobs) {
           await mirrorBlobToPoFolder({
             poFolderId: ord.driveFolderId,
-            subFolderName: "02. Mockups",
-            blobUrl: url,
+            slot: job.slot,
+            blobUrl: job.url,
           });
         }
       })().catch((err) => console.error("[item-patch] Drive mirror failed:", err));
@@ -673,7 +702,7 @@ router.patch("/orders/:id/items/:itemId", async (req, res) => {
       orderId: req.params.id,
       userId: user.userId,
       action: "item_updated",
-      details: { itemId: req.params.itemId, fields: Object.keys(data), mirroredCount: mirrored.length },
+      details: { itemId: req.params.itemId, fields: Object.keys(data), mirroredCount: mirrorJobs.length },
     });
 
     res.json(updated);

@@ -196,9 +196,14 @@ function DriveFolderPanel({
   driveFolderId: string | null;
 }) {
   const queryClient = useQueryClient();
-  const { data, isLoading } = useQuery<{ files: Array<{ id: string; name: string; mimeType: string; webViewLink: string; modifiedTime?: string; iconLink?: string }>; missing?: boolean }>({
+  const { data, isLoading } = useQuery<{
+    files: Array<{ id: string; name: string; mimeType: string; webViewLink: string; modifiedTime?: string; iconLink?: string; parentName?: string }>;
+    subfolders?: Array<{ id: string; name: string }>;
+    missing?: boolean;
+  }>({
     queryKey: [`/api/admin/vault/${orderId}/files`],
     enabled: !!driveFolderId,
+    refetchOnMount: "always",
   });
 
   const createFolder = useMutation({
@@ -209,7 +214,9 @@ function DriveFolderPanel({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/admin/orders/${orderId}`] }),
   });
 
-  const folders = (data?.files || []).filter((f) => f.mimeType === "application/vnd.google-apps.folder");
+  // Server now returns `subfolders` explicitly + `files` flattened from all
+  // sub-folders. Each file carries parentName so we can label where it lives.
+  const folders = data?.subfolders || [];
   const files = (data?.files || []).filter((f) => f.mimeType !== "application/vnd.google-apps.folder");
 
   return (
@@ -260,17 +267,22 @@ function DriveFolderPanel({
           )}
           {files.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-              {files.slice(0, 20).map((f) => (
+              {files.slice(0, 25).map((f) => (
                 <a key={f.id} href={f.webViewLink} target="_blank" rel="noreferrer"
                   style={{ display: "flex", alignItems: "center", gap: "10px", padding: "6px 10px", borderRadius: "4px", background: "rgba(255,255,255,0.02)", textDecoration: "none", color: "#fff", fontSize: "12px" }}>
                   {f.iconLink ? <img src={f.iconLink} alt="" width={12} height={12} /> : <FileText size={11} style={{ color: "rgba(255,255,255,0.4)" }} />}
                   <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.name}</span>
+                  {f.parentName && (
+                    <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "3px", background: "rgba(249,115,22,0.08)", color: "#f97316", border: "1px solid rgba(249,115,22,0.2)", whiteSpace: "nowrap" }}>
+                      {f.parentName.replace(/^\d+[\.\s]+/, "")}
+                    </span>
+                  )}
                   <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>{f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : ""}</span>
                   <ExternalLink size={10} style={{ color: "rgba(255,255,255,0.3)" }} />
                 </a>
               ))}
-              {files.length > 20 && (
-                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", padding: "4px 10px" }}>+{files.length - 20} more — open in Drive to see all</span>
+              {files.length > 25 && (
+                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", padding: "4px 10px" }}>+{files.length - 25} more — open in Drive to see all</span>
               )}
             </div>
           )}
