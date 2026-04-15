@@ -1,9 +1,22 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
 import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
-import { Search, UserPlus, X } from "lucide-react";
+import { Search, UserPlus, X, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+
+interface GhlLookupResult {
+  ghl: {
+    id: string;
+    email: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    phone: string | null;
+    companyName: string | null;
+    tags?: string[];
+  } | null;
+  local: { id: string; email: string | null; teamName: string | null; ghlContactId: string | null } | null;
+}
 
 interface Customer {
   id: string;
@@ -21,8 +34,62 @@ export default function AdminCustomers() {
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteTeam, setInviteTeam] = useState("");
+  const [invitePhone, setInvitePhone] = useState("");
   const [inviteError, setInviteError] = useState("");
   const [inviteSuccess, setInviteSuccess] = useState("");
+  const [lookup, setLookup] = useState<GhlLookupResult | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+
+  // Debounced GHL lookup — fires 400ms after user stops typing a full email
+  useEffect(() => {
+    const email = inviteEmail.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setLookup(null);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setLookupLoading(true);
+      try {
+        const res = await fetch(`/api/admin/ghl/lookup?email=${encodeURIComponent(email)}`, {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data: GhlLookupResult = await res.json();
+          setLookup(data);
+          // Auto-prefill team name and phone from GHL match
+          if (data.ghl && !inviteTeam && data.ghl.companyName) setInviteTeam(data.ghl.companyName);
+          if (data.ghl && !invitePhone && data.ghl.phone) setInvitePhone(data.ghl.phone);
+        }
+      } catch {
+        // silent — GHL not configured or network hiccup
+      } finally {
+        setLookupLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inviteEmail]);
+
+  const importMutation = useMutation({
+    mutationFn: async (ghlContactId: string) => {
+      const res = await apiRequest("POST", "/api/admin/ghl/import", { ghlContactId, sendInvite: true });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/customers"] });
+      setInviteSuccess(
+        data.imported
+          ? `Pulled from GHL and invited ${data.email}`
+          : `${data.email} was already linked — refreshed`,
+      );
+      setInviteEmail("");
+      setInviteTeam("");
+      setInvitePhone("");
+      setLookup(null);
+      setInviteError("");
+    },
+    onError: () => setInviteError("Failed to import GHL contact"),
+  });
 
   const queryString = search ? `?search=${encodeURIComponent(search)}` : "";
   const { data, isLoading } = useQuery<{ customers: Customer[]; total: number }>({
@@ -30,15 +97,22 @@ export default function AdminCustomers() {
   });
 
   const inviteMutation = useMutation({
-    mutationFn: async (data: { email: string; teamName?: string }) => {
+    mutationFn: async (data: { email: string; teamName?: string; phone?: string }) => {
       const res = await apiRequest("POST", "/api/admin/customers/invite", data);
       return res.json();
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/customers"] });
-      setInviteSuccess(`Invite created for ${data.email}. Token: ${data.inviteToken}`);
+      const ghlNote = data.ghlContactId
+        ? data.ghlCreated
+          ? " · Created in GHL"
+          : " · Linked to existing GHL contact"
+        : " · GHL not configured";
+      setInviteSuccess(`Invited ${data.email}${ghlNote}`);
       setInviteEmail("");
       setInviteTeam("");
+      setInvitePhone("");
+      setLookup(null);
       setInviteError("");
     },
     onError: (err: any) => {
@@ -118,22 +192,28 @@ export default function AdminCustomers() {
             </button>
           </div>
           <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-            <input
-              type="email"
-              placeholder="Email address *"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              style={{
-                padding: "10px 12px",
-                fontSize: "13px",
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                borderRadius: "6px",
-                color: "#fff",
-                outline: "none",
-                flex: "1 1 200px",
-              }}
-            />
+            <div style={{ position: "relative", flex: "1 1 220px" }}>
+              <input
+                type="email"
+                placeholder="Email address *"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                style={{
+                  padding: "10px 36px 10px 12px",
+                  fontSize: "13px",
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "6px",
+                  color: "#fff",
+                  outline: "none",
+                  width: "100%",
+                  boxSizing: "border-box",
+                }}
+              />
+              {lookupLoading && (
+                <Loader2 size={14} style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.4)" }} className="animate-spin" />
+              )}
+            </div>
             <input
               type="text"
               placeholder="Team name (optional)"
@@ -147,15 +227,84 @@ export default function AdminCustomers() {
                 borderRadius: "6px",
                 color: "#fff",
                 outline: "none",
-                flex: "1 1 200px",
+                flex: "1 1 180px",
               }}
             />
+            <input
+              type="tel"
+              placeholder="Phone (optional)"
+              value={invitePhone}
+              onChange={(e) => setInvitePhone(e.target.value)}
+              style={{
+                padding: "10px 12px",
+                fontSize: "13px",
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "6px",
+                color: "#fff",
+                outline: "none",
+                flex: "1 1 160px",
+              }}
+            />
+          </div>
+
+          {/* GHL lookup result */}
+          {lookup && (
+            <div style={{ marginTop: "14px", padding: "12px 14px", borderRadius: "6px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              {lookup.local ? (
+                <div style={{ display: "flex", gap: "10px", alignItems: "center", fontSize: "13px", color: "#eab308" }}>
+                  <AlertCircle size={16} />
+                  <span>Already a portal customer: <strong style={{ color: "#fff" }}>{lookup.local.teamName || lookup.local.email}</strong>. Search for them on the list above.</span>
+                </div>
+              ) : lookup.ghl ? (
+                <div style={{ display: "flex", gap: "12px", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center", fontSize: "13px", color: "#22c55e" }}>
+                    <CheckCircle2 size={16} />
+                    <span>
+                      Found in GHL:{" "}
+                      <strong style={{ color: "#fff" }}>
+                        {[lookup.ghl.firstName, lookup.ghl.lastName].filter(Boolean).join(" ") || lookup.ghl.email}
+                      </strong>
+                      {lookup.ghl.companyName ? ` · ${lookup.ghl.companyName}` : ""}
+                      {lookup.ghl.phone ? ` · ${lookup.ghl.phone}` : ""}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => lookup.ghl && importMutation.mutate(lookup.ghl.id)}
+                    disabled={importMutation.isPending}
+                    style={{
+                      padding: "8px 14px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      background: "#22c55e",
+                      color: "#000",
+                      border: "none",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Import from GHL
+                  </button>
+                </div>
+              ) : (
+                <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)" }}>
+                  Not in GHL yet — invite will create them in GHL and the portal together.
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "14px" }}>
             <button
               onClick={() => {
                 if (!inviteEmail) return;
-                inviteMutation.mutate({ email: inviteEmail, teamName: inviteTeam || undefined });
+                inviteMutation.mutate({
+                  email: inviteEmail,
+                  teamName: inviteTeam || undefined,
+                  phone: invitePhone || undefined,
+                });
               }}
-              disabled={inviteMutation.isPending || !inviteEmail}
+              disabled={inviteMutation.isPending || !inviteEmail || !!lookup?.local}
               style={{
                 padding: "10px 20px",
                 fontSize: "13px",
@@ -165,12 +314,13 @@ export default function AdminCustomers() {
                 border: "none",
                 borderRadius: "6px",
                 cursor: "pointer",
-                opacity: !inviteEmail ? 0.5 : 1,
+                opacity: !inviteEmail || !!lookup?.local ? 0.5 : 1,
               }}
             >
-              Send Invite
+              {lookup?.ghl ? "Invite (link to GHL)" : "Invite (create in GHL)"}
             </button>
           </div>
+
           {inviteError && <p style={{ fontSize: "13px", color: "#ef4444", marginTop: "12px" }}>{inviteError}</p>}
           {inviteSuccess && <p style={{ fontSize: "13px", color: "#22c55e", marginTop: "12px" }}>{inviteSuccess}</p>}
         </div>

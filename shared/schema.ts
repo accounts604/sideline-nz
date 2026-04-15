@@ -13,6 +13,7 @@ export const users = pgTable("users", {
   teamName: text("team_name"),
   contactPhone: text("contact_phone"),
   stripeCustomerId: text("stripe_customer_id"),
+  ghlContactId: text("ghl_contact_id"),
   emailVerified: boolean("email_verified").default(false),
   inviteToken: text("invite_token"),
   inviteExpiresAt: timestamp("invite_expires_at"),
@@ -96,8 +97,13 @@ export const orders = pgTable("orders", {
   revisionNotes: text("revision_notes"), // Club's revision notes
   mockupApprovedAt: timestamp("mockup_approved_at"),
   // PO-specific fields
-  poReference: text("po_reference"), // e.g. "Onewhero Rugby Juniors 2026"
-  accountName: text("account_name"), // Account / team name on PO
+  poReference: text("po_reference"), // Auto-assigned: PO-YYYY-NNNN
+  accountName: text("account_name"), // Account / team / company name on PO (maps to GHL companyName)
+  // Customer contact — mirrors GHL contact shape for clean one-to-one sync
+  customerFirstName: text("customer_first_name"),
+  customerLastName: text("customer_last_name"),
+  companyEmail: text("company_email"), // billing/accounts email at the club or company
+  companyPhone: text("company_phone"), // company switchboard (vs customer's personal phone)
   isRepeatOrder: boolean("is_repeat_order").default(false),
   poComments: text("po_comments"), // e.g. "Bulk Order"
   deliveryAttention: text("delivery_attention"), // Attention: person name
@@ -108,6 +114,10 @@ export const orders = pgTable("orders", {
   ghlOpportunityId: text("ghl_opportunity_id"), // GHL deal ID — links order to its pipeline card
   pipelineStage: text("pipeline_stage"), // Mirror of GHL stage name from shared/pipeline.ts; GHL is source of truth
   assignedSupplierId: varchar("assigned_supplier_id").references(() => users.id), // users.role = "supplier"
+  // File Vault — per-PO Google Drive folder (Date.Company.Contact)
+  driveFolderId: text("drive_folder_id"),
+  driveFolderUrl: text("drive_folder_url"),
+  driveFolderName: text("drive_folder_name"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   paidAt: timestamp("paid_at"),

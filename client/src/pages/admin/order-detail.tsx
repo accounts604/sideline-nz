@@ -94,6 +94,9 @@ interface Order {
   deliveryAddress: string | null;
   deliveryEmail: string | null;
   deliveryPhone: string | null;
+  driveFolderId: string | null;
+  driveFolderUrl: string | null;
+  driveFolderName: string | null;
 }
 
 interface SupplierOption {
@@ -413,17 +416,30 @@ export default function AdminOrderDetail() {
           <StatusBadge status={order.status} />
           {order.pipelineStage && <StageBadge stage={order.pipelineStage} />}
         </div>
-        <Link href={`/admin/orders/${order.id}/po`}>
-          <button style={{ padding: "8px 16px", fontSize: "12px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
-            <Printer size={14} /> View / Print PO
-          </button>
-        </Link>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          {order.driveFolderUrl && (
+            <a
+              href={order.driveFolderUrl}
+              target="_blank"
+              rel="noreferrer"
+              title={order.driveFolderName || "Drive folder"}
+              style={{ padding: "8px 14px", fontSize: "12px", fontWeight: 600, background: "rgba(249,115,22,0.1)", color: "#f97316", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "6px", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}
+            >
+              File Vault ↗
+            </a>
+          )}
+          <Link href={`/admin/orders/${order.id}/po`}>
+            <button style={{ padding: "8px 16px", fontSize: "12px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
+              <Printer size={14} /> View / Print PO
+            </button>
+          </Link>
+        </div>
       </div>
 
       {/* ──── PO Details ──── */}
       <Section title="PO Details">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
-          <Field label="PO Reference"><EditableField value={order.poReference} onSave={(v) => updateOrder.mutate({ poReference: v })} placeholder="e.g. Onewhero Rugby Juniors 2026" /></Field>
+          <Field label="PO Reference"><EditableField value={order.poReference} onSave={(v) => updateOrder.mutate({ poReference: v })} placeholder="PO-YYYY-NNNN" /></Field>
           <Field label="Account"><EditableField value={order.accountName} onSave={(v) => updateOrder.mutate({ accountName: v })} placeholder="Account name" /></Field>
           <Field label="Comments"><EditableField value={order.poComments} onSave={(v) => updateOrder.mutate({ poComments: v })} placeholder="Notes" /></Field>
           <Field label="Status">

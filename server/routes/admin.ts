@@ -10,7 +10,23 @@ import { orders, orderActivity, designFiles } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { updateGhlOpportunityStage } from "./ghl";
 import { createApprovalToken } from "./approvals";
-import { withPoNumberRetry } from "../po-number";
+import { withPoNumberRetry, buildPoReference } from "../po-number";
+import {
+  createClientFolder,
+  listFilesInFolder,
+  isDriveConfigured,
+  buildClientFolderName,
+} from "../google-drive";
+import {
+  searchGhlContacts,
+  findGhlContactByEmail,
+  getGhlContact,
+  upsertGhlContact,
+  createGhlOpportunity,
+  type GhlContact,
+} from "../ghl-contacts";
+import { SIDELINE_PIPELINE_ID, SIDELINE_STAGE_IDS } from "../ghl-config";
+import { isSidelinePipelineStage, type SidelinePipelineStage } from "@shared/pipeline";
 
 const router = Router();
 
@@ -177,6 +193,243 @@ router.post("/orders/:id/design-review", async (req, res) => {
   }
 });
 
+// ============ FILE VAULT (Google Drive per-PO folders) ============
+
+// GET /vault — list POs that have a Drive folder attached (+ optional creation preview)
+router.get("/vault", async (_req, res) => {
+  try {
+    const rows = await db
+      .select({
+        id: orders.id,
+        orderNumber: orders.orderNumber,
+        poReference: orders.poReference,
+        accountName: orders.accountName,
+        customerEmail: orders.customerEmail,
+        customerFirstName: orders.customerFirstName,
+        customerLastName: orders.customerLastName,
+        driveFolderId: orders.driveFolderId,
+        driveFolderUrl: orders.driveFolderUrl,
+        driveFolderName: orders.driveFolderName,
+        pipelineStage: orders.pipelineStage,
+        createdAt: orders.createdAt,
+      })
+      .from(orders)
+      .orderBy(orders.createdAt);
+
+    res.json({
+      configured: isDriveConfigured(),
+      orders: rows.reverse(), // most recent first
+    });
+  } catch (err) {
+    console.error("Admin vault list error:", err);
+    res.status(500).json({ error: "Failed to load vault" });
+  }
+});
+
+// GET /vault/:orderId/files?folderId=... — list Drive items in the order's root
+// folder (default) or any sub-folder the admin has drilled into. The sub-folder
+// must resolve via the Drive API — we don't recursively validate ownership
+// because access is already gated by the admin parent folder.
+router.get("/vault/:orderId/files", async (req, res) => {
+  try {
+    const [row] = await db
+      .select({
+        id: orders.id,
+        orderNumber: orders.orderNumber,
+        poReference: orders.poReference,
+        accountName: orders.accountName,
+        driveFolderId: orders.driveFolderId,
+        driveFolderUrl: orders.driveFolderUrl,
+        driveFolderName: orders.driveFolderName,
+      })
+      .from(orders)
+      .where(eq(orders.id, req.params.orderId))
+      .limit(1);
+
+    if (!row) return res.status(404).json({ error: "Order not found" });
+    if (!row.driveFolderId) {
+      return res.json({ order: row, files: [], missing: true });
+    }
+
+    const folderId = (req.query.folderId as string) || row.driveFolderId;
+    const files = await listFilesInFolder(folderId);
+    res.json({ order: row, files, folderId, rootFolderId: row.driveFolderId, missing: false });
+  } catch (err) {
+    console.error("Admin vault files error:", err);
+    res.status(500).json({ error: "Failed to load vault files" });
+  }
+});
+
+// POST /vault/:orderId/create-folder — retroactively create the Drive folder for an
+// order that didn't get one (e.g. created before this feature, or Drive was down).
+router.post("/vault/:orderId/create-folder", async (req, res) => {
+  try {
+    const [row] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, req.params.orderId))
+      .limit(1);
+
+    if (!row) return res.status(404).json({ error: "Order not found" });
+    if (row.driveFolderId) return res.json({ ok: true, folderId: row.driveFolderId, already: true });
+
+    const dateStr = (row.createdAt ? new Date(row.createdAt) : new Date()).toISOString().slice(0, 10);
+    const companyForFolder = row.accountName?.trim() || "Sideline";
+    const contactForFolder =
+      [row.customerFirstName, row.customerLastName].filter(Boolean).join(" ").trim() ||
+      row.customerName?.trim() ||
+      row.customerEmail ||
+      "Unnamed Contact";
+
+    const folder = await createClientFolder({
+      date: dateStr,
+      companyName: companyForFolder,
+      contactName: contactForFolder,
+    });
+    if (!folder) return res.status(500).json({ error: "Drive folder creation failed — check GOOGLE_* env vars" });
+
+    await storage.updateOrder(row.id, {
+      driveFolderId: folder.id,
+      driveFolderUrl: folder.webViewLink,
+      driveFolderName: folder.name,
+    });
+
+    res.json({ ok: true, folder });
+  } catch (err) {
+    console.error("Admin vault create-folder error:", err);
+    res.status(500).json({ error: "Failed to create Drive folder" });
+  }
+});
+
+// ============ GHL CONTACT SYNC ============
+// These endpoints let the admin UI check/pull customers from GHL before
+// creating a new local record. GHL is the CRM source of truth — portal
+// mirrors it by email + ghlContactId link.
+
+// GET /ghl/search?q=... — search GHL contacts (typeahead)
+router.get("/ghl/search", async (req, res) => {
+  try {
+    const q = ((req.query.q as string) || "").trim();
+    if (q.length < 2) return res.json({ contacts: [], total: 0 });
+
+    // Also surface whether we already have a local user linked to each GHL contact
+    const result = await searchGhlContacts(q, 10);
+    const emails = result.contacts
+      .map((c) => c.email)
+      .filter((e): e is string => !!e);
+
+    const localLinks: Record<string, { userId: string; teamName: string | null }> = {};
+    for (const email of emails) {
+      const local = await storage.getUserByEmail(email);
+      if (local) localLinks[email] = { userId: local.id, teamName: local.teamName };
+    }
+
+    res.json({
+      contacts: result.contacts.map((c) => ({
+        id: c.id,
+        email: c.email,
+        firstName: c.firstName,
+        lastName: c.lastName,
+        phone: c.phone,
+        companyName: c.companyName,
+        tags: c.tags,
+        linkedUser: c.email ? localLinks[c.email] || null : null,
+      })),
+      total: result.total,
+    });
+  } catch (err) {
+    console.error("Admin GHL search error:", err);
+    res.status(500).json({ error: "GHL search failed" });
+  }
+});
+
+// GET /ghl/lookup?email=... — exact email match (used by invite form live check)
+router.get("/ghl/lookup", async (req, res) => {
+  try {
+    const email = ((req.query.email as string) || "").trim();
+    if (!email) return res.status(400).json({ error: "email required" });
+
+    const ghlContact = await findGhlContactByEmail(email);
+    const local = await storage.getUserByEmail(email);
+
+    res.json({
+      ghl: ghlContact
+        ? {
+            id: ghlContact.id,
+            email: ghlContact.email,
+            firstName: ghlContact.firstName,
+            lastName: ghlContact.lastName,
+            phone: ghlContact.phone,
+            companyName: ghlContact.companyName,
+            tags: ghlContact.tags,
+          }
+        : null,
+      local: local
+        ? { id: local.id, email: local.email, teamName: local.teamName, ghlContactId: local.ghlContactId }
+        : null,
+    });
+  } catch (err) {
+    console.error("Admin GHL lookup error:", err);
+    res.status(500).json({ error: "GHL lookup failed" });
+  }
+});
+
+// POST /ghl/import — pull a GHL contact into local users as a customer (+ send invite)
+const ghlImportSchema = z.object({
+  ghlContactId: z.string().min(1),
+  sendInvite: z.boolean().optional().default(true),
+});
+
+router.post("/ghl/import", async (req, res) => {
+  try {
+    const { ghlContactId, sendInvite } = ghlImportSchema.parse(req.body);
+
+    const contact = await getGhlContact(ghlContactId);
+    if (!contact || !contact.email) {
+      return res.status(404).json({ error: "GHL contact not found or missing email" });
+    }
+
+    // Already linked locally?
+    const existing = await storage.getUserByEmail(contact.email);
+    if (existing) {
+      // Backfill the link if we didn't have it yet
+      if (!existing.ghlContactId) {
+        await storage.updateCustomer(existing.id, { ghlContactId: contact.id });
+      }
+      return res.status(200).json({
+        id: existing.id,
+        email: existing.email,
+        imported: false,
+        reason: "already_linked",
+      });
+    }
+
+    const teamName = contact.companyName || [contact.firstName, contact.lastName].filter(Boolean).join(" ").trim() || undefined;
+    const phone = contact.phone || undefined;
+
+    const user = await storage.createInvite(contact.email, teamName, "customer", contact.id, phone);
+
+    if (sendInvite && user.inviteToken) {
+      sendInviteEmail(contact.email, user.inviteToken, teamName).catch((err) =>
+        console.error("Failed to send invite email:", err),
+      );
+    }
+
+    res.status(201).json({
+      id: user.id,
+      email: user.email,
+      ghlContactId: contact.id,
+      inviteToken: user.inviteToken,
+      inviteExpiresAt: user.inviteExpiresAt,
+      imported: true,
+    });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin GHL import error:", err);
+    res.status(500).json({ error: "Failed to import GHL contact" });
+  }
+});
+
 // GET /customers — all customer accounts
 router.get("/customers", async (req, res) => {
   try {
@@ -216,6 +469,22 @@ router.patch("/customers/:id", async (req, res) => {
     const data = updateCustomerSchema.parse(req.body);
     const customer = await storage.updateCustomer(req.params.id, data);
     if (!customer) return res.status(404).json({ error: "Customer not found" });
+
+    // Mirror edit to GHL (fire-and-forget — local write is authoritative for the response)
+    if (customer.email) {
+      upsertGhlContact({
+        email: customer.email,
+        phone: data.contactPhone ?? customer.contactPhone ?? undefined,
+        companyName: data.teamName ?? customer.teamName ?? undefined,
+      })
+        .then(async (result) => {
+          if (result.contactId && !customer.ghlContactId) {
+            await storage.updateCustomer(customer.id, { ghlContactId: result.contactId });
+          }
+        })
+        .catch((err) => console.error("[admin PATCH customer] GHL sync failed:", err));
+    }
+
     res.json(customer);
   } catch (err: any) {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
@@ -224,21 +493,34 @@ router.patch("/customers/:id", async (req, res) => {
   }
 });
 
-// POST /customers/invite — create account + invite link
+// POST /customers/invite — create account + invite link + upsert GHL contact
 const inviteSchema = z.object({
   email: z.string().email(),
   teamName: z.string().optional(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  phone: z.string().optional(),
 });
 
 router.post("/customers/invite", async (req, res) => {
   try {
-    const { email, teamName } = inviteSchema.parse(req.body);
+    const { email, teamName, firstName, lastName, phone } = inviteSchema.parse(req.body);
 
-    // Check if email already exists
+    // Check if email already exists locally
     const existing = await storage.getUserByEmail(email);
     if (existing) return res.status(409).json({ error: "An account with this email already exists" });
 
-    const user = await storage.createInvite(email, teamName);
+    // Upsert GHL contact first so we can store the link on create
+    const ghlResult = await upsertGhlContact({
+      email,
+      firstName,
+      lastName,
+      phone,
+      companyName: teamName,
+      tags: ["sideline-customer"],
+    });
+
+    const user = await storage.createInvite(email, teamName, "customer", ghlResult.contactId || undefined, phone);
 
     // Send invite email
     if (user.inviteToken) {
@@ -250,6 +532,8 @@ router.post("/customers/invite", async (req, res) => {
     res.status(201).json({
       id: user.id,
       email: user.email,
+      ghlContactId: ghlResult.contactId,
+      ghlCreated: ghlResult.created,
       inviteToken: user.inviteToken,
       inviteExpiresAt: user.inviteExpiresAt,
     });
@@ -370,13 +654,30 @@ router.patch("/orders/:id/items/:itemId", async (req, res) => {
   }
 });
 
+// GET /orders/next-po-reference — preview the next auto-assigned PO reference
+// (client calls this to show the value once the PO form has enough detail).
+router.get("/orders/next-po-reference", async (_req, res) => {
+  try {
+    const reference = await buildPoReference();
+    res.json({ reference });
+  } catch (err) {
+    console.error("Admin next-po-reference error:", err);
+    res.status(500).json({ error: "Failed to preview PO reference" });
+  }
+});
+
 // POST /orders/create-po — create a new purchase order from scratch (admin-initiated)
 const createPoSchema = z.object({
   storeSlug: z.string(),
   customerEmail: z.string().email().optional(),
-  customerName: z.string().optional(),
-  poReference: z.string(),
-  accountName: z.string().optional(),
+  customerName: z.string().optional(), // full name (kept for back-compat / display)
+  customerFirstName: z.string().optional(),
+  customerLastName: z.string().optional(),
+  customerPhone: z.string().optional(),
+  poReference: z.string().optional(),
+  accountName: z.string().optional(), // company / team / club name
+  companyEmail: z.string().email().optional(),
+  companyPhone: z.string().optional(),
   isRepeatOrder: z.boolean().optional(),
   poComments: z.string().optional(),
   deliveryAttention: z.string().optional(),
@@ -397,6 +698,18 @@ router.post("/orders/create-po", async (req, res) => {
     const data = createPoSchema.parse(req.body);
     const user = (req as any).user;
 
+    // Auto-assign a numeric PO reference (PO-YYYY-NNNN) if the admin didn't
+    // supply one. The UI no longer exposes this field — the server owns it.
+    const poReference = data.poReference?.trim() || (await buildPoReference());
+
+    // Derive first/last name when only combined customerName was sent (UI
+    // backfill), or combined customerName when only first/last were sent.
+    const firstName = data.customerFirstName?.trim() || data.customerName?.trim().split(" ")[0];
+    const lastName =
+      data.customerLastName?.trim() ||
+      data.customerName?.trim().split(" ").slice(1).join(" ") || undefined;
+    const fullName = data.customerName?.trim() || [firstName, lastName].filter(Boolean).join(" ") || undefined;
+
     // Calculate totals
     const subtotal = data.items.reduce((sum, i) => sum + (i.unitAmount * i.quantity), 0);
 
@@ -414,8 +727,12 @@ router.post("/orders/create-po", async (req, res) => {
         total: subtotal,
         currency: "nzd",
         customerEmail: data.customerEmail ?? null,
-        customerName: data.customerName ?? null,
-        poReference: data.poReference,
+        customerName: fullName ?? null,
+        customerFirstName: firstName ?? null,
+        customerLastName: lastName ?? null,
+        companyEmail: data.companyEmail ?? null,
+        companyPhone: data.companyPhone ?? null,
+        poReference,
         accountName: data.accountName ?? null,
         isRepeatOrder: data.isRepeatOrder ?? false,
         poComments: data.poComments ?? null,
@@ -441,13 +758,83 @@ router.post("/orders/create-po", async (req, res) => {
       } as any);
     }
 
-    // Link to customer if email matches
+    // Auto-create the per-client Google Drive folder (File Vault).
+    // Name convention (Romero 2026-04-15): YYYY-MM-DD.Company.Contact
+    // If Drive isn't configured this is a no-op — the order still saves.
+    try {
+      const today = new Date();
+      const dateStr = today.toISOString().slice(0, 10);
+      const companyForFolder = data.accountName?.trim() || "Sideline";
+      const contactForFolder = [firstName, lastName].filter(Boolean).join(" ").trim() || data.customerEmail || "Unnamed Contact";
+      const folder = await createClientFolder({
+        date: dateStr,
+        companyName: companyForFolder,
+        contactName: contactForFolder,
+      });
+      if (folder) {
+        await storage.updateOrder(order.id, {
+          driveFolderId: folder.id,
+          driveFolderUrl: folder.webViewLink,
+          driveFolderName: folder.name,
+        });
+      }
+    } catch (err) {
+      console.error("[create-po] Drive folder creation failed (non-fatal):", err);
+    }
+
+    // Link to customer if email matches + sync GHL contact + create opportunity.
+    // GHL is source of truth for the pipeline — the opportunity links the order
+    // to its pipeline card so the stage webhook can mirror changes both ways.
+    let ghlContactId: string | null = null;
     if (data.customerEmail) {
       const customer = await storage.getUserByEmail(data.customerEmail);
       if (customer) {
-        await storage.updateOrder(order.id, {} as any);
-        // Set userId directly via raw update
+        ghlContactId = customer.ghlContactId || null;
         await storage.linkOrdersByEmail(data.customerEmail, customer.id);
+      }
+
+      // Upsert GHL contact (find-or-create) with the full contact shape so the
+      // GHL record mirrors the PO fields one-to-one. Company email + company
+      // phone are pushed as custom fields so the GHL-side workflows can use
+      // them without needing a separate "company" record.
+      const customFields: Array<{ key: string; field_value: string }> = [];
+      if (data.companyEmail) customFields.push({ key: "company_email", field_value: data.companyEmail });
+      if (data.companyPhone) customFields.push({ key: "company_phone", field_value: data.companyPhone });
+
+      const upsert = await upsertGhlContact({
+        email: data.customerEmail,
+        firstName,
+        lastName,
+        phone: data.customerPhone,
+        companyName: data.accountName,
+        tags: ["sideline-customer", "portal-po"],
+        customFields: customFields.length ? customFields : undefined,
+      });
+      if (upsert.contactId) {
+        ghlContactId = upsert.contactId;
+        // Backfill local link if we have a local user but no ghlContactId yet
+        if (customer && !customer.ghlContactId) {
+          await storage.updateCustomer(customer.id, { ghlContactId: upsert.contactId });
+        }
+      }
+    }
+
+    // Create the opportunity at "Lead Received" (first stage); stage can be
+    // advanced via /admin/orders/:id/stage or the GHL webhook once work begins.
+    if (ghlContactId) {
+      const opp = await createGhlOpportunity({
+        contactId: ghlContactId,
+        pipelineId: SIDELINE_PIPELINE_ID,
+        stageId: SIDELINE_STAGE_IDS["Lead Received"],
+        name: poReference || data.accountName || order.orderNumber || "Sideline Order",
+        monetaryValue: Math.round(subtotal / 100),
+        status: "open",
+      });
+      if (opp.opportunityId) {
+        await storage.updateOrder(order.id, {
+          ghlOpportunityId: opp.opportunityId,
+          pipelineStage: "Lead Received",
+        });
       }
     }
 
@@ -458,7 +845,7 @@ router.post("/orders/create-po", async (req, res) => {
       orderId: order.id,
       userId: user.userId,
       action: "po_created",
-      details: { poReference: data.poReference, itemCount: data.items.length },
+      details: { poReference, itemCount: data.items.length },
     });
 
     res.status(201).json(order);

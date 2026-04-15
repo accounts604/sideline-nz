@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
 import { useLocation, Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
@@ -18,9 +18,19 @@ export default function AdminCreatePO() {
 
   // PO header fields
   const [storeSlug, setStoreSlug] = useState("custom");
-  const [customerName, setCustomerName] = useState("");
+  // Customer contact — mirrors GHL contact fields one-to-one
+  const [customerFirstName, setCustomerFirstName] = useState("");
+  const [customerLastName, setCustomerLastName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
-  const [poReference, setPoReference] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  // Company (team/club) fields — maps to GHL companyName + custom fields
+  const [companyEmail, setCompanyEmail] = useState("");
+  const [companyPhone, setCompanyPhone] = useState("");
+  // PO Reference is auto-assigned by the server (PO-YYYY-NNNN).
+  // We fetch a preview the moment the form has enough detail to submit so the
+  // admin can see the number they're about to commit. The server re-resolves
+  // on create so nothing races against a concurrent PO.
+  const [poReference, setPoReference] = useState<string>("");
   const [accountName, setAccountName] = useState("");
   const [isRepeatOrder, setIsRepeatOrder] = useState(false);
   const [poComments, setPoComments] = useState("");
@@ -34,14 +44,41 @@ export default function AdminCreatePO() {
     { productName: "", quantity: 1, unitAmount: 0, gradeGroup: "", brandingMethod: "Full Sublimation" },
   ]);
 
+  // "Enough detail" to preview the reference = at least one product line is named
+  // AND there is either an account/company name or a customer name to tie it to.
+  const hasEnoughDetail =
+    items.some((i) => i.productName.trim().length > 0) &&
+    (accountName.trim().length > 0 ||
+      customerFirstName.trim().length > 0 ||
+      customerLastName.trim().length > 0);
+
+  const { data: nextRefData } = useQuery<{ reference: string }>({
+    queryKey: ["/api/admin/orders/next-po-reference"],
+    enabled: hasEnoughDetail,
+  });
+
+  useEffect(() => {
+    if (hasEnoughDetail && nextRefData?.reference && !poReference) {
+      setPoReference(nextRefData.reference);
+    }
+    if (!hasEnoughDetail && poReference) {
+      setPoReference("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasEnoughDetail, nextRefData?.reference]);
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/admin/orders/create-po", {
         storeSlug,
-        customerName: customerName || undefined,
+        customerFirstName: customerFirstName || undefined,
+        customerLastName: customerLastName || undefined,
         customerEmail: customerEmail || undefined,
-        poReference,
+        customerPhone: customerPhone || undefined,
+        // poReference is auto-assigned by the server
         accountName: accountName || undefined,
+        companyEmail: companyEmail || undefined,
+        companyPhone: companyPhone || undefined,
         isRepeatOrder,
         poComments: poComments || undefined,
         deliveryAttention: deliveryAttention || undefined,
@@ -100,15 +137,44 @@ export default function AdminCreatePO() {
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           {/* PO Details */}
           <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>PO Details</h3>
+            <h3 style={{ fontSize: "15px", fontWeight: 600, color: "#fff", marginBottom: "4px" }}>PO Details</h3>
+            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", marginBottom: "16px" }}>Customer + company details mirror the matching GHL contact fields.</p>
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               <div>
-                <label style={labelStyle}>PO Reference *</label>
-                <input value={poReference} onChange={(e) => setPoReference(e.target.value)} placeholder="e.g. Onewhero Rugby Juniors 2026" style={inputStyle} />
+                <label style={labelStyle}>PO Reference</label>
+                <div
+                  style={{
+                    ...inputStyle,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    background: "rgba(255,255,255,0.03)",
+                    color: poReference ? "#fff" : "rgba(255,255,255,0.35)",
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  <span>{poReference || "Auto-assigned once product + account are filled"}</span>
+                  {poReference && (
+                    <span style={{ fontSize: "10px", color: "rgba(34,197,94,0.8)", textTransform: "uppercase", letterSpacing: "1px" }}>
+                      Auto
+                    </span>
+                  )}
+                </div>
               </div>
               <div>
-                <label style={labelStyle}>Account Name</label>
-                <input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="Team / account name" style={inputStyle} />
+                <label style={labelStyle}>Company / Team / Club Name</label>
+                <input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="e.g. Otahuhu RFC" style={inputStyle} />
+              </div>
+              <div style={{ display: "flex", gap: "12px" }}>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Company Email</label>
+                  <input value={companyEmail} onChange={(e) => setCompanyEmail(e.target.value)} placeholder="accounts@club.co.nz" style={inputStyle} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Company Phone</label>
+                  <input value={companyPhone} onChange={(e) => setCompanyPhone(e.target.value)} placeholder="09 123 4567" style={inputStyle} />
+                </div>
               </div>
               <div>
                 <label style={labelStyle}>Store</label>
@@ -127,17 +193,28 @@ export default function AdminCreatePO() {
             </div>
           </div>
 
-          {/* Customer */}
+          {/* Customer — mirrors GHL contact fields */}
           <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: 600, color: "#fff", marginBottom: "16px" }}>Customer</h3>
+            <h3 style={{ fontSize: "15px", fontWeight: 600, color: "#fff", marginBottom: "4px" }}>Customer (Primary Contact)</h3>
+            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", marginBottom: "16px" }}>Matches GHL contact fields — first name, last name, email, phone.</p>
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div>
-                <label style={labelStyle}>Customer Name</label>
-                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Full name" style={inputStyle} />
+              <div style={{ display: "flex", gap: "12px" }}>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>First Name</label>
+                  <input value={customerFirstName} onChange={(e) => setCustomerFirstName(e.target.value)} placeholder="Romero" style={inputStyle} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Last Name</label>
+                  <input value={customerLastName} onChange={(e) => setCustomerLastName(e.target.value)} placeholder="Tagi" style={inputStyle} />
+                </div>
               </div>
               <div>
                 <label style={labelStyle}>Email</label>
-                <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="customer@email.com" style={inputStyle} />
+                <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="romero@kig.co.nz" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Phone</label>
+                <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="022 412 7205" style={inputStyle} />
               </div>
             </div>
           </div>
@@ -243,13 +320,13 @@ export default function AdminCreatePO() {
         </Link>
         <button
           onClick={() => createMutation.mutate()}
-          disabled={!poReference || items.every(i => !i.productName) || createMutation.isPending}
+          disabled={!hasEnoughDetail || createMutation.isPending}
           style={{
             padding: "12px 32px", fontSize: "13px", fontWeight: 600,
-            background: !poReference ? "rgba(255,255,255,0.06)" : "#fff",
-            color: !poReference ? "rgba(255,255,255,0.3)" : "#000",
+            background: !hasEnoughDetail ? "rgba(255,255,255,0.06)" : "#fff",
+            color: !hasEnoughDetail ? "rgba(255,255,255,0.3)" : "#000",
             border: "none", borderRadius: "6px",
-            cursor: !poReference ? "not-allowed" : "pointer",
+            cursor: !hasEnoughDetail ? "not-allowed" : "pointer",
           }}
         >
           {createMutation.isPending ? "Creating..." : "Create Purchase Order"}

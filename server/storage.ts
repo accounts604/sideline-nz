@@ -89,8 +89,8 @@ export interface IStorage {
   updateOrder(orderId: string, data: Partial<Record<string, any>>): Promise<Order | undefined>;
   getAllCustomers(opts: { search?: string; limit?: number; offset?: number }): Promise<{ customers: User[]; total: number }>;
   getCustomerWithOrders(userId: string): Promise<{ customer: User; orders: Order[] } | null>;
-  updateCustomer(userId: string, data: { teamName?: string; contactPhone?: string }): Promise<User | undefined>;
-  createInvite(email: string, teamName?: string, role?: "customer" | "supplier"): Promise<User>;
+  updateCustomer(userId: string, data: { teamName?: string; contactPhone?: string; ghlContactId?: string }): Promise<User | undefined>;
+  createInvite(email: string, teamName?: string, role?: "customer" | "supplier", ghlContactId?: string, contactPhone?: string): Promise<User>;
   getOrdersByUser(userId: string): Promise<Order[]>;
   getOrdersByAssignedSupplier(supplierId: string): Promise<Order[]>;
   listSuppliers(): Promise<User[]>;
@@ -557,7 +557,7 @@ export class DatabaseStorage implements IStorage {
     return { customer, orders: customerOrders };
   }
 
-  async updateCustomer(userId: string, data: { teamName?: string; contactPhone?: string }): Promise<User | undefined> {
+  async updateCustomer(userId: string, data: { teamName?: string; contactPhone?: string; ghlContactId?: string }): Promise<User | undefined> {
     const [user] = await db.update(users)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(users.id, userId))
@@ -565,7 +565,13 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async createInvite(email: string, teamName?: string, role: "customer" | "supplier" = "customer"): Promise<User> {
+  async createInvite(
+    email: string,
+    teamName?: string,
+    role: "customer" | "supplier" = "customer",
+    ghlContactId?: string,
+    contactPhone?: string,
+  ): Promise<User> {
     const crypto = await import("crypto");
     const inviteToken = crypto.randomBytes(32).toString("hex");
     const inviteExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
@@ -576,6 +582,8 @@ export class DatabaseStorage implements IStorage {
       password: "", // No password until invite accepted
       role,
       teamName: teamName || null,
+      contactPhone: contactPhone || null,
+      ghlContactId: ghlContactId || null,
       inviteToken,
       inviteExpiresAt,
     }).returning();

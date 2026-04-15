@@ -126,5 +126,45 @@ export async function withPoNumberRetry<T>(
   throw lastErr ?? new Error("Failed to allocate a unique PO number after retries");
 }
 
+// ====================================================================
+// PO REFERENCE (numeric code auto-assigned on PO creation).
+//
+// Format: PO-YYYY-NNNN
+//   PO      — fixed prefix
+//   YYYY    — 4-digit year
+//   NNNN    — 4-digit zero-padded sequence, unique per year across ALL POs
+//
+// Examples:
+//   PO-2026-0001, PO-2026-0042, ...
+//
+// Separate from orderNumber (SL-YYYY-CLIENT-SEQ) so the PO reference reads
+// as a pure numeric receipt ID — no client slug embedded.
+// ====================================================================
+
+async function nextPoReferenceSeq(year: number): Promise<number> {
+  const prefix = `PO-${year}-`;
+  const rows = await db
+    .select({ poReference: orders.poReference })
+    .from(orders)
+    .where(like(orders.poReference, `${prefix}%`));
+
+  if (rows.length === 0) return 1;
+
+  let maxSeq = 0;
+  for (const row of rows) {
+    if (!row.poReference) continue;
+    const tail = row.poReference.slice(prefix.length);
+    const seq = parseInt(tail, 10);
+    if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
+  }
+  return maxSeq + 1;
+}
+
+export async function buildPoReference(now: Date = new Date()): Promise<string> {
+  const year = now.getFullYear();
+  const seq = await nextPoReferenceSeq(year);
+  return `PO-${year}-${String(seq).padStart(4, "0")}`;
+}
+
 // Keep sql import used so tree-shakers don't complain if we add raw queries later.
 void sql;
