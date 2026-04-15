@@ -38,6 +38,9 @@ router.post("/token", async (req, res) => {
         const user = (req as any).user;
         if (!user) throw new Error("Not authenticated");
 
+        // addRandomSuffix must be set server-side — the @vercel/blob client
+        // upload() no longer accepts it (since SDK v0.19+). Without this,
+        // uploads with duplicate filenames silently overwrite each other.
         return {
           allowedContentTypes: [
             "image/png",
@@ -49,6 +52,7 @@ router.post("/token", async (req, res) => {
             "application/x-zip-compressed",
           ],
           maximumSizeInBytes: 50 * 1024 * 1024, // 50MB
+          addRandomSuffix: true,
           tokenPayload: JSON.stringify({ userId: user.userId }),
         };
       },

@@ -92,6 +92,7 @@ const updateOrderSchema = z.object({
   deliveryAddress: z.string().optional(),
   deliveryEmail: z.string().optional(),
   deliveryPhone: z.string().optional(),
+  dueDate: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.null()]).optional(),
 });
 
 router.patch("/orders/:id", async (req, res) => {
@@ -680,6 +681,7 @@ const createPoSchema = z.object({
   companyPhone: z.string().optional(),
   isRepeatOrder: z.boolean().optional(),
   poComments: z.string().optional(),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // customer "Door to Customer" date
   deliveryAttention: z.string().optional(),
   deliveryAddress: z.string().optional(),
   deliveryEmail: z.string().optional(),
@@ -736,6 +738,7 @@ router.post("/orders/create-po", async (req, res) => {
         accountName: data.accountName ?? null,
         isRepeatOrder: data.isRepeatOrder ?? false,
         poComments: data.poComments ?? null,
+        dueDate: data.dueDate ?? null,
         deliveryAttention: data.deliveryAttention ?? null,
         deliveryAddress: data.deliveryAddress ?? null,
         deliveryEmail: data.deliveryEmail ?? null,

@@ -110,6 +110,9 @@ export const orders = pgTable("orders", {
   deliveryAddress: text("delivery_address"), // Full delivery address text
   deliveryEmail: text("delivery_email"),
   deliveryPhone: text("delivery_phone"),
+  // Customer due date ("Door to Customer") — drives every upstream milestone
+  // via shared/po-milestones.ts. Stored as a simple date string (YYYY-MM-DD).
+  dueDate: text("due_date"),
   // Sideline order portal — GHL-mirrored pipeline + supplier assignment
   ghlOpportunityId: text("ghl_opportunity_id"), // GHL deal ID — links order to its pipeline card
   pipelineStage: text("pipeline_stage"), // Mirror of GHL stage name from shared/pipeline.ts; GHL is source of truth

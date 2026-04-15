@@ -10,6 +10,7 @@ import { useParams, Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { upload } from "@vercel/blob/client";
 import { getQueryFn } from "@/lib/queryClient";
+import { computeMilestones } from "@shared/po-milestones";
 import {
   ArrowLeft, FileText, ExternalLink, Upload, Download,
   Check, X, MessageSquare, Printer, Plus, Trash2,
@@ -94,6 +95,7 @@ interface Order {
   deliveryAddress: string | null;
   deliveryEmail: string | null;
   deliveryPhone: string | null;
+  dueDate: string | null;
   driveFolderId: string | null;
   driveFolderUrl: string | null;
   driveFolderName: string | null;
@@ -194,7 +196,7 @@ function ImageUploadSlot({
     setUploading(true);
     setError("");
     try {
-      const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token", addRandomSuffix: true });
+      const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token" });
       onUpload(blob.url);
     } catch (e: any) {
       console.error("Image upload failed:", e);
@@ -319,7 +321,7 @@ export default function AdminOrderDetail() {
     mutationFn: async () => {
       const file = uploadFileRef.current?.files?.[0];
       if (!file) throw new Error("Pick a file");
-      const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token", addRandomSuffix: true });
+      const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token" });
       const r = await apiRequest("POST", `/api/admin/orders/${params.id}/designs`, {
         label: uploadLabel, folder: uploadFolder, fileName: file.name, fileUrl: blob.url, fileSize: file.size, mimeType: file.type,
       });
@@ -377,7 +379,7 @@ export default function AdminOrderDetail() {
   const handleFolderDrop = useCallback(async (folder: typeof FOLDERS[number], files: FileList) => {
     for (const file of Array.from(files)) {
       try {
-        const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token", addRandomSuffix: true });
+        const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token" });
         await apiRequest("POST", `/api/admin/orders/${params.id}/designs`, {
           label: file.name.split(".")[0], folder, fileName: file.name, fileUrl: blob.url, fileSize: file.size, mimeType: file.type,
         });
@@ -454,7 +456,53 @@ export default function AdminOrderDetail() {
             </select>
           </Field>
           <Field label="Design Status"><span style={{ color: "rgba(255,255,255,0.6)", fontSize: "13px" }}>{order.designStatus || "—"}</span></Field>
+          <Field label="Customer Due Date">
+            <input
+              type="date"
+              value={order.dueDate || ""}
+              onChange={(e) => updateOrder.mutate({ dueDate: e.target.value || null })}
+              style={{ ...inputStyle, width: "auto" }}
+            />
+          </Field>
         </div>
+
+        {/* ──── Guard-rail milestone timeline ──── */}
+        {order.dueDate && (() => {
+          const ms = computeMilestones(order.dueDate);
+          if (!ms) return null;
+          return (
+            <div style={{ marginTop: "18px", background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.15)", borderRadius: "8px", padding: "14px 18px" }}>
+              <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.8px", color: "rgba(249,115,22,0.9)", marginBottom: "10px", fontWeight: 600 }}>
+                Guard-rail schedule — working backwards from customer due date
+              </div>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                {ms.map((m) => {
+                  const today = new Date(); today.setHours(0,0,0,0);
+                  const mDate = new Date(m.date + "T00:00:00");
+                  const isPast = mDate < today && m.key !== "door_to_customer";
+                  const isDue = m.key === "door_to_customer";
+                  return (
+                    <div key={m.key} style={{
+                      flex: "1 1 180px",
+                      padding: "10px 12px",
+                      background: isDue ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.03)",
+                      border: `1px solid ${isDue ? "rgba(34,197,94,0.3)" : isPast ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.06)"}`,
+                      borderRadius: "6px",
+                    }}>
+                      <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>
+                        {m.daysFromDue === 0 ? "Due" : `${m.daysFromDue}d`}
+                      </div>
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#fff", marginBottom: "2px" }}>{m.label}</div>
+                      <div style={{ fontSize: "11px", color: isDue ? "#22c55e" : isPast ? "#ef4444" : "rgba(255,255,255,0.5)", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                        {m.date}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </Section>
 
       {/* ──── Customer / Delivery ──── */}

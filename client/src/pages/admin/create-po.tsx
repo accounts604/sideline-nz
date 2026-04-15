@@ -3,7 +3,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
 import { useLocation, Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
-import { ArrowLeft, Plus, Trash2, FileText, Sparkles, Building2, User as UserIcon } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FileText, Sparkles, Building2, User as UserIcon, CalendarClock } from "lucide-react";
+import { computeMilestones } from "@shared/po-milestones";
 
 interface POItem {
   productName: string;
@@ -43,6 +44,9 @@ export default function AdminCreatePO() {
   // on create so nothing races against a concurrent PO.
   const [poReference, setPoReference] = useState<string>("");
   const [accountName, setAccountName] = useState("");
+  // Customer due date (Door to Customer). Drives all upstream guard-rail
+  // milestones via shared/po-milestones.ts.
+  const [dueDate, setDueDate] = useState("");
   const [isRepeatOrder, setIsRepeatOrder] = useState(false);
   const [poComments, setPoComments] = useState("");
   const [deliveryAttention, setDeliveryAttention] = useState("");
@@ -142,6 +146,7 @@ export default function AdminCreatePO() {
         accountName: accountName || undefined,
         companyEmail: companyEmail || undefined,
         companyPhone: companyPhone || undefined,
+        dueDate: dueDate || undefined,
         isRepeatOrder,
         poComments: poComments || undefined,
         deliveryAttention: deliveryAttention || undefined,
@@ -342,6 +347,43 @@ export default function AdminCreatePO() {
               <div>
                 <label style={labelStyle}>Comments</label>
                 <input value={poComments} onChange={(e) => setPoComments(e.target.value)} placeholder="e.g. Bulk Order" style={inputStyle} />
+              </div>
+
+              {/* ────── Customer Due Date + guard-rail milestone preview ────── */}
+              <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "14px", marginTop: "4px" }}>
+                <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+                  <CalendarClock size={11} style={{ color: "#f97316" }} />
+                  Customer Due Date (Door to Customer)
+                </label>
+                <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={inputStyle} />
+
+                {dueDate && (() => {
+                  const ms = computeMilestones(dueDate);
+                  if (!ms) return null;
+                  return (
+                    <div style={{ marginTop: "12px", background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.15)", borderRadius: "8px", padding: "12px 14px" }}>
+                      <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.8px", color: "rgba(249,115,22,0.9)", marginBottom: "8px", fontWeight: 600 }}>
+                        Guard-rail schedule (working backwards)
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                        {ms.map((m) => (
+                          <div key={m.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px", color: "#fff" }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: m.key === "door_to_customer" ? "#22c55e" : "#f97316" }} />
+                              <span style={{ fontWeight: m.key === "door_to_customer" ? 600 : 400 }}>{m.label}</span>
+                            </span>
+                            <span style={{ display: "flex", alignItems: "center", gap: "10px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                              <span style={{ color: "rgba(255,255,255,0.45)", fontSize: "11px" }}>
+                                {m.daysFromDue === 0 ? "DUE" : `${m.daysFromDue}d`}
+                              </span>
+                              <span>{m.date}</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
