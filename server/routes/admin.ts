@@ -1572,6 +1572,26 @@ router.post("/orders/:id/designs", async (req, res) => {
       version: 1,
     });
 
+    // Mirror legacy File Vault uploads into the PO's Drive folder too, so
+    // the Drive sub-folder is the single source of truth regardless of
+    // which upload path was used. Fire-and-forget.
+    if (order.driveFolderId) {
+      const slotMap: Record<typeof data.folder, "mockups" | "logos" | "artwork" | "approvals" | undefined> = {
+        mockups: "mockups",
+        logos: "logos",
+        "tech-pack": "artwork",
+        "size-run": undefined, // no direct match — lands in root
+        other: undefined,
+      };
+      const slot = slotMap[data.folder];
+      mirrorBlobToPoFolder({
+        poFolderId: order.driveFolderId,
+        slot,
+        blobUrl: data.fileUrl,
+        fileName: data.fileName,
+      }).catch((err) => console.error("[designs-upload] Drive mirror failed:", err));
+    }
+
     await db.insert(orderActivity).values({
       orderId: order.id,
       userId: user.userId,
