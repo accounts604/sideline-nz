@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
 import { useLocation, Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
-import { ArrowLeft, Plus, Trash2, FileText } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FileText, Sparkles, Building2, User as UserIcon } from "lucide-react";
 
 interface POItem {
   productName: string;
@@ -11,6 +11,17 @@ interface POItem {
   unitAmount: number;
   gradeGroup: string;
   brandingMethod: string;
+}
+
+interface GhlSuggestion {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  companyName: string | null;
+  tags?: string[];
+  linkedUser?: { userId: string; teamName: string | null } | null;
 }
 
 export default function AdminCreatePO() {
@@ -38,6 +49,58 @@ export default function AdminCreatePO() {
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryEmail, setDeliveryEmail] = useState("");
   const [deliveryPhone, setDeliveryPhone] = useState("");
+
+  // ────── Smart GHL lookup (typeahead) ──────
+  // A single debounced search state shared across First Name / Last Name /
+  // Email / Company inputs. Whichever field the admin is focused on defines
+  // which dropdown shows. Selecting a suggestion fills every matching field.
+  type ActiveField = "first" | "last" | "email" | "company" | null;
+  const [activeField, setActiveField] = useState<ActiveField>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<GhlSuggestion[]>([]);
+  const [searching, setSearching] = useState(false);
+  const suppressNext = useRef(false); // skip search right after a suggestion is applied
+
+  useEffect(() => {
+    if (suppressNext.current) {
+      suppressNext.current = false;
+      return;
+    }
+    const q = searchQuery.trim();
+    if (q.length < 2 || !activeField) {
+      setSuggestions([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/admin/ghl/search?q=${encodeURIComponent(q)}`, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          setSuggestions(data.contacts || []);
+        } else {
+          setSuggestions([]);
+        }
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchQuery, activeField]);
+
+  const applySuggestion = (s: GhlSuggestion) => {
+    suppressNext.current = true;
+    if (s.firstName) setCustomerFirstName(s.firstName);
+    if (s.lastName) setCustomerLastName(s.lastName);
+    if (s.email) setCustomerEmail(s.email);
+    if (s.phone) setCustomerPhone(s.phone);
+    if (s.companyName) setAccountName(s.companyName);
+    setActiveField(null);
+    setSuggestions([]);
+    setSearchQuery("");
+  };
 
   // Items
   const [items, setItems] = useState<POItem[]>([
@@ -115,6 +178,84 @@ export default function AdminCreatePO() {
     borderRadius: "6px", color: "#fff", outline: "none",
   };
 
+  // Shared dropdown rendered just below the active field. onMouseDown
+  // (not onClick) with preventDefault is the standard pattern for suggestion
+  // lists — it fires before the input's blur and keeps focus from stealing it.
+  const renderSuggestions = (forField: ActiveField) => {
+    if (activeField !== forField) return null;
+    if (!searchQuery.trim() || searchQuery.trim().length < 2) return null;
+
+    return (
+      <div
+        style={{
+          position: "absolute",
+          top: "calc(100% + 4px)",
+          left: 0,
+          right: 0,
+          zIndex: 30,
+          background: "#0a0a0a",
+          border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: "8px",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+          maxHeight: "260px",
+          overflowY: "auto",
+        }}
+      >
+        {searching ? (
+          <div style={{ padding: "12px", fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>Searching GHL…</div>
+        ) : suggestions.length === 0 ? (
+          <div style={{ padding: "12px", fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>
+            No GHL match — will be created on submit.
+          </div>
+        ) : (
+          suggestions.map((s) => {
+            const name = [s.firstName, s.lastName].filter(Boolean).join(" ") || s.email || "(no name)";
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); applySuggestion(s); }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "10px 12px",
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: "1px solid rgba(255,255,255,0.04)",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(249,115,22,0.06)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "2px" }}>
+                  <Sparkles size={11} style={{ color: "#f97316" }} />
+                  <span style={{ fontSize: "13px", fontWeight: 600 }}>{name}</span>
+                  {s.linkedUser && (
+                    <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "4px", background: "rgba(34,197,94,0.15)", color: "#22c55e" }}>
+                      Linked
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  {s.companyName && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Building2 size={10} />{s.companyName}</span>}
+                  {s.email && <span>{s.email}</span>}
+                  {s.phone && <span>{s.phone}</span>}
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+    );
+  };
+
+  // onBlur helper — delayed clear so the suggestion click registers first.
+  const handleBlur = () => {
+    setTimeout(() => setActiveField((cur) => (cur ? null : cur)), 150);
+  };
+
   const labelStyle: React.CSSProperties = {
     fontSize: "12px", color: "rgba(255,255,255,0.5)", display: "block", marginBottom: "4px",
   };
@@ -138,7 +279,10 @@ export default function AdminCreatePO() {
           {/* PO Details */}
           <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px" }}>
             <h3 style={{ fontSize: "15px", fontWeight: 600, color: "#fff", marginBottom: "4px" }}>PO Details</h3>
-            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", marginBottom: "16px" }}>Customer + company details mirror the matching GHL contact fields.</p>
+            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", marginBottom: "16px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <Sparkles size={11} style={{ color: "#f97316" }} />
+              Start typing a company or contact name — matches from GHL appear as you type.
+            </p>
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               <div>
                 <label style={labelStyle}>PO Reference</label>
@@ -162,9 +306,18 @@ export default function AdminCreatePO() {
                   )}
                 </div>
               </div>
-              <div>
+              <div style={{ position: "relative" }}>
                 <label style={labelStyle}>Company / Team / Club Name</label>
-                <input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="e.g. Otahuhu RFC" style={inputStyle} />
+                <input
+                  value={accountName}
+                  onChange={(e) => { setAccountName(e.target.value); setSearchQuery(e.target.value); }}
+                  onFocus={() => { setActiveField("company"); setSearchQuery(accountName); }}
+                  onBlur={handleBlur}
+                  placeholder="e.g. Otahuhu RFC — smart lookup from GHL"
+                  style={inputStyle}
+                  autoComplete="off"
+                />
+                {renderSuggestions("company")}
               </div>
               <div style={{ display: "flex", gap: "12px" }}>
                 <div style={{ flex: 1 }}>
@@ -196,21 +349,51 @@ export default function AdminCreatePO() {
           {/* Customer — mirrors GHL contact fields */}
           <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px" }}>
             <h3 style={{ fontSize: "15px", fontWeight: 600, color: "#fff", marginBottom: "4px" }}>Customer (Primary Contact)</h3>
-            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", marginBottom: "16px" }}>Matches GHL contact fields — first name, last name, email, phone.</p>
+            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", marginBottom: "16px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <UserIcon size={11} style={{ color: "#f97316" }} />
+              Smart-linked to GHL — type a name or email to pull existing contacts.
+            </p>
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               <div style={{ display: "flex", gap: "12px" }}>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, position: "relative" }}>
                   <label style={labelStyle}>First Name</label>
-                  <input value={customerFirstName} onChange={(e) => setCustomerFirstName(e.target.value)} placeholder="Romero" style={inputStyle} />
+                  <input
+                    value={customerFirstName}
+                    onChange={(e) => { setCustomerFirstName(e.target.value); setSearchQuery(e.target.value); }}
+                    onFocus={() => { setActiveField("first"); setSearchQuery(customerFirstName); }}
+                    onBlur={handleBlur}
+                    placeholder="Romero"
+                    style={inputStyle}
+                    autoComplete="off"
+                  />
+                  {renderSuggestions("first")}
                 </div>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, position: "relative" }}>
                   <label style={labelStyle}>Last Name</label>
-                  <input value={customerLastName} onChange={(e) => setCustomerLastName(e.target.value)} placeholder="Tagi" style={inputStyle} />
+                  <input
+                    value={customerLastName}
+                    onChange={(e) => { setCustomerLastName(e.target.value); setSearchQuery(e.target.value); }}
+                    onFocus={() => { setActiveField("last"); setSearchQuery(customerLastName); }}
+                    onBlur={handleBlur}
+                    placeholder="Tagi"
+                    style={inputStyle}
+                    autoComplete="off"
+                  />
+                  {renderSuggestions("last")}
                 </div>
               </div>
-              <div>
+              <div style={{ position: "relative" }}>
                 <label style={labelStyle}>Email</label>
-                <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="romero@kig.co.nz" style={inputStyle} />
+                <input
+                  value={customerEmail}
+                  onChange={(e) => { setCustomerEmail(e.target.value); setSearchQuery(e.target.value); }}
+                  onFocus={() => { setActiveField("email"); setSearchQuery(customerEmail); }}
+                  onBlur={handleBlur}
+                  placeholder="romero@kig.co.nz"
+                  style={inputStyle}
+                  autoComplete="off"
+                />
+                {renderSuggestions("email")}
               </div>
               <div>
                 <label style={labelStyle}>Phone</label>
