@@ -1,5 +1,10 @@
 // Pluggable email service interface
-// Console stub for now — swap to Resend/SendGrid later
+// Console stub for now — swap to Resend/SendGrid later.
+// Supplier PO dispatch uses sendGmail directly (Gmail API on the KIG admin
+// account) so replies land back in the orders@sidelinenz.com inbox.
+
+import { sendGmail, isGmailConfigured } from "./gmail";
+import { computeMilestones } from "@shared/po-milestones";
 
 export interface EmailPayload {
   to: string;
@@ -103,6 +108,118 @@ export async function sendClientApprovalResult(
     subject,
     text: `${label}: ${orderNumber}${notesBlock}\n\nCheck the admin order detail page for the full activity log.`,
     html: `<p><strong>${label}</strong>: ${orderNumber}</p>${changesNotes ? `<p><em>Client notes:</em> ${changesNotes}</p>` : ""}<p>Check the admin order detail page for the full activity log.</p>`,
+  });
+}
+
+export const SIDELINE_ORDERS_FROM = "Sideline NZ Orders <orders@sidelinenz.com>";
+
+export interface DispatchSupplierInput {
+  to: string;
+  cc?: string | string[];
+  supplierName?: string | null;
+  orderNumber: string;
+  poReference?: string | null;
+  accountName?: string | null;
+  dueDate?: string | null;         // YYYY-MM-DD
+  deliveryAddress?: string | null;
+  driveFolderUrl?: string | null;
+  supplierPortalUrl?: string;
+  items?: Array<{
+    productName: string;
+    material?: string | null;
+    brandingMethod?: string | null;
+    quantity: number;
+    productColors?: Array<{ hex: string; name?: string }> | null;
+  }>;
+}
+
+/**
+ * Rich Gmail dispatch to the supplier — replaces the old console stub for the
+ * PO-raised flow. Includes line items, material + branding, delivery address,
+ * Drive folder link, and the 35-day milestone schedule so the supplier has
+ * every date they need to hit. From: orders@sidelinenz.com. Reply-To is the
+ * same address so the thread lives in the orders@ inbox.
+ */
+export async function sendSupplierPoDispatchGmail(input: DispatchSupplierInput): Promise<string | null> {
+  if (!isGmailConfigured()) {
+    console.log("[email] Gmail not configured — would dispatch PO to", input.to);
+    return null;
+  }
+
+  const portalUrl = input.supplierPortalUrl || `${process.env.BASE_URL || "https://sidelinenz.com"}/supplier`;
+  const milestones = input.dueDate ? computeMilestones(input.dueDate) : null;
+
+  const hi = input.supplierName ? `Hi ${input.supplierName},` : "Hi team,";
+  const poLine = `<strong>${input.poReference || input.orderNumber}</strong>${input.accountName ? ` — ${input.accountName}` : ""}`;
+
+  const itemsHtml = input.items && input.items.length
+    ? `<table style="border-collapse:collapse;margin:12px 0;width:100%;font-size:13px;">
+        <thead>
+          <tr style="background:#f5f5f5">
+            <th style="text-align:left;padding:8px;border:1px solid #ddd">Product</th>
+            <th style="text-align:left;padding:8px;border:1px solid #ddd">Material</th>
+            <th style="text-align:left;padding:8px;border:1px solid #ddd">Branding</th>
+            <th style="text-align:left;padding:8px;border:1px solid #ddd">Colours</th>
+            <th style="text-align:right;padding:8px;border:1px solid #ddd">Qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${input.items.map((it) => `
+            <tr>
+              <td style="padding:8px;border:1px solid #ddd">${it.productName}</td>
+              <td style="padding:8px;border:1px solid #ddd">${it.material || "—"}</td>
+              <td style="padding:8px;border:1px solid #ddd">${it.brandingMethod || "—"}</td>
+              <td style="padding:8px;border:1px solid #ddd">${(it.productColors || []).map((c) => `${c.name || c.hex}`).join(", ") || "—"}</td>
+              <td style="padding:8px;border:1px solid #ddd;text-align:right">${it.quantity}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>`
+    : "";
+
+  const milestonesHtml = milestones
+    ? `<h3 style="margin:18px 0 6px;font-size:14px">35-Day Schedule</h3>
+       <table style="border-collapse:collapse;margin:4px 0 12px;font-size:13px">
+         ${milestones.map((m) => `
+           <tr>
+             <td style="padding:4px 12px 4px 0;color:#666">Day ${m.dayNumber}</td>
+             <td style="padding:4px 12px 4px 0;font-weight:600">${m.label}</td>
+             <td style="padding:4px 0;font-family:ui-monospace,Menlo,monospace">${m.date}</td>
+           </tr>
+         `).join("")}
+       </table>`
+    : "";
+
+  const subject = `PO ${input.poReference || input.orderNumber}${input.accountName ? ` — ${input.accountName}` : ""}${input.dueDate ? ` — Due ${input.dueDate}` : ""}`;
+
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#111;max-width:640px">
+      <p>${hi}</p>
+      <p>A new purchase order has been raised. ${poLine}.</p>
+      ${itemsHtml}
+      ${input.deliveryAddress ? `<p><strong>Delivery:</strong><br/>${input.deliveryAddress.replace(/\n/g, "<br/>")}</p>` : ""}
+      ${milestonesHtml}
+      <p>
+        ${input.driveFolderUrl ? `<a href="${input.driveFolderUrl}" style="display:inline-block;padding:10px 14px;background:#f97316;color:#fff;text-decoration:none;border-radius:6px;margin-right:8px">Open Drive Folder</a>` : ""}
+        <a href="${portalUrl}" style="display:inline-block;padding:10px 14px;background:#111;color:#fff;text-decoration:none;border-radius:6px">Supplier Portal</a>
+      </p>
+      <p style="color:#666;font-size:12px">Reply to this email if anything in the spec or dates needs to change before production starts.</p>
+      <p style="color:#666;font-size:12px">— Sideline NZ</p>
+    </div>`;
+
+  // Self-cc the orders@ inbox so every thread stays searchable internally.
+  const ccList = [
+    ...(Array.isArray(input.cc) ? input.cc : input.cc ? [input.cc] : []),
+    "orders@sidelinenz.com",
+  ].filter((e, i, a) => !!e && a.indexOf(e) === i);
+
+  return sendGmail({
+    from: SIDELINE_ORDERS_FROM,
+    to: input.to,
+    cc: ccList,
+    replyTo: "orders@sidelinenz.com",
+    subject,
+    html,
   });
 }
 

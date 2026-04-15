@@ -4,7 +4,7 @@ import { storage } from "../storage";
 import { hashPassword } from "../auth";
 import { z } from "zod";
 import { notifyDesignApproved, notifyDesignRejected, notifyOrderStatusChange } from "../notifications";
-import { sendInviteEmail, sendSupplierPoRaisedEmail } from "../email";
+import { sendInviteEmail, sendSupplierPoRaisedEmail, sendSupplierPoDispatchGmail } from "../email";
 import { db } from "../db";
 import { orders, orderActivity, designFiles, orderItems } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -1439,14 +1439,34 @@ router.post("/orders/:id/raise-po", async (req, res) => {
       ghlPushResult = await updateGhlOpportunityStage(order.ghlOpportunityId, "PO Raised");
     }
 
-    // 3. Email the supplier
+    // 3. Email the supplier via Gmail API from orders@sidelinenz.com.
+    // CC's the supplier's ccEmail (secondary contact) + self-cc orders@ so
+    // the thread lives in the shared orders inbox.
+    let gmailMessageId: string | null = null;
     if (supplier.email) {
-      sendSupplierPoRaisedEmail(
-        supplier.email,
-        order.orderNumber,
-        order.poReference,
-        order.deliveryAddress,
-      ).catch((err) => console.error("Failed to send supplier PO email:", err));
+      try {
+        const items = await storage.getOrderItems(order.id);
+        gmailMessageId = await sendSupplierPoDispatchGmail({
+          to: supplier.email,
+          cc: supplier.ccEmail || undefined,
+          supplierName: supplier.teamName,
+          orderNumber: order.orderNumber,
+          poReference: order.poReference,
+          accountName: order.accountName,
+          dueDate: order.dueDate,
+          deliveryAddress: order.deliveryAddress,
+          driveFolderUrl: order.driveFolderUrl,
+          items: items.map((it: any) => ({
+            productName: it.productName,
+            material: it.material,
+            brandingMethod: it.brandingMethod,
+            quantity: it.quantity,
+            productColors: it.productColors,
+          })),
+        });
+      } catch (err) {
+        console.error("Failed to send supplier PO email:", err);
+      }
     }
 
     // 4. Log the action
@@ -1458,6 +1478,8 @@ router.post("/orders/:id/raise-po", async (req, res) => {
         supplierId,
         supplierName: supplier.teamName,
         supplierEmail: supplier.email,
+        supplierCcEmail: supplier.ccEmail || null,
+        gmailMessageId,
         ghlPushed: ghlPushResult.success,
         ghlPushReason: ghlPushResult.reason,
       },
@@ -1466,6 +1488,10 @@ router.post("/orders/:id/raise-po", async (req, res) => {
     res.json({
       ok: true,
       supplierId,
+      supplierEmail: supplier.email,
+      supplierCcEmail: supplier.ccEmail || null,
+      emailSent: !!gmailMessageId,
+      gmailMessageId,
       ghlPushed: ghlPushResult.success,
       ghlPushReason: ghlPushResult.reason,
     });
