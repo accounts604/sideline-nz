@@ -15,6 +15,23 @@
 const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
 
+// Shared-drive support — the Sideline client-vault parent lives on a Shared
+// Drive, so every Drive call needs supportsAllDrives=true. Listings also need
+// includeItemsFromAllDrives=true and corpora=allDrives. We append these on
+// every URL via driveUrl() — missing either one silently returns zero results
+// or "file not found", which is what caused the v1 to no-op in production.
+function driveUrl(path: string, extra: Record<string, string> = {}): string {
+  const url = new URL(`${DRIVE_API_BASE}${path}`);
+  url.searchParams.set("supportsAllDrives", "true");
+  if (path.startsWith("/files?") || path === "/files") {
+    url.searchParams.set("includeItemsFromAllDrives", "true");
+  }
+  for (const [k, v] of Object.entries(extra)) url.searchParams.set(k, v);
+  // Move any original query params from the path into the URL obj (URL ctor
+  // already handles that), nothing else to do.
+  return url.toString();
+}
+
 // In-process access token cache. Drive access tokens expire after ~1 hour;
 // we cache until 60s before expiry and refresh lazily on the next call.
 let cachedAccessToken: { token: string; expiresAt: number } | null = null;
@@ -74,7 +91,7 @@ async function getAccessToken(): Promise<string | null> {
 async function driveFetch(path: string, init: RequestInit = {}): Promise<Response | null> {
   const token = await getAccessToken();
   if (!token) return null;
-  return fetch(`${DRIVE_API_BASE}${path}`, {
+  return fetch(driveUrl(path), {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -310,7 +327,7 @@ export async function mirrorBlobToPoFolder({
     ]);
 
     const uploadRes = await fetch(
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true",
       {
         method: "POST",
         headers: {

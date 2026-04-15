@@ -183,6 +183,103 @@ function EditableField({
 
 // ─── Inline image upload (for order item front/back/elements) ────────
 
+// Inline File Vault panel on the PO page — shows the PO's Drive folder +
+// any sub-folders / files at a glance, so the admin doesn't have to bounce
+// to the File Vault tab. Redundant-by-design: every asset lives in the Drive
+// folder, we just mirror the browsable view here too.
+function DriveFolderPanel({
+  orderId, driveFolderUrl, driveFolderName, driveFolderId,
+}: {
+  orderId: string;
+  driveFolderUrl: string | null;
+  driveFolderName: string | null;
+  driveFolderId: string | null;
+}) {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery<{ files: Array<{ id: string; name: string; mimeType: string; webViewLink: string; modifiedTime?: string; iconLink?: string }>; missing?: boolean }>({
+    queryKey: [`/api/admin/vault/${orderId}/files`],
+    enabled: !!driveFolderId,
+  });
+
+  const createFolder = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/admin/vault/${orderId}/create-folder`, {});
+      return r.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/admin/orders/${orderId}`] }),
+  });
+
+  const folders = (data?.files || []).filter((f) => f.mimeType === "application/vnd.google-apps.folder");
+  const files = (data?.files || []).filter((f) => f.mimeType !== "application/vnd.google-apps.folder");
+
+  return (
+    <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "10px", padding: "18px 20px", marginBottom: "20px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px", flexWrap: "wrap", gap: "10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <FileText size={14} style={{ color: "#f97316" }} />
+          <span style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.5)" }}>File Vault</span>
+          {driveFolderName && <span style={{ fontSize: "13px", color: "#fff", fontWeight: 500 }}>{driveFolderName}</span>}
+        </div>
+        {driveFolderUrl ? (
+          <a href={driveFolderUrl} target="_blank" rel="noreferrer"
+            style={{ padding: "6px 12px", fontSize: "11px", fontWeight: 600, background: "rgba(249,115,22,0.1)", color: "#f97316", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "6px", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+            Open in Drive <ExternalLink size={10} />
+          </a>
+        ) : (
+          <button
+            onClick={() => createFolder.mutate()}
+            disabled={createFolder.isPending}
+            style={{ padding: "6px 12px", fontSize: "11px", fontWeight: 600, background: "#22c55e", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer" }}
+          >
+            {createFolder.isPending ? "Creating…" : "Create Drive folder"}
+          </button>
+        )}
+      </div>
+
+      {!driveFolderId ? (
+        <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>
+          No Drive folder linked to this PO yet. Click "Create Drive folder" to spin one up.
+        </div>
+      ) : isLoading ? (
+        <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}>Loading vault…</div>
+      ) : !(folders.length || files.length) ? (
+        <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>Folder is empty — upload a mockup to a garment line and it'll mirror here.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {folders.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "6px" }}>
+              {folders.map((f) => (
+                <a key={f.id} href={`https://drive.google.com/drive/folders/${f.id}`} target="_blank" rel="noreferrer"
+                  style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px", borderRadius: "6px", background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.15)", textDecoration: "none", color: "#fff", fontSize: "12px" }}>
+                  <FileText size={12} style={{ color: "#f97316" }} />
+                  <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.name}</span>
+                  <ExternalLink size={10} style={{ color: "rgba(255,255,255,0.3)" }} />
+                </a>
+              ))}
+            </div>
+          )}
+          {files.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+              {files.slice(0, 20).map((f) => (
+                <a key={f.id} href={f.webViewLink} target="_blank" rel="noreferrer"
+                  style={{ display: "flex", alignItems: "center", gap: "10px", padding: "6px 10px", borderRadius: "4px", background: "rgba(255,255,255,0.02)", textDecoration: "none", color: "#fff", fontSize: "12px" }}>
+                  {f.iconLink ? <img src={f.iconLink} alt="" width={12} height={12} /> : <FileText size={11} style={{ color: "rgba(255,255,255,0.4)" }} />}
+                  <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.name}</span>
+                  <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>{f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : ""}</span>
+                  <ExternalLink size={10} style={{ color: "rgba(255,255,255,0.3)" }} />
+                </a>
+              ))}
+              {files.length > 20 && (
+                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", padding: "4px 10px" }}>+{files.length - 20} more — open in Drive to see all</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ImageUploadSlot({
   label, url, onUpload, small, vaultImages,
 }: {
@@ -508,6 +605,9 @@ export default function AdminOrderDetail() {
           );
         })()}
       </Section>
+
+      {/* ──── Drive folder (File Vault) inline view ──── */}
+      <DriveFolderPanel orderId={order.id} driveFolderUrl={order.driveFolderUrl} driveFolderName={order.driveFolderName} driveFolderId={order.driveFolderId} />
 
       {/* ──── Customer / Delivery ──── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
