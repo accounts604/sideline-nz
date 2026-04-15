@@ -6,7 +6,7 @@ import { z } from "zod";
 import { notifyDesignApproved, notifyDesignRejected, notifyOrderStatusChange } from "../notifications";
 import { sendInviteEmail, sendSupplierPoRaisedEmail } from "../email";
 import { db } from "../db";
-import { orders, orderActivity, designFiles } from "@shared/schema";
+import { orders, orderActivity, designFiles, orderItems } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { updateGhlOpportunityStage } from "./ghl";
 import { createApprovalToken } from "./approvals";
@@ -17,6 +17,7 @@ import {
   isDriveConfigured,
   buildClientFolderName,
 } from "../google-drive";
+import { extractColorsFromImage } from "../mockup/color-extract";
 import {
   searchGhlContacts,
   findGhlContactByEmail,
@@ -652,6 +653,62 @@ router.patch("/orders/:id/items/:itemId", async (req, res) => {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin update item error:", err);
     res.status(500).json({ error: "Failed to update item" });
+  }
+});
+
+// POST /orders/:id/items/:itemId/extract-colors
+// AI-extract dominant colours from the item's design image.
+// Body: { imageUrl?: string, apply?: boolean, side?: "front" | "back" | "custom" }
+//   - imageUrl: override source. Defaults to item.frontDesignUrl → backDesignUrl.
+//   - apply (default true): write the result to item.productColors
+//   - side: which field to read from when imageUrl is not supplied
+const extractColorsSchema = z.object({
+  imageUrl: z.string().url().optional(),
+  apply: z.boolean().optional().default(true),
+  side: z.enum(["front", "back"]).optional(),
+});
+
+router.post("/orders/:id/items/:itemId/extract-colors", async (req, res) => {
+  try {
+    const { imageUrl, apply, side } = extractColorsSchema.parse(req.body);
+    const user = (req as any).user;
+
+    const [item] = await db
+      .select()
+      .from(orderItems)
+      .where(eq(orderItems.id, req.params.itemId))
+      .limit(1);
+
+    if (!item) return res.status(404).json({ error: "Item not found" });
+
+    const sourceUrl =
+      imageUrl ||
+      (side === "back" ? item.backDesignUrl : side === "front" ? item.frontDesignUrl : null) ||
+      item.frontDesignUrl ||
+      item.backDesignUrl;
+
+    if (!sourceUrl) return res.status(400).json({ error: "No design image on this item to analyse" });
+
+    const colors = await extractColorsFromImage(sourceUrl);
+    if (!colors) {
+      return res.status(502).json({ error: "Colour extraction failed — check GEMINI_API_KEY or try a different image" });
+    }
+
+    if (apply) {
+      await storage.updateOrderItem(req.params.itemId, { productColors: colors } as any);
+      await storage.logOrderActivity({
+        orderId: req.params.id,
+        userId: user?.userId,
+        action: "colors_extracted",
+        details: { itemId: req.params.itemId, sourceUrl, colorCount: colors.length },
+      });
+    }
+
+    res.json({ colors, sourceUrl, applied: apply });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin extract-colors error:", err);
+    res.status(500).json({ error: "Failed to extract colours" });
   }
 });
 

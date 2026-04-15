@@ -13,7 +13,7 @@ import { getQueryFn } from "@/lib/queryClient";
 import { computeMilestones } from "@shared/po-milestones";
 import {
   ArrowLeft, FileText, ExternalLink, Upload, Download,
-  Check, X, MessageSquare, Printer, Plus, Trash2,
+  Check, X, MessageSquare, Printer, Plus, Trash2, Sparkles,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -317,6 +317,19 @@ export default function AdminOrderDetail() {
     onSuccess: invalidate,
   });
 
+  // AI colour extraction — Gemini reads the design image and writes the
+  // dominant hex+name set to item.productColors. Fires manually from the
+  // Colours column button OR automatically after a front-design upload.
+  const extractColors = useMutation({
+    mutationFn: async ({ itemId, imageUrl, side }: { itemId: string; imageUrl?: string; side?: "front" | "back" }) => {
+      const r = await apiRequest("POST", `/api/admin/orders/${params.id}/items/${itemId}/extract-colors`, {
+        imageUrl, side, apply: true,
+      });
+      return r.json();
+    },
+    onSuccess: invalidate,
+  });
+
   const uploadFileMut = useMutation({
     mutationFn: async () => {
       const file = uploadFileRef.current?.files?.[0];
@@ -572,12 +585,54 @@ export default function AdminOrderDetail() {
                 <Field label="Product" style={{ flex: 2 }}><EditableField value={item.productName} onSave={(v) => updateItem.mutate({ itemId: item.id, productName: v })} /></Field>
                 <Field label="Grade" style={{ flex: 1 }}><EditableField value={item.gradeGroup} onSave={(v) => updateItem.mutate({ itemId: item.id, gradeGroup: v })} placeholder="Grade" /></Field>
                 <Field label="Branding" style={{ flex: 1 }}><EditableField value={item.brandingMethod} onSave={(v) => updateItem.mutate({ itemId: item.id, brandingMethod: v })} placeholder="Method" /></Field>
-                <Field label="Colours" style={{ flex: 1 }}>
-                  <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                <Field label="Colours" style={{ flex: 1.4 }}>
+                  <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                     {(item.productColors ?? []).map((c, i) => (
-                      <span key={i} style={{ width: "20px", height: "14px", background: c.hex, border: "1px solid rgba(255,255,255,0.2)", borderRadius: "2px", display: "inline-block" }} title={c.hex} />
+                      <span
+                        key={i}
+                        title={`${c.hex}${c.name ? " · " + c.name : ""}`}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "2px 8px 2px 3px",
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          borderRadius: "999px",
+                          background: "rgba(255,255,255,0.04)",
+                          fontSize: "11px",
+                          color: "rgba(255,255,255,0.75)",
+                        }}
+                      >
+                        <span style={{ width: "14px", height: "14px", background: c.hex, borderRadius: "999px", border: "1px solid rgba(255,255,255,0.25)" }} />
+                        {c.name || c.hex}
+                      </span>
                     ))}
                     {!(item.productColors?.length) && <span style={{ color: "rgba(255,255,255,0.3)", fontSize: "12px" }}>—</span>}
+                    <button
+                      type="button"
+                      onClick={() => extractColors.mutate({ itemId: item.id })}
+                      disabled={extractColors.isPending || (!item.frontDesignUrl && !item.backDesignUrl)}
+                      title={item.frontDesignUrl || item.backDesignUrl ? "Extract dominant colours from the design with AI" : "Upload a design first"}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        padding: "3px 8px",
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px",
+                        background: "rgba(249,115,22,0.08)",
+                        color: "#f97316",
+                        border: "1px solid rgba(249,115,22,0.25)",
+                        borderRadius: "999px",
+                        cursor: (item.frontDesignUrl || item.backDesignUrl) ? "pointer" : "not-allowed",
+                        opacity: (item.frontDesignUrl || item.backDesignUrl) ? 1 : 0.4,
+                      }}
+                    >
+                      <Sparkles size={10} />
+                      {extractColors.isPending && extractColors.variables?.itemId === item.id ? "Reading…" : "AI extract"}
+                    </button>
                   </div>
                 </Field>
               </div>
@@ -589,7 +644,14 @@ export default function AdminOrderDetail() {
                   <ImageUploadSlot
                     label="Upload front"
                     url={item.frontDesignUrl}
-                    onUpload={(url) => updateItem.mutate({ itemId: item.id, frontDesignUrl: url })}
+                    onUpload={(url) => {
+                      updateItem.mutate({ itemId: item.id, frontDesignUrl: url });
+                      // Auto-extract colours on first front upload. Skipped if the
+                      // admin already set colours manually — we don't overwrite work.
+                      if (!item.productColors?.length) {
+                        extractColors.mutate({ itemId: item.id, imageUrl: url, side: "front" });
+                      }
+                    }}
                     vaultImages={designs.filter((d) => d.folder === "mockups" && d.mimeType?.startsWith("image/")).map((d) => ({ id: d.id, fileUrl: d.fileUrl, fileName: d.fileName }))}
                   />
                 </div>
