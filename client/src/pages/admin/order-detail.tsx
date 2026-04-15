@@ -11,9 +11,11 @@ import { apiRequest } from "@/lib/queryClient";
 import { upload } from "@vercel/blob/client";
 import { getQueryFn } from "@/lib/queryClient";
 import { computeMilestones } from "@shared/po-milestones";
+import { productsGroupedByCategory, getProductById } from "@shared/product-catalog";
+import { BRANDING_METHODS } from "@shared/branding-methods";
 import {
   ArrowLeft, FileText, ExternalLink, Upload, Download,
-  Check, X, MessageSquare, Printer, Plus, Trash2, Sparkles,
+  Check, X, MessageSquare, Printer, Plus, Trash2, Sparkles, Ruler,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -28,10 +30,12 @@ interface OrderItem {
   currency: string;
   productColors: { hex: string; name?: string }[] | null;
   brandingMethod: string | null;
+  productType: string | null;
+  material: string | null;
   frontDesignUrl: string | null;
   backDesignUrl: string | null;
   elementUrls: { name: string; url: string }[] | null;
-  gradeGroup: string | null;
+  gradeGroup: string | null; // deprecated — no longer shown
   designNotes: string | null;
 }
 
@@ -431,24 +435,11 @@ export default function AdminOrderDetail() {
           <StatusBadge status={order.status} />
           {order.pipelineStage && <StageBadge stage={order.pipelineStage} />}
         </div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          {order.driveFolderUrl && (
-            <a
-              href={order.driveFolderUrl}
-              target="_blank"
-              rel="noreferrer"
-              title={order.driveFolderName || "Drive folder"}
-              style={{ padding: "8px 14px", fontSize: "12px", fontWeight: 600, background: "rgba(249,115,22,0.1)", color: "#f97316", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "6px", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}
-            >
-              File Vault ↗
-            </a>
-          )}
-          <Link href={`/admin/orders/${order.id}/po`}>
-            <button style={{ padding: "8px 16px", fontSize: "12px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
-              <Printer size={14} /> View / Print PO
-            </button>
-          </Link>
-        </div>
+        <Link href={`/admin/orders/${order.id}/po`}>
+          <button style={{ padding: "8px 16px", fontSize: "12px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
+            <Printer size={14} /> View / Print PO
+          </button>
+        </Link>
       </div>
 
       {/* ──── PO Details ──── */}
@@ -581,11 +572,74 @@ export default function AdminOrderDetail() {
           return (
             <div key={item.id} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "10px", padding: "20px", marginBottom: "16px" }}>
               {/* Item header */}
+              <div style={{ display: "flex", gap: "12px", marginBottom: "12px", flexWrap: "wrap" }}>
+                <Field label="Product" style={{ flex: 2 }}>
+                  <select
+                    value={item.productType || ""}
+                    onChange={(e) => {
+                      const p = getProductById(e.target.value);
+                      updateItem.mutate({
+                        itemId: item.id,
+                        productType: e.target.value,
+                        ...(p ? { productName: p.name, material: item.material || p.defaultMaterial } : {}),
+                      });
+                    }}
+                    style={{ ...inputStyle, width: "100%" }}
+                  >
+                    <option value="" style={{ background: "#111" }}>
+                      {item.productName || "— Select product —"}
+                    </option>
+                    {Object.entries(productsGroupedByCategory()).map(([category, products]) => (
+                      <optgroup key={category} label={category}>
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id} style={{ background: "#111" }}>{p.name}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Material" style={{ flex: 2 }}>
+                  <EditableField
+                    value={item.material}
+                    onSave={(v) => updateItem.mutate({ itemId: item.id, material: v })}
+                    placeholder={getProductById(item.productType)?.defaultMaterial || "Fabric / weight / finish"}
+                  />
+                </Field>
+                <Field label="Branding Application" style={{ flex: 1.4 }}>
+                  <select
+                    value={item.brandingMethod || ""}
+                    onChange={(e) => updateItem.mutate({ itemId: item.id, brandingMethod: e.target.value })}
+                    style={{ ...inputStyle, width: "100%" }}
+                  >
+                    <option value="" style={{ background: "#111" }}>— Select —</option>
+                    {BRANDING_METHODS.map((m) => (
+                      <option key={m} value={m} style={{ background: "#111" }}>{m}</option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+
+              {/* Sideline NZ size guide for the selected product type */}
+              {(() => {
+                const product = getProductById(item.productType);
+                if (!product) return null;
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", padding: "8px 10px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: "6px", marginBottom: "12px" }}>
+                    <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.6px", color: "rgba(255,255,255,0.4)", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <Ruler size={10} /> Sideline NZ Size Guide
+                    </span>
+                    {product.sizes.map((s) => (
+                      <span key={s} style={{ padding: "2px 8px", fontSize: "11px", fontWeight: 600, color: "#fff", background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.2)", borderRadius: "4px" }}>
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Colours chip row (moved from header so it gets its own breathing space) */}
               <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
-                <Field label="Product" style={{ flex: 2 }}><EditableField value={item.productName} onSave={(v) => updateItem.mutate({ itemId: item.id, productName: v })} /></Field>
-                <Field label="Grade" style={{ flex: 1 }}><EditableField value={item.gradeGroup} onSave={(v) => updateItem.mutate({ itemId: item.id, gradeGroup: v })} placeholder="Grade" /></Field>
-                <Field label="Branding" style={{ flex: 1 }}><EditableField value={item.brandingMethod} onSave={(v) => updateItem.mutate({ itemId: item.id, brandingMethod: v })} placeholder="Method" /></Field>
-                <Field label="Colours" style={{ flex: 1.4 }}>
+                <Field label="Colours" style={{ flex: 1 }}>
                   <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                     {(item.productColors ?? []).map((c, i) => (
                       <span

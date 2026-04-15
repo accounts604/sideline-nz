@@ -222,6 +222,118 @@ export interface DriveFile {
   size?: string;
 }
 
+/**
+ * Find a sub-folder by name inside a parent. Used to route garment-line
+ * uploads into the canonical sub-folders (e.g. "02. Mockups", "04. Artwork").
+ */
+export async function findSubfolderByName(parentId: string, name: string): Promise<string | null> {
+  const q = [
+    `name = '${name.replace(/'/g, "\\'")}'`,
+    `'${parentId}' in parents`,
+    `mimeType = 'application/vnd.google-apps.folder'`,
+    `trashed = false`,
+  ].join(" and ");
+  const res = await driveFetch(`/files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`);
+  if (!res || !res.ok) return null;
+  const data = await res.json();
+  return data.files?.[0]?.id || null;
+}
+
+/**
+ * Mirror a public blob URL into a PO's Drive folder. Used to keep every
+ * asset uploaded on a garment line in the same place the team already
+ * browses from the Vault. Idempotent: if a file with the same name already
+ * exists in the target folder we skip (Vercel Blob suffix handles uniqueness
+ * upstream, so same URL → same filename → skip the copy).
+ *
+ * Returns the Drive file id, or null if Drive isn't configured / upload failed.
+ */
+export async function mirrorBlobToPoFolder({
+  poFolderId,
+  subFolderName,
+  blobUrl,
+  fileName,
+}: {
+  poFolderId: string;
+  subFolderName?: string; // e.g. "02. Mockups"
+  blobUrl: string;
+  fileName?: string;
+}): Promise<string | null> {
+  const token = await getAccessToken();
+  if (!token) return null;
+
+  let targetFolderId = poFolderId;
+  if (subFolderName) {
+    const sub = await findSubfolderByName(poFolderId, subFolderName);
+    if (sub) targetFolderId = sub;
+    // If the sub-folder doesn't exist (e.g. admin deleted it), we fall back
+    // to the PO root rather than erroring — Drive stays consistent with
+    // whatever the admin has set up.
+  }
+
+  try {
+    const blobRes = await fetch(blobUrl);
+    if (!blobRes.ok) {
+      console.error("[Drive] mirror: blob fetch failed:", blobRes.status);
+      return null;
+    }
+    const contentType = blobRes.headers.get("content-type") || "application/octet-stream";
+    const buf = Buffer.from(await blobRes.arrayBuffer());
+
+    const name = fileName || blobUrl.split("/").pop()?.split("?")[0] || "file";
+
+    // Deduplicate: if a file of the same name already lives in this folder
+    // (because the admin pressed upload twice on the same URL), skip the copy.
+    const existingQ = [
+      `name = '${name.replace(/'/g, "\\'")}'`,
+      `'${targetFolderId}' in parents`,
+      `trashed = false`,
+    ].join(" and ");
+    const existingRes = await driveFetch(`/files?q=${encodeURIComponent(existingQ)}&fields=files(id)&pageSize=1`);
+    if (existingRes?.ok) {
+      const existingData = await existingRes.json();
+      if (existingData.files?.[0]?.id) return existingData.files[0].id;
+    }
+
+    // Multipart upload: metadata part + media part
+    const boundary = `--sideline-${Date.now().toString(36)}`;
+    const metadata = { name, parents: [targetFolderId] };
+    const metadataPart = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`;
+    const mediaHeader = `--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`;
+    const closing = `\r\n--${boundary}--`;
+
+    const body = Buffer.concat([
+      Buffer.from(metadataPart, "utf-8"),
+      Buffer.from(mediaHeader, "utf-8"),
+      buf,
+      Buffer.from(closing, "utf-8"),
+    ]);
+
+    const uploadRes = await fetch(
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": `multipart/related; boundary=${boundary}`,
+          "Content-Length": String(body.length),
+        },
+        body,
+      },
+    );
+
+    if (!uploadRes.ok) {
+      console.error("[Drive] multipart upload failed:", uploadRes.status, await uploadRes.text());
+      return null;
+    }
+    const out = await uploadRes.json();
+    return out.id || null;
+  } catch (err) {
+    console.error("[Drive] mirror error:", err);
+    return null;
+  }
+}
+
 export async function listFilesInFolder(folderId: string): Promise<DriveFile[]> {
   const q = [
     `'${folderId}' in parents`,

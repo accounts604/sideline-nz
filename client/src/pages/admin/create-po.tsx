@@ -3,16 +3,28 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
 import { useLocation, Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
-import { ArrowLeft, Plus, Trash2, FileText, Sparkles, Building2, User as UserIcon, CalendarClock } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FileText, Sparkles, Building2, User as UserIcon, CalendarClock, Ruler } from "lucide-react";
 import { computeMilestones } from "@shared/po-milestones";
+import { SIDELINE_PRODUCTS, productsGroupedByCategory, getProductById } from "@shared/product-catalog";
+import { BRANDING_METHODS } from "@shared/branding-methods";
 
 interface POItem {
-  productName: string;
+  productType: string;           // canonical id from product-catalog
+  productName: string;           // label stored on the PO (from catalog)
+  material: string;              // overrideable from catalog default
   quantity: number;
   unitAmount: number;
-  gradeGroup: string;
   brandingMethod: string;
 }
+
+const EMPTY_ITEM: POItem = {
+  productType: "",
+  productName: "",
+  material: "",
+  quantity: 1,
+  unitAmount: 0,
+  brandingMethod: BRANDING_METHODS[0],
+};
 
 interface GhlSuggestion {
   id: string;
@@ -107,9 +119,7 @@ export default function AdminCreatePO() {
   };
 
   // Items
-  const [items, setItems] = useState<POItem[]>([
-    { productName: "", quantity: 1, unitAmount: 0, gradeGroup: "", brandingMethod: "Full Sublimation" },
-  ]);
+  const [items, setItems] = useState<POItem[]>([{ ...EMPTY_ITEM }]);
 
   // "Enough detail" to preview the reference = at least one product line is named
   // AND there is either an account/company name or a customer name to tie it to.
@@ -153,7 +163,16 @@ export default function AdminCreatePO() {
         deliveryAddress: deliveryAddress || undefined,
         deliveryEmail: deliveryEmail || undefined,
         deliveryPhone: deliveryPhone || undefined,
-        items: items.filter(i => i.productName),
+        items: items
+          .filter((i) => i.productName)
+          .map((i) => ({
+            productName: i.productName,
+            productType: i.productType || undefined,
+            material: i.material || undefined,
+            quantity: i.quantity,
+            unitAmount: i.unitAmount,
+            brandingMethod: i.brandingMethod,
+          })),
       });
       return res.json();
     },
@@ -163,7 +182,7 @@ export default function AdminCreatePO() {
   });
 
   const addItem = () => {
-    setItems([...items, { productName: "", quantity: 1, unitAmount: 0, gradeGroup: "", brandingMethod: "Full Sublimation" }]);
+    setItems([...items, { ...EMPTY_ITEM }]);
   };
 
   const removeItem = (idx: number) => {
@@ -176,6 +195,26 @@ export default function AdminCreatePO() {
     (updated[idx] as any)[field] = value;
     setItems(updated);
   };
+
+  // When the product dropdown changes, backfill productName + default material
+  // automatically — admin can still tweak the material for custom specs.
+  const selectProduct = (idx: number, productTypeId: string) => {
+    const p = getProductById(productTypeId);
+    if (!p) {
+      updateItem(idx, "productType", productTypeId);
+      return;
+    }
+    const updated = [...items];
+    updated[idx] = {
+      ...updated[idx],
+      productType: p.id,
+      productName: p.name,
+      material: updated[idx].material || p.defaultMaterial,
+    };
+    setItems(updated);
+  };
+
+  const productGroups = productsGroupedByCategory();
 
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: "10px 12px", fontSize: "13px",
@@ -489,48 +528,82 @@ export default function AdminCreatePO() {
             </button>
           </div>
 
-          {items.map((item, idx) => (
-            <div key={idx} style={{ padding: "16px 24px", borderBottom: "1px solid rgba(255,255,255,0.04)", display: "flex", gap: "12px", alignItems: "flex-end" }}>
-              <div style={{ flex: 2 }}>
-                <label style={labelStyle}>Product Name</label>
-                <input value={item.productName} onChange={(e) => updateItem(idx, "productName", e.target.value)}
-                  placeholder="e.g. Sublimated Rugby Jersey" style={inputStyle} />
+          {items.map((item, idx) => {
+            const product = getProductById(item.productType);
+            return (
+              <div key={idx} style={{ padding: "16px 24px", borderBottom: "1px solid rgba(255,255,255,0.04)", display: "flex", flexDirection: "column", gap: "12px" }}>
+                {/* Row 1: product dropdown, material, branding, qty, unit price, remove */}
+                <div style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
+                  <div style={{ flex: 2 }}>
+                    <label style={labelStyle}>Product</label>
+                    <select
+                      value={item.productType}
+                      onChange={(e) => selectProduct(idx, e.target.value)}
+                      style={inputStyle}
+                    >
+                      <option value="" style={{ background: "#111" }}>— Select a product —</option>
+                      {Object.entries(productGroups).map(([category, products]) => (
+                        <optgroup key={category} label={category}>
+                          {products.map((p) => (
+                            <option key={p.id} value={p.id} style={{ background: "#111" }}>{p.name}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ flex: 2 }}>
+                    <label style={labelStyle}>Material Spec</label>
+                    <input
+                      value={item.material}
+                      onChange={(e) => updateItem(idx, "material", e.target.value)}
+                      placeholder={product?.defaultMaterial || "e.g. 180gsm Interlock Polyester"}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div style={{ flex: 2 }}>
+                    <label style={labelStyle}>Branding Application</label>
+                    <select value={item.brandingMethod} onChange={(e) => updateItem(idx, "brandingMethod", e.target.value)} style={inputStyle}>
+                      {BRANDING_METHODS.map((m) => (
+                        <option key={m} value={m} style={{ background: "#111" }}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ width: "90px" }}>
+                    <label style={labelStyle}>Qty</label>
+                    <input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(idx, "quantity", parseInt(e.target.value) || 1)} style={inputStyle} />
+                  </div>
+                  <div style={{ width: "110px" }}>
+                    <label style={labelStyle}>Unit ($)</label>
+                    <input type="number" min={0} step={0.01} value={(item.unitAmount / 100).toFixed(2)}
+                      onChange={(e) => updateItem(idx, "unitAmount", Math.round(parseFloat(e.target.value || "0") * 100))}
+                      style={inputStyle} />
+                  </div>
+                  <button onClick={() => removeItem(idx)} disabled={items.length <= 1}
+                    style={{
+                      padding: "10px", background: "none", border: "none",
+                      color: items.length > 1 ? "rgba(239,68,68,0.6)" : "rgba(255,255,255,0.1)",
+                      cursor: items.length > 1 ? "pointer" : "default",
+                    }}>
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+
+                {/* Row 2: Sideline NZ size guide for the selected product */}
+                {product && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", padding: "8px 10px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: "6px" }}>
+                    <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.6px", color: "rgba(255,255,255,0.4)", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <Ruler size={10} /> Size Guide
+                    </span>
+                    {product.sizes.map((s) => (
+                      <span key={s} style={{ padding: "2px 8px", fontSize: "11px", fontWeight: 600, color: "#fff", background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.2)", borderRadius: "4px" }}>
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Grade/Group</label>
-                <input value={item.gradeGroup} onChange={(e) => updateItem(idx, "gradeGroup", e.target.value)}
-                  placeholder="e.g. Grade 6,7,8" style={inputStyle} />
-              </div>
-              <div style={{ width: "100px" }}>
-                <label style={labelStyle}>Quantity</label>
-                <input type="number" min={1} value={item.quantity} onChange={(e) => updateItem(idx, "quantity", parseInt(e.target.value) || 1)} style={inputStyle} />
-              </div>
-              <div style={{ width: "120px" }}>
-                <label style={labelStyle}>Unit Price ($)</label>
-                <input type="number" min={0} step={0.01} value={(item.unitAmount / 100).toFixed(2)}
-                  onChange={(e) => updateItem(idx, "unitAmount", Math.round(parseFloat(e.target.value || "0") * 100))}
-                  style={inputStyle} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Branding Method</label>
-                <select value={item.brandingMethod} onChange={(e) => updateItem(idx, "brandingMethod", e.target.value)} style={inputStyle}>
-                  <option value="Full Sublimation" style={{ background: "#111" }}>Full Sublimation</option>
-                  <option value="Screen Print" style={{ background: "#111" }}>Screen Print</option>
-                  <option value="Embroidery" style={{ background: "#111" }}>Embroidery</option>
-                  <option value="Heat Transfer" style={{ background: "#111" }}>Heat Transfer</option>
-                  <option value="DTG Print" style={{ background: "#111" }}>DTG Print</option>
-                </select>
-              </div>
-              <button onClick={() => removeItem(idx)} disabled={items.length <= 1}
-                style={{
-                  padding: "10px", background: "none", border: "none",
-                  color: items.length > 1 ? "rgba(239,68,68,0.6)" : "rgba(255,255,255,0.1)",
-                  cursor: items.length > 1 ? "pointer" : "default",
-                }}>
-                <Trash2 size={16} />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

@@ -12,6 +12,7 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("customer"), // "admin" | "customer" | "supplier"
   teamName: text("team_name"),
   contactPhone: text("contact_phone"),
+  ccEmail: text("cc_email"), // Supplier secondary contact (CC on PO emails)
   stripeCustomerId: text("stripe_customer_id"),
   ghlContactId: text("ghl_contact_id"),
   emailVerified: boolean("email_verified").default(false),
@@ -144,11 +145,13 @@ export const orderItems = pgTable("order_items", {
   currency: text("currency").notNull().default("nzd"),
   // PO product-line fields
   productColors: jsonb("product_colors"), // [{ hex: "#333561", name: "Navy" }]
-  brandingMethod: text("branding_method"), // "Full Sublimation", "Screen Print", "Embroidery", etc.
+  brandingMethod: text("branding_method"), // See shared/branding-methods.ts
+  productType: text("product_type"), // Canonical product id from shared/product-catalog.ts
+  material: text("material"), // Garment material / fabric spec (e.g. "180gsm Interlock Polyester")
   frontDesignUrl: text("front_design_url"), // Front design proof image
   backDesignUrl: text("back_design_url"), // Back design proof image
   elementUrls: jsonb("element_urls"), // [{ name: "Onewhero RFC", url: "..." }, { name: "Summit Homes", url: "..." }]
-  gradeGroup: text("grade_group"), // "Grade 6,7,8", "Grade 9", "Grade 13", "Seniors"
+  gradeGroup: text("grade_group"), // DEPRECATED — kept for back-compat; no longer shown in UI (2026-04-16)
   designNotes: text("design_notes"), // Any notes about this product line
 });
 

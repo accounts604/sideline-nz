@@ -16,6 +16,7 @@ import {
   listFilesInFolder,
   isDriveConfigured,
   buildClientFolderName,
+  mirrorBlobToPoFolder,
 } from "../google-drive";
 import { extractColorsFromImage } from "../mockup/color-extract";
 import {
@@ -627,6 +628,9 @@ router.get("/orders/:id/invoice", async (req, res) => {
 const updateItemSchema = z.object({
   productColors: z.array(z.object({ hex: z.string(), name: z.string().optional() })).optional(),
   brandingMethod: z.string().optional(),
+  productType: z.string().optional(),
+  material: z.string().optional(),
+  productName: z.string().optional(),
   frontDesignUrl: z.string().optional(),
   backDesignUrl: z.string().optional(),
   elementUrls: z.array(z.object({ name: z.string(), url: z.string() })).optional(),
@@ -641,11 +645,35 @@ router.patch("/orders/:id/items/:itemId", async (req, res) => {
     const updated = await storage.updateOrderItem(req.params.itemId, data);
     if (!updated) return res.status(404).json({ error: "Item not found" });
 
+    // Mirror any new design-image URL into the PO's Drive folder.
+    // Fire-and-forget — we don't block the PATCH response on Drive.
+    const mirrored: string[] = [];
+    if (data.frontDesignUrl) mirrored.push(data.frontDesignUrl);
+    if (data.backDesignUrl) mirrored.push(data.backDesignUrl);
+    if (data.elementUrls?.length) mirrored.push(...data.elementUrls.map((e) => e.url));
+    if (mirrored.length) {
+      (async () => {
+        const [ord] = await db
+          .select({ id: orders.id, driveFolderId: orders.driveFolderId })
+          .from(orders)
+          .where(eq(orders.id, req.params.id))
+          .limit(1);
+        if (!ord?.driveFolderId) return;
+        for (const url of mirrored) {
+          await mirrorBlobToPoFolder({
+            poFolderId: ord.driveFolderId,
+            subFolderName: "02. Mockups",
+            blobUrl: url,
+          });
+        }
+      })().catch((err) => console.error("[item-patch] Drive mirror failed:", err));
+    }
+
     await storage.logOrderActivity({
       orderId: req.params.id,
       userId: user.userId,
       action: "item_updated",
-      details: { itemId: req.params.itemId, fields: Object.keys(data) },
+      details: { itemId: req.params.itemId, fields: Object.keys(data), mirroredCount: mirrored.length },
     });
 
     res.json(updated);
@@ -745,10 +773,12 @@ const createPoSchema = z.object({
   deliveryPhone: z.string().optional(),
   items: z.array(z.object({
     productName: z.string(),
+    productType: z.string().optional(),
+    material: z.string().optional(),
     quantity: z.number().int().min(1),
     unitAmount: z.number().int().min(0),
-    gradeGroup: z.string().optional(),
     brandingMethod: z.string().optional(),
+    gradeGroup: z.string().optional(), // deprecated but still accepted
   })).min(1),
 });
 
@@ -810,6 +840,8 @@ router.post("/orders/create-po", async (req, res) => {
         productId: "manual",
         priceId: "manual",
         productName: item.productName,
+        productType: item.productType ?? null,
+        material: item.material ?? null,
         quantity: item.quantity,
         unitAmount: item.unitAmount,
         currency: "nzd",
