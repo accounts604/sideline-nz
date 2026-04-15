@@ -473,7 +473,7 @@ export default function AdminOrderDetail() {
           return (
             <div style={{ marginTop: "18px", background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.15)", borderRadius: "8px", padding: "14px 18px" }}>
               <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.8px", color: "rgba(249,115,22,0.9)", marginBottom: "10px", fontWeight: 600 }}>
-                Guard-rail schedule — working backwards from customer due date
+                35-day build schedule — anchored to customer due date
               </div>
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                 {ms.map((m) => {
@@ -483,14 +483,14 @@ export default function AdminOrderDetail() {
                   const isDue = m.key === "door_to_customer";
                   return (
                     <div key={m.key} style={{
-                      flex: "1 1 180px",
+                      flex: "1 1 160px",
                       padding: "10px 12px",
                       background: isDue ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.03)",
                       border: `1px solid ${isDue ? "rgba(34,197,94,0.3)" : isPast ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.06)"}`,
                       borderRadius: "6px",
                     }}>
                       <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>
-                        {m.daysFromDue === 0 ? "Due" : `${m.daysFromDue}d`}
+                        Day {m.dayNumber}
                       </div>
                       <div style={{ fontSize: "13px", fontWeight: 600, color: "#fff", marginBottom: "2px" }}>{m.label}</div>
                       <div style={{ fontSize: "11px", color: isDue ? "#22c55e" : isPast ? "#ef4444" : "rgba(255,255,255,0.5)", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>

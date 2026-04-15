@@ -1,33 +1,50 @@
 // PO guard-rail milestones — computed backwards from the customer's due date.
 //
-// Romero's rule (2026-04-16): due date = the day the customer needs kit in hand
-// ("Door to Customer"). Every earlier milestone is a cumulative delta working
-// backwards so the team has a hard internal deadline for each stage:
+// Romero's rule (2026-04-16): a PO runs on a 35-day forward schedule where
+// Day 1 = Design Proof sent and Day 35 = customer receives goods. The admin
+// UI stores the customer's due date; this file converts that into the full
+// 7-stage timeline. Days below are forward-from-start; offsets are computed
+// automatically so "day X of a 35-day build" == "due date − (35−X) days".
 //
-//   Door to Customer         (= due date)
-//   Arrive at Sideline       (due − 3 days)   ← Sideline receives from producer
-//   Ship from Production     (due − 13 days)  ← producer dispatches
-//   Photos / Final Proof     (due − 25 days)  ← pro photos + final design proof
-//   Design Proof             (due − 58 days)  ← first design proof sent
+//   Day 1  — Design Proof sent
+//   Day 2  — Sample Production starts
+//   Day 7  — Samples approved, start bulk production
+//   Day 19 — Photos & Final Proof
+//   Day 21 — Shipped from Production
+//   Day 30 — Goods received at Sideline
+//   Day 35 — Customer receives goods (due date)
 //
-// The deltas are cumulative: Arrive−3, Ship−10 before Arrive, Photos−12 before
-// Ship, Design Proof−33 before Photos. If Sideline's lead times change, bump
-// the numbers here and the whole admin UI updates.
+// If Sideline's build cycle changes, update PO_MILESTONE_DAYS below and the
+// whole admin UI updates.
 
 export interface PoMilestone {
-  key: "design_proof" | "photos_final_proof" | "ship_production" | "arrive_sideline" | "door_to_customer";
+  key:
+    | "design_proof"
+    | "sample_production"
+    | "samples_approved"
+    | "photos_final_proof"
+    | "ship_production"
+    | "arrive_sideline"
+    | "door_to_customer";
   label: string;
   description: string;
   date: string; // ISO yyyy-mm-dd
+  dayNumber: number; // forward day count starting at 1
   daysFromDue: number; // negative integer; 0 for due date itself
 }
 
-export const PO_MILESTONE_OFFSETS = {
-  designProofDaysBeforeDue: 58,
-  photosDaysBeforeDue: 25,
-  shipProductionDaysBeforeDue: 13,
-  arriveSidelineDaysBeforeDue: 3,
+// Forward-from-start day numbers. Total PO cycle = the largest value here.
+export const PO_MILESTONE_DAYS = {
+  designProof: 1,
+  sampleProduction: 2,
+  samplesApproved: 7,
+  photosFinalProof: 19,
+  shipProduction: 21,
+  arriveSideline: 30,
+  doorToCustomer: 35,
 } as const;
+
+const TOTAL_DAYS = PO_MILESTONE_DAYS.doorToCustomer;
 
 function toISODate(d: Date): string {
   // yyyy-mm-dd in local time — Sideline is NZ-only, timezone drift doesn't matter
@@ -48,48 +65,39 @@ function addDays(d: Date, days: number): Date {
  * Given a customer due date (ISO string yyyy-mm-dd OR Date), compute every
  * upstream milestone. Earliest first (design proof → delivery).
  */
+/**
+ * Given a customer due date (ISO string yyyy-mm-dd OR Date), compute every
+ * upstream milestone. Earliest first (design proof → delivery).
+ */
 export function computeMilestones(dueDate: string | Date | null | undefined): PoMilestone[] | null {
   if (!dueDate) return null;
   const base = typeof dueDate === "string" ? new Date(dueDate + "T00:00:00") : new Date(dueDate);
   if (Number.isNaN(base.getTime())) return null;
 
-  const o = PO_MILESTONE_OFFSETS;
+  const d = PO_MILESTONE_DAYS;
+  const dateForDay = (day: number) => toISODate(addDays(base, day - TOTAL_DAYS));
+
+  const make = (
+    key: PoMilestone["key"],
+    day: number,
+    label: string,
+    description: string,
+  ): PoMilestone => ({
+    key,
+    label,
+    description,
+    date: dateForDay(day),
+    dayNumber: day,
+    daysFromDue: day - TOTAL_DAYS,
+  });
 
   return [
-    {
-      key: "design_proof",
-      label: "Design Proof",
-      description: "First design proof sent to client.",
-      date: toISODate(addDays(base, -o.designProofDaysBeforeDue)),
-      daysFromDue: -o.designProofDaysBeforeDue,
-    },
-    {
-      key: "photos_final_proof",
-      label: "Photos & Final Proof",
-      description: "Professional photos taken; final design proof locked.",
-      date: toISODate(addDays(base, -o.photosDaysBeforeDue)),
-      daysFromDue: -o.photosDaysBeforeDue,
-    },
-    {
-      key: "ship_production",
-      label: "Ship from Production",
-      description: "Producer dispatches to Sideline.",
-      date: toISODate(addDays(base, -o.shipProductionDaysBeforeDue)),
-      daysFromDue: -o.shipProductionDaysBeforeDue,
-    },
-    {
-      key: "arrive_sideline",
-      label: "Arrive at Sideline",
-      description: "Stock received and QC'd at Sideline.",
-      date: toISODate(addDays(base, -o.arriveSidelineDaysBeforeDue)),
-      daysFromDue: -o.arriveSidelineDaysBeforeDue,
-    },
-    {
-      key: "door_to_customer",
-      label: "Door to Customer",
-      description: "Customer's due date — kit in their hands.",
-      date: toISODate(base),
-      daysFromDue: 0,
-    },
+    make("design_proof",       d.designProof,       "Design Proof",         "First design proof sent to client."),
+    make("sample_production",  d.sampleProduction,  "Sample Production",    "Sample production kicks off."),
+    make("samples_approved",   d.samplesApproved,   "Samples Approved",     "Samples signed off — bulk production starts."),
+    make("photos_final_proof", d.photosFinalProof,  "Photos & Final Proof", "Professional photos taken; final design proof locked."),
+    make("ship_production",    d.shipProduction,    "Shipped from Production", "Producer dispatches goods."),
+    make("arrive_sideline",    d.arriveSideline,    "Arrive at Sideline",   "Stock received and QC'd at Sideline."),
+    make("door_to_customer",   d.doorToCustomer,    "Door to Customer",     "Customer's due date — kit in their hands."),
   ];
 }

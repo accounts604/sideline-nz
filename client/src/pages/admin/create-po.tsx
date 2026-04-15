@@ -363,7 +363,7 @@ export default function AdminCreatePO() {
                   return (
                     <div style={{ marginTop: "12px", background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.15)", borderRadius: "8px", padding: "12px 14px" }}>
                       <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.8px", color: "rgba(249,115,22,0.9)", marginBottom: "8px", fontWeight: 600 }}>
-                        Guard-rail schedule (working backwards)
+                        Guard-rail schedule — 35-day build
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                         {ms.map((m) => (
@@ -373,8 +373,8 @@ export default function AdminCreatePO() {
                               <span style={{ fontWeight: m.key === "door_to_customer" ? 600 : 400 }}>{m.label}</span>
                             </span>
                             <span style={{ display: "flex", alignItems: "center", gap: "10px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                              <span style={{ color: "rgba(255,255,255,0.45)", fontSize: "11px" }}>
-                                {m.daysFromDue === 0 ? "DUE" : `${m.daysFromDue}d`}
+                              <span style={{ color: "rgba(255,255,255,0.45)", fontSize: "11px", minWidth: "42px", textAlign: "right" }}>
+                                Day {m.dayNumber}
                               </span>
                               <span>{m.date}</span>
                             </span>
