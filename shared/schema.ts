@@ -153,6 +153,7 @@ export const orderItems = pgTable("order_items", {
   elementUrls: jsonb("element_urls"), // [{ name: "Onewhero RFC", url: "..." }, { name: "Summit Homes", url: "..." }]
   gradeGroup: text("grade_group"), // DEPRECATED — kept for back-compat; no longer shown in UI (2026-04-16)
   designNotes: text("design_notes"), // Any notes about this product line
+  designBrief: text("design_brief"), // AI-generated description of design layout, positions, elements (Gemini)
 });
 
 export const insertOrderItemSchema = createInsertSchema(orderItems).omit({ id: true });

@@ -37,6 +37,7 @@ interface OrderItem {
   elementUrls: { name: string; url: string }[] | null;
   gradeGroup: string | null; // deprecated — no longer shown
   designNotes: string | null;
+  designBrief: string | null;
 }
 
 interface DesignFile {
@@ -327,13 +328,21 @@ export default function AdminOrderDetail() {
   });
 
   // AI colour extraction — Gemini reads the design image and writes the
-  // dominant hex+name set to item.productColors. Fires manually from the
-  // Colours column button OR automatically after a front-design upload.
+  // dominant hex+name set to item.productColors.
   const extractColors = useMutation({
     mutationFn: async ({ itemId, imageUrl, side }: { itemId: string; imageUrl?: string; side?: "front" | "back" }) => {
       const r = await apiRequest("POST", `/api/admin/orders/${params.id}/items/${itemId}/extract-colors`, {
         imageUrl, side, apply: true,
       });
+      return r.json();
+    },
+    onSuccess: invalidate,
+  });
+
+  // AI design brief — Gemini describes the design layout, positions, patterns
+  const generateBrief = useMutation({
+    mutationFn: async ({ itemId }: { itemId: string }) => {
+      const r = await apiRequest("POST", `/api/admin/orders/${params.id}/items/${itemId}/generate-brief`, {});
       return r.json();
     },
     onSuccess: invalidate,
@@ -809,10 +818,15 @@ export default function AdminOrderDetail() {
                     url={item.frontDesignUrl}
                     onUpload={(url) => {
                       updateItem.mutate({ itemId: item.id, frontDesignUrl: url });
-                      // Auto-extract colours on first front upload. Skipped if the
-                      // admin already set colours manually — we don't overwrite work.
+                      // Auto-extract colours + generate design brief on first front
+                      // upload. Skipped if already set — we don't overwrite work.
                       if (!item.productColors?.length) {
                         extractColors.mutate({ itemId: item.id, imageUrl: url, side: "front" });
+                      }
+                      if (!item.designBrief) {
+                        // Small delay so the item PATCH lands first (brief reads
+                        // from the saved frontDesignUrl on the server)
+                        setTimeout(() => generateBrief.mutate({ itemId: item.id }), 1500);
                       }
                     }}
                     vaultImages={designs.filter((d) => d.folder === "mockups" && d.mimeType?.startsWith("image/")).map((d) => ({ id: d.id, fileUrl: d.fileUrl, fileName: d.fileName }))}
@@ -896,6 +910,36 @@ export default function AdminOrderDetail() {
                   <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Design Notes</p>
                   <EditableField value={item.designNotes} onSave={(v) => updateItem.mutate({ itemId: item.id, designNotes: v })} placeholder="Notes…" multiline />
                 </div>
+              </div>
+
+              {/* AI Design Brief */}
+              <div style={{ marginTop: "12px", padding: "12px 14px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: item.designBrief ? "8px" : "0" }}>
+                  <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Sparkles size={10} style={{ color: "#f97316" }} /> Design Brief
+                    <span style={{ fontSize: "9px", opacity: 0.6, fontStyle: "italic", textTransform: "none", letterSpacing: "0" }}>powered by AI</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => generateBrief.mutate({ itemId: item.id })}
+                    disabled={generateBrief.isPending || (!item.frontDesignUrl && !item.backDesignUrl)}
+                    title={item.frontDesignUrl || item.backDesignUrl ? "Generate AI design brief from mockup images" : "Upload a design first"}
+                    style={{
+                      padding: "4px 10px", fontSize: "10px", fontWeight: 600,
+                      background: "rgba(249,115,22,0.08)", color: "#f97316",
+                      border: "1px solid rgba(249,115,22,0.25)", borderRadius: "999px",
+                      cursor: (item.frontDesignUrl || item.backDesignUrl) ? "pointer" : "not-allowed",
+                      opacity: (item.frontDesignUrl || item.backDesignUrl) ? 1 : 0.4,
+                    }}
+                  >
+                    {generateBrief.isPending && generateBrief.variables?.itemId === item.id ? "Analysing…" : item.designBrief ? "Regenerate" : "Generate"}
+                  </button>
+                </div>
+                {item.designBrief && (
+                  <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", lineHeight: "1.7", whiteSpace: "pre-wrap" }}>
+                    {item.designBrief}
+                  </div>
+                )}
               </div>
             </div>
           );

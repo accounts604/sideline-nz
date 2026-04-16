@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { ArrowLeft, Printer } from "lucide-react";
-import { SidelineMark } from "@/components/sideline-logo";
+import { computeMilestones } from "@shared/po-milestones";
 
 interface OrderItem {
   id: string;
@@ -13,6 +13,9 @@ interface OrderItem {
   currency: string;
   productColors: { hex: string; name?: string }[] | null;
   brandingMethod: string | null;
+  material: string | null;
+  productType: string | null;
+  designBrief: string | null;
   frontDesignUrl: string | null;
   backDesignUrl: string | null;
   elementUrls: { name: string; url: string }[] | null;
@@ -47,6 +50,13 @@ interface Order {
   deliveryAddress: string | null;
   deliveryEmail: string | null;
   deliveryPhone: string | null;
+  dueDate: string | null;
+  driveFolderUrl: string | null;
+  customerFirstName: string | null;
+  customerLastName: string | null;
+  customerPhone: string | null;
+  companyEmail: string | null;
+  companyPhone: string | null;
 }
 
 interface OrderDetail {
@@ -95,30 +105,44 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
 
       {/* Product info row — LEFT: details | CENTER: mockups together | RIGHT: size/count */}
       <div style={{ display: "flex" }}>
-        {/* Left: product details */}
-        <div style={{ width: "220px", padding: "14px 16px", fontSize: "12px", color: "#000" }}>
+        {/* Left: product specs */}
+        <div style={{ width: "240px", padding: "14px 16px", fontSize: "12px", color: "#000" }}>
           <div style={{ marginBottom: "10px" }}>
-            <div style={{ fontWeight: 700, marginBottom: "2px" }}>Product Name</div>
+            <div style={{ fontWeight: 700, marginBottom: "2px" }}>Product</div>
             <div>{item.productName}</div>
           </div>
+          {item.material && (
+            <div style={{ marginBottom: "10px" }}>
+              <div style={{ fontWeight: 700, marginBottom: "2px" }}>Material / Spec</div>
+              <div>{item.material}</div>
+            </div>
+          )}
+          {item.brandingMethod && (
+            <div style={{ marginBottom: "10px" }}>
+              <div style={{ fontWeight: 700, marginBottom: "2px" }}>Branding Application</div>
+              <div style={{ color: "#0ea5e9" }}>{item.brandingMethod}</div>
+            </div>
+          )}
           {item.productColors && item.productColors.length > 0 && (
             <div style={{ marginBottom: "10px" }}>
-              <div style={{ fontWeight: 700, marginBottom: "4px" }}>Product Colours</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <div style={{ fontWeight: 700, marginBottom: "4px" }}>Colour Palette</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                 {(item.productColors as { hex: string; name?: string }[]).map((c, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ width: "28px", height: "14px", background: c.hex, border: "1px solid #999", display: "inline-block" }} />
-                    <span style={{ fontSize: "11px" }}>{c.hex}</span>
+                    <span style={{ width: "28px", height: "16px", background: c.hex, border: "1px solid #bbb", borderRadius: "2px", display: "inline-block" }} />
+                    <span style={{ fontSize: "11px" }}>
+                      <strong>{c.name || "Unnamed"}</strong>
+                      <span style={{ color: "#888", marginLeft: "4px" }}>{c.hex}</span>
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
           )}
-          {item.brandingMethod && (
+          {item.designNotes && (
             <div>
-              <div style={{ fontWeight: 700 }}>Branding Method</div>
-              <div style={{ fontWeight: 700, marginBottom: "2px" }}>Customisation</div>
-              <div style={{ color: "#0ea5e9" }}>{item.brandingMethod}</div>
+              <div style={{ fontWeight: 700, marginBottom: "2px" }}>Notes</div>
+              <div style={{ fontSize: "11px", color: "#555" }}>{item.designNotes}</div>
             </div>
           )}
         </div>
@@ -181,6 +205,18 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
             </div>
           </div>
         </>
+      )}
+
+      {/* AI Design Brief — powered by Gemini */}
+      {item.designBrief && (
+        <div style={{ pageBreakInside: "avoid" }}>
+          <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center" }}>
+            Design Brief <span style={{ fontWeight: 400, fontSize: "9px", opacity: 0.6 }}>powered by AI</span>
+          </div>
+          <div style={{ padding: "12px 16px", fontSize: "11px", lineHeight: "1.6", color: "#333", whiteSpace: "pre-wrap" }}>
+            {item.designBrief}
+          </div>
+        </div>
       )}
 
       {/* Sizing Guide — flush below design specs */}
@@ -273,7 +309,7 @@ export default function PurchaseOrderView() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
           <div>
             <div style={{ marginBottom: "12px" }}>
-              <SidelineMark size={60} color="#000" />
+              <img src="/sideline-logo-vertical.png" alt="Sideline NZ" style={{ height: "70px", objectFit: "contain" }} />
             </div>
             <div style={{ fontSize: "11px", color: "#333", lineHeight: "1.6" }}>
               Sideline NZ (Sideline Custom Goods Ltd)<br />
@@ -345,6 +381,28 @@ export default function PurchaseOrderView() {
             </div>
           </div>
         </div>
+
+        {/* 35-day milestone schedule — shown when a due date is set */}
+        {order.dueDate && (() => {
+          const ms = computeMilestones(order.dueDate);
+          if (!ms) return null;
+          return (
+            <div style={{ marginBottom: "20px", pageBreakInside: "avoid" }}>
+              <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center" }}>
+                Production Schedule — 35-Day Build
+              </div>
+              <div style={{ display: "flex" }}>
+                {ms.map((m) => (
+                  <div key={m.key} style={{ flex: 1, textAlign: "center", padding: "10px 6px", borderRight: "1px solid #eee", fontSize: "10px" }}>
+                    <div style={{ fontWeight: 700, marginBottom: "2px" }}>Day {m.dayNumber}</div>
+                    <div style={{ fontWeight: 600, fontSize: "9px", marginBottom: "2px" }}>{m.label}</div>
+                    <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: "9px", color: "#555" }}>{m.date}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Mockup + logo gallery — shown when items have no inline design URLs.
             Mirrors the PO layout: black header, mockups in center, logos/elements on the side. */}

@@ -20,6 +20,7 @@ import {
   mirrorBlobToPoFolder,
 } from "../google-drive";
 import { extractColorsFromImage } from "../mockup/color-extract";
+import { generateDesignBrief } from "../mockup/design-brief";
 import {
   searchGhlContacts,
   findGhlContactByEmail,
@@ -666,6 +667,7 @@ const updateItemSchema = z.object({
   elementUrls: z.array(z.object({ name: z.string(), url: z.string() })).optional(),
   gradeGroup: z.string().optional(),
   designNotes: z.string().optional(),
+  designBrief: z.string().optional(),
 });
 
 router.patch("/orders/:id/items/:itemId", async (req, res) => {
@@ -771,6 +773,38 @@ router.post("/orders/:id/items/:itemId/extract-colors", async (req, res) => {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin extract-colors error:", err);
     res.status(500).json({ error: "Failed to extract colours" });
+  }
+});
+
+// POST /orders/:id/items/:itemId/generate-brief
+// AI design brief — Gemini reads front + back mockup images and writes a
+// structured description of the design layout. Stored on item.designBrief.
+router.post("/orders/:id/items/:itemId/generate-brief", async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const [item] = await db.select().from(orderItems).where(eq(orderItems.id, req.params.itemId)).limit(1);
+    if (!item) return res.status(404).json({ error: "Item not found" });
+
+    const imageUrls: string[] = [];
+    if (item.frontDesignUrl) imageUrls.push(item.frontDesignUrl);
+    if (item.backDesignUrl) imageUrls.push(item.backDesignUrl);
+    if (!imageUrls.length) return res.status(400).json({ error: "Upload front or back design first" });
+
+    const brief = await generateDesignBrief(imageUrls);
+    if (!brief) return res.status(502).json({ error: "Design brief generation failed — check GEMINI_API_KEY" });
+
+    await storage.updateOrderItem(req.params.itemId, { designBrief: brief } as any);
+    await storage.logOrderActivity({
+      orderId: req.params.id,
+      userId: user?.userId,
+      action: "design_brief_generated",
+      details: { itemId: req.params.itemId, wordCount: brief.split(/\s+/).length },
+    });
+
+    res.json({ brief });
+  } catch (err: any) {
+    console.error("Admin generate-brief error:", err);
+    res.status(500).json({ error: "Failed to generate design brief" });
   }
 });
 
