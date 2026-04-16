@@ -609,17 +609,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Dashboard stats
-  async getDashboardStats(): Promise<{ totalOrders: number; pendingOrders: number; pendingDesigns: number; totalCustomers: number }> {
+  async getDashboardStats() {
     const [totalOrders] = await db.select({ count: count() }).from(orders);
     const [pendingOrders] = await db.select({ count: count() }).from(orders).where(eq(orders.status, "pending"));
     const [pendingDesigns] = await db.select({ count: count() }).from(designFiles).where(eq(designFiles.status, "pending"));
     const [totalCustomers] = await db.select({ count: count() }).from(users).where(eq(users.role, "customer"));
+    const [bulkOrders] = await db.select({ count: count() }).from(orders).where(eq(orders.orderType, "bulk-order"));
+    const [teamStoreOrders] = await db.select({ count: count() }).from(orders).where(eq(orders.orderType, "team-store"));
+    const [sampleRuns] = await db.select({ count: count() }).from(orders).where(eq(orders.orderType, "sample-run"));
+    const [totalSuppliers] = await db.select({ count: count() }).from(users).where(eq(users.role, "supplier"));
+
+    // Pipeline stage breakdown (non-null stages only)
+    const stageRows = await db
+      .select({ stage: orders.pipelineStage, count: count() })
+      .from(orders)
+      .where(sql`${orders.pipelineStage} IS NOT NULL`)
+      .groupBy(orders.pipelineStage);
+    const byStage: Record<string, number> = {};
+    for (const r of stageRows) if (r.stage) byStage[r.stage] = r.count;
 
     return {
       totalOrders: totalOrders.count,
       pendingOrders: pendingOrders.count,
       pendingDesigns: pendingDesigns.count,
       totalCustomers: totalCustomers.count,
+      bulkOrders: bulkOrders.count,
+      teamStoreOrders: teamStoreOrders.count,
+      sampleRuns: sampleRuns.count,
+      totalSuppliers: totalSuppliers.count,
+      byStage,
     };
   }
 

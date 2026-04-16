@@ -1,13 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
 import { Link } from "wouter";
-import { ShoppingCart, Users, Palette, Clock, ArrowRight } from "lucide-react";
+import { ShoppingCart, Users, Palette, Clock, ArrowRight, Package, Store, FlaskConical, Truck } from "lucide-react";
+import { SIDELINE_PIPELINE_STAGES } from "@shared/pipeline";
 
 interface DashboardStats {
   totalOrders: number;
   pendingOrders: number;
   pendingDesigns: number;
   totalCustomers: number;
+  bulkOrders: number;
+  teamStoreOrders: number;
+  sampleRuns: number;
+  totalSuppliers: number;
+  byStage: Record<string, number>;
 }
 
 interface Order {
@@ -15,59 +21,49 @@ interface Order {
   orderNumber: string;
   customerEmail: string | null;
   customerName: string | null;
+  accountName: string | null;
   status: string;
   designStatus: string | null;
+  orderType: string | null;
+  pipelineStage: string | null;
+  dueDate: string | null;
   total: number;
   createdAt: string;
 }
 
+const ORDER_TYPE_STYLE: Record<string, { bg: string; color: string; label: string }> = {
+  "bulk-order": { bg: "rgba(168,85,247,0.15)", color: "#a855f7", label: "Bulk" },
+  "team-store": { bg: "rgba(59,130,246,0.15)", color: "#3b82f6", label: "Store" },
+  "sample-run": { bg: "rgba(234,179,8,0.15)", color: "#eab308", label: "Sample" },
+};
+
 function StatCard({ label, value, icon: Icon, href, color }: {
-  label: string;
-  value: number;
-  icon: React.ElementType;
-  href: string;
-  color: string;
+  label: string; value: number; icon: React.ElementType; href: string; color: string;
 }) {
   return (
     <Link href={href}>
       <div
-        style={{
-          background: "#111",
-          border: "1px solid rgba(255,255,255,0.06)",
-          borderRadius: "12px",
-          padding: "24px",
-          cursor: "pointer",
-          transition: "border-color 0.15s",
-        }}
+        style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px", cursor: "pointer", transition: "border-color 0.15s" }}
         onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"; }}
         onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"; }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-          <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: color, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Icon size={20} color="#fff" />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+          <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: color, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon size={18} color="#fff" />
           </div>
-          <ArrowRight size={16} color="rgba(255,255,255,0.3)" />
+          <ArrowRight size={14} color="rgba(255,255,255,0.2)" />
         </div>
-        <p style={{ fontSize: "28px", fontWeight: 700, color: "#fff", marginBottom: "4px" }}>{value}</p>
-        <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)" }}>{label}</p>
+        <p style={{ fontSize: "24px", fontWeight: 700, color: "#fff", marginBottom: "2px" }}>{value}</p>
+        <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)" }}>{label}</p>
       </div>
     </Link>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, { bg: string; text: string }> = {
-    pending: { bg: "rgba(234,179,8,0.15)", text: "#eab308" },
-    paid: { bg: "rgba(34,197,94,0.15)", text: "#22c55e" },
-    processing: { bg: "rgba(59,130,246,0.15)", text: "#3b82f6" },
-    shipped: { bg: "rgba(168,85,247,0.15)", text: "#a855f7" },
-    delivered: { bg: "rgba(34,197,94,0.15)", text: "#22c55e" },
-    cancelled: { bg: "rgba(239,68,68,0.15)", text: "#ef4444" },
-  };
-  const c = colors[status] || { bg: "rgba(255,255,255,0.06)", text: "rgba(255,255,255,0.5)" };
+function Badge({ bg, color, children }: { bg: string; color: string; children: React.ReactNode }) {
   return (
-    <span style={{ fontSize: "11px", fontWeight: 600, padding: "3px 8px", borderRadius: "4px", background: c.bg, color: c.text, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-      {status}
+    <span style={{ fontSize: "10px", fontWeight: 600, padding: "3px 7px", borderRadius: "4px", background: bg, color, textTransform: "uppercase", letterSpacing: "0.3px", whiteSpace: "nowrap" }}>
+      {children}
     </span>
   );
 }
@@ -78,69 +74,117 @@ export default function AdminDashboard() {
   });
 
   const { data: ordersData, isLoading: ordersLoading } = useQuery<{ orders: Order[]; total: number }>({
-    queryKey: ["/api/admin/orders?limit=5"],
+    queryKey: ["/api/admin/orders?limit=8"],
   });
+
+  const byStage = stats?.byStage || {};
 
   return (
     <AdminLayout>
-      <h1 style={{ fontSize: "24px", fontWeight: 700, color: "#fff", marginBottom: "8px" }}>Dashboard</h1>
-      <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.4)", marginBottom: "32px" }}>
-        Overview of your Sideline NZ operations
-      </p>
+      <h1 style={{ fontSize: "24px", fontWeight: 700, color: "#fff", marginBottom: "4px" }}>Dashboard</h1>
+      <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.4)", marginBottom: "28px" }}>Sideline NZ operations overview</p>
 
-      {/* Stats Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px", marginBottom: "40px" }}>
+      {/* ──── Top stat cards ──── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px", marginBottom: "28px" }}>
         <StatCard label="Total Orders" value={stats?.totalOrders ?? 0} icon={ShoppingCart} href="/admin/orders" color="rgba(59,130,246,0.8)" />
-        <StatCard label="Pending Orders" value={stats?.pendingOrders ?? 0} icon={Clock} href="/admin/orders?status=pending" color="rgba(234,179,8,0.8)" />
+        <StatCard label="Bulk Orders" value={stats?.bulkOrders ?? 0} icon={Package} href="/admin/orders" color="rgba(168,85,247,0.8)" />
+        <StatCard label="Team Stores" value={stats?.teamStoreOrders ?? 0} icon={Store} href="/admin/orders" color="rgba(59,130,246,0.8)" />
+        <StatCard label="Sample Runs" value={stats?.sampleRuns ?? 0} icon={FlaskConical} href="/admin/orders" color="rgba(234,179,8,0.8)" />
         <StatCard label="Pending Designs" value={stats?.pendingDesigns ?? 0} icon={Palette} href="/admin/designs" color="rgba(168,85,247,0.8)" />
         <StatCard label="Customers" value={stats?.totalCustomers ?? 0} icon={Users} href="/admin/customers" color="rgba(34,197,94,0.8)" />
+        <StatCard label="Suppliers" value={stats?.totalSuppliers ?? 0} icon={Truck} href="/admin/orders" color="rgba(249,115,22,0.8)" />
+        <StatCard label="Pending Orders" value={stats?.pendingOrders ?? 0} icon={Clock} href="/admin/orders?status=pending" color="rgba(234,179,8,0.8)" />
       </div>
 
-      {/* Recent Orders */}
+      {/* ──── Pipeline stage breakdown ──── */}
+      {Object.keys(byStage).length > 0 && (
+        <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "18px 20px", marginBottom: "28px" }}>
+          <h2 style={{ fontSize: "12px", fontWeight: 600, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "14px" }}>Pipeline</h2>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+            {SIDELINE_PIPELINE_STAGES.map((stage) => {
+              const count = byStage[stage] || 0;
+              return (
+                <div key={stage} style={{
+                  flex: "1 1 100px", textAlign: "center", padding: "10px 8px", borderRadius: "8px",
+                  background: count > 0 ? "rgba(249,115,22,0.06)" : "rgba(255,255,255,0.02)",
+                  border: `1px solid ${count > 0 ? "rgba(249,115,22,0.2)" : "rgba(255,255,255,0.04)"}`,
+                }}>
+                  <div style={{ fontSize: "20px", fontWeight: 700, color: count > 0 ? "#f97316" : "rgba(255,255,255,0.2)" }}>{count}</div>
+                  <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)", marginTop: "2px", lineHeight: "1.3" }}>{stage}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ──── Recent Orders ──── */}
       <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          <h2 style={{ fontSize: "16px", fontWeight: 600, color: "#fff" }}>Recent Orders</h2>
-          <Link href="/admin/orders">
-            <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)", cursor: "pointer" }}>View all &rarr;</span>
-          </Link>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <h2 style={{ fontSize: "14px", fontWeight: 600, color: "#fff" }}>Recent Orders</h2>
+          <Link href="/admin/orders"><span style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)", cursor: "pointer" }}>View all &rarr;</span></Link>
         </div>
 
         {ordersLoading || statsLoading ? (
-          <div style={{ padding: "40px", textAlign: "center", color: "rgba(255,255,255,0.3)" }}>Loading...</div>
+          <div style={{ padding: "40px", textAlign: "center", color: "rgba(255,255,255,0.3)", fontSize: "13px" }}>Loading...</div>
         ) : !ordersData?.orders?.length ? (
-          <div style={{ padding: "40px", textAlign: "center", color: "rgba(255,255,255,0.3)" }}>No orders yet</div>
+          <div style={{ padding: "40px", textAlign: "center", color: "rgba(255,255,255,0.3)", fontSize: "13px" }}>No orders yet</div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                  {["Order", "Customer", "Status", "Total", "Date"].map((h) => (
-                    <th key={h} style={{ padding: "12px 24px", textAlign: "left", fontSize: "11px", fontWeight: 600, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</th>
+                  {["Order", "Type", "Company", "Stage", "Status", "Due", "Date"].map((h) => (
+                    <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: "10px", fontWeight: 600, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {ordersData.orders.map((order) => (
-                  <tr key={order.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                    <td style={{ padding: "14px 24px" }}>
-                      <Link href={`/admin/orders/${order.id}`}>
-                        <span style={{ fontSize: "14px", color: "#fff", cursor: "pointer", fontWeight: 500 }}>{order.orderNumber}</span>
-                      </Link>
-                    </td>
-                    <td style={{ padding: "14px 24px", fontSize: "13px", color: "rgba(255,255,255,0.6)" }}>
-                      {order.customerName || order.customerEmail || "—"}
-                    </td>
-                    <td style={{ padding: "14px 24px" }}>
-                      <StatusBadge status={order.status} />
-                    </td>
-                    <td style={{ padding: "14px 24px", fontSize: "14px", color: "#fff", fontWeight: 500 }}>
-                      ${(order.total / 100).toFixed(2)}
-                    </td>
-                    <td style={{ padding: "14px 24px", fontSize: "13px", color: "rgba(255,255,255,0.4)" }}>
-                      {new Date(order.createdAt).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
+                {ordersData.orders.map((order) => {
+                  const typeStyle = ORDER_TYPE_STYLE[order.orderType || "bulk-order"] || ORDER_TYPE_STYLE["bulk-order"];
+                  return (
+                    <tr key={order.id}
+                      style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <td style={{ padding: "12px 16px" }}>
+                        <Link href={`/admin/orders/${order.id}`}>
+                          <span style={{ fontSize: "13px", color: "#fff", fontWeight: 600, cursor: "pointer", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                            {order.orderNumber}
+                          </span>
+                        </Link>
+                      </td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <Badge bg={typeStyle.bg} color={typeStyle.color}>{typeStyle.label}</Badge>
+                      </td>
+                      <td style={{ padding: "12px 16px", fontSize: "12px", color: "rgba(255,255,255,0.65)" }}>
+                        {order.accountName || order.customerName || order.customerEmail || "—"}
+                      </td>
+                      <td style={{ padding: "12px 16px" }}>
+                        {order.pipelineStage ? (
+                          <Badge bg="rgba(249,115,22,0.12)" color="#f97316">{order.pipelineStage}</Badge>
+                        ) : (
+                          <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.25)" }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <Badge
+                          bg={order.status === "processing" ? "rgba(59,130,246,0.15)" : order.status === "delivered" ? "rgba(34,197,94,0.15)" : "rgba(234,179,8,0.15)"}
+                          color={order.status === "processing" ? "#3b82f6" : order.status === "delivered" ? "#22c55e" : "#eab308"}
+                        >
+                          {order.status}
+                        </Badge>
+                      </td>
+                      <td style={{ padding: "12px 16px", fontSize: "11px", color: "rgba(255,255,255,0.5)", fontFamily: "ui-monospace, Menlo, monospace" }}>
+                        {order.dueDate || "—"}
+                      </td>
+                      <td style={{ padding: "12px 16px", fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>
+                        {new Date(order.createdAt).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

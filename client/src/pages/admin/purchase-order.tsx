@@ -46,6 +46,7 @@ interface Order {
   poReference: string | null;
   accountName: string | null;
   isRepeatOrder: boolean | null;
+  orderType: string | null;
   poComments: string | null;
   deliveryAttention: string | null;
   deliveryAddress: string | null;
@@ -348,8 +349,11 @@ export default function PurchaseOrderView() {
                   <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>{order.accountName || ""}</td>
                 </tr>
                 <tr>
-                  <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>New or Repeat Order:</td>
-                  <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>{order.isRepeatOrder ? "Repeat" : "New"}</td>
+                  <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>Order Type:</td>
+                  <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>
+                    {order.orderType === "team-store" ? "Team Store" : order.orderType === "sample-run" ? "Sample Run" : "Bulk Order"}
+                    {order.isRepeatOrder ? " (Repeat)" : ""}
+                  </td>
                 </tr>
                 <tr>
                   <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>Comments:</td>

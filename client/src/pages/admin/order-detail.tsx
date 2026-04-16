@@ -607,7 +607,13 @@ export default function AdminOrderDetail() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
           <Field label="PO Reference"><EditableField value={order.poReference} onSave={(v) => updateOrder.mutate({ poReference: v })} placeholder="PO-YYYY-NNNN" /></Field>
           <Field label="Account"><EditableField value={order.accountName} onSave={(v) => updateOrder.mutate({ accountName: v })} placeholder="Account name" /></Field>
-          <Field label="Comments"><EditableField value={order.poComments} onSave={(v) => updateOrder.mutate({ poComments: v })} placeholder="Notes" /></Field>
+          <Field label="Order Type">
+            <select value={order.orderType || "bulk-order"} onChange={(e) => updateOrder.mutate({ orderType: e.target.value })} style={{ ...inputStyle, width: "auto" }}>
+              <option value="bulk-order" style={{ background: "#111" }}>Bulk Order</option>
+              <option value="team-store" style={{ background: "#111" }}>Team Store</option>
+              <option value="sample-run" style={{ background: "#111" }}>Sample Run</option>
+            </select>
+          </Field>
           <Field label="Status">
             <select value={statusEdit || order.status} onChange={(e) => { setStatusEdit(e.target.value); updateOrder.mutate({ status: e.target.value }); }} style={{ ...inputStyle, width: "auto" }}>
               {["pending", "paid", "processing", "shipped", "delivered", "cancelled"].map((s) => <option key={s} value={s} style={{ background: "#111" }}>{s}</option>)}
