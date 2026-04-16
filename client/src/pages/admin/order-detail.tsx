@@ -74,6 +74,11 @@ interface Order {
   orderNumber: string;
   customerEmail: string | null;
   customerName: string | null;
+  customerFirstName: string | null;
+  customerLastName: string | null;
+  customerPhone: string | null;
+  companyEmail: string | null;
+  companyPhone: string | null;
   storeSlug: string;
   status: string;
   designStatus: string | null;
@@ -425,25 +430,122 @@ export default function AdminOrderDetail() {
 
   // ─── Render ──────────────────────────────────────────────────
 
+  // ─── Cockpit header — "where is this PO right now?" at a glance ───
+  // 7 read-at-a-glance fields: PO#, Company, Due, current milestone, stage,
+  // supplier, drive. Every field elsewhere on the page stays inline-editable
+  // exactly as before — this strip is reference, not entry.
+  const cockpitMilestone = (() => {
+    if (!order.dueDate) return null;
+    const ms = computeMilestones(order.dueDate);
+    if (!ms) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    // Next milestone not yet passed
+    const next = ms.find((m) => new Date(m.date + "T00:00:00") >= today) || ms[ms.length - 1];
+    return next;
+  })();
+
+  const supplierName = (() => {
+    const sid = selectedSupplierId || order.assignedSupplierId;
+    if (!sid) return null;
+    const s = (suppliers || []).find((x: any) => x.id === sid);
+    return s?.supplierName || s?.email || null;
+  })();
+
+  const primaryContact =
+    [order.customerFirstName, order.customerLastName].filter(Boolean).join(" ").trim() ||
+    order.customerName ||
+    order.customerEmail ||
+    "—";
+
   return (
     <AdminLayout>
-      {/* Header bar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <Link href="/admin/orders"><span style={{ color: "rgba(255,255,255,0.5)", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}><ArrowLeft size={14} /> Orders</span></Link>
-          <h1 style={{ fontSize: "20px", fontWeight: 700, margin: 0, color: "#fff" }}>{order.orderNumber}</h1>
-          <StatusBadge status={order.status} />
-          {order.pipelineStage && <StageBadge stage={order.pipelineStage} />}
-        </div>
-        <Link href={`/admin/orders/${order.id}/po`}>
-          <button style={{ padding: "8px 16px", fontSize: "12px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
-            <Printer size={14} /> View / Print PO
-          </button>
+      {/* Back link */}
+      <div style={{ marginBottom: "14px" }}>
+        <Link href="/admin/orders">
+          <span style={{ color: "rgba(255,255,255,0.5)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px" }}>
+            <ArrowLeft size={13} /> Orders
+          </span>
         </Link>
       </div>
 
+      {/* ──── Cockpit header (sticky) ──── */}
+      <div style={{
+        position: "sticky", top: 0, zIndex: 20,
+        background: "linear-gradient(180deg, rgba(10,22,40,0.98) 0%, rgba(10,22,40,0.95) 100%)",
+        backdropFilter: "blur(10px)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: "12px",
+        padding: "14px 18px",
+        marginBottom: "16px",
+        display: "flex", flexDirection: "column", gap: "10px",
+      }}>
+        {/* Top row — PO#, badges, actions */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+            <h1 style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "#fff", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+              {order.poReference || order.orderNumber}
+            </h1>
+            {order.accountName && <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.7)" }}>— {order.accountName}</span>}
+            <StatusBadge status={order.status} />
+            {order.pipelineStage && <StageBadge stage={order.pipelineStage} />}
+          </div>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            {order.driveFolderUrl && (
+              <a href={order.driveFolderUrl} target="_blank" rel="noreferrer"
+                style={{ padding: "7px 12px", fontSize: "11px", fontWeight: 600, background: "rgba(249,115,22,0.1)", color: "#f97316", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "6px", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                Drive <ExternalLink size={10} />
+              </a>
+            )}
+            <button
+              onClick={() => { setPortalMsg(null); raisePoMut.mutate(); }}
+              disabled={raisePoMut.isPending || (!selectedSupplierId && !order.assignedSupplierId)}
+              title={!order.assignedSupplierId && !selectedSupplierId ? "Assign a supplier in Portal Actions first" : "Dispatch PO to supplier"}
+              style={{
+                padding: "7px 14px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px",
+                background: (selectedSupplierId || order.assignedSupplierId) ? "#C9A84C" : "rgba(255,255,255,0.04)",
+                color: (selectedSupplierId || order.assignedSupplierId) ? "#0A1628" : "rgba(255,255,255,0.3)",
+                border: "none", borderRadius: "6px",
+                cursor: raisePoMut.isPending || (!selectedSupplierId && !order.assignedSupplierId) ? "not-allowed" : "pointer",
+              }}
+            >
+              {raisePoMut.isPending ? "Dispatching…" : "Dispatch to Supplier"}
+            </button>
+            <Link href={`/admin/orders/${order.id}/po`}>
+              <button style={{ padding: "7px 12px", fontSize: "11px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <Printer size={12} /> PDF
+              </button>
+            </Link>
+          </div>
+        </div>
+
+        {/* Bottom row — 5 at-a-glance cells */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "10px", fontSize: "12px" }}>
+          <CockpitCell label="Contact">
+            <span style={{ color: "#fff" }}>{primaryContact}</span>
+          </CockpitCell>
+          <CockpitCell label="Due">
+            {order.dueDate
+              ? <span style={{ color: "#fff", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{order.dueDate}</span>
+              : <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>}
+          </CockpitCell>
+          <CockpitCell label="Next milestone">
+            {cockpitMilestone
+              ? <span style={{ color: "#f97316" }}>{cockpitMilestone.label} · <span style={{ color: "rgba(255,255,255,0.5)" }}>Day {cockpitMilestone.dayNumber}</span></span>
+              : <span style={{ color: "rgba(255,255,255,0.3)" }}>set a due date</span>}
+          </CockpitCell>
+          <CockpitCell label="Supplier">
+            {supplierName
+              ? <span style={{ color: "#fff" }}>{supplierName}</span>
+              : <span style={{ color: "rgba(234,179,8,0.9)" }}>not assigned</span>}
+          </CockpitCell>
+          <CockpitCell label="Lines">
+            <span style={{ color: "#fff" }}>{items.length}</span>
+          </CockpitCell>
+        </div>
+      </div>
+
       {/* ──── PO Details ──── */}
-      <Section title="PO Details">
+      <Section title="PO Details" defaultOpen={false}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
           <Field label="PO Reference"><EditableField value={order.poReference} onSave={(v) => updateOrder.mutate({ poReference: v })} placeholder="PO-YYYY-NNNN" /></Field>
           <Field label="Account"><EditableField value={order.accountName} onSave={(v) => updateOrder.mutate({ accountName: v })} placeholder="Account name" /></Field>
@@ -510,21 +612,28 @@ export default function AdminOrderDetail() {
       </Section>
 
       {/* ──── Customer / Delivery ──── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
-        <Section title="Customer">
-          <Field label="Name"><EditableField value={order.customerName} onSave={(v) => updateOrder.mutate({ customerName: v })} placeholder="Customer name" /></Field>
+      <Section title="Customer" defaultOpen={false}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
+          <Field label="First Name"><EditableField value={order.customerFirstName} onSave={(v) => updateOrder.mutate({ customerFirstName: v })} placeholder="First name" /></Field>
+          <Field label="Last Name"><EditableField value={order.customerLastName} onSave={(v) => updateOrder.mutate({ customerLastName: v })} placeholder="Last name" /></Field>
+          <Field label="Phone"><EditableField value={order.customerPhone} onSave={(v) => updateOrder.mutate({ customerPhone: v })} placeholder="022..." /></Field>
           <Field label="Email"><EditableField value={order.customerEmail} onSave={(v) => updateOrder.mutate({ customerEmail: v })} placeholder="customer@email.com" /></Field>
-        </Section>
-        <Section title="Delivery Address">
+          <Field label="Company Email"><EditableField value={order.companyEmail} onSave={(v) => updateOrder.mutate({ companyEmail: v })} placeholder="accounts@club.co.nz" /></Field>
+          <Field label="Company Phone"><EditableField value={order.companyPhone} onSave={(v) => updateOrder.mutate({ companyPhone: v })} placeholder="09 ..." /></Field>
+        </div>
+      </Section>
+
+      <Section title="Delivery Address" defaultOpen={false}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
           <Field label="Attention"><EditableField value={order.deliveryAttention} onSave={(v) => updateOrder.mutate({ deliveryAttention: v })} placeholder="Attention" /></Field>
-          <Field label="Address"><EditableField value={order.deliveryAddress} onSave={(v) => updateOrder.mutate({ deliveryAddress: v })} placeholder="Full address" multiline /></Field>
-          <Field label="Email"><EditableField value={order.deliveryEmail} onSave={(v) => updateOrder.mutate({ deliveryEmail: v })} placeholder="delivery@email.com" /></Field>
           <Field label="Phone"><EditableField value={order.deliveryPhone} onSave={(v) => updateOrder.mutate({ deliveryPhone: v })} placeholder="022..." /></Field>
-        </Section>
-      </div>
+          <Field label="Email" style={{ gridColumn: "span 2" }}><EditableField value={order.deliveryEmail} onSave={(v) => updateOrder.mutate({ deliveryEmail: v })} placeholder="delivery@email.com" /></Field>
+          <Field label="Address" style={{ gridColumn: "span 2" }}><EditableField value={order.deliveryAddress} onSave={(v) => updateOrder.mutate({ deliveryAddress: v })} placeholder="Full address" multiline /></Field>
+        </div>
+      </Section>
 
       {/* ──── Garment Lines ──── */}
-      <Section title={`Garment Lines (${items.length})`}>
+      <Section title="Garment Lines" count={items.length} defaultOpen={true}>
         {items.length === 0 && <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "13px", marginBottom: "12px" }}>No items on this PO yet. Add one below.</p>}
 
         {/* Add item form */}
@@ -794,7 +903,7 @@ export default function AdminOrderDetail() {
       </Section>
 
       {/* ──── File Vault (drag & drop) ──── */}
-      <Section title="File Vault">
+      <Section title="File Vault" defaultOpen={false}>
         {/* Folder drop zones */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "8px", marginBottom: "16px" }}>
           {FOLDERS.map((folder) => {
@@ -891,7 +1000,7 @@ export default function AdminOrderDetail() {
       </Section>
 
       {/* ──── Portal Actions ──── */}
-      <Section title="Portal Actions" gold>
+      <Section title="Portal Actions" gold defaultOpen={false}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
           <div>
             <button
@@ -947,12 +1056,12 @@ export default function AdminOrderDetail() {
       </Section>
 
       {/* ──── Admin Notes ──── */}
-      <Section title="Admin Notes">
+      <Section title="Admin Notes" defaultOpen={false}>
         <EditableField value={order.adminNotes} onSave={(v) => updateOrder.mutate({ adminNotes: v })} placeholder="Internal notes…" multiline style={{ width: "100%" }} />
       </Section>
 
       {/* ──── Activity Log ──── */}
-      <Section title="Activity Log">
+      <Section title="Activity Log" defaultOpen={false}>
         {(activity ?? []).length === 0 ? (
           <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "12px" }}>No activity yet.</p>
         ) : (
@@ -973,21 +1082,51 @@ export default function AdminOrderDetail() {
 
 // ─── Small presentational helpers ────────────────────────────────────
 
-function Section({ title, children, gold, defaultOpen = true }: { title: string; children: React.ReactNode; gold?: boolean; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen);
+// Section with localStorage-persisted open state. Key = "po-section:<title>"
+// (global, not per-order) — admins typically want the same sections open
+// across every PO they touch, not per-PO memory.
+function Section({ title, children, gold, defaultOpen = false, count }: { title: string; children: React.ReactNode; gold?: boolean; defaultOpen?: boolean; count?: number }) {
+  const storageKey = `po-section:${title}`;
+  const [open, setOpen] = useState(() => {
+    if (typeof window === "undefined") return defaultOpen;
+    const v = window.localStorage.getItem(storageKey);
+    return v === null ? defaultOpen : v === "1";
+  });
+  const toggle = () => {
+    setOpen((prev) => {
+      const next = !prev;
+      try { window.localStorage.setItem(storageKey, next ? "1" : "0"); } catch {}
+      return next;
+    });
+  };
   return (
-    <div style={{ background: "#111", border: `1px solid ${gold ? "rgba(201,168,76,0.25)" : "rgba(255,255,255,0.06)"}`, borderRadius: "12px", marginBottom: "16px", overflow: "hidden" }}>
+    <div style={{ background: "#111", border: `1px solid ${gold ? "rgba(201,168,76,0.25)" : "rgba(255,255,255,0.06)"}`, borderRadius: "12px", marginBottom: "12px", overflow: "hidden" }}>
       <button
-        onClick={() => setOpen(!open)}
+        onClick={toggle}
         style={{
-          width: "100%", padding: "16px 24px", background: "none", border: "none", cursor: "pointer",
+          width: "100%", padding: "14px 24px", background: "none", border: "none", cursor: "pointer",
           display: "flex", justifyContent: "space-between", alignItems: "center",
         }}
       >
-        <h2 style={{ fontSize: "13px", fontWeight: 700, color: gold ? "#C9A84C" : "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "1.5px", margin: 0 }}>{title}</h2>
+        <span style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <h2 style={{ fontSize: "13px", fontWeight: 700, color: gold ? "#C9A84C" : "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "1.5px", margin: 0 }}>{title}</h2>
+          {typeof count === "number" && (
+            <span style={{ fontSize: "10px", fontWeight: 600, color: "rgba(255,255,255,0.45)", background: "rgba(255,255,255,0.06)", padding: "2px 7px", borderRadius: "10px" }}>{count}</span>
+          )}
+        </span>
         <span style={{ fontSize: "18px", color: "rgba(255,255,255,0.3)", transform: open ? "rotate(0)" : "rotate(-90deg)", transition: "transform 0.15s" }}>▾</span>
       </button>
       {open && <div style={{ padding: "0 24px 20px" }}>{children}</div>}
+    </div>
+  );
+}
+
+// Compact cell for the cockpit header — label above, value below, no input.
+function CockpitCell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div style={{ fontSize: "9px", color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: "3px", fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: "12px", fontWeight: 500 }}>{children}</div>
     </div>
   );
 }
