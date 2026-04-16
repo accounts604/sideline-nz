@@ -101,14 +101,18 @@ router.get("/orders/:id", async (req, res) => {
     const safeItems = items.map((i) => ({
       id: i.id,
       productName: i.productName,
+      productType: i.productType,
+      material: i.material,
       quantity: i.quantity,
       size: i.size,
       productColors: i.productColors,
       brandingMethod: i.brandingMethod,
-      gradeGroup: i.gradeGroup,
       designNotes: i.designNotes,
+      designBrief: i.designBrief,
+      sizeChartType: i.sizeChartType,
       frontDesignUrl: i.frontDesignUrl,
       backDesignUrl: i.backDesignUrl,
+      elementUrls: i.elementUrls,
       // NO unitAmount — supplier never sees pricing
     }));
 
@@ -119,13 +123,18 @@ router.get("/orders/:id", async (req, res) => {
         poReference: order.poReference,
         accountName: order.accountName,
         customerName: order.customerName,
+        customerFirstName: order.customerFirstName,
+        customerLastName: order.customerLastName,
         pipelineStage: order.pipelineStage,
+        dueDate: order.dueDate,
+        driveFolderUrl: order.driveFolderUrl,
         deliveryAddress: order.deliveryAddress,
         deliveryAttention: order.deliveryAttention,
         deliveryPhone: order.deliveryPhone,
         poComments: order.poComments,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
+        // NO pricing (total, subtotal) — supplier never sees cost
       },
       items: safeItems,
       files: techPackFiles,

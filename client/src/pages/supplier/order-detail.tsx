@@ -6,7 +6,8 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
-import { Loader2, Download, ArrowLeft, CheckCircle2, Truck } from "lucide-react";
+import { Loader2, Download, ArrowLeft, CheckCircle2, Truck, ExternalLink } from "lucide-react";
+import { computeMilestones } from "@shared/po-milestones";
 
 const NAVY = "#0A1628";
 const NAVY_LIGHT = "#122239";
@@ -19,7 +20,11 @@ type SupplierOrderDetail = {
     poReference: string | null;
     accountName: string | null;
     customerName: string | null;
+    customerFirstName: string | null;
+    customerLastName: string | null;
     pipelineStage: string | null;
+    dueDate: string | null;
+    driveFolderUrl: string | null;
     deliveryAddress: string | null;
     deliveryAttention: string | null;
     deliveryPhone: string | null;
@@ -30,14 +35,18 @@ type SupplierOrderDetail = {
   items: Array<{
     id: string;
     productName: string;
+    productType: string | null;
+    material: string | null;
     quantity: number;
     size: string | null;
     productColors: any;
     brandingMethod: string | null;
-    gradeGroup: string | null;
     designNotes: string | null;
+    designBrief: string | null;
+    sizeChartType: string | null;
     frontDesignUrl: string | null;
     backDesignUrl: string | null;
+    elementUrls: Array<{ name: string; url: string }> | null;
   }>;
   files: Array<{
     id: string;
@@ -159,6 +168,35 @@ export default function SupplierOrderDetail() {
           {order.poReference || order.accountName || order.customerName || "—"}
         </p>
 
+        {/* Due date + milestones */}
+        {order.dueDate && (() => {
+          const ms = computeMilestones(order.dueDate);
+          if (!ms) return null;
+          return (
+            <Card title="35-Day Production Schedule">
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                {ms.map((m) => (
+                  <div key={m.key} style={{ flex: "1 1 120px", textAlign: "center", padding: "10px 6px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "6px" }}>
+                    <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", fontWeight: 600 }}>Day {m.dayNumber}</div>
+                    <div style={{ fontSize: "12px", fontWeight: 600, color: "#fff", marginTop: "2px" }}>{m.label}</div>
+                    <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)", fontFamily: "ui-monospace, Menlo, monospace", marginTop: "2px" }}>{m.date}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          );
+        })()}
+
+        {/* Drive folder link */}
+        {order.driveFolderUrl && (
+          <div style={{ marginBottom: "16px" }}>
+            <a href={order.driveFolderUrl} target="_blank" rel="noreferrer"
+              style={{ display: "inline-flex", alignItems: "center", gap: "8px", padding: "10px 16px", background: GOLD, color: NAVY, borderRadius: "6px", fontWeight: 600, fontSize: "13px", textDecoration: "none" }}>
+              Open Drive Folder <ExternalLink size={14} />
+            </a>
+          </div>
+        )}
+
         {/* Delivery info */}
         <Card title="Delivery">
           <Row label="Attention" value={order.deliveryAttention} />
@@ -167,30 +205,86 @@ export default function SupplierOrderDetail() {
           {order.poComments && <Row label="Notes" value={order.poComments} />}
         </Card>
 
-        {/* Garment lines */}
+        {/* Garment lines — full read-only spec for each product */}
         <Card title="Garment lines">
           {items.length === 0 && <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "13px" }}>No line items on this PO yet.</p>}
-          {items.map((i) => (
-            <div
-              key={i.id}
-              style={{
-                borderTop: "1px solid rgba(255,255,255,0.08)",
-                padding: "16px 0",
-                display: "grid",
-                gridTemplateColumns: "2fr 1fr 1fr 1fr",
-                gap: "12px",
-                fontSize: "13px",
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 600, marginBottom: "2px" }}>{i.productName}</div>
-                {i.gradeGroup && <div style={{ color: "rgba(255,255,255,0.55)" }}>{i.gradeGroup}</div>}
+          {items.map((i) => {
+            const colors = (i.productColors || []) as Array<{ hex: string; name?: string }>;
+            const elements = i.elementUrls || [];
+            return (
+              <div key={i.id} style={{ borderTop: "1px solid rgba(255,255,255,0.08)", padding: "20px 0" }}>
+                {/* Header: product + specs */}
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "12px", fontSize: "13px", marginBottom: "12px" }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "4px" }}>{i.productName}</div>
+                    {i.material && <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "12px" }}>{i.material}</div>}
+                  </div>
+                  <div>
+                    <div style={{ color: "rgba(255,255,255,0.45)", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Branding</div>
+                    <div style={{ color: GOLD }}>{i.brandingMethod || "—"}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: "rgba(255,255,255,0.45)", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Quantity</div>
+                    <div style={{ fontWeight: 600 }}>{i.quantity}</div>
+                  </div>
+                </div>
+
+                {/* Colour swatches */}
+                {colors.length > 0 && (
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
+                    {colors.map((c, ci) => (
+                      <span key={ci} style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "3px 10px 3px 4px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "999px", fontSize: "11px" }}>
+                        <span style={{ width: "14px", height: "14px", background: c.hex, borderRadius: "999px", border: "1px solid rgba(255,255,255,0.2)" }} />
+                        {c.name || c.hex} <small style={{ color: "rgba(255,255,255,0.4)" }}>{c.hex}</small>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Mockup images */}
+                {(i.frontDesignUrl || i.backDesignUrl) && (
+                  <div style={{ display: "flex", gap: "16px", marginBottom: "12px", flexWrap: "wrap" }}>
+                    {i.frontDesignUrl && (
+                      <div style={{ textAlign: "center" }}>
+                        <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", marginBottom: "4px", textTransform: "uppercase" }}>Front</p>
+                        <img src={i.frontDesignUrl} alt="Front" style={{ maxHeight: "200px", maxWidth: "250px", objectFit: "contain", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)" }} />
+                      </div>
+                    )}
+                    {i.backDesignUrl && (
+                      <div style={{ textAlign: "center" }}>
+                        <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", marginBottom: "4px", textTransform: "uppercase" }}>Back</p>
+                        <img src={i.backDesignUrl} alt="Back" style={{ maxHeight: "200px", maxWidth: "250px", objectFit: "contain", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)" }} />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Elements / logos */}
+                {elements.length > 0 && (
+                  <div style={{ marginBottom: "12px" }}>
+                    <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", marginBottom: "6px", textTransform: "uppercase" }}>Elements / Logos</p>
+                    <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                      {elements.map((el, ei) => (
+                        <img key={ei} src={el.url} alt={el.name} title={el.name} style={{ maxHeight: "50px", maxWidth: "120px", objectFit: "contain" }} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* AI Design Brief */}
+                {i.designBrief && (
+                  <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "6px", padding: "12px 14px", marginBottom: "10px", fontSize: "12px", lineHeight: "1.6", whiteSpace: "pre-wrap", color: "rgba(255,255,255,0.75)" }}>
+                    <span style={{ fontSize: "10px", color: GOLD, textTransform: "uppercase", letterSpacing: "0.5px" }}>Design Brief</span>
+                    <div style={{ marginTop: "6px" }}>{i.designBrief}</div>
+                  </div>
+                )}
+
+                {i.designNotes && (
+                  <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.55)" }}><strong>Notes:</strong> {i.designNotes}</div>
+                )}
               </div>
-              <div style={{ color: "rgba(255,255,255,0.75)" }}>Qty: {i.quantity}</div>
-              <div style={{ color: "rgba(255,255,255,0.75)" }}>{i.brandingMethod || "—"}</div>
-              <div style={{ color: "rgba(255,255,255,0.55)" }}>{i.designNotes || ""}</div>
-            </div>
-          ))}
+            );
+          })}
         </Card>
 
         {/* Tech-pack files */}

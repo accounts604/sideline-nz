@@ -190,7 +190,10 @@ export async function sendSupplierPoDispatchGmail(input: DispatchSupplierInput):
        </table>`
     : "";
 
-  const subject = `PO ${input.poReference || input.orderNumber}${input.accountName ? ` — ${input.accountName}` : ""}${input.dueDate ? ` — Due ${input.dueDate}` : ""}`;
+  // Avoid "PO PO-2026-..." — if reference already starts with PO, don't prefix again.
+  const ref = input.poReference || input.orderNumber;
+  const refLabel = /^PO[-\s]/i.test(ref) ? ref : `PO ${ref}`;
+  const subject = `${refLabel}${input.accountName ? ` - ${input.accountName}` : ""}${input.dueDate ? ` - Due ${input.dueDate}` : ""}`;
 
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#111;max-width:640px">

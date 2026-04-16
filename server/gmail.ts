@@ -73,6 +73,15 @@ function toList(v: string | string[] | undefined): string[] {
   return Array.isArray(v) ? v : [v];
 }
 
+// RFC2047 encode a subject line so non-ASCII (em-dashes, accents, etc.)
+// survive the SMTP hop. Gmail handles UTF-8 natively but intermediate
+// MXes and display clients can mangle raw UTF-8 in headers.
+function encodeSubject(s: string): string {
+  // If pure ASCII, pass through
+  if (/^[\x20-\x7E]*$/.test(s)) return s;
+  return `=?UTF-8?B?${Buffer.from(s, "utf-8").toString("base64")}?=`;
+}
+
 function buildRfc2822(input: GmailSendInput): string {
   const to = toList(input.to).join(", ");
   const cc = toList(input.cc).join(", ");
@@ -84,7 +93,7 @@ function buildRfc2822(input: GmailSendInput): string {
     `From: ${input.from}`,
     `To: ${to}`,
     `Reply-To: ${replyTo}`,
-    `Subject: ${input.subject}`,
+    `Subject: ${encodeSubject(input.subject)}`,
     "MIME-Version: 1.0",
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
   ];
