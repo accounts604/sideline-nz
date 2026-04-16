@@ -12,6 +12,7 @@ interface Order {
   storeSlug: string;
   status: string;
   designStatus: string | null;
+  orderType: string | null;
   total: number;
   createdAt: string;
 }
@@ -140,7 +141,7 @@ export default function AdminOrders() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                  {["Order", "Customer", "Store", "Status", "Design", "Total", "Date"].map((h) => (
+                  {["Order", "Type", "Customer", "Status", "Design", "Total", "Date"].map((h) => (
                     <th key={h} style={{ padding: "12px 20px", textAlign: "left", fontSize: "11px", fontWeight: 600, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</th>
                   ))}
                 </tr>
@@ -158,11 +159,18 @@ export default function AdminOrders() {
                         <span style={{ fontSize: "14px", color: "#fff", fontWeight: 500, cursor: "pointer" }}>{order.orderNumber}</span>
                       </Link>
                     </td>
+                    <td style={{ padding: "14px 20px" }}>
+                      <span style={{
+                        fontSize: "10px", fontWeight: 600, padding: "3px 7px", borderRadius: "4px",
+                        textTransform: "uppercase", letterSpacing: "0.3px",
+                        background: order.orderType === "team-store" ? "rgba(59,130,246,0.15)" : "rgba(168,85,247,0.15)",
+                        color: order.orderType === "team-store" ? "#3b82f6" : "#a855f7",
+                      }}>
+                        {order.orderType === "team-store" ? "Store" : "Bulk"}
+                      </span>
+                    </td>
                     <td style={{ padding: "14px 20px", fontSize: "13px", color: "rgba(255,255,255,0.6)" }}>
                       {order.customerName || order.customerEmail || "—"}
-                    </td>
-                    <td style={{ padding: "14px 20px", fontSize: "13px", color: "rgba(255,255,255,0.4)" }}>
-                      {order.storeSlug}
                     </td>
                     <td style={{ padding: "14px 20px" }}>
                       <StatusBadge status={order.status} />

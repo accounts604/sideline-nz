@@ -103,6 +103,7 @@ const updateOrderSchema = z.object({
   deliveryEmail: z.string().optional(),
   deliveryPhone: z.string().optional(),
   dueDate: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.null()]).optional(),
+  orderType: z.enum(["team-store", "bulk-order"]).optional(),
 });
 
 router.patch("/orders/:id", async (req, res) => {
@@ -825,6 +826,7 @@ router.get("/orders/next-po-reference", async (_req, res) => {
 // POST /orders/create-po — create a new purchase order from scratch (admin-initiated)
 const createPoSchema = z.object({
   storeSlug: z.string(),
+  orderType: z.enum(["team-store", "bulk-order"]).optional().default("bulk-order"),
   customerEmail: z.string().email().optional(),
   customerName: z.string().optional(), // full name (kept for back-compat / display)
   customerFirstName: z.string().optional(),
@@ -881,6 +883,7 @@ router.post("/orders/create-po", async (req, res) => {
       storage.createOrder({
         orderNumber,
         storeSlug: data.storeSlug,
+        orderType: data.orderType,
         status: "processing",
         subtotal,
         total: subtotal,

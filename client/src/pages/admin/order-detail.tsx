@@ -111,6 +111,7 @@ interface Order {
   driveFolderId: string | null;
   driveFolderUrl: string | null;
   driveFolderName: string | null;
+  orderType: string | null;
 }
 
 interface SupplierOption {
@@ -524,6 +525,16 @@ export default function AdminOrderDetail() {
               {order.poReference || order.orderNumber}
             </h1>
             {order.accountName && <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.7)" }}>— {order.accountName}</span>}
+            {order.orderType && (
+              <span style={{
+                fontSize: "10px", fontWeight: 700, padding: "3px 8px", borderRadius: "4px",
+                textTransform: "uppercase", letterSpacing: "0.5px",
+                background: order.orderType === "team-store" ? "rgba(59,130,246,0.15)" : "rgba(168,85,247,0.15)",
+                color: order.orderType === "team-store" ? "#3b82f6" : "#a855f7",
+              }}>
+                {order.orderType === "team-store" ? "Team Store" : "Bulk Order"}
+              </span>
+            )}
             <StatusBadge status={order.status} />
             {order.pipelineStage && <StageBadge stage={order.pipelineStage} />}
           </div>

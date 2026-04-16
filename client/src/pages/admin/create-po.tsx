@@ -42,6 +42,7 @@ export default function AdminCreatePO() {
 
   // PO header fields
   const [storeSlug, setStoreSlug] = useState("custom");
+  const [orderType, setOrderType] = useState<"team-store" | "bulk-order">("bulk-order");
   // Customer contact — mirrors GHL contact fields one-to-one
   const [customerFirstName, setCustomerFirstName] = useState("");
   const [customerLastName, setCustomerLastName] = useState("");
@@ -148,6 +149,7 @@ export default function AdminCreatePO() {
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/admin/orders/create-po", {
         storeSlug,
+        orderType,
         customerFirstName: customerFirstName || undefined,
         customerLastName: customerLastName || undefined,
         customerEmail: customerEmail || undefined,
@@ -373,9 +375,18 @@ export default function AdminCreatePO() {
                   <input value={companyPhone} onChange={(e) => setCompanyPhone(e.target.value)} placeholder="09 123 4567" style={inputStyle} />
                 </div>
               </div>
-              <div>
-                <label style={labelStyle}>Store</label>
-                <input value={storeSlug} onChange={(e) => setStoreSlug(e.target.value)} placeholder="custom" style={inputStyle} />
+              <div style={{ display: "flex", gap: "12px" }}>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Order Type</label>
+                  <select value={orderType} onChange={(e) => setOrderType(e.target.value as any)} style={inputStyle}>
+                    <option value="bulk-order" style={{ background: "#111" }}>Bulk Order</option>
+                    <option value="team-store" style={{ background: "#111" }}>Team Store</option>
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Store Slug</label>
+                  <input value={storeSlug} onChange={(e) => setStoreSlug(e.target.value)} placeholder="custom" style={inputStyle} />
+                </div>
               </div>
               <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
                 <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
