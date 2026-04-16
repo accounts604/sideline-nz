@@ -38,104 +38,185 @@ function escHtml(s: string | null | undefined): string {
 export async function generatePoHtml(orderId: string): Promise<string | null> {
   const orderData = await storage.getOrderWithDetails(orderId);
   if (!orderData) return null;
-  const { order, items } = orderData as any;
+  const { order, items, sizeBreakdowns } = orderData as any;
 
   const date = new Date(order.createdAt);
   const dateStr = `${date.getDate().toString().padStart(2, "0")}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getFullYear()}`;
   const contact = [order.customerFirstName, order.customerLastName].filter(Boolean).join(" ") || order.customerName || "";
-
   const milestones = order.dueDate ? computeMilestones(order.dueDate) : null;
+  const siteUrl = process.env.VITE_SITE_URL || process.env.BASE_URL || "https://sidelinenz.com";
+  const logoUrl = `${siteUrl}/sideline-logo-vertical.png`;
 
+  // Group size breakdowns by item
+  const bdByItem = new Map<string, Array<{ size: string; quantity: number }>>();
+  for (const b of sizeBreakdowns ?? []) {
+    const list = bdByItem.get(b.orderItemId) || [];
+    list.push({ size: b.size, quantity: b.quantity });
+    bdByItem.set(b.orderItemId, list);
+  }
+
+  // ─── Per-item HTML (TABLE layout only — no flexbox/grid) ───
   const itemsHtml = items.map((item: any) => {
     const colors = (item.productColors || []) as Array<{ hex: string; name?: string }>;
     const elements = (item.elementUrls || []) as Array<{ name: string; url: string }>;
+    const bds = bdByItem.get(item.id) || [];
+    const totalQty = bds.length ? bds.reduce((s, b) => s + b.quantity, 0) : item.quantity;
 
-    const colorCells = colors.map((c: any) =>
-      `<span style="display:inline-flex;align-items:center;gap:6px;margin-right:10px">
-        <span style="display:inline-block;width:20px;height:14px;background:${c.hex};border:1px solid #bbb;border-radius:2px"></span>
-        <span>${escHtml(c.name || "")} <small style="color:#888">${c.hex}</small></span>
-      </span>`
+    const colorRows = colors.map((c) =>
+      `<tr><td style="padding:2px 0"><table cellpadding="0" cellspacing="0"><tr>` +
+      `<td style="width:24px;height:14px;background:${c.hex};border:1px solid #999"></td>` +
+      `<td style="padding-left:8px;font-size:11px">${escHtml(c.name || "Unnamed")} <span style="color:#888">${c.hex}</span></td>` +
+      `</tr></table></td></tr>`
+    ).join("");
+
+    const sizeRows = bds.map((b) =>
+      `<tr><td style="padding:3px 12px 3px 0;font-size:12px">${escHtml(b.size)}</td><td style="padding:3px 0;font-size:12px;text-align:right">${b.quantity}</td></tr>`
     ).join("");
 
     return `
-    <div style="page-break-inside:avoid;margin-bottom:20px;border:1px solid #ddd">
-      <div style="background:#000;color:#fff;padding:8px 16px;font-size:13px;font-weight:700;text-align:center">${escHtml(item.productName)}</div>
-      <div style="display:flex">
-        <div style="width:240px;padding:14px 16px;font-size:12px">
-          <p><strong>Product:</strong> ${escHtml(item.productName)}</p>
-          ${item.material ? `<p><strong>Material:</strong> ${escHtml(item.material)}</p>` : ""}
-          ${item.brandingMethod ? `<p><strong>Branding:</strong> ${escHtml(item.brandingMethod)}</p>` : ""}
-          ${colorCells ? `<p><strong>Colours:</strong><br/>${colorCells}</p>` : ""}
-          <p><strong>Quantity:</strong> ${item.quantity}</p>
-          ${item.designNotes ? `<p><strong>Notes:</strong> ${escHtml(item.designNotes)}</p>` : ""}
-        </div>
-        <div style="flex:1;display:flex;justify-content:center;align-items:center;gap:16px;padding:16px;min-height:200px">
-          ${item.frontDesignUrl ? `<img src="${item.frontDesignUrl}" style="max-height:240px;max-width:45%;object-fit:contain" />` : ""}
-          ${item.backDesignUrl ? `<img src="${item.backDesignUrl}" style="max-height:240px;max-width:45%;object-fit:contain" />` : ""}
-        </div>
-      </div>
-      ${item.designBrief ? `
-        <div style="background:#f5f5f5;padding:12px 16px;font-size:11px;border-top:1px solid #ddd">
-          <strong>Design Brief (AI):</strong><br/><span style="white-space:pre-wrap">${escHtml(item.designBrief)}</span>
-        </div>` : ""}
-      ${elements.length ? `
-        <div style="padding:10px 16px;border-top:1px solid #eee;font-size:11px">
-          <strong>Elements:</strong>
-          <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
-            ${elements.map((el: any) => `<img src="${el.url}" title="${escHtml(el.name)}" style="max-height:50px;max-width:120px;object-fit:contain" />`).join("")}
-          </div>
-        </div>` : ""}
-    </div>`;
+<!-- Product header bar -->
+<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:0"><tr>
+  <td style="background:#000;color:#fff;padding:8px 16px;font-size:13px;font-weight:700;text-align:center">${escHtml(item.productName)}</td>
+</tr></table>
+
+<!-- Product info: LEFT specs | CENTER mockups | RIGHT sizes -->
+<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ddd;border-top:none">
+<tr valign="top">
+  <!-- Specs -->
+  <td width="220" style="padding:14px 16px;font-size:12px;border-right:1px solid #eee">
+    <table cellpadding="0" cellspacing="0" style="font-size:12px">
+      <tr><td style="font-weight:700;padding:2px 8px 2px 0">Product</td><td>${escHtml(item.productName)}</td></tr>
+      ${item.material ? `<tr><td style="font-weight:700;padding:2px 8px 2px 0">Material</td><td>${escHtml(item.material)}</td></tr>` : ""}
+      ${item.brandingMethod ? `<tr><td style="font-weight:700;padding:2px 8px 2px 0">Branding</td><td style="color:#0ea5e9">${escHtml(item.brandingMethod)}</td></tr>` : ""}
+      <tr><td style="font-weight:700;padding:2px 8px 2px 0">Qty</td><td>${totalQty}</td></tr>
+    </table>
+    ${colors.length ? `<p style="font-weight:700;margin:10px 0 4px;font-size:12px">Colour Palette</p><table cellpadding="0" cellspacing="0">${colorRows}</table>` : ""}
+    ${item.designNotes ? `<p style="margin:10px 0 2px;font-weight:700;font-size:12px">Notes</p><p style="font-size:11px;color:#555">${escHtml(item.designNotes)}</p>` : ""}
+  </td>
+
+  <!-- Mockups (centre) -->
+  <td style="padding:16px;text-align:center">
+    <table cellpadding="0" cellspacing="0" align="center"><tr valign="top">
+      ${item.frontDesignUrl ? `<td style="padding:0 8px;text-align:center"><p style="font-size:10px;font-weight:700;margin:0 0 4px">FRONT</p><img src="${item.frontDesignUrl}" width="220" style="max-width:220px" /></td>` : ""}
+      ${item.backDesignUrl ? `<td style="padding:0 8px;text-align:center"><p style="font-size:10px;font-weight:700;margin:0 0 4px">BACK</p><img src="${item.backDesignUrl}" width="220" style="max-width:220px" /></td>` : ""}
+    </tr></table>
+  </td>
+
+  <!-- Size breakdown -->
+  <td width="160" style="padding:14px 16px;border-left:1px solid #eee">
+    <table cellpadding="0" cellspacing="0" width="100%">
+      <tr><td style="font-weight:700;font-size:12px;padding-bottom:6px">Size</td><td style="font-weight:700;font-size:12px;text-align:right;padding-bottom:6px">Count</td></tr>
+      ${sizeRows || `<tr><td colspan="2" style="font-size:11px;color:#999">—</td></tr>`}
+      ${bds.length ? `<tr><td style="font-weight:700;font-size:12px;padding-top:8px;border-top:1px solid #ddd">Total</td><td style="font-weight:700;font-size:12px;text-align:right;padding-top:8px;border-top:1px solid #ddd">${totalQty}</td></tr>` : ""}
+    </table>
+  </td>
+</tr>
+</table>
+
+${(item.frontDesignUrl || item.backDesignUrl) ? `
+<!-- Design Specifications (larger) -->
+<table width="100%" cellpadding="0" cellspacing="0"><tr>
+  <td style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">Design Specifications</td>
+</tr></table>
+<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ddd;border-top:none">
+<tr valign="top">
+  ${item.frontDesignUrl ? `<td style="padding:16px;text-align:center"><p style="font-size:11px;font-weight:700;margin:0 0 8px">Front Design</p><img src="${item.frontDesignUrl}" width="300" style="max-width:300px" /></td>` : ""}
+  ${item.backDesignUrl ? `<td style="padding:16px;text-align:center"><p style="font-size:11px;font-weight:700;margin:0 0 8px">Back Design</p><img src="${item.backDesignUrl}" width="300" style="max-width:300px" /></td>` : ""}
+  ${elements.length ? `<td width="200" style="padding:12px;text-align:center;border-left:1px solid #eee"><p style="font-size:11px;font-weight:700;margin:0 0 8px">Elements</p>${elements.map((el: any) => `<img src="${el.url}" width="150" style="max-width:150px;margin-bottom:8px" /><br/>`).join("")}</td>` : ""}
+</tr>
+</table>` : ""}
+
+${item.designBrief ? `
+<!-- AI Design Brief -->
+<table width="100%" cellpadding="0" cellspacing="0"><tr>
+  <td style="background:#f5f5f5;padding:12px 16px;font-size:11px;border:1px solid #ddd;border-top:none">
+    <strong>Design Brief</strong> <span style="color:#888;font-size:9px">powered by AI</span><br/><br/>
+    ${escHtml(item.designBrief).replace(/\n/g, "<br/>")}
+  </td>
+</tr></table>` : ""}
+<br/>`;
   }).join("\n");
 
+  // ─── Milestones table ───
   const milestonesHtml = milestones
-    ? `<table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:11px">
-        <tr>${milestones.map((m: any) => `<td style="text-align:center;padding:8px 4px;border:1px solid #ddd"><strong>Day ${m.dayNumber}</strong><br/>${escHtml(m.label)}<br/><small>${m.date}</small></td>`).join("")}</tr>
+    ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;border:1px solid #ddd">
+        <tr>${milestones.map((m: any) =>
+          `<td style="text-align:center;padding:10px 4px;border-right:1px solid #ddd;font-size:11px">` +
+          `<strong>Day ${m.dayNumber}</strong><br/>${escHtml(m.label)}<br/><span style="font-size:10px;color:#555;font-family:monospace">${m.date}</span></td>`
+        ).join("")}</tr>
        </table>`
     : "";
 
+  // ─── Full document (TABLE layout throughout) ───
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>PO ${escHtml(order.poReference || order.orderNumber)}</title>
-<style>body{font-family:'Segoe UI',Arial,sans-serif;color:#000;margin:0;padding:32px 40px;max-width:900px;margin:auto}
-img{max-width:100%}table{border-collapse:collapse}td,th{padding:4px 8px}
-@page{margin:10mm}</style></head><body>
-<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
-  <div>
-    <h1 style="font-size:20px;margin:0 0 8px">SIDELINE NZ</h1>
-    <div style="font-size:11px;color:#333;line-height:1.6">
-      Sideline NZ (Sideline Custom Goods Ltd)<br/>
-      Unit 2, 66 Cavendish Drive Manukau<br/>Auckland, 2104<br/>
-      022 412 7205 · info@sidelinenz.com<br/>www.sidelinenz.com
-    </div>
-  </div>
-  <div style="text-align:right">
-    <h2 style="font-size:15px;margin:0 0 12px">PURCHASE ORDER</h2>
-    <table style="margin-left:auto;font-size:12px">
-      <tr><td style="font-weight:700;text-align:right;padding-right:10px">Date:</td><td style="background:#f2f2f2;padding:4px 10px;min-width:200px">${dateStr}</td></tr>
-      <tr><td style="font-weight:700;text-align:right;padding-right:10px">PO Reference:</td><td style="background:#f2f2f2;padding:4px 10px">${escHtml(order.poReference || order.orderNumber)}</td></tr>
-      <tr><td style="font-weight:700;text-align:right;padding-right:10px">Account:</td><td style="background:#f2f2f2;padding:4px 10px">${escHtml(order.accountName || "")}</td></tr>
-      <tr><td style="font-weight:700;text-align:right;padding-right:10px">Contact:</td><td style="background:#f2f2f2;padding:4px 10px">${escHtml(contact)}</td></tr>
-      ${order.dueDate ? `<tr><td style="font-weight:700;text-align:right;padding-right:10px">Due Date:</td><td style="background:#f2f2f2;padding:4px 10px">${order.dueDate}</td></tr>` : ""}
-      <tr><td style="font-weight:700;text-align:right;padding-right:10px">Type:</td><td style="background:#f2f2f2;padding:4px 10px">${order.isRepeatOrder ? "Repeat" : "New"}</td></tr>
-    </table>
-  </div>
-</div>
+<html><head><meta charset="utf-8"><title>PO ${escHtml(order.poReference || order.orderNumber)}</title></head>
+<body style="font-family:'Segoe UI',Arial,sans-serif;color:#000;margin:0;padding:32px 40px;max-width:900px">
 
-<div style="display:flex;margin-bottom:16px">
-  <div style="flex:1"><div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700">Customer</div>
-    <div style="padding:10px 16px;font-size:12px">${escHtml(contact)} · ${escHtml(order.customerEmail || "")}</div>
-  </div>
-  <div style="flex:1"><div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700">Delivery Address</div>
-    <div style="padding:10px 16px;font-size:12px">${order.deliveryAttention ? `Attn: ${escHtml(order.deliveryAttention)}<br/>` : ""}${escHtml(order.deliveryAddress || "Sideline NZ, 41 Oakland Rd Karaka, Auckland 2580")}${order.deliveryPhone ? `<br/>${escHtml(order.deliveryPhone)}` : ""}</div>
-  </div>
-</div>
+<!-- HEADER: Logo + Company | PO Details -->
+<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px">
+<tr valign="top">
+  <td width="320">
+    <img src="${logoUrl}" width="80" style="max-width:80px;margin-bottom:8px" /><br/>
+    <span style="font-size:11px;color:#333;line-height:1.6">
+      Sideline NZ (Sideline Custom Goods Ltd)<br/>
+      Unit 2, 66 Cavendish Drive Manukau<br/>
+      Auckland, 2104<br/>
+      022 412 7205<br/>
+      info@sidelinenz.com<br/>
+      <span style="color:#0ea5e9">www.sidelinenz.com</span>
+    </span>
+  </td>
+  <td style="text-align:right">
+    <h2 style="font-size:15px;font-weight:800;margin:0 0 16px;letter-spacing:0.5px">PURCHASE ORDER</h2>
+    <table cellpadding="0" cellspacing="0" style="margin-left:auto;font-size:12px">
+      <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">DATE</td><td style="background:#f2f2f2;padding:4px 10px;min-width:200px">${dateStr}</td></tr>
+      <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">PO Reference</td><td style="background:#f2f2f2;padding:4px 10px">${escHtml(order.poReference || order.orderNumber)}</td></tr>
+      <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">Account</td><td style="background:#f2f2f2;padding:4px 10px">${escHtml(order.accountName || "")}</td></tr>
+      <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">Contact</td><td style="background:#f2f2f2;padding:4px 10px">${escHtml(contact)}</td></tr>
+      ${order.dueDate ? `<tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">Due Date</td><td style="background:#f2f2f2;padding:4px 10px">${order.dueDate}</td></tr>` : ""}
+      <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">New / Repeat</td><td style="background:#f2f2f2;padding:4px 10px">${order.isRepeatOrder ? "Repeat" : "New"}</td></tr>
+      ${order.poComments ? `<tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">Comments</td><td style="background:#f2f2f2;padding:4px 10px">${escHtml(order.poComments)}</td></tr>` : ""}
+    </table>
+  </td>
+</tr>
+</table>
+
+<!-- CUSTOMER / DELIVERY -->
+<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px">
+<tr>
+  <td width="50%" style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700">Customer</td>
+  <td width="50%" style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700">Delivery Address</td>
+</tr>
+<tr valign="top">
+  <td style="padding:10px 16px;font-size:12px;border:1px solid #ddd;border-top:none">
+    ${escHtml(contact)}<br/>
+    ${order.customerEmail ? `<span style="color:#0ea5e9">${escHtml(order.customerEmail)}</span><br/>` : ""}
+    ${order.customerPhone ? escHtml(order.customerPhone) : ""}
+  </td>
+  <td style="padding:10px 16px;font-size:12px;border:1px solid #ddd;border-top:none;border-left:none">
+    ${order.deliveryAttention ? `Attention: ${escHtml(order.deliveryAttention)}<br/>` : ""}
+    ${escHtml(order.deliveryAddress || "Sideline NZ, 41 Oakland Rd Karaka, Auckland 2580")}<br/>
+    ${order.deliveryPhone ? escHtml(order.deliveryPhone) + "<br/>" : ""}
+    ${order.deliveryEmail ? `<span style="color:#0ea5e9">${escHtml(order.deliveryEmail)}</span>` : ""}
+  </td>
+</tr>
+</table>
 
 ${milestonesHtml}
+
+<!-- GARMENT LINES -->
 ${itemsHtml}
 
-<div style="margin-top:24px;border-top:2px solid #000;padding-top:12px;font-size:10px;color:#555;text-align:center">
-  <p><strong>Disclaimer:</strong> This design proof is the intellectual property of Sideline NZ. By approving, the customer confirms all elements are correct. © ${new Date().getFullYear()} Sideline NZ (Sideline Custom Goods Ltd). All rights reserved.</p>
-</div>
+<!-- DISCLAIMER -->
+<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:32px;border-top:3px solid #1a1a1a">
+<tr><td style="padding:16px 0;font-size:10px;color:#555;text-align:center">
+  <p style="font-weight:700;margin:0 0 8px">Disclaimer: Final Design Proof Approval</p>
+  <p style="margin:0 0 6px">This design proof is the intellectual property of Sideline NZ (Sideline Custom Goods Ltd) and is provided solely for the purpose of final client approval. By approving this proof, the customer confirms that all design elements — including colors, logos, placement, spelling, and sizing — are correct.</p>
+  <p style="margin:0 0 6px">The customer is fully responsible for the approved design. Sideline NZ will not be liable for any errors after approval, nor for delays caused by external factors.</p>
+  <p style="margin:0;font-weight:600">&copy; ${new Date().getFullYear()} Sideline NZ (Sideline Custom Goods Ltd). All rights reserved.</p>
+</td></tr>
+</table>
+
 </body></html>`;
 }
 
