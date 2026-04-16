@@ -163,10 +163,10 @@ export default function AdminOrders() {
                       <span style={{
                         fontSize: "10px", fontWeight: 600, padding: "3px 7px", borderRadius: "4px",
                         textTransform: "uppercase", letterSpacing: "0.3px",
-                        background: order.orderType === "team-store" ? "rgba(59,130,246,0.15)" : "rgba(168,85,247,0.15)",
-                        color: order.orderType === "team-store" ? "#3b82f6" : "#a855f7",
+                        background: order.orderType === "team-store" ? "rgba(59,130,246,0.15)" : order.orderType === "sample-run" ? "rgba(234,179,8,0.15)" : "rgba(168,85,247,0.15)",
+                        color: order.orderType === "team-store" ? "#3b82f6" : order.orderType === "sample-run" ? "#eab308" : "#a855f7",
                       }}>
-                        {order.orderType === "team-store" ? "Store" : "Bulk"}
+                        {order.orderType === "team-store" ? "Store" : order.orderType === "sample-run" ? "Sample" : "Bulk"}
                       </span>
                     </td>
                     <td style={{ padding: "14px 20px", fontSize: "13px", color: "rgba(255,255,255,0.6)" }}>

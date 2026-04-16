@@ -42,7 +42,7 @@ export default function AdminCreatePO() {
 
   // PO header fields
   const [storeSlug, setStoreSlug] = useState("custom");
-  const [orderType, setOrderType] = useState<"team-store" | "bulk-order">("bulk-order");
+  const [orderType, setOrderType] = useState<"team-store" | "bulk-order" | "sample-run">("bulk-order");
   // Customer contact — mirrors GHL contact fields one-to-one
   const [customerFirstName, setCustomerFirstName] = useState("");
   const [customerLastName, setCustomerLastName] = useState("");
@@ -381,6 +381,7 @@ export default function AdminCreatePO() {
                   <select value={orderType} onChange={(e) => setOrderType(e.target.value as any)} style={inputStyle}>
                     <option value="bulk-order" style={{ background: "#111" }}>Bulk Order</option>
                     <option value="team-store" style={{ background: "#111" }}>Team Store</option>
+                    <option value="sample-run" style={{ background: "#111" }}>Sample Run</option>
                   </select>
                 </div>
                 <div style={{ flex: 1 }}>

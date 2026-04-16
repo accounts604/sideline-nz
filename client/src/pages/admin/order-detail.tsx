@@ -529,10 +529,10 @@ export default function AdminOrderDetail() {
               <span style={{
                 fontSize: "10px", fontWeight: 700, padding: "3px 8px", borderRadius: "4px",
                 textTransform: "uppercase", letterSpacing: "0.5px",
-                background: order.orderType === "team-store" ? "rgba(59,130,246,0.15)" : "rgba(168,85,247,0.15)",
-                color: order.orderType === "team-store" ? "#3b82f6" : "#a855f7",
+                background: order.orderType === "team-store" ? "rgba(59,130,246,0.15)" : order.orderType === "sample-run" ? "rgba(234,179,8,0.15)" : "rgba(168,85,247,0.15)",
+                color: order.orderType === "team-store" ? "#3b82f6" : order.orderType === "sample-run" ? "#eab308" : "#a855f7",
               }}>
-                {order.orderType === "team-store" ? "Team Store" : "Bulk Order"}
+                {order.orderType === "team-store" ? "Team Store" : order.orderType === "sample-run" ? "Sample Run" : "Bulk Order"}
               </span>
             )}
             <StatusBadge status={order.status} />

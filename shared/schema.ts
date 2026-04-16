@@ -98,7 +98,7 @@ export const orders = pgTable("orders", {
   revisionNotes: text("revision_notes"), // Club's revision notes
   mockupApprovedAt: timestamp("mockup_approved_at"),
   // PO-specific fields
-  orderType: text("order_type").default("bulk-order"), // "team-store" | "bulk-order" — determines downstream path
+  orderType: text("order_type").default("bulk-order"), // "team-store" | "bulk-order" | "sample-run"
   poReference: text("po_reference"), // Auto-assigned: PO-YYYY-NNNN
   accountName: text("account_name"), // Account / team / company name on PO (maps to GHL companyName)
   // Customer contact — mirrors GHL contact shape for clean one-to-one sync
