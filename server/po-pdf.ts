@@ -35,8 +35,11 @@ async function getAccessToken(): Promise<string | null> {
 // ─── Render PO page → PDF buffer via Puppeteer ─────────────────
 
 async function renderPoPdf(orderId: string): Promise<Buffer | null> {
-  const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-  const poUrl = `${baseUrl}/admin/orders/${orderId}/po`;
+  // ALWAYS use localhost — Puppeteer runs on the same machine as the server.
+  // Using the external URL (sidelinenz.com) causes roundtrip through CDN/ingress
+  // and cookie-domain issues. Localhost is instant and reliable.
+  const port = process.env.PORT || 5001;
+  const poUrl = `http://localhost:${port}/admin/orders/${orderId}/po`;
 
   // Resolve Chromium executable: Railway has it at /nix/store/*/bin/chromium,
   // @sparticuz/chromium provides a fallback for local dev / Vercel.
@@ -91,16 +94,22 @@ async function renderPoPdf(orderId: string): Promise<Buffer | null> {
     await page.setCookie({
       name: "snz_token",
       value: adminToken,
-      domain: new URL(baseUrl).hostname,
+      domain: "localhost",
       path: "/",
-      httpOnly: true,
+      httpOnly: false, // localhost cookies need httpOnly=false in Chromium
     });
 
     // Navigate and wait for the React app to render fully
-    await page.goto(poUrl, { waitUntil: "networkidle0", timeout: 30000 });
+    console.log(`[po-pdf] Navigating to ${poUrl}`);
+    const response = await page.goto(poUrl, { waitUntil: "networkidle0", timeout: 30000 });
+    console.log(`[po-pdf] Page status: ${response?.status()}`);
 
-    // Wait a bit extra for images to load
-    await page.evaluate(() => new Promise((r) => setTimeout(r, 2000)));
+    // Wait for images to load + React to hydrate
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 3000)));
+
+    // Verify the page has content (not a blank/error page)
+    const title = await page.title();
+    console.log(`[po-pdf] Page title: "${title}"`);
 
     // Print to PDF matching the browser's print preview
     const pdfBuffer = await page.pdf({

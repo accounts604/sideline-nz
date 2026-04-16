@@ -180,20 +180,30 @@ export async function sendSupplierPoDispatchGmail(input: DispatchSupplierInput):
   const milestonesHtml = milestones
     ? `<h3 style="margin:18px 0 6px;font-size:14px">35-Day Schedule</h3>
        <table style="border-collapse:collapse;margin:4px 0 12px;font-size:13px">
-         ${milestones.map((m) => `
-           <tr>
-             <td style="padding:4px 12px 4px 0;color:#666">Day ${m.dayNumber}</td>
-             <td style="padding:4px 12px 4px 0;font-weight:600">${m.label}</td>
-             <td style="padding:4px 0;font-family:ui-monospace,Menlo,monospace">${m.date}</td>
-           </tr>
-         `).join("")}
+         ${milestones.map((m) => {
+           const isShipDeadline = m.key === "ship_production";
+           return `
+           <tr style="${isShipDeadline ? "background:#fee2e2" : ""}">
+             <td style="padding:4px 12px 4px 0;color:${isShipDeadline ? "#dc2626" : "#666"};font-weight:${isShipDeadline ? "700" : "400"}">Day ${m.dayNumber}</td>
+             <td style="padding:4px 12px 4px 0;font-weight:${isShipDeadline ? "700" : "600"};color:${isShipDeadline ? "#dc2626" : "inherit"}">${m.label}${isShipDeadline ? " ← YOUR DEADLINE" : ""}</td>
+             <td style="padding:4px 0;font-family:ui-monospace,Menlo,monospace;color:${isShipDeadline ? "#dc2626" : "inherit"};font-weight:${isShipDeadline ? "700" : "400"}">${m.date}</td>
+           </tr>`;
+         }).join("")}
        </table>`
     : "";
 
   // Avoid "PO PO-2026-..." — if reference already starts with PO, don't prefix again.
   const ref = input.poReference || input.orderNumber;
   const refLabel = /^PO[-\s]/i.test(ref) ? ref : `PO ${ref}`;
-  const subject = `${refLabel}${input.accountName ? ` - ${input.accountName}` : ""}${input.dueDate ? ` - Due ${input.dueDate}` : ""}`;
+  // Supplier due date is Day 21 (Ship from Production), not the customer's Day 35.
+  // Show both in the subject so the supplier knows their deadline at a glance.
+  let shipDate = "";
+  if (input.dueDate) {
+    const ms = computeMilestones(input.dueDate);
+    const ship = ms?.find((m) => m.key === "ship_production");
+    shipDate = ship ? ship.date : input.dueDate;
+  }
+  const subject = `${refLabel}${input.accountName ? ` - ${input.accountName}` : ""}${shipDate ? ` - SHIP BY ${shipDate}` : ""}`;
 
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#111;max-width:640px">

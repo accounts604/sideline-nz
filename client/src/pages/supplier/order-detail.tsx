@@ -175,13 +175,22 @@ export default function SupplierOrderDetail() {
           return (
             <Card title="35-Day Production Schedule">
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                {ms.map((m) => (
-                  <div key={m.key} style={{ flex: "1 1 120px", textAlign: "center", padding: "10px 6px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "6px" }}>
-                    <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", fontWeight: 600 }}>Day {m.dayNumber}</div>
-                    <div style={{ fontSize: "12px", fontWeight: 600, color: "#fff", marginTop: "2px" }}>{m.label}</div>
-                    <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)", fontFamily: "ui-monospace, Menlo, monospace", marginTop: "2px" }}>{m.date}</div>
-                  </div>
-                ))}
+                {ms.map((m) => {
+                  const isShipDeadline = m.key === "ship_production";
+                  return (
+                    <div key={m.key} style={{
+                      flex: "1 1 120px", textAlign: "center", padding: "10px 6px", borderRadius: "6px",
+                      background: isShipDeadline ? "rgba(220,38,38,0.15)" : "rgba(255,255,255,0.03)",
+                      border: `1px solid ${isShipDeadline ? "rgba(220,38,38,0.4)" : "rgba(255,255,255,0.06)"}`,
+                    }}>
+                      <div style={{ fontSize: "10px", color: isShipDeadline ? "#ef4444" : "rgba(255,255,255,0.4)", fontWeight: 600 }}>
+                        Day {m.dayNumber}{isShipDeadline ? " — YOUR DEADLINE" : ""}
+                      </div>
+                      <div style={{ fontSize: "12px", fontWeight: isShipDeadline ? 700 : 600, color: isShipDeadline ? "#ef4444" : "#fff", marginTop: "2px" }}>{m.label}</div>
+                      <div style={{ fontSize: "10px", color: isShipDeadline ? "#ef4444" : "rgba(255,255,255,0.5)", fontFamily: "ui-monospace, Menlo, monospace", marginTop: "2px" }}>{m.date}</div>
+                    </div>
+                  );
+                })}
               </div>
             </Card>
           );
