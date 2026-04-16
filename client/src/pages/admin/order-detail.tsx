@@ -399,6 +399,22 @@ export default function AdminOrderDetail() {
     onSuccess: () => { invalidate(); setAddingSizeForItem(null); setNewSize(""); setNewSizeQty(1); },
   });
 
+  const updateSizeMut = useMutation({
+    mutationFn: async ({ bid, ...d }: { bid: string; size?: string; quantity?: number }) => {
+      const r = await apiRequest("PATCH", `/api/admin/orders/${params.id}/size-breakdowns/${bid}`, d);
+      return r.json();
+    },
+    onSuccess: invalidate,
+  });
+
+  const deleteSizeMut = useMutation({
+    mutationFn: async (bid: string) => {
+      const r = await apiRequest("DELETE", `/api/admin/orders/${params.id}/size-breakdowns/${bid}`);
+      return r.json();
+    },
+    onSuccess: invalidate,
+  });
+
   const genPdfMut = useMutation({
     mutationFn: async () => {
       const r = await apiRequest("POST", `/api/admin/orders/${params.id}/generate-pdf`, {});
@@ -899,18 +915,37 @@ export default function AdminOrderDetail() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                 <div>
                   <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Size Run</p>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
-                    {Array.from(sizeSummary.entries()).map(([size, qty]) => (
-                      <span key={size} style={{ fontSize: "12px", padding: "4px 10px", background: "rgba(255,255,255,0.06)", borderRadius: "4px", color: "#fff" }}>
-                        {size}: {qty}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px", alignItems: "center" }}>
+                    {bds.map((b) => (
+                      <span key={b.id} style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", padding: "3px 4px 3px 10px", background: "rgba(255,255,255,0.06)", borderRadius: "6px", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <span style={{ fontWeight: 600, marginRight: "2px" }}>{b.size}</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={b.quantity}
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value);
+                            if (v > 0) updateSizeMut.mutate({ bid: b.id, quantity: v });
+                          }}
+                          style={{
+                            width: "38px", padding: "2px 4px", fontSize: "12px", textAlign: "center",
+                            background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
+                            borderRadius: "3px", color: "#fff", outline: "none",
+                          }}
+                        />
+                        <button
+                          onClick={() => deleteSizeMut.mutate(b.id)}
+                          title="Remove size"
+                          style={{ background: "none", border: "none", color: "rgba(239,68,68,0.5)", cursor: "pointer", fontSize: "12px", padding: "0 2px", lineHeight: 1 }}
+                        >✕</button>
                       </span>
                     ))}
-                    {sizeSummary.size > 0 && (
+                    {bds.length > 0 && (
                       <span style={{ fontSize: "12px", padding: "4px 10px", background: "rgba(201,168,76,0.15)", borderRadius: "4px", color: "#C9A84C", fontWeight: 600 }}>
                         Total: {totalQty}
                       </span>
                     )}
-                    {sizeSummary.size === 0 && <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}>No sizes added yet</span>}
+                    {bds.length === 0 && <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}>No sizes added yet</span>}
                   </div>
                   {/* Add size */}
                   {addingSizeForItem === item.id ? (
