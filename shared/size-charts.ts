@@ -29,7 +29,8 @@ export type SizeChartType =
   | "tracksuit-jacket"
   | "baseball-jersey"
   | "rugby-jersey"
-  | "socks";
+  | "socks"
+  | "beanie";
 
 export const SIZE_CHART_LABELS: Record<SizeChartType, string> = {
   tshirt: "T-Shirts / Polos",
@@ -42,6 +43,7 @@ export const SIZE_CHART_LABELS: Record<SizeChartType, string> = {
   "baseball-jersey": "Baseball Jersey",
   "rugby-jersey": "Rugby Jersey + Shorts",
   socks: "Socks",
+  beanie: "Beanie (Pom-Pom)",
 };
 
 export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
@@ -249,6 +251,21 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       tolerance: "± 2.0cm",
     },
   ],
+  beanie: [
+    {
+      title: "Pom-Pom Beanie — One Size Fits Most",
+      headers: ["", "One Size"],
+      rows: [
+        { label: "A. Width (½ flat)", values: [20.8] },
+        { label: "B. Height (excl pom-pom)", values: [23.5] },
+        { label: "C. Cuff Depth", values: [7.6] },
+        { label: "Pom-Pom Diameter", values: [7.6] },
+        { label: "Circumference (stretched)", values: ["45–48"] },
+        { label: "Total Height (knit)", values: [30.5] },
+      ],
+      tolerance: "± 1.0cm",
+    },
+  ],
   socks: [
     {
       title: "Rugby Socks",
@@ -306,7 +323,7 @@ const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "bucket-hat": "tshirt", // no specific hat chart; won't render in PO
   "cap-structured": "tshirt",
   "cap-snapback": "tshirt",
-  "beanie": "tshirt",
+  "beanie": "beanie",
   "kit-bag": "tshirt",
   "backpack": "tshirt",
   "drawstring-bag": "tshirt",

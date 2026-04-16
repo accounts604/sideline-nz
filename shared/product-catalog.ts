@@ -82,7 +82,7 @@ export const SIDELINE_PRODUCTS: SidelineProduct[] = [
   { id: "bucket-hat",            name: "Bucket Hat",                 category: "Headwear",  sizes: HEADWEAR_SM,   defaultMaterial: "Brushed Cotton Twill" },
   { id: "cap-structured",        name: "Cap (Structured)",           category: "Headwear",  sizes: HEADWEAR_ONE,  defaultMaterial: "Cotton Twill / Mesh Back" },
   { id: "cap-snapback",          name: "Snapback Cap",               category: "Headwear",  sizes: HEADWEAR_ONE,  defaultMaterial: "Cotton Twill" },
-  { id: "beanie",                name: "Beanie",                     category: "Headwear",  sizes: HEADWEAR_ONE,  defaultMaterial: "Acrylic Knit" },
+  { id: "beanie",                name: "Pom-Pom Beanie",             category: "Headwear",  sizes: HEADWEAR_ONE,  defaultMaterial: "100% Acrylic Knit (12\" / 30.5cm)" },
   { id: "kit-bag",               name: "Kit Bag / Duffle",           category: "Bags",      sizes: HEADWEAR_ONE,  defaultMaterial: "600D Polyester" },
   { id: "backpack",              name: "Backpack",                   category: "Bags",      sizes: HEADWEAR_ONE,  defaultMaterial: "600D Polyester" },
   { id: "drawstring-bag",        name: "Drawstring Bag",             category: "Bags",      sizes: HEADWEAR_ONE,  defaultMaterial: "210D Polyester" },
