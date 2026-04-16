@@ -21,6 +21,7 @@ import {
 } from "../google-drive";
 import { extractColorsFromImage } from "../mockup/color-extract";
 import { generateDesignBrief } from "../mockup/design-brief";
+import { uploadPoPdfToDrive } from "../po-pdf";
 import {
   searchGhlContacts,
   findGhlContactByEmail,
@@ -1462,6 +1463,32 @@ router.post("/orders/:id/assign-supplier", async (req, res) => {
   }
 });
 
+// POST /orders/:id/generate-pdf — generate PO PDF and upload to Drive (01. Brief)
+// Can be called any time — not just on dispatch. Useful for re-generating after
+// edits, or for orders that were created before PDF gen was wired.
+router.post("/orders/:id/generate-pdf", async (req, res) => {
+  try {
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (!order.driveFolderId) return res.status(400).json({ error: "No Drive folder — create one first" });
+
+    const result = await uploadPoPdfToDrive(order.id, order.driveFolderId);
+    if (!result) return res.status(502).json({ error: "PDF generation or Drive upload failed" });
+
+    await storage.logOrderActivity({
+      orderId: order.id,
+      userId: (req as any).user?.userId,
+      action: "po_pdf_generated",
+      details: { pdfId: result.pdfId },
+    });
+
+    res.json({ ok: true, ...result });
+  } catch (err: any) {
+    console.error("Admin generate-pdf error:", err);
+    res.status(500).json({ error: "Failed to generate PDF" });
+  }
+});
+
 // POST /orders/:id/raise-po — the main action that ties step 2 (GHL sync) and
 // step 3 (supplier portal) together:
 //   1. Validates the order has a supplier assigned (body.supplierId or order.assignedSupplierId)
@@ -1538,7 +1565,16 @@ router.post("/orders/:id/raise-po", async (req, res) => {
       }
     }
 
-    // 4. Log the action
+    // 4. Generate PO PDF and upload to Drive folder (01. Brief)
+    let poPdfResult: { pdfId: string; pdfUrl: string } | null = null;
+    if (order.driveFolderId) {
+      poPdfResult = await uploadPoPdfToDrive(order.id, order.driveFolderId).catch((err) => {
+        console.error("[raise-po] PDF upload failed:", err);
+        return null;
+      });
+    }
+
+    // 5. Log the action
     await db.insert(orderActivity).values({
       orderId: order.id,
       userId: (req as any).user?.userId,
@@ -1549,6 +1585,7 @@ router.post("/orders/:id/raise-po", async (req, res) => {
         supplierEmail: supplier.email,
         supplierCcEmail: supplier.ccEmail || null,
         gmailMessageId,
+        poPdfId: poPdfResult?.pdfId || null,
         ghlPushed: ghlPushResult.success,
         ghlPushReason: ghlPushResult.reason,
       },
@@ -1561,6 +1598,8 @@ router.post("/orders/:id/raise-po", async (req, res) => {
       supplierCcEmail: supplier.ccEmail || null,
       emailSent: !!gmailMessageId,
       gmailMessageId,
+      poPdfUploaded: !!poPdfResult,
+      poPdfUrl: poPdfResult?.pdfUrl || null,
       ghlPushed: ghlPushResult.success,
       ghlPushReason: ghlPushResult.reason,
     });

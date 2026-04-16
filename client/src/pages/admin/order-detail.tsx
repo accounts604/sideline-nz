@@ -399,6 +399,17 @@ export default function AdminOrderDetail() {
     onSuccess: () => { invalidate(); setAddingSizeForItem(null); setNewSize(""); setNewSizeQty(1); },
   });
 
+  const genPdfMut = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/admin/orders/${params.id}/generate-pdf`, {});
+      return r.json();
+    },
+    onSuccess: (data) => {
+      invalidate();
+      if (data.pdfUrl) window.open(data.pdfUrl, "_blank");
+    },
+  });
+
   const raisePoMut = useMutation({
     mutationFn: async () => {
       const r = await apiRequest("POST", `/api/admin/orders/${params.id}/raise-po`, { supplierId: selectedSupplierId || undefined });
@@ -521,9 +532,18 @@ export default function AdminOrderDetail() {
             >
               {raisePoMut.isPending ? "Dispatching…" : "Dispatch to Supplier"}
             </button>
+            {order.driveFolderId && (
+              <button
+                onClick={() => genPdfMut.mutate()}
+                disabled={genPdfMut.isPending}
+                style={{ padding: "7px 12px", fontSize: "11px", fontWeight: 600, background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "6px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px" }}
+              >
+                <FileText size={12} /> {genPdfMut.isPending ? "Generating…" : "PDF → Drive"}
+              </button>
+            )}
             <Link href={`/admin/orders/${order.id}/po`}>
               <button style={{ padding: "7px 12px", fontSize: "11px", fontWeight: 600, background: "#fff", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                <Printer size={12} /> PDF
+                <Printer size={12} /> Preview
               </button>
             </Link>
           </div>
