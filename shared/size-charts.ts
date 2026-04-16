@@ -330,6 +330,22 @@ const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "baseball-jersey": "baseball-jersey",
 };
 
+// Diagram images — path relative to public root. Used in the PO PDF to show
+// the measurement reference illustration alongside the numbers table.
+export const SIZE_CHART_DIAGRAMS: Record<SizeChartType, string> = {
+  tshirt: "/size-charts/tshirt-diagram.png",
+  hoodie: "/size-charts/hoodie-diagram.png",
+  singlet: "/size-charts/singlet-diagram.png",
+  shorts: "/size-charts/shorts-diagram.png",
+  trackpants: "/size-charts/trackpants-diagram.png",
+  "rain-jacket": "/size-charts/rain-jacket-diagram.png",
+  "tracksuit-jacket": "/size-charts/tracksuit-jacket-diagram.png",
+  "baseball-jersey": "/size-charts/baseball-jersey-diagram.png",
+  "rugby-jersey": "/size-charts/rugby-jersey-diagram.png",
+  socks: "/size-charts/socks-diagram.png",
+  beanie: "/size-charts/beanie-diagram.png",
+};
+
 export function suggestSizeChart(productType: string | null | undefined): SizeChartType {
   if (!productType) return "tshirt";
   return PRODUCT_TO_CHART[productType] || "tshirt";

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Layout from "@/components/layout";
 
-type GarmentType = "tshirt" | "hoodie" | "singlet" | "shorts" | "trackpants" | "rain-jacket" | "tracksuit-jacket" | "baseball-jersey" | "rugby-jersey" | "socks";
+type GarmentType = "tshirt" | "hoodie" | "singlet" | "shorts" | "trackpants" | "rain-jacket" | "tracksuit-jacket" | "baseball-jersey" | "rugby-jersey" | "socks" | "beanie";
 
 const GARMENT_LABELS: Record<GarmentType, string> = {
   tshirt: "T-Shirts",
@@ -14,6 +14,7 @@ const GARMENT_LABELS: Record<GarmentType, string> = {
   "baseball-jersey": "Baseball Jersey",
   "rugby-jersey": "Rugby Jersey",
   socks: "Socks",
+  beanie: "Beanie",
 };
 
 const DIAGRAM_IMAGES: Record<GarmentType, string> = {
@@ -27,6 +28,7 @@ const DIAGRAM_IMAGES: Record<GarmentType, string> = {
   "baseball-jersey": "/size-charts/baseball-jersey-diagram.png",
   "rugby-jersey": "/size-charts/rugby-jersey-diagram.png",
   socks: "/size-charts/socks-diagram.png",
+  beanie: "/size-charts/beanie-diagram.png",
 };
 
 /* ------------------------------------------------------------------ */
@@ -247,6 +249,21 @@ const SIZE_DATA: Record<GarmentType, SizeTable[]> = {
         { label: "B. Outside Leg", values: [27.5,28.5,29.5,30.5,31.5,32.5,33.5,34.5,35.5,36.5,37.5,38.5,39.5,40.5,41.5,42.5,43.5] },
       ],
       tolerance: "± 2.0cm",
+    },
+  ],
+  beanie: [
+    {
+      title: "Pom-Pom Beanie — One Size Fits Most",
+      headers: ["", "One Size"],
+      rows: [
+        { label: "A. Width (½ flat)", values: [20.8] },
+        { label: "B. Height (excl pom-pom)", values: [23.5] },
+        { label: "C. Cuff Depth", values: [7.6] },
+        { label: "Pom-Pom Diameter", values: [7.6] },
+        { label: "Circumference (stretched)", values: ["45–48"] },
+        { label: "Total Height (knit)", values: [30.5] },
+      ],
+      tolerance: "± 1.0cm",
     },
   ],
   socks: [

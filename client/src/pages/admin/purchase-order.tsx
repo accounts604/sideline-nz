@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { ArrowLeft, Printer } from "lucide-react";
 import { computeMilestones } from "@shared/po-milestones";
-import { suggestSizeChart, getSizeChartTables, SIZE_CHART_LABELS, type SizeChartType, type SizeTable } from "@shared/size-charts";
+import { suggestSizeChart, getSizeChartTables, SIZE_CHART_LABELS, SIZE_CHART_DIAGRAMS, type SizeChartType, type SizeTable } from "@shared/size-charts";
 
 interface OrderItem {
   id: string;
@@ -235,17 +235,28 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
         </div>
       )}
 
-      {/* Sizing Guide — renders the correct chart based on productType or sizeChartType */}
+      {/* Sizing Guide — diagram + measurement tables */}
       {(() => {
-        const chartType = (item as any).sizeChartType || suggestSizeChart(item.productType);
-        const tables = getSizeChartTables(chartType as SizeChartType);
+        const chartType = ((item as any).sizeChartType || suggestSizeChart(item.productType)) as SizeChartType;
+        const tables = getSizeChartTables(chartType);
+        const diagramSrc = SIZE_CHART_DIAGRAMS[chartType];
         return (
           <>
             <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center", letterSpacing: "0.3px" }}>
-              Sizing Guide — {SIZE_CHART_LABELS[chartType as SizeChartType] || chartType}
+              Sizing Guide — {SIZE_CHART_LABELS[chartType] || chartType}
             </div>
-            <div style={{ overflowX: "auto" }}>
-              {tables.map((t, i) => <PdfSizeChart key={i} table={t} />)}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "16px", padding: "12px 16px" }}>
+              {/* Left: measurement diagram */}
+              {diagramSrc && (
+                <div style={{ width: "220px", flexShrink: 0, textAlign: "center" }}>
+                  <img src={diagramSrc} alt={`${SIZE_CHART_LABELS[chartType]} measurement diagram`} style={{ width: "100%", maxHeight: "280px", objectFit: "contain" }} />
+                  <p style={{ fontSize: "9px", color: "#888", marginTop: "4px" }}>Measurement reference</p>
+                </div>
+              )}
+              {/* Right: measurement tables */}
+              <div style={{ flex: 1, overflowX: "auto" }}>
+                {tables.map((t, i) => <PdfSizeChart key={i} table={t} />)}
+              </div>
             </div>
           </>
         );
