@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { ArrowLeft, Printer } from "lucide-react";
 import { computeMilestones } from "@shared/po-milestones";
+import { suggestSizeChart, getSizeChartTables, SIZE_CHART_LABELS, type SizeChartType, type SizeTable } from "@shared/size-charts";
 
 interface OrderItem {
   id: string;
@@ -66,22 +67,37 @@ interface OrderDetail {
   [key: string]: any;
 }
 
-// Sizing guide for jerseys (from PO screenshots)
-const JERSEY_SIZING_GUIDE = {
-  headers: ["Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
-  measurements: [
-    { label: "A. Length", values: [50, 54, 58, 62, 66, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, 90, 92] },
-    { label: "B. 1/2 Chest", values: [35, 37, 39, 41, 43, 45, 43.5, 46, 48.5, 51, 53.5, 56, 58.5, 61, 63.5, 66, 68.5] },
-    { label: "C. 1/2 Waist", values: [34, 35.5, 37, 38.5, 40, 41.5, 40, 42.5, 45, 47.5, 50, 52.5, 55, 57.5, 60, 62.5, 65] },
-    { label: "D. 1/2 Hem", values: [36, 37.5, 39, 40.5, 42, 43.5, 42, 44.5, 47, 49.5, 52, 54.5, 57, 59.5, 62, 64.5, 67] },
-    { label: "E. Sleeve Length", values: [21, 23, 25, 27, 29, 31, 30, 31.5, 33, 34.5, 36, 37.5, 39, 40.5, 42, 43.5, 45] },
-    { label: "F. 1/2 Arm", values: [17.5, 18.5, 19.5, 20.5, 21.5, 22.5, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] },
-    { label: "G. 1/2 Cuff", values: [11.5, 12.5, 13.5, 14.5, 15.5, 16.5, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26] },
-    { label: "H. Neck Width", values: [18, 18.5, 19, 19.5, 20, 20.5, 20, 20.5, 21, 21.5, 22, 22.5, 23, 23.5, 24, 24.5, 25] },
-    { label: "I. Hem Drop", values: [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5] },
-    { label: "J. Sleeve Length (Seam to Cuff)", values: [14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] },
-  ],
-};
+// Size chart rendering helper for the PO PDF
+function PdfSizeChart({ table }: { table: SizeTable }) {
+  return (
+    <div style={{ marginBottom: "6px" }}>
+      <p style={{ fontSize: "12px", fontWeight: 800, padding: "6px 16px 3px", margin: 0 }}>{table.title}</p>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "10px" }}>
+        <thead>
+          <tr>
+            {table.headers.map((h, i) => (
+              <th key={i} style={{ padding: "4px 4px", background: i === 0 ? "#fff" : "#c9d9ea", textAlign: i === 0 ? "left" : "center", fontWeight: 700, border: "1px solid #ddd" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row) => (
+            <tr key={row.label}>
+              <td style={{ padding: "3px 8px", fontWeight: 600, whiteSpace: "nowrap", border: "1px solid #ddd" }}>{row.label}</td>
+              {row.values.map((v, i) => (
+                <td key={i} style={{ padding: "3px 4px", textAlign: "center", border: "1px solid #ddd" }}>{v}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9px", color: "#666", padding: "3px 16px" }}>
+        <span>Measurements in cm</span>
+        <span>Tolerance {table.tolerance}</span>
+      </div>
+    </div>
+  );
+}
 
 function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns: OrderSizeBreakdown[] }) {
   // Group breakdowns by size for summary
@@ -219,37 +235,21 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
         </div>
       )}
 
-      {/* Sizing Guide — flush below design specs */}
-      <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center", letterSpacing: "0.3px" }}>
-        Sizing Guide
-      </div>
-      <div style={{ overflowX: "auto" }}>
-        <p style={{ fontSize: "12px", fontWeight: 800, padding: "8px 16px 4px", margin: 0 }}>JERSEY</p>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "10px" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", padding: "4px 8px", background: "#fff" }}></th>
-              {JERSEY_SIZING_GUIDE.headers.map(h => (
-                <th key={h} style={{ padding: "4px 4px", background: "#c9d9ea", textAlign: "center", fontWeight: 700, border: "1px solid #ddd" }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {JERSEY_SIZING_GUIDE.measurements.map(row => (
-              <tr key={row.label}>
-                <td style={{ padding: "3px 8px", fontWeight: 600, whiteSpace: "nowrap", border: "1px solid #ddd" }}>{row.label}</td>
-                {row.values.map((v, i) => (
-                  <td key={i} style={{ padding: "3px 4px", textAlign: "center", border: "1px solid #ddd" }}>{v}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9px", color: "#666", padding: "4px 16px" }}>
-          <span>Measurements in cm</span>
-          <span>Tolerance +/- 2cm</span>
-        </div>
-      </div>
+      {/* Sizing Guide — renders the correct chart based on productType or sizeChartType */}
+      {(() => {
+        const chartType = (item as any).sizeChartType || suggestSizeChart(item.productType);
+        const tables = getSizeChartTables(chartType as SizeChartType);
+        return (
+          <>
+            <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center", letterSpacing: "0.3px" }}>
+              Sizing Guide — {SIZE_CHART_LABELS[chartType as SizeChartType] || chartType}
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              {tables.map((t, i) => <PdfSizeChart key={i} table={t} />)}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

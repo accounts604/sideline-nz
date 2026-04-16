@@ -13,6 +13,7 @@ import { getQueryFn } from "@/lib/queryClient";
 import { computeMilestones } from "@shared/po-milestones";
 import { productsGroupedByCategory, getProductById } from "@shared/product-catalog";
 import { BRANDING_METHODS } from "@shared/branding-methods";
+import { SIZE_CHART_LABELS, suggestSizeChart, getSizeChartTables, type SizeChartType } from "@shared/size-charts";
 import {
   ArrowLeft, FileText, ExternalLink, Upload, Download,
   Check, X, MessageSquare, Printer, Plus, Trash2, Sparkles, Ruler,
@@ -38,6 +39,7 @@ interface OrderItem {
   gradeGroup: string | null; // deprecated — no longer shown
   designNotes: string | null;
   designBrief: string | null;
+  sizeChartType: string | null;
 }
 
 interface DesignFile {
@@ -737,23 +739,31 @@ export default function AdminOrderDetail() {
                 </Field>
               </div>
 
-              {/* Sideline NZ size guide for the selected product type */}
-              {(() => {
-                const product = getProductById(item.productType);
-                if (!product) return null;
-                return (
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", padding: "8px 10px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: "6px", marginBottom: "12px" }}>
-                    <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.6px", color: "rgba(255,255,255,0.4)", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                      <Ruler size={10} /> Sideline NZ Size Guide
+              {/* Sideline NZ size chart — selectable per garment line */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", padding: "8px 10px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: "6px", marginBottom: "12px" }}>
+                <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.6px", color: "rgba(255,255,255,0.4)", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  <Ruler size={10} /> Size Chart
+                </span>
+                <select
+                  value={item.sizeChartType || suggestSizeChart(item.productType)}
+                  onChange={(e) => updateItem.mutate({ itemId: item.id, sizeChartType: e.target.value })}
+                  style={{ fontSize: "11px", padding: "3px 8px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", color: "#fff" }}
+                >
+                  {Object.entries(SIZE_CHART_LABELS).map(([k, label]) => (
+                    <option key={k} value={k} style={{ background: "#111" }}>{label}</option>
+                  ))}
+                </select>
+                {(() => {
+                  const chartType = (item.sizeChartType || suggestSizeChart(item.productType)) as SizeChartType;
+                  const tables = getSizeChartTables(chartType);
+                  const allHeaders = tables.flatMap(t => t.headers.filter(Boolean));
+                  return allHeaders.map((s) => (
+                    <span key={s} style={{ padding: "2px 8px", fontSize: "11px", fontWeight: 600, color: "#fff", background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.2)", borderRadius: "4px" }}>
+                      {s}
                     </span>
-                    {product.sizes.map((s) => (
-                      <span key={s} style={{ padding: "2px 8px", fontSize: "11px", fontWeight: 600, color: "#fff", background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.2)", borderRadius: "4px" }}>
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                );
-              })()}
+                  ));
+                })()}
+              </div>
 
               {/* Colours chip row (moved from header so it gets its own breathing space) */}
               <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>

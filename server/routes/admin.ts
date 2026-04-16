@@ -668,6 +668,7 @@ const updateItemSchema = z.object({
   gradeGroup: z.string().optional(),
   designNotes: z.string().optional(),
   designBrief: z.string().optional(),
+  sizeChartType: z.string().optional(),
 });
 
 router.patch("/orders/:id/items/:itemId", async (req, res) => {
