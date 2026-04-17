@@ -12,6 +12,7 @@ import { adminQuoteRouter, templateRouter, publicQuoteRouter } from "./quotes";
 import clubPortalRouter from "./club-portal";
 import supplierRouter from "./supplier";
 import { publicApprovalRouter } from "./approvals";
+import chatbotRouter from "./chatbot";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -62,6 +63,9 @@ export async function registerRoutes(
 
   // Public client-approval links (no auth — validated by random URL token)
   app.use("/api/approve", publicApprovalRouter);
+
+  // Chatbot API for GHL Conversational AI (Jarvesi web chat)
+  app.use("/api/chatbot", chatbotRouter);
 
   return httpServer;
 }
