@@ -68,10 +68,25 @@ function ScrollToTop() {
   return null;
 }
 
+/** Hide GHL chat widget on internal portal / admin routes */
+function GhlChatVisibility() {
+  const [location] = useLocation();
+
+  useEffect(() => {
+    const widget = document.querySelector("chat-widget") as HTMLElement | null;
+    if (!widget) return;
+    const hide = /^\/(admin|portal|club-portal|supplier)/.test(location);
+    widget.style.display = hide ? "none" : "";
+  }, [location]);
+
+  return null;
+}
+
 function Router() {
   return (
     <>
       <ScrollToTop />
+      <GhlChatVisibility />
       <Switch>
         {/* Public pages */}
         <Route path="/" component={Home} />
