@@ -48,40 +48,37 @@ async function ensureRoutes() {
   if (routesRegistered) return;
 
   try {
-    // Dynamic import: catches module-level crashes
-    const { WebhookHandlers } = await import("../server/webhookHandlers");
-
-    // Stripe webhook route MUST be before json middleware,
-    // but we already added json above. Re-add raw route at a specific path.
-    // We need to insert this before the json parser, so we use a separate mini-app.
-    const webhookApp = express();
-    webhookApp.post(
-      "/api/stripe/webhook",
-      express.raw({ type: "application/json" }),
-      async (req, res) => {
-        try {
-          const signature = req.headers["stripe-signature"];
-          if (!signature) {
-            return res.status(400).json({ error: "Missing stripe-signature" });
+    // Stripe webhooks — non-fatal if module fails to load
+    try {
+      const { WebhookHandlers } = await import("../server/webhookHandlers");
+      const webhookApp = express();
+      webhookApp.post(
+        "/api/stripe/webhook",
+        express.raw({ type: "application/json" }),
+        async (req, res) => {
+          try {
+            const signature = req.headers["stripe-signature"];
+            if (!signature) {
+              return res.status(400).json({ error: "Missing stripe-signature" });
+            }
+            const sig = Array.isArray(signature) ? signature[0] : signature;
+            if (!Buffer.isBuffer(req.body)) {
+              return res.status(500).json({ error: "Webhook processing error" });
+            }
+            await WebhookHandlers.processWebhook(req.body as Buffer, sig);
+            res.status(200).json({ received: true });
+          } catch (error: any) {
+            console.error("Webhook error:", error.message);
+            res.status(400).json({ error: "Webhook processing error" });
           }
-          const sig = Array.isArray(signature) ? signature[0] : signature;
-          if (!Buffer.isBuffer(req.body)) {
-            return res
-              .status(500)
-              .json({ error: "Webhook processing error" });
-          }
-          await WebhookHandlers.processWebhook(req.body as Buffer, sig);
-          res.status(200).json({ received: true });
-        } catch (error: any) {
-          console.error("Webhook error:", error.message);
-          res.status(400).json({ error: "Webhook processing error" });
         }
-      }
-    );
-    // Mount webhook app before our main app's json parser
-    app.use(webhookApp);
+      );
+      app.use(webhookApp);
+    } catch (whErr: any) {
+      console.error("[Vercel] Stripe webhooks unavailable:", whErr.message);
+    }
 
-    // Now dynamically import and register all routes
+    // Register all API routes
     const { registerRoutes } = await import("../server/routes/index");
     await registerRoutes(httpServer, app);
 
