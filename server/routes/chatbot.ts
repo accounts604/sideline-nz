@@ -257,4 +257,111 @@ router.get("/info", (_req, res) => {
   });
 });
 
+/**
+ * POST /api/chatbot/lead
+ *
+ * Capture lead data from Jarvesi chat and push to GHL as a contact
+ * with custom fields — mirrors the Sideline website quote form.
+ *
+ * Body: {
+ *   name, email, phone,
+ *   user_type, organization, role, member_count, sports, needs,
+ *   estimated_quantity, timing, budget_range, design_stage,
+ *   team_store_interest, mockup_interest, notes, ...
+ * }
+ */
+router.post("/lead", async (req, res) => {
+  try {
+    const { createGhlContact } = await import("./ghl");
+    const data = req.body;
+
+    if (!data.email && !data.phone) {
+      return res.status(400).json({ error: "email or phone is required" });
+    }
+
+    // Determine tags based on context
+    const tags: string[] = ["Website Lead", "Jarvesi Chat"];
+    if (data.user_type === "club") tags.push("Club");
+    if (data.user_type === "school") tags.push("School");
+    if (data.team_store_interest === "yes") tags.push("Team Store Interest");
+    if (data.mockup_interest === "yes") tags.push("Free Mockup Request");
+    if (data.enquiry_type) tags.push(data.enquiry_type);
+
+    const result = await createGhlContact(
+      { ...data, source: "Jarvesi Web Chat" },
+      tags,
+    );
+
+    res.json({
+      success: true,
+      message: "Thanks! We've got your details. Someone from the team will be in touch shortly.",
+      ghl: result,
+    });
+  } catch (e: any) {
+    console.error("[Chatbot] Lead capture error:", e.message);
+    res.status(500).json({ error: e.message?.substring(0, 300) });
+  }
+});
+
+/**
+ * GET /api/chatbot/form-fields
+ *
+ * Returns the form structure so Jarvesi knows what questions to ask
+ * and what values are valid for each field.
+ */
+router.get("/form-fields", (_req, res) => {
+  res.json({
+    description: "Sideline NZ enquiry form fields — Jarvesi should collect these conversationally",
+    steps: [
+      {
+        step: 1,
+        name: "Contact basics",
+        fields: [
+          { key: "name", label: "Full name", type: "text", required: true },
+          { key: "email", label: "Email address", type: "email", required: true },
+          { key: "phone", label: "Phone number", type: "phone", required: false },
+        ],
+      },
+      {
+        step: 2,
+        name: "Organisation",
+        fields: [
+          { key: "user_type", label: "Are you a club, school, or other?", type: "select", options: ["club", "school", "other"], required: true },
+          { key: "organization", label: "Organisation name", type: "text", required: true },
+          { key: "role", label: "Your role", type: "text", required: false },
+          { key: "member_count", label: "How many members?", type: "select", options: ["Under 20", "20–50", "51–100", "100–200", "200+"] },
+        ],
+      },
+      {
+        step: 3,
+        name: "What they need",
+        fields: [
+          { key: "sports", label: "What sport(s)?", type: "multi_select", options: ["Rugby", "League", "Football", "Netball", "Basketball", "Hockey", "Cricket", "Touch", "Other"] },
+          { key: "needs", label: "What do you need?", type: "multi_select", options: ["Full Playing Kit", "Training Gear", "Supporter Gear", "Off-Field Apparel", "Not Sure Yet"] },
+          { key: "estimated_quantity", label: "Roughly how many items?", type: "select", options: ["Under 20", "20–50", "50–100", "100+"] },
+        ],
+      },
+      {
+        step: 4,
+        name: "Timeline & design",
+        fields: [
+          { key: "timing", label: "When do you need it?", type: "select", options: ["ASAP (Rush)", "1–2 Months", "3–4 Months", "Next Season", "Just Exploring"] },
+          { key: "design_stage", label: "Design status?", type: "select", options: ["No design yet", "Have ideas", "Updating existing kit", "Design ready"] },
+          { key: "budget_range", label: "Budget range?", type: "select", options: ["Under $2K", "$2K–$5K", "$5K–$10K", "$10K–$20K", "$20K+", "Not sure"] },
+        ],
+      },
+      {
+        step: 5,
+        name: "Extras",
+        fields: [
+          { key: "team_store_interest", label: "Interested in a team store?", type: "select", options: ["yes", "no", "maybe"] },
+          { key: "mockup_interest", label: "Want a free mockup?", type: "select", options: ["yes", "no"] },
+          { key: "notes", label: "Anything else?", type: "text", required: false },
+        ],
+      },
+    ],
+    submit_to: "/api/chatbot/lead",
+  });
+});
+
 export default router;
