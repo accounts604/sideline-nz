@@ -4,5 +4,4 @@ dist/
 .env.local
 .vercel
 *.log
-# esbuild output — bundled API for Vercel
-api/index.js
+# esbuild output is committed so Vercel uses the pre-bundled file
