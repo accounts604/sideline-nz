@@ -1,9 +1,9 @@
-// Bundle server/api-entry.ts into a single self-contained JS file
+// Bundle api/index.ts into a single self-contained JS file
 // so Vercel doesn't need to trace imports into server/ and shared/
 import { build } from "esbuild";
 
 await build({
-  entryPoints: ["server/api-entry.ts"],
+  entryPoints: ["api/index.ts"],
   bundle: true,
   platform: "node",
   target: "node18",

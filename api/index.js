@@ -41,43 +41,6 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// server/stripeClient.ts
-import Stripe from "stripe";
-function getStripe() {
-  if (!process.env.STRIPE_SECRET_KEY) {
-    throw new Error("STRIPE_SECRET_KEY environment variable is required");
-  }
-  if (!stripeInstance) {
-    stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: "2024-12-18.acacia"
-    });
-  }
-  return stripeInstance;
-}
-function getStripeClient() {
-  return getStripe();
-}
-async function getUncachableStripeClient() {
-  return getStripe();
-}
-async function getStripePublishableKey() {
-  const key = process.env.STRIPE_PUBLISHABLE_KEY;
-  if (!key) throw new Error("STRIPE_PUBLISHABLE_KEY not set");
-  return key;
-}
-function getStripeWebhookSecret() {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret) throw new Error("STRIPE_WEBHOOK_SECRET not set");
-  return secret;
-}
-var stripeInstance;
-var init_stripeClient = __esm({
-  "server/stripeClient.ts"() {
-    "use strict";
-    stripeInstance = null;
-  }
-});
-
 // node_modules/drizzle-zod/index.mjs
 import { z } from "zod";
 import { isTable, getTableColumns, getViewSelectedFields, is, Column, SQL, isView } from "drizzle-orm";
@@ -896,56 +859,45 @@ var init_db = __esm({
   }
 });
 
-// server/webhookHandlers.ts
-var webhookHandlers_exports = {};
-__export(webhookHandlers_exports, {
-  WebhookHandlers: () => WebhookHandlers
-});
-import { eq } from "drizzle-orm";
-var WebhookHandlers;
-var init_webhookHandlers = __esm({
-  "server/webhookHandlers.ts"() {
+// server/stripeClient.ts
+import Stripe from "stripe";
+function getStripe() {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error("STRIPE_SECRET_KEY environment variable is required");
+  }
+  if (!stripeInstance) {
+    stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: "2024-12-18.acacia"
+    });
+  }
+  return stripeInstance;
+}
+function getStripeClient() {
+  return getStripe();
+}
+async function getUncachableStripeClient() {
+  return getStripe();
+}
+async function getStripePublishableKey() {
+  const key = process.env.STRIPE_PUBLISHABLE_KEY;
+  if (!key) throw new Error("STRIPE_PUBLISHABLE_KEY not set");
+  return key;
+}
+function getStripeWebhookSecret() {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) throw new Error("STRIPE_WEBHOOK_SECRET not set");
+  return secret;
+}
+var stripeInstance;
+var init_stripeClient = __esm({
+  "server/stripeClient.ts"() {
     "use strict";
-    init_stripeClient();
-    init_db();
-    init_schema();
-    WebhookHandlers = class {
-      static async processWebhook(payload, signature) {
-        if (!Buffer.isBuffer(payload)) {
-          throw new Error(
-            "STRIPE WEBHOOK ERROR: Payload must be a Buffer. Received type: " + typeof payload + ". Ensure webhook route is registered BEFORE app.use(express.json())."
-          );
-        }
-        const stripe = getStripeClient();
-        const webhookSecret = getStripeWebhookSecret();
-        const event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
-        if (event.type === "checkout.session.completed") {
-          const session = event.data.object;
-          await db.update(orders).set({
-            status: "paid",
-            stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id,
-            customerEmail: session.customer_details?.email,
-            customerName: session.customer_details?.name,
-            paidAt: /* @__PURE__ */ new Date(),
-            updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq(orders.stripeCheckoutSessionId, session.id));
-          console.log(`Order paid: ${session.id}`);
-        }
-        if (event.type === "payment_intent.succeeded") {
-          const paymentIntent = event.data.object;
-          await db.update(orders).set({
-            status: "paid",
-            paidAt: /* @__PURE__ */ new Date(),
-            updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq(orders.stripePaymentIntentId, paymentIntent.id));
-        }
-      }
-    };
+    stripeInstance = null;
   }
 });
 
 // server/storage.ts
-import { eq as eq2, and, sql as sql2, desc, count } from "drizzle-orm";
+import { eq, and, sql as sql2, desc, count } from "drizzle-orm";
 var DatabaseStorage, storage;
 var init_storage = __esm({
   "server/storage.ts"() {
@@ -956,11 +908,11 @@ var init_storage = __esm({
     DatabaseStorage = class {
       // Users
       async getUser(id) {
-        const [user] = await db.select().from(users).where(eq2(users.id, id));
+        const [user] = await db.select().from(users).where(eq(users.id, id));
         return user;
       }
       async getUserByUsername(username) {
-        const [user] = await db.select().from(users).where(eq2(users.username, username));
+        const [user] = await db.select().from(users).where(eq(users.username, username));
         return user;
       }
       async createUser(insertUser) {
@@ -968,15 +920,15 @@ var init_storage = __esm({
         return user;
       }
       async updateUserStripeInfo(userId, stripeCustomerId) {
-        const [user] = await db.update(users).set({ stripeCustomerId }).where(eq2(users.id, userId)).returning();
+        const [user] = await db.update(users).set({ stripeCustomerId }).where(eq(users.id, userId)).returning();
         return user;
       }
       async getUserByEmail(email) {
-        const [user] = await db.select().from(users).where(eq2(users.email, email));
+        const [user] = await db.select().from(users).where(eq(users.email, email));
         return user;
       }
       async getUserByInviteToken(token) {
-        const [user] = await db.select().from(users).where(eq2(users.inviteToken, token));
+        const [user] = await db.select().from(users).where(eq(users.inviteToken, token));
         return user;
       }
       async acceptInvite(userId, hashedPassword) {
@@ -986,19 +938,19 @@ var init_storage = __esm({
           inviteExpiresAt: null,
           emailVerified: true,
           updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq2(users.id, userId)).returning();
+        }).where(eq(users.id, userId)).returning();
         return user;
       }
       async linkOrdersByEmail(email, userId) {
-        await db.update(orders).set({ userId }).where(and(eq2(orders.customerEmail, email), sql2`${orders.userId} IS NULL`));
+        await db.update(orders).set({ userId }).where(and(eq(orders.customerEmail, email), sql2`${orders.userId} IS NULL`));
       }
       // Club Accounts
       async getClubAccount(id) {
-        const [account] = await db.select().from(clubAccounts).where(eq2(clubAccounts.id, id));
+        const [account] = await db.select().from(clubAccounts).where(eq(clubAccounts.id, id));
         return account;
       }
       async getClubAccountByEmail(email) {
-        const [account] = await db.select().from(clubAccounts).where(eq2(clubAccounts.email, email));
+        const [account] = await db.select().from(clubAccounts).where(eq(clubAccounts.email, email));
         return account;
       }
       async createClubAccount(account) {
@@ -1006,20 +958,20 @@ var init_storage = __esm({
         return created;
       }
       async updateClubAccount(id, data) {
-        const [updated] = await db.update(clubAccounts).set({ ...data, updatedAt: /* @__PURE__ */ new Date() }).where(eq2(clubAccounts.id, id)).returning();
+        const [updated] = await db.update(clubAccounts).set({ ...data, updatedAt: /* @__PURE__ */ new Date() }).where(eq(clubAccounts.id, id)).returning();
         return updated;
       }
       async getClubOrder(clubAccountId) {
-        const [order] = await db.select().from(orders).where(eq2(orders.clubAccountId, clubAccountId)).orderBy(desc(orders.createdAt)).limit(1);
+        const [order] = await db.select().from(orders).where(eq(orders.clubAccountId, clubAccountId)).orderBy(desc(orders.createdAt)).limit(1);
         return order;
       }
       // Carts
       async getCart(id) {
-        const [cart] = await db.select().from(carts).where(eq2(carts.id, id));
+        const [cart] = await db.select().from(carts).where(eq(carts.id, id));
         return cart;
       }
       async getCartBySession(sessionId, storeSlug) {
-        const [cart] = await db.select().from(carts).where(and(eq2(carts.sessionId, sessionId), eq2(carts.storeSlug, storeSlug)));
+        const [cart] = await db.select().from(carts).where(and(eq(carts.sessionId, sessionId), eq(carts.storeSlug, storeSlug)));
         return cart;
       }
       async createCart(cart) {
@@ -1028,70 +980,70 @@ var init_storage = __esm({
       }
       // Cart Items
       async getCartItems(cartId) {
-        return await db.select().from(cartItems).where(eq2(cartItems.cartId, cartId));
+        return await db.select().from(cartItems).where(eq(cartItems.cartId, cartId));
       }
       async getCartItem(id) {
-        const [item] = await db.select().from(cartItems).where(eq2(cartItems.id, id));
+        const [item] = await db.select().from(cartItems).where(eq(cartItems.id, id));
         return item;
       }
       async addCartItem(item) {
         const existing = await db.select().from(cartItems).where(and(
-          eq2(cartItems.cartId, item.cartId),
-          eq2(cartItems.productId, item.productId),
-          eq2(cartItems.priceId, item.priceId),
-          item.size ? eq2(cartItems.size, item.size) : sql2`${cartItems.size} IS NULL`
+          eq(cartItems.cartId, item.cartId),
+          eq(cartItems.productId, item.productId),
+          eq(cartItems.priceId, item.priceId),
+          item.size ? eq(cartItems.size, item.size) : sql2`${cartItems.size} IS NULL`
         ));
         if (existing.length > 0) {
-          const [updated] = await db.update(cartItems).set({ quantity: existing[0].quantity + (item.quantity || 1) }).where(eq2(cartItems.id, existing[0].id)).returning();
+          const [updated] = await db.update(cartItems).set({ quantity: existing[0].quantity + (item.quantity || 1) }).where(eq(cartItems.id, existing[0].id)).returning();
           return updated;
         }
         const [newItem] = await db.insert(cartItems).values(item).returning();
         return newItem;
       }
       async updateCartItemQuantity(id, quantity) {
-        const [item] = await db.update(cartItems).set({ quantity }).where(eq2(cartItems.id, id)).returning();
+        const [item] = await db.update(cartItems).set({ quantity }).where(eq(cartItems.id, id)).returning();
         return item;
       }
       async removeCartItem(id) {
-        await db.delete(cartItems).where(eq2(cartItems.id, id));
+        await db.delete(cartItems).where(eq(cartItems.id, id));
       }
       async clearCart(cartId) {
-        await db.delete(cartItems).where(eq2(cartItems.cartId, cartId));
+        await db.delete(cartItems).where(eq(cartItems.cartId, cartId));
       }
       // Orders
       async getOrder(id) {
-        const [order] = await db.select().from(orders).where(eq2(orders.id, id));
+        const [order] = await db.select().from(orders).where(eq(orders.id, id));
         return order;
       }
       async getOrderByNumber(orderNumber) {
-        const [order] = await db.select().from(orders).where(eq2(orders.orderNumber, orderNumber));
+        const [order] = await db.select().from(orders).where(eq(orders.orderNumber, orderNumber));
         return order;
       }
       async getOrderByCheckoutSession(checkoutSessionId) {
-        const [order] = await db.select().from(orders).where(eq2(orders.stripeCheckoutSessionId, checkoutSessionId));
+        const [order] = await db.select().from(orders).where(eq(orders.stripeCheckoutSessionId, checkoutSessionId));
         return order;
       }
       async getOrdersBySession(sessionId) {
-        return await db.select().from(orders).where(eq2(orders.sessionId, sessionId)).orderBy(sql2`${orders.createdAt} DESC`);
+        return await db.select().from(orders).where(eq(orders.sessionId, sessionId)).orderBy(sql2`${orders.createdAt} DESC`);
       }
       async createOrder(order) {
         const [newOrder] = await db.insert(orders).values(order).returning();
         return newOrder;
       }
       async updateOrderStatus(id, status) {
-        const [order] = await db.update(orders).set({ status, updatedAt: /* @__PURE__ */ new Date() }).where(eq2(orders.id, id)).returning();
+        const [order] = await db.update(orders).set({ status, updatedAt: /* @__PURE__ */ new Date() }).where(eq(orders.id, id)).returning();
         return order;
       }
       // Order Items
       async getOrderItems(orderId) {
-        return await db.select().from(orderItems).where(eq2(orderItems.orderId, orderId));
+        return await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
       }
       async createOrderItem(item) {
         const [newItem] = await db.insert(orderItems).values(item).returning();
         return newItem;
       }
       async updateOrderItem(id, data) {
-        const [item] = await db.update(orderItems).set(data).where(eq2(orderItems.id, id)).returning();
+        const [item] = await db.update(orderItems).set(data).where(eq(orderItems.id, id)).returning();
         return item;
       }
       // Stripe data queries (direct Stripe API — replaces stripe-replit-sync)
@@ -1179,28 +1131,28 @@ var init_storage = __esm({
       }
       // GHL Product mapping
       async getGhlProduct(ghlProductId) {
-        const [product] = await db.select().from(ghlProducts).where(eq2(ghlProducts.ghlProductId, ghlProductId));
+        const [product] = await db.select().from(ghlProducts).where(eq(ghlProducts.ghlProductId, ghlProductId));
         return product;
       }
       async getGhlProductsByStore(storeSlug) {
-        return await db.select().from(ghlProducts).where(and(eq2(ghlProducts.storeSlug, storeSlug), eq2(ghlProducts.active, true)));
+        return await db.select().from(ghlProducts).where(and(eq(ghlProducts.storeSlug, storeSlug), eq(ghlProducts.active, true)));
       }
       async createGhlProduct(product) {
         const [newProduct] = await db.insert(ghlProducts).values(product).returning();
         return newProduct;
       }
       async updateGhlProduct(ghlProductId, data) {
-        const [updated] = await db.update(ghlProducts).set({ ...data, updatedAt: /* @__PURE__ */ new Date() }).where(eq2(ghlProducts.ghlProductId, ghlProductId)).returning();
+        const [updated] = await db.update(ghlProducts).set({ ...data, updatedAt: /* @__PURE__ */ new Date() }).where(eq(ghlProducts.ghlProductId, ghlProductId)).returning();
         return updated;
       }
       async deactivateGhlProduct(ghlProductId) {
-        await db.update(ghlProducts).set({ active: false, updatedAt: /* @__PURE__ */ new Date() }).where(eq2(ghlProducts.ghlProductId, ghlProductId));
+        await db.update(ghlProducts).set({ active: false, updatedAt: /* @__PURE__ */ new Date() }).where(eq(ghlProducts.ghlProductId, ghlProductId));
       }
       // Admin queries
       async getAllOrders(opts) {
         const conditions = [];
-        if (opts.status) conditions.push(eq2(orders.status, opts.status));
-        if (opts.designStatus) conditions.push(eq2(orders.designStatus, opts.designStatus));
+        if (opts.status) conditions.push(eq(orders.status, opts.status));
+        if (opts.designStatus) conditions.push(eq(orders.designStatus, opts.designStatus));
         if (opts.search) {
           conditions.push(
             sql2`(${orders.orderNumber} ILIKE ${"%" + opts.search + "%"} OR ${orders.customerEmail} ILIKE ${"%" + opts.search + "%"} OR ${orders.customerName} ILIKE ${"%" + opts.search + "%"})`
@@ -1212,28 +1164,28 @@ var init_storage = __esm({
         return { orders: result, total: totalResult.count };
       }
       async getOrderWithDetails(orderId) {
-        const [order] = await db.select().from(orders).where(eq2(orders.id, orderId));
+        const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
         if (!order) return null;
-        const items = await db.select().from(orderItems).where(eq2(orderItems.orderId, orderId));
-        const designs = await db.select().from(designFiles).where(eq2(designFiles.orderId, orderId)).orderBy(desc(designFiles.createdAt));
+        const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+        const designs = await db.select().from(designFiles).where(eq(designFiles.orderId, orderId)).orderBy(desc(designFiles.createdAt));
         const designIds = designs.map((d) => d.id);
         let comments = [];
         if (designIds.length > 0) {
           comments = await db.select().from(designComments).where(sql2`${designComments.designFileId} IN (${sql2.join(designIds.map((id) => sql2`${id}`), sql2`, `)})`).orderBy(desc(designComments.createdAt));
         }
-        const sizeBreakdowns = await db.select().from(orderSizeBreakdowns).where(eq2(orderSizeBreakdowns.orderId, orderId));
-        const stages = await db.select().from(productionStages).where(eq2(productionStages.orderId, orderId)).orderBy(productionStages.createdAt);
-        const qcChecks = await db.select().from(qualityChecks).where(eq2(qualityChecks.orderId, orderId)).orderBy(desc(qualityChecks.createdAt));
-        const messages = await db.select().from(orderMessages).where(eq2(orderMessages.orderId, orderId)).orderBy(orderMessages.createdAt);
-        const activityLog = await db.select().from(orderActivity).where(eq2(orderActivity.orderId, orderId)).orderBy(desc(orderActivity.createdAt)).limit(50);
+        const sizeBreakdowns = await db.select().from(orderSizeBreakdowns).where(eq(orderSizeBreakdowns.orderId, orderId));
+        const stages = await db.select().from(productionStages).where(eq(productionStages.orderId, orderId)).orderBy(productionStages.createdAt);
+        const qcChecks = await db.select().from(qualityChecks).where(eq(qualityChecks.orderId, orderId)).orderBy(desc(qualityChecks.createdAt));
+        const messages = await db.select().from(orderMessages).where(eq(orderMessages.orderId, orderId)).orderBy(orderMessages.createdAt);
+        const activityLog = await db.select().from(orderActivity).where(eq(orderActivity.orderId, orderId)).orderBy(desc(orderActivity.createdAt)).limit(50);
         return { order, items, designs, comments, sizeBreakdowns, stages, qcChecks, messages, activity: activityLog };
       }
       async updateOrder(orderId, data) {
-        const [order] = await db.update(orders).set({ ...data, updatedAt: /* @__PURE__ */ new Date() }).where(eq2(orders.id, orderId)).returning();
+        const [order] = await db.update(orders).set({ ...data, updatedAt: /* @__PURE__ */ new Date() }).where(eq(orders.id, orderId)).returning();
         return order;
       }
       async getAllCustomers(opts) {
-        const conditions = [eq2(users.role, "customer")];
+        const conditions = [eq(users.role, "customer")];
         if (opts.search) {
           conditions.push(
             sql2`(${users.email} ILIKE ${"%" + opts.search + "%"} OR ${users.teamName} ILIKE ${"%" + opts.search + "%"})`
@@ -1245,13 +1197,13 @@ var init_storage = __esm({
         return { customers: result, total: totalResult.count };
       }
       async getCustomerWithOrders(userId) {
-        const [customer] = await db.select().from(users).where(eq2(users.id, userId));
+        const [customer] = await db.select().from(users).where(eq(users.id, userId));
         if (!customer) return null;
-        const customerOrders = await db.select().from(orders).where(eq2(orders.userId, userId)).orderBy(desc(orders.createdAt));
+        const customerOrders = await db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt));
         return { customer, orders: customerOrders };
       }
       async updateCustomer(userId, data) {
-        const [user] = await db.update(users).set({ ...data, updatedAt: /* @__PURE__ */ new Date() }).where(eq2(users.id, userId)).returning();
+        const [user] = await db.update(users).set({ ...data, updatedAt: /* @__PURE__ */ new Date() }).where(eq(users.id, userId)).returning();
         return user;
       }
       async createInvite(email, teamName, role = "customer", ghlContactId, contactPhone) {
@@ -1273,24 +1225,24 @@ var init_storage = __esm({
         return user;
       }
       async getOrdersByUser(userId) {
-        return await db.select().from(orders).where(eq2(orders.userId, userId)).orderBy(desc(orders.createdAt));
+        return await db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt));
       }
       async getOrdersByAssignedSupplier(supplierId) {
-        return await db.select().from(orders).where(eq2(orders.assignedSupplierId, supplierId)).orderBy(desc(orders.createdAt));
+        return await db.select().from(orders).where(eq(orders.assignedSupplierId, supplierId)).orderBy(desc(orders.createdAt));
       }
       async listSuppliers() {
-        return await db.select().from(users).where(eq2(users.role, "supplier")).orderBy(desc(users.createdAt));
+        return await db.select().from(users).where(eq(users.role, "supplier")).orderBy(desc(users.createdAt));
       }
       // Dashboard stats
       async getDashboardStats() {
         const [totalOrders] = await db.select({ count: count() }).from(orders);
-        const [pendingOrders] = await db.select({ count: count() }).from(orders).where(eq2(orders.status, "pending"));
-        const [pendingDesigns] = await db.select({ count: count() }).from(designFiles).where(eq2(designFiles.status, "pending"));
-        const [totalCustomers] = await db.select({ count: count() }).from(users).where(eq2(users.role, "customer"));
-        const [bulkOrders] = await db.select({ count: count() }).from(orders).where(eq2(orders.orderType, "bulk-order"));
-        const [teamStoreOrders] = await db.select({ count: count() }).from(orders).where(eq2(orders.orderType, "team-store"));
-        const [sampleRuns] = await db.select({ count: count() }).from(orders).where(eq2(orders.orderType, "sample-run"));
-        const [totalSuppliers] = await db.select({ count: count() }).from(users).where(eq2(users.role, "supplier"));
+        const [pendingOrders] = await db.select({ count: count() }).from(orders).where(eq(orders.status, "pending"));
+        const [pendingDesigns] = await db.select({ count: count() }).from(designFiles).where(eq(designFiles.status, "pending"));
+        const [totalCustomers] = await db.select({ count: count() }).from(users).where(eq(users.role, "customer"));
+        const [bulkOrders] = await db.select({ count: count() }).from(orders).where(eq(orders.orderType, "bulk-order"));
+        const [teamStoreOrders] = await db.select({ count: count() }).from(orders).where(eq(orders.orderType, "team-store"));
+        const [sampleRuns] = await db.select({ count: count() }).from(orders).where(eq(orders.orderType, "sample-run"));
+        const [totalSuppliers] = await db.select({ count: count() }).from(users).where(eq(users.role, "supplier"));
         const stageRows = await db.select({ stage: orders.pipelineStage, count: count() }).from(orders).where(sql2`${orders.pipelineStage} IS NOT NULL`).groupBy(orders.pipelineStage);
         const byStage = {};
         for (const r of stageRows) if (r.stage) byStage[r.stage] = r.count;
@@ -1308,11 +1260,11 @@ var init_storage = __esm({
       }
       // Design files
       async getDesignFile(id) {
-        const [file] = await db.select().from(designFiles).where(eq2(designFiles.id, id));
+        const [file] = await db.select().from(designFiles).where(eq(designFiles.id, id));
         return file;
       }
       async getDesignFilesByOrder(orderId) {
-        return await db.select().from(designFiles).where(eq2(designFiles.orderId, orderId)).orderBy(desc(designFiles.createdAt));
+        return await db.select().from(designFiles).where(eq(designFiles.orderId, orderId)).orderBy(desc(designFiles.createdAt));
       }
       async getPendingDesignFiles() {
         const result = await db.select({
@@ -1331,7 +1283,7 @@ var init_storage = __esm({
           createdAt: designFiles.createdAt,
           orderNumber: orders.orderNumber,
           customerEmail: orders.customerEmail
-        }).from(designFiles).leftJoin(orders, eq2(designFiles.orderId, orders.id)).where(eq2(designFiles.status, "pending")).orderBy(desc(designFiles.createdAt));
+        }).from(designFiles).leftJoin(orders, eq(designFiles.orderId, orders.id)).where(eq(designFiles.status, "pending")).orderBy(desc(designFiles.createdAt));
         return result;
       }
       async createDesignFile(file) {
@@ -1339,12 +1291,12 @@ var init_storage = __esm({
         return newFile;
       }
       async updateDesignFileStatus(id, status) {
-        const [file] = await db.update(designFiles).set({ status }).where(eq2(designFiles.id, id)).returning();
+        const [file] = await db.update(designFiles).set({ status }).where(eq(designFiles.id, id)).returning();
         return file;
       }
       // Design comments
       async getDesignComments(designFileId) {
-        return await db.select().from(designComments).where(eq2(designComments.designFileId, designFileId)).orderBy(desc(designComments.createdAt));
+        return await db.select().from(designComments).where(eq(designComments.designFileId, designFileId)).orderBy(desc(designComments.createdAt));
       }
       async createDesignComment(comment) {
         const [newComment] = await db.insert(designComments).values(comment).returning();
@@ -1352,39 +1304,39 @@ var init_storage = __esm({
       }
       // Notifications
       async getNotifications(userId) {
-        return await db.select().from(notifications).where(eq2(notifications.userId, userId)).orderBy(desc(notifications.createdAt)).limit(50);
+        return await db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt)).limit(50);
       }
       async createNotification(notification) {
         const [n] = await db.insert(notifications).values(notification).returning();
         return n;
       }
       async markNotificationRead(id) {
-        await db.update(notifications).set({ read: true }).where(eq2(notifications.id, id));
+        await db.update(notifications).set({ read: true }).where(eq(notifications.id, id));
       }
       // Order Size Breakdowns
       async getSizeBreakdowns(orderId) {
-        return await db.select().from(orderSizeBreakdowns).where(eq2(orderSizeBreakdowns.orderId, orderId)).orderBy(orderSizeBreakdowns.size);
+        return await db.select().from(orderSizeBreakdowns).where(eq(orderSizeBreakdowns.orderId, orderId)).orderBy(orderSizeBreakdowns.size);
       }
       async getSizeBreakdownsByItem(orderItemId) {
-        return await db.select().from(orderSizeBreakdowns).where(eq2(orderSizeBreakdowns.orderItemId, orderItemId)).orderBy(orderSizeBreakdowns.size);
+        return await db.select().from(orderSizeBreakdowns).where(eq(orderSizeBreakdowns.orderItemId, orderItemId)).orderBy(orderSizeBreakdowns.size);
       }
       async createSizeBreakdown(breakdown) {
         const [row] = await db.insert(orderSizeBreakdowns).values(breakdown).returning();
         return row;
       }
       async updateSizeBreakdown(id, data) {
-        const [row] = await db.update(orderSizeBreakdowns).set(data).where(eq2(orderSizeBreakdowns.id, id)).returning();
+        const [row] = await db.update(orderSizeBreakdowns).set(data).where(eq(orderSizeBreakdowns.id, id)).returning();
         return row;
       }
       async deleteSizeBreakdown(id) {
-        await db.delete(orderSizeBreakdowns).where(eq2(orderSizeBreakdowns.id, id));
+        await db.delete(orderSizeBreakdowns).where(eq(orderSizeBreakdowns.id, id));
       }
       // Production Stages
       async getProductionStages(orderId) {
-        return await db.select().from(productionStages).where(eq2(productionStages.orderId, orderId)).orderBy(productionStages.createdAt);
+        return await db.select().from(productionStages).where(eq(productionStages.orderId, orderId)).orderBy(productionStages.createdAt);
       }
       async getProductionStage(id) {
-        const [stage] = await db.select().from(productionStages).where(eq2(productionStages.id, id));
+        const [stage] = await db.select().from(productionStages).where(eq(productionStages.id, id));
         return stage;
       }
       async createProductionStage(stage) {
@@ -1392,7 +1344,7 @@ var init_storage = __esm({
         return row;
       }
       async updateProductionStage(id, data) {
-        const [row] = await db.update(productionStages).set(data).where(eq2(productionStages.id, id)).returning();
+        const [row] = await db.update(productionStages).set(data).where(eq(productionStages.id, id)).returning();
         return row;
       }
       async initializeProductionPipeline(orderId) {
@@ -1417,15 +1369,15 @@ var init_storage = __esm({
           }).returning();
           created.push(row);
         }
-        await db.update(orders).set({ productionStage: "order_received", updatedAt: /* @__PURE__ */ new Date() }).where(eq2(orders.id, orderId));
+        await db.update(orders).set({ productionStage: "order_received", updatedAt: /* @__PURE__ */ new Date() }).where(eq(orders.id, orderId));
         return created;
       }
       // Quality Checks
       async getQualityChecks(orderId) {
-        return await db.select().from(qualityChecks).where(eq2(qualityChecks.orderId, orderId)).orderBy(desc(qualityChecks.createdAt));
+        return await db.select().from(qualityChecks).where(eq(qualityChecks.orderId, orderId)).orderBy(desc(qualityChecks.createdAt));
       }
       async getQualityCheck(id) {
-        const [check] = await db.select().from(qualityChecks).where(eq2(qualityChecks.id, id));
+        const [check] = await db.select().from(qualityChecks).where(eq(qualityChecks.id, id));
         return check;
       }
       async createQualityCheck(check) {
@@ -1433,12 +1385,12 @@ var init_storage = __esm({
         return row;
       }
       async updateQualityCheck(id, data) {
-        const [row] = await db.update(qualityChecks).set(data).where(eq2(qualityChecks.id, id)).returning();
+        const [row] = await db.update(qualityChecks).set(data).where(eq(qualityChecks.id, id)).returning();
         return row;
       }
       // Order Messages
       async getOrderMessages(orderId) {
-        return await db.select().from(orderMessages).where(eq2(orderMessages.orderId, orderId)).orderBy(orderMessages.createdAt);
+        return await db.select().from(orderMessages).where(eq(orderMessages.orderId, orderId)).orderBy(orderMessages.createdAt);
       }
       async createOrderMessage(message) {
         const [row] = await db.insert(orderMessages).values(message).returning();
@@ -1446,7 +1398,7 @@ var init_storage = __esm({
       }
       // Order Activity
       async getOrderActivityLog(orderId) {
-        return await db.select().from(orderActivity).where(eq2(orderActivity.orderId, orderId)).orderBy(desc(orderActivity.createdAt));
+        return await db.select().from(orderActivity).where(eq(orderActivity.orderId, orderId)).orderBy(desc(orderActivity.createdAt));
       }
       async logOrderActivity(activity) {
         const [row] = await db.insert(orderActivity).values(activity).returning();
@@ -1865,7 +1817,7 @@ __export(ghl_exports, {
 });
 import { Router } from "express";
 import { z as z2 } from "zod";
-import { eq as eq3 } from "drizzle-orm";
+import { eq as eq2 } from "drizzle-orm";
 async function createGhlContact(contactData, tags = []) {
   const apiKey = process.env.SIDELINE_GHL_API_KEY;
   const locationId = process.env.SIDELINE_GHL_LOCATION_ID;
@@ -2518,7 +2470,7 @@ Contact ID: ${contactId}`,
           });
           return res.status(200).json({ ok: true, ignored: "unknown_stage" });
         }
-        const [order] = await db.select({ id: orders.id, pipelineStage: orders.pipelineStage }).from(orders).where(eq3(orders.ghlOpportunityId, payload.opportunityId)).limit(1);
+        const [order] = await db.select({ id: orders.id, pipelineStage: orders.pipelineStage }).from(orders).where(eq2(orders.ghlOpportunityId, payload.opportunityId)).limit(1);
         if (!order) {
           console.log(
             `[GHL stage webhook] No linked order for opportunity ${payload.opportunityId} (stage \u2192 ${stageName}) \u2014 ignoring`
@@ -2529,7 +2481,7 @@ Contact ID: ${contactId}`,
         if (previousStage === stageName) {
           return res.status(200).json({ ok: true, noop: true });
         }
-        await db.update(orders).set({ pipelineStage: stageName, updatedAt: /* @__PURE__ */ new Date() }).where(eq3(orders.id, order.id));
+        await db.update(orders).set({ pipelineStage: stageName, updatedAt: /* @__PURE__ */ new Date() }).where(eq2(orders.id, order.id));
         await db.insert(orderActivity).values({
           orderId: order.id,
           userId: null,
@@ -2551,1571 +2503,6 @@ Contact ID: ${contactId}`,
       }
     });
     ghl_default = router;
-  }
-});
-
-// server/routes/store.ts
-import { Router as Router2 } from "express";
-import { z as z3 } from "zod";
-function generateOrderNumber() {
-  const prefix = "SNZ";
-  const timestamp2 = Date.now().toString(36).toUpperCase();
-  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `${prefix}-${timestamp2}-${random}`;
-}
-var router2, cartItemSchema, store_default;
-var init_store = __esm({
-  "server/routes/store.ts"() {
-    "use strict";
-    init_storage();
-    init_stripeClient();
-    router2 = Router2();
-    router2.get("/stripe/config", async (req, res) => {
-      try {
-        const publishableKey = await getStripePublishableKey();
-        res.json({ publishableKey });
-      } catch (e) {
-        console.error("Stripe config error:", e);
-        res.status(500).json({ error: "Stripe not configured" });
-      }
-    });
-    router2.get("/products", async (req, res) => {
-      try {
-        const storeSlug = req.query.store;
-        const products = await storage.getStripeProducts(storeSlug);
-        const grouped = products.reduce((acc, row) => {
-          if (!acc[row.id]) {
-            acc[row.id] = {
-              id: row.id,
-              name: row.name,
-              description: row.description,
-              images: row.images,
-              metadata: row.metadata,
-              prices: []
-            };
-          }
-          if (row.price_id) {
-            acc[row.id].prices.push({
-              id: row.price_id,
-              unitAmount: row.unit_amount,
-              currency: row.currency,
-              metadata: row.price_metadata
-            });
-          }
-          return acc;
-        }, {});
-        res.json({ data: Object.values(grouped) });
-      } catch (e) {
-        console.error("Products error:", e);
-        res.status(500).json({ error: e.message });
-      }
-    });
-    router2.get("/products/:productId", async (req, res) => {
-      try {
-        const product = await storage.getStripeProduct(req.params.productId);
-        if (!product) {
-          return res.status(404).json({ error: "Product not found" });
-        }
-        const prices = await storage.getStripePrices(req.params.productId);
-        res.json({
-          ...product,
-          prices: prices.map((p) => ({
-            id: p.id,
-            unitAmount: p.unit_amount,
-            currency: p.currency,
-            metadata: p.metadata
-          }))
-        });
-      } catch (e) {
-        console.error("Product error:", e);
-        res.status(500).json({ error: e.message });
-      }
-    });
-    cartItemSchema = z3.object({
-      productId: z3.string(),
-      priceId: z3.string(),
-      productName: z3.string(),
-      productImage: z3.string().optional(),
-      size: z3.string().optional(),
-      quantity: z3.number().min(1).default(1),
-      unitAmount: z3.number(),
-      currency: z3.string().default("nzd")
-    });
-    router2.get("/cart", async (req, res) => {
-      try {
-        const sessionId = req.headers["x-session-id"];
-        const storeSlug = req.query.store;
-        if (!sessionId || !storeSlug) {
-          return res.status(400).json({ error: "Session ID and store slug required" });
-        }
-        let cart = await storage.getCartBySession(sessionId, storeSlug);
-        if (!cart) {
-          cart = await storage.createCart({ sessionId, storeSlug });
-        }
-        const items = await storage.getCartItems(cart.id);
-        const subtotal = items.reduce((sum, item) => sum + item.unitAmount * item.quantity, 0);
-        res.json({
-          id: cart.id,
-          storeSlug: cart.storeSlug,
-          items,
-          subtotal,
-          itemCount: items.reduce((sum, item) => sum + item.quantity, 0)
-        });
-      } catch (e) {
-        console.error("Cart error:", e);
-        res.status(500).json({ error: e.message });
-      }
-    });
-    router2.post("/cart/items", async (req, res) => {
-      try {
-        const sessionId = req.headers["x-session-id"];
-        const storeSlug = req.query.store;
-        if (!sessionId || !storeSlug) {
-          return res.status(400).json({ error: "Session ID and store slug required" });
-        }
-        const itemData = cartItemSchema.parse(req.body);
-        let cart = await storage.getCartBySession(sessionId, storeSlug);
-        if (!cart) {
-          cart = await storage.createCart({ sessionId, storeSlug });
-        }
-        const item = await storage.addCartItem({
-          cartId: cart.id,
-          ...itemData
-        });
-        const items = await storage.getCartItems(cart.id);
-        const subtotal = items.reduce((sum, i) => sum + i.unitAmount * i.quantity, 0);
-        res.json({
-          id: cart.id,
-          items,
-          subtotal,
-          itemCount: items.reduce((sum, i) => sum + i.quantity, 0)
-        });
-      } catch (e) {
-        console.error("Add to cart error:", e);
-        res.status(500).json({ error: e.message });
-      }
-    });
-    router2.patch("/cart/items/:itemId", async (req, res) => {
-      try {
-        const sessionId = req.headers["x-session-id"];
-        if (!sessionId) {
-          return res.status(400).json({ error: "Session ID required" });
-        }
-        const { quantity } = req.body;
-        if (typeof quantity !== "number" || quantity < 0) {
-          return res.status(400).json({ error: "Invalid quantity" });
-        }
-        const item = await storage.getCartItem(req.params.itemId);
-        if (!item) {
-          return res.status(404).json({ error: "Item not found" });
-        }
-        const cart = await storage.getCart(item.cartId);
-        if (!cart || cart.sessionId !== sessionId) {
-          return res.status(403).json({ error: "Access denied" });
-        }
-        if (quantity < 1) {
-          await storage.removeCartItem(req.params.itemId);
-        } else {
-          await storage.updateCartItemQuantity(req.params.itemId, quantity);
-        }
-        res.json({ success: true });
-      } catch (e) {
-        console.error("Update cart error:", e);
-        res.status(500).json({ error: e.message });
-      }
-    });
-    router2.delete("/cart/items/:itemId", async (req, res) => {
-      try {
-        const sessionId = req.headers["x-session-id"];
-        if (!sessionId) {
-          return res.status(400).json({ error: "Session ID required" });
-        }
-        const item = await storage.getCartItem(req.params.itemId);
-        if (!item) {
-          return res.status(404).json({ error: "Item not found" });
-        }
-        const cart = await storage.getCart(item.cartId);
-        if (!cart || cart.sessionId !== sessionId) {
-          return res.status(403).json({ error: "Access denied" });
-        }
-        await storage.removeCartItem(req.params.itemId);
-        res.json({ success: true });
-      } catch (e) {
-        console.error("Remove from cart error:", e);
-        res.status(500).json({ error: e.message });
-      }
-    });
-    router2.post("/checkout", async (req, res) => {
-      try {
-        const sessionId = req.headers["x-session-id"];
-        const storeSlug = req.query.store;
-        if (!sessionId || !storeSlug) {
-          return res.status(400).json({ error: "Session ID and store slug required" });
-        }
-        const cart = await storage.getCartBySession(sessionId, storeSlug);
-        if (!cart) {
-          return res.status(400).json({ error: "Cart not found" });
-        }
-        const items = await storage.getCartItems(cart.id);
-        if (items.length === 0) {
-          return res.status(400).json({ error: "Cart is empty" });
-        }
-        const stripe = await getUncachableStripeClient();
-        const subtotal = items.reduce((sum, item) => sum + item.unitAmount * item.quantity, 0);
-        const auCollections = ["narre-warren-fc"];
-        const isAuStore = auCollections.includes(storeSlug);
-        const shipping = isAuStore ? 0 : 1e3;
-        const total = subtotal + shipping;
-        const orderNumber = generateOrderNumber();
-        const order = await storage.createOrder({
-          orderNumber,
-          sessionId,
-          storeSlug,
-          status: "pending",
-          subtotal,
-          shipping,
-          tax: 0,
-          total,
-          currency: isAuStore ? "aud" : "nzd"
-        });
-        for (const item of items) {
-          await storage.createOrderItem({
-            orderId: order.id,
-            productId: item.productId,
-            priceId: item.priceId,
-            productName: item.productName,
-            productImage: item.productImage,
-            size: item.size,
-            quantity: item.quantity,
-            unitAmount: item.unitAmount,
-            currency: item.currency
-          });
-        }
-        const baseUrl = `${req.protocol}://${req.get("host")}`;
-        const checkoutSession = await stripe.checkout.sessions.create({
-          mode: "payment",
-          payment_method_types: ["card", "afterpay_clearpay"],
-          line_items: items.map((item) => ({
-            price_data: {
-              currency: item.currency,
-              product_data: {
-                name: item.productName + (item.size ? ` - ${item.size}` : ""),
-                images: item.productImage ? [item.productImage] : []
-              },
-              unit_amount: item.unitAmount
-            },
-            quantity: item.quantity
-          })),
-          shipping_options: [
-            {
-              shipping_rate_data: {
-                type: "fixed_amount",
-                fixed_amount: { amount: shipping, currency: isAuStore ? "aud" : "nzd" },
-                display_name: isAuStore ? "Free Shipping (Club Pickup)" : "Standard Shipping",
-                delivery_estimate: {
-                  minimum: { unit: "business_day", value: isAuStore ? 10 : 5 },
-                  maximum: { unit: "business_day", value: isAuStore ? 14 : 10 }
-                }
-              }
-            }
-          ],
-          shipping_address_collection: {
-            allowed_countries: isAuStore ? ["AU"] : ["NZ"]
-          },
-          success_url: `${baseUrl}/team-stores/${storeSlug}/order-confirmation?order=${order.orderNumber}`,
-          cancel_url: `${baseUrl}/team-stores/${storeSlug}/cart`,
-          metadata: {
-            orderId: order.id,
-            orderNumber: order.orderNumber,
-            storeSlug
-          }
-        });
-        await storage.updateOrderStatus(order.id, "pending");
-        const { db: db2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-        const { orders: orders2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-        const { eq: eq9 } = await import("drizzle-orm");
-        await db2.update(orders2).set({ stripeCheckoutSessionId: checkoutSession.id }).where(eq9(orders2.id, order.id));
-        await storage.clearCart(cart.id);
-        res.json({ url: checkoutSession.url, orderNumber: order.orderNumber });
-      } catch (e) {
-        console.error("Checkout error:", e);
-        res.status(500).json({ error: e.message });
-      }
-    });
-    router2.get("/orders", async (req, res) => {
-      try {
-        const sessionId = req.headers["x-session-id"];
-        if (!sessionId) {
-          return res.status(400).json({ error: "Session ID required" });
-        }
-        const orders2 = await storage.getOrdersBySession(sessionId);
-        res.json({ data: orders2 });
-      } catch (e) {
-        console.error("Orders error:", e);
-        res.status(500).json({ error: e.message });
-      }
-    });
-    router2.get("/orders/:orderNumber", async (req, res) => {
-      try {
-        const order = await storage.getOrderByNumber(req.params.orderNumber);
-        if (!order) {
-          return res.status(404).json({ error: "Order not found" });
-        }
-        const items = await storage.getOrderItems(order.id);
-        res.json({ ...order, items });
-      } catch (e) {
-        console.error("Order error:", e);
-        res.status(500).json({ error: e.message });
-      }
-    });
-    store_default = router2;
-  }
-});
-
-// server/routes/shopify.ts
-import { Router as Router3 } from "express";
-async function shopifyFetch(query, variables) {
-  const queryPreview = query.replace(/\s+/g, " ").substring(0, 60) + "...";
-  try {
-    const res = await fetch(shopifyEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Storefront-Access-Token": SHOPIFY_TOKEN
-      },
-      body: JSON.stringify({ query, variables })
-    });
-    if (!res.ok) {
-      const errorText = await res.text().catch(() => "unknown error");
-      throw new Error(`Shopify HTTP ${res.status}: ${errorText.substring(0, 200)}`);
-    }
-    const json = await res.json().catch((e) => {
-      throw new Error(`Failed to parse JSON: ${e.message}`);
-    });
-    if (json.errors && Array.isArray(json.errors)) {
-      const errorMsg = json.errors.map((e) => e.message).join("; ");
-      throw new Error("Shopify GraphQL error: " + errorMsg);
-    }
-    return json.data;
-  } catch (err) {
-    throw err;
-  }
-}
-var router3, SHOPIFY_STORE_URL, SHOPIFY_TOKEN, shopifyEndpoint, shopify_default;
-var init_shopify = __esm({
-  "server/routes/shopify.ts"() {
-    "use strict";
-    router3 = Router3();
-    SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL || "sideline-nz-2.myshopify.com";
-    SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN || "53a3ae5ea0eeacac29d10e09646a7cac";
-    shopifyEndpoint = `https://${SHOPIFY_STORE_URL}/api/2025-01/graphql.json`;
-    router3.get("/ping", (_req, res) => {
-      res.json({ ok: true });
-    });
-    router3.get("/status", async (_req, res) => {
-      try {
-        if (!SHOPIFY_STORE_URL || !SHOPIFY_TOKEN) {
-          return res.status(503).json({ ok: false, error: "Config missing" });
-        }
-        const data = await shopifyFetch(`query { shop { name } }`);
-        res.json({ ok: true, store: SHOPIFY_STORE_URL });
-      } catch (e) {
-        res.status(502).json({ ok: false, error: String(e.message).substring(0, 200) });
-      }
-    });
-    router3.get("/collections", async (_req, res) => {
-      try {
-        const data = await shopifyFetch(`query { collections(first: 50) { edges { node { handle title description image { url altText } } } } }`);
-        const collections = (data?.collections?.edges || []).map((e) => e?.node).filter(Boolean);
-        res.json(collections);
-      } catch (e) {
-        res.status(500).json({ error: String(e.message).substring(0, 300) });
-      }
-    });
-    router3.get("/collections/:handle", async (req, res) => {
-      try {
-        const data = await shopifyFetch(`query CollectionByHandle($handle: String!) { collection(handle: $handle) { handle title description image { url altText } products(first: 50) { edges { node { id handle title description tags featuredImage { url altText } priceRange { minVariantPrice { amount currencyCode } } variants(first: 20) { edges { node { id title availableForSale price { amount currencyCode } } } } } } } } }`, { handle: req.params.handle });
-        const coll = data?.collection;
-        if (!coll) return res.status(404).json({ error: "Not found" });
-        res.json({ collection: coll, products: (coll.products?.edges || []).map((e) => e?.node).filter(Boolean) });
-      } catch (e) {
-        res.status(500).json({ error: String(e.message).substring(0, 300) });
-      }
-    });
-    router3.get("/products", async (_req, res) => {
-      try {
-        const f = `id handle title description tags featuredImage { url altText } priceRange { minVariantPrice { amount currencyCode } } variants(first: 20) { edges { node { id title availableForSale price { amount currencyCode } } } }`;
-        const data = await shopifyFetch(`query { products(first: 12, sortKey: BEST_SELLING) { edges { node { ${f} } } } }`);
-        const products = (data?.products?.edges || []).map((e) => e?.node).filter(Boolean);
-        res.json(products.slice(0, 12));
-      } catch (e) {
-        res.status(500).json({ error: String(e.message).substring(0, 300) });
-      }
-    });
-    router3.post("/cart", async (req, res) => {
-      try {
-        const { lines } = req.body;
-        if (!lines || !Array.isArray(lines) || lines.length === 0) {
-          return res.status(400).json({ error: "lines required" });
-        }
-        const data = await shopifyFetch(`mutation cartCreate($input: CartInput!) { cartCreate(input: $input) { cart { id checkoutUrl } userErrors { field message } } }`, { input: { lines } });
-        const cart = data?.cartCreate?.cart;
-        const userErrors = data?.cartCreate?.userErrors;
-        if (userErrors?.length) {
-          return res.status(400).json({ error: userErrors[0].message });
-        }
-        res.json(cart);
-      } catch (e) {
-        res.status(500).json({ error: String(e.message).substring(0, 300) });
-      }
-    });
-    router3.post("/create-collection", async (req, res) => {
-      try {
-        const { club_name, club_handle, description } = req.body;
-        if (!club_name || !club_handle) {
-          return res.status(400).json({ error: "club_name and club_handle are required" });
-        }
-        const apiKey = process.env.APIEASE_API_KEY;
-        const baseUrl = process.env.APIEASE_BASE_URL || "https://app-admin.apiease.com";
-        const shopName = process.env.APIEASE_SHOP_NAME || "sideline-nz";
-        if (!apiKey) {
-          console.error("APIEASE_API_KEY not configured");
-          return res.status(503).json({ error: "APIEase not configured" });
-        }
-        const proxyUrl = `${baseUrl}/api/proxy/${shopName}/create-collection`;
-        console.log(`[Shopify] Creating collection via APIEase: club_name=${club_name}, club_handle=${club_handle}`);
-        const response = await fetch(proxyUrl, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            club_name,
-            club_handle,
-            description: description || `${club_name} Team Store`
-          })
-        });
-        const responseData = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const errorMsg = responseData.error || responseData.message || `HTTP ${response.status}`;
-          console.error(`[Shopify] APIEase error: ${errorMsg}`, responseData);
-          return res.status(response.status || 500).json({ error: errorMsg });
-        }
-        console.log(`[Shopify] Collection created successfully:`, responseData);
-        const collectionUrl = `https://${SHOPIFY_STORE_URL}/collections/club-${club_handle}`;
-        res.json({
-          ok: true,
-          collection: responseData.collection,
-          collectionUrl
-        });
-      } catch (e) {
-        console.error(`[Shopify] Collection creation failed:`, e.message);
-        res.status(500).json({ error: String(e.message).substring(0, 300) });
-      }
-    });
-    shopify_default = router3;
-  }
-});
-
-// server/auth.ts
-import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
-function signToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-}
-function setAuthCookie(res, token) {
-  const isProxied = process.env.COOKIE_SECURE === "true" || process.env.NODE_ENV === "production";
-  res.cookie(COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: isProxied,
-    sameSite: isProxied ? "none" : "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1e3,
-    // 7 days
-    path: "/"
-  });
-}
-function clearAuthCookie(res) {
-  res.clearCookie(COOKIE_NAME, { path: "/" });
-}
-function requireAuth(req, res, next) {
-  const token = req.cookies?.[COOKIE_NAME];
-  if (!token) return res.status(401).json({ error: "Not authenticated" });
-  try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch {
-    return res.status(401).json({ error: "Invalid or expired token" });
-  }
-}
-function requireAdmin(req, res, next) {
-  requireAuth(req, res, () => {
-    if (req.user?.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
-    next();
-  });
-}
-function requireSupplier(req, res, next) {
-  requireAuth(req, res, () => {
-    if (req.user?.role !== "supplier") {
-      return res.status(403).json({ error: "Supplier access required" });
-    }
-    next();
-  });
-}
-async function hashPassword(password) {
-  return bcrypt.hash(password, 10);
-}
-async function verifyPassword(password, hash) {
-  return bcrypt.compare(password, hash);
-}
-var JWT_SECRET, JWT_EXPIRES_IN, COOKIE_NAME;
-var init_auth = __esm({
-  "server/auth.ts"() {
-    "use strict";
-    JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
-    JWT_EXPIRES_IN = "7d";
-    COOKIE_NAME = "snz_token";
-  }
-});
-
-// server/routes/auth.ts
-import { Router as Router4 } from "express";
-import { z as z4 } from "zod";
-var router4, registerSchema, loginSchema, acceptInviteSchema, auth_default;
-var init_auth2 = __esm({
-  "server/routes/auth.ts"() {
-    "use strict";
-    init_storage();
-    init_auth();
-    router4 = Router4();
-    registerSchema = z4.object({
-      email: z4.string().email("Valid email is required"),
-      password: z4.string().min(8, "Password must be at least 8 characters"),
-      teamName: z4.string().optional(),
-      contactPhone: z4.string().optional()
-    });
-    router4.post("/register", async (req, res) => {
-      try {
-        const parsed = registerSchema.safeParse(req.body);
-        if (!parsed.success) {
-          const firstError = parsed.error.errors[0]?.message || "Invalid data";
-          return res.status(400).json({ error: firstError });
-        }
-        const { email, password, teamName, contactPhone } = parsed.data;
-        const existing = await storage.getUserByEmail(email);
-        if (existing) {
-          return res.status(409).json({ error: "An account with this email already exists" });
-        }
-        const hashed = await hashPassword(password);
-        const user = await storage.createUser({
-          username: email,
-          // Use email as username
-          email,
-          password: hashed,
-          role: "customer",
-          teamName,
-          contactPhone
-        });
-        const token = signToken({ userId: user.id, role: "customer" });
-        setAuthCookie(res, token);
-        await storage.linkOrdersByEmail(email, user.id);
-        res.json({
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          teamName: user.teamName,
-          contactPhone: user.contactPhone
-        });
-      } catch (e) {
-        console.error("Register error:", e);
-        res.status(500).json({ error: "Registration failed" });
-      }
-    });
-    loginSchema = z4.object({
-      email: z4.string().email("Valid email is required"),
-      password: z4.string().min(1, "Password is required")
-    });
-    router4.post("/login", async (req, res) => {
-      try {
-        const parsed = loginSchema.safeParse(req.body);
-        if (!parsed.success) {
-          const firstError = parsed.error.errors[0]?.message || "Invalid data";
-          return res.status(400).json({ error: firstError });
-        }
-        const { email, password } = parsed.data;
-        const user = await storage.getUserByEmail(email);
-        if (!user) {
-          return res.status(401).json({ error: "Invalid email or password" });
-        }
-        const valid = await verifyPassword(password, user.password);
-        if (!valid) {
-          return res.status(401).json({ error: "Invalid email or password" });
-        }
-        const role = user.role === "admin" || user.role === "supplier" ? user.role : "customer";
-        const token = signToken({ userId: user.id, role });
-        setAuthCookie(res, token);
-        if (role === "customer" && user.email) {
-          await storage.linkOrdersByEmail(user.email, user.id);
-        }
-        res.json({
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          teamName: user.teamName,
-          contactPhone: user.contactPhone
-        });
-      } catch (e) {
-        console.error("Login error:", e);
-        res.status(500).json({ error: "Login failed" });
-      }
-    });
-    router4.post("/logout", (_req, res) => {
-      clearAuthCookie(res);
-      res.json({ ok: true });
-    });
-    router4.get("/me", requireAuth, async (req, res) => {
-      try {
-        const { userId } = req.user;
-        const user = await storage.getUser(userId);
-        if (!user) {
-          return res.status(404).json({ error: "User not found" });
-        }
-        res.json({
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          teamName: user.teamName,
-          contactPhone: user.contactPhone
-        });
-      } catch (e) {
-        console.error("Me error:", e);
-        res.status(500).json({ error: "Failed to fetch user" });
-      }
-    });
-    acceptInviteSchema = z4.object({
-      token: z4.string().min(1, "Invite token is required"),
-      password: z4.string().min(8, "Password must be at least 8 characters")
-    });
-    router4.post("/accept-invite", async (req, res) => {
-      try {
-        const parsed = acceptInviteSchema.safeParse(req.body);
-        if (!parsed.success) {
-          const firstError = parsed.error.errors[0]?.message || "Invalid data";
-          return res.status(400).json({ error: firstError });
-        }
-        const { token, password } = parsed.data;
-        const user = await storage.getUserByInviteToken(token);
-        if (!user) {
-          return res.status(400).json({ error: "Invalid or expired invite link" });
-        }
-        if (user.inviteExpiresAt && new Date(user.inviteExpiresAt) < /* @__PURE__ */ new Date()) {
-          return res.status(400).json({ error: "Invite link has expired" });
-        }
-        const hashed = await hashPassword(password);
-        await storage.acceptInvite(user.id, hashed);
-        const role = user.role === "admin" || user.role === "supplier" ? user.role : "customer";
-        const authToken = signToken({ userId: user.id, role });
-        setAuthCookie(res, authToken);
-        res.json({
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          teamName: user.teamName,
-          contactPhone: user.contactPhone
-        });
-      } catch (e) {
-        console.error("Accept invite error:", e);
-        res.status(500).json({ error: "Failed to accept invite" });
-      }
-    });
-    auth_default = router4;
-  }
-});
-
-// server/ghl-sync.ts
-async function findContactByEmail(email) {
-  const apiKey = process.env.SIDELINE_GHL_API_KEY;
-  const locationId = process.env.SIDELINE_GHL_LOCATION_ID;
-  if (!apiKey || !locationId) return null;
-  try {
-    const res = await fetch(
-      `${GHL_API_BASE2}/contacts/search/duplicate?locationId=${locationId}&email=${encodeURIComponent(email)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          Version: "2021-07-28"
-        }
-      }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const contact = data.contact;
-    if (!contact) return null;
-    return { id: contact.id, tags: contact.tags || [] };
-  } catch (err) {
-    console.error("GHL find contact error:", err);
-    return null;
-  }
-}
-async function addTagToContact(contactId, tags) {
-  const apiKey = process.env.SIDELINE_GHL_API_KEY;
-  if (!apiKey) return false;
-  try {
-    const res = await fetch(`${GHL_API_BASE2}/contacts/${contactId}`, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        Version: "2021-07-28"
-      },
-      body: JSON.stringify({ tags })
-    });
-    return res.ok;
-  } catch (err) {
-    console.error("GHL add tag error:", err);
-    return false;
-  }
-}
-async function syncGhlTag(email, tag) {
-  const apiKey = process.env.SIDELINE_GHL_API_KEY;
-  if (!apiKey) {
-    console.log(`[GHL] Credentials not configured \u2014 would add tag "${tag}" to ${email}`);
-    return;
-  }
-  const contact = await findContactByEmail(email);
-  if (!contact) {
-    console.log(`[GHL] Contact not found for ${email} \u2014 skipping tag "${tag}"`);
-    return;
-  }
-  if (contact.tags.includes(tag)) {
-    console.log(`[GHL] Contact ${email} already has tag "${tag}"`);
-    return;
-  }
-  const updatedTags = [...contact.tags, tag];
-  const success = await addTagToContact(contact.id, updatedTags);
-  if (success) {
-    console.log(`[GHL] Added tag "${tag}" to contact ${email}`);
-  } else {
-    console.error(`[GHL] Failed to add tag "${tag}" to contact ${email}`);
-  }
-}
-var GHL_API_BASE2;
-var init_ghl_sync = __esm({
-  "server/ghl-sync.ts"() {
-    "use strict";
-    GHL_API_BASE2 = "https://services.leadconnectorhq.com";
-  }
-});
-
-// server/notifications.ts
-async function notifyDesignApproved(opts) {
-  await storage.createNotification({
-    userId: opts.userId,
-    type: "design_approved",
-    title: "Design Approved",
-    message: `Your ${opts.label} design has been approved.`,
-    orderId: opts.orderId,
-    designFileId: opts.designFileId
-  });
-  if (opts.customerEmail) {
-    await sendDesignApprovedEmail(opts.customerEmail, opts.orderNumber, opts.label).catch(
-      (err) => console.error("Failed to send design approved email:", err)
-    );
-  }
-  if (opts.customerEmail) {
-    await syncGhlTag(opts.customerEmail, "Design Approved").catch(
-      (err) => console.error("Failed to sync GHL tag:", err)
-    );
-  }
-}
-async function notifyDesignRejected(opts) {
-  await storage.createNotification({
-    userId: opts.userId,
-    type: "design_rejected",
-    title: "Design Needs Revision",
-    message: opts.comment || `Your ${opts.label} design needs revision.`,
-    orderId: opts.orderId,
-    designFileId: opts.designFileId
-  });
-  if (opts.customerEmail) {
-    await sendDesignRejectedEmail(opts.customerEmail, opts.orderNumber, opts.label, opts.comment).catch(
-      (err) => console.error("Failed to send design rejected email:", err)
-    );
-  }
-}
-async function notifyOrderShipped(opts) {
-  await storage.createNotification({
-    userId: opts.userId,
-    type: "order_shipped",
-    title: "Order Shipped",
-    message: `Your order ${opts.orderNumber} has been shipped!`,
-    orderId: opts.orderId
-  });
-  if (opts.customerEmail) {
-    await sendOrderShippedEmail(opts.customerEmail, opts.orderNumber).catch(
-      (err) => console.error("Failed to send order shipped email:", err)
-    );
-  }
-  if (opts.customerEmail) {
-    await syncGhlTag(opts.customerEmail, "Order Shipped").catch(
-      (err) => console.error("Failed to sync GHL tag:", err)
-    );
-  }
-}
-async function notifyOrderStatusChange(opts) {
-  const notifyStatuses = ["processing", "shipped", "delivered"];
-  if (!notifyStatuses.includes(opts.newStatus)) return;
-  if (opts.newStatus === "shipped") {
-    return notifyOrderShipped(opts);
-  }
-  await storage.createNotification({
-    userId: opts.userId,
-    type: `order_${opts.newStatus}`,
-    title: `Order ${opts.newStatus.charAt(0).toUpperCase() + opts.newStatus.slice(1)}`,
-    message: `Your order ${opts.orderNumber} is now ${opts.newStatus}.`,
-    orderId: opts.orderId
-  });
-}
-var init_notifications = __esm({
-  "server/notifications.ts"() {
-    "use strict";
-    init_storage();
-    init_email();
-    init_ghl_sync();
-  }
-});
-
-// server/routes/approvals.ts
-import { Router as Router5 } from "express";
-import { z as z5 } from "zod";
-import crypto2 from "crypto";
-import { eq as eq4 } from "drizzle-orm";
-async function createApprovalToken(params) {
-  const token = crypto2.randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1e3);
-  await db.insert(approvalTokens).values({
-    orderId: params.orderId,
-    token,
-    expiresAt,
-    createdBy: params.createdBy
-  });
-  const baseUrl = process.env.BASE_URL || "https://sidelinenz.com";
-  const link = `${baseUrl}/approve/${token}`;
-  sendMockupApprovalRequest(
-    params.clientEmail,
-    params.orderNumber || "your order",
-    link,
-    params.clientName || null
-  ).catch((err) => console.error("Failed to send mockup approval email:", err));
-  if (params.ghlOpportunityId) {
-    updateGhlOpportunityStage(params.ghlOpportunityId, "Mockup Sent").catch(
-      (err) => console.error("Failed to push GHL to Mockup Sent:", err)
-    );
-  }
-  await db.insert(orderActivity).values({
-    orderId: params.orderId,
-    userId: params.createdBy,
-    action: "approval_link_issued",
-    details: { token, expiresAt: expiresAt.toISOString(), clientEmail: params.clientEmail }
-  });
-  return { token, expiresAt };
-}
-var publicApprovalRouter, decisionSchema;
-var init_approvals = __esm({
-  "server/routes/approvals.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    init_storage();
-    init_ghl();
-    init_email();
-    publicApprovalRouter = Router5();
-    publicApprovalRouter.get("/:token", async (req, res) => {
-      try {
-        const [tokenRow] = await db.select().from(approvalTokens).where(eq4(approvalTokens.token, req.params.token)).limit(1);
-        if (!tokenRow) {
-          return res.status(404).json({ error: "Invalid or expired approval link" });
-        }
-        if (tokenRow.expiresAt && new Date(tokenRow.expiresAt) < /* @__PURE__ */ new Date()) {
-          return res.status(410).json({ error: "This approval link has expired. Contact Sideline NZ for a new one." });
-        }
-        if (tokenRow.usedAt) {
-          return res.status(409).json({
-            error: "This approval link has already been used.",
-            decision: tokenRow.decision,
-            usedAt: tokenRow.usedAt
-          });
-        }
-        const [order] = await db.select().from(orders).where(eq4(orders.id, tokenRow.orderId)).limit(1);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        const allFiles = await db.select().from(designFiles).where(eq4(designFiles.orderId, order.id));
-        const mockups = allFiles.filter((f) => f.folder === "mockups").map((f) => ({
-          id: f.id,
-          fileName: f.fileName,
-          fileUrl: f.fileUrl,
-          mimeType: f.mimeType
-        }));
-        const items = await storage.getOrderItems(order.id);
-        const safeItems = items.map((i) => ({
-          id: i.id,
-          productName: i.productName,
-          quantity: i.quantity,
-          size: i.size,
-          brandingMethod: i.brandingMethod,
-          gradeGroup: i.gradeGroup
-          // NO unit price — clients see totals elsewhere via the quote, not here
-        }));
-        res.json({
-          order: {
-            id: order.id,
-            orderNumber: order.orderNumber,
-            poReference: order.poReference,
-            accountName: order.accountName,
-            customerName: order.customerName
-          },
-          items: safeItems,
-          mockups,
-          expiresAt: tokenRow.expiresAt
-        });
-      } catch (e) {
-        console.error("Approval hydrate error:", e);
-        res.status(500).json({ error: "Failed to load approval page" });
-      }
-    });
-    decisionSchema = z5.object({
-      decision: z5.enum(["approved", "changes_requested"]),
-      changesNotes: z5.string().optional()
-    });
-    publicApprovalRouter.post("/:token", async (req, res) => {
-      try {
-        const parsed = decisionSchema.safeParse(req.body);
-        if (!parsed.success) {
-          return res.status(400).json({ error: parsed.error.errors[0]?.message || "Invalid payload" });
-        }
-        const { decision, changesNotes } = parsed.data;
-        const [tokenRow] = await db.select().from(approvalTokens).where(eq4(approvalTokens.token, req.params.token)).limit(1);
-        if (!tokenRow) return res.status(404).json({ error: "Invalid approval link" });
-        if (tokenRow.usedAt) {
-          return res.status(409).json({ error: "This approval link has already been used." });
-        }
-        if (tokenRow.expiresAt && new Date(tokenRow.expiresAt) < /* @__PURE__ */ new Date()) {
-          return res.status(410).json({ error: "This approval link has expired." });
-        }
-        const [order] = await db.select().from(orders).where(eq4(orders.id, tokenRow.orderId)).limit(1);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        await db.update(approvalTokens).set({ usedAt: /* @__PURE__ */ new Date(), decision, changesNotes: changesNotes || null }).where(eq4(approvalTokens.id, tokenRow.id));
-        await db.insert(orderActivity).values({
-          orderId: order.id,
-          userId: null,
-          // client has no user account
-          action: decision === "approved" ? "client_approved" : "client_requested_changes",
-          details: {
-            source: "public_approval_link",
-            tokenId: tokenRow.id,
-            changesNotes: changesNotes || null
-          }
-        });
-        await db.update(orders).set({
-          designStatus: decision === "approved" ? "approved" : "needs_revision",
-          mockupApprovedAt: decision === "approved" ? /* @__PURE__ */ new Date() : null,
-          revisionNotes: decision === "changes_requested" ? changesNotes || null : null,
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq4(orders.id, order.id));
-        if (decision === "changes_requested" && order.ghlOpportunityId) {
-          updateGhlOpportunityStage(order.ghlOpportunityId, "Mockup In Progress").catch(
-            (err) => console.error("Failed to push GHL back to Mockup In Progress:", err)
-          );
-        }
-        const adminEmail = process.env.ADMIN_NOTIFY_EMAIL || "info@sidelinenz.com";
-        sendClientApprovalResult(
-          adminEmail,
-          order.orderNumber || order.id,
-          decision,
-          changesNotes || null
-        ).catch((err) => console.error("Failed to send admin approval notification:", err));
-        res.json({ ok: true, decision });
-      } catch (e) {
-        console.error("Approval submission error:", e);
-        res.status(500).json({ error: "Failed to submit decision" });
-      }
-    });
-  }
-});
-
-// server/po-number.ts
-import { like, sql as sql3 } from "drizzle-orm";
-function slugFromClient(name) {
-  if (!name) return "CUST";
-  const cleaned = name.replace(/['\u2019]/g, "").replace(/[^a-zA-Z0-9\s]/g, " ").trim().replace(/\s+/g, " ").toUpperCase();
-  if (!cleaned) return "CUST";
-  const words = cleaned.split(" ").filter((w) => w.length > 0);
-  if (words.length === 0) return "CUST";
-  if (words.length >= 2) {
-    return words.slice(0, 5).map((w) => w[0]).join("");
-  }
-  const single = words[0].slice(0, 4);
-  return single.length >= 3 ? single : single.padEnd(3, single[single.length - 1] || "X");
-}
-async function nextSeqFor(year, slug) {
-  const prefix = `SL-${year}-${slug}-`;
-  const rows = await db.select({ orderNumber: orders.orderNumber }).from(orders).where(like(orders.orderNumber, `${prefix}%`));
-  if (rows.length === 0) return 1;
-  let maxSeq = 0;
-  for (const row of rows) {
-    const tail = row.orderNumber.slice(prefix.length);
-    const seq = parseInt(tail, 10);
-    if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
-  }
-  return maxSeq + 1;
-}
-async function buildPoNumber(clientName, now = /* @__PURE__ */ new Date()) {
-  const year = now.getFullYear();
-  const slug = slugFromClient(clientName);
-  const seq = await nextSeqFor(year, slug);
-  return `SL-${year}-${slug}-${String(seq).padStart(3, "0")}`;
-}
-async function withPoNumberRetry(clientName, insertFn, maxAttempts = 4) {
-  let lastErr;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const poNumber = await buildPoNumber(clientName);
-    try {
-      return await insertFn(poNumber);
-    } catch (err) {
-      lastErr = err;
-      const isUniqueViolation = err?.code === "23505" || String(err?.message || "").includes("orders_order_number_unique") || String(err?.message || "").includes("duplicate key value");
-      if (!isUniqueViolation) throw err;
-    }
-  }
-  throw lastErr ?? new Error("Failed to allocate a unique PO number after retries");
-}
-async function nextPoReferenceSeq(year) {
-  const prefix = `PO-${year}-`;
-  const rows = await db.select({ poReference: orders.poReference }).from(orders).where(like(orders.poReference, `${prefix}%`));
-  if (rows.length === 0) return 1;
-  let maxSeq = 0;
-  for (const row of rows) {
-    if (!row.poReference) continue;
-    const tail = row.poReference.slice(prefix.length);
-    const seq = parseInt(tail, 10);
-    if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
-  }
-  return maxSeq + 1;
-}
-async function buildPoReference(now = /* @__PURE__ */ new Date()) {
-  const year = now.getFullYear();
-  const seq = await nextPoReferenceSeq(year);
-  return `PO-${year}-${String(seq).padStart(4, "0")}`;
-}
-var init_po_number = __esm({
-  "server/po-number.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-  }
-});
-
-// server/google-drive.ts
-function driveUrl(path13, extra = {}) {
-  const url = new URL(`${DRIVE_API_BASE}${path13}`);
-  url.searchParams.set("supportsAllDrives", "true");
-  if (path13.startsWith("/files?") || path13 === "/files") {
-    url.searchParams.set("includeItemsFromAllDrives", "true");
-  }
-  for (const [k, v] of Object.entries(extra)) url.searchParams.set(k, v);
-  return url.toString();
-}
-function creds2() {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
-  const parentFolderId = process.env.SIDELINE_DRIVE_PARENT_FOLDER_ID;
-  if (!clientId || !clientSecret || !refreshToken || !parentFolderId) return null;
-  return { clientId, clientSecret, refreshToken, parentFolderId };
-}
-function isDriveConfigured() {
-  return creds2() !== null;
-}
-async function getAccessToken2() {
-  const c = creds2();
-  if (!c) return null;
-  const now = Date.now();
-  if (cachedAccessToken2 && cachedAccessToken2.expiresAt - 6e4 > now) {
-    return cachedAccessToken2.token;
-  }
-  const body = new URLSearchParams({
-    client_id: c.clientId,
-    client_secret: c.clientSecret,
-    refresh_token: c.refreshToken,
-    grant_type: "refresh_token"
-  });
-  const res = await fetch(OAUTH_TOKEN_URL2, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString()
-  });
-  if (!res.ok) {
-    console.error("[Drive] token refresh failed:", res.status, await res.text());
-    return null;
-  }
-  const data = await res.json();
-  const expiresIn = data.expires_in || 3600;
-  cachedAccessToken2 = {
-    token: data.access_token,
-    expiresAt: now + expiresIn * 1e3
-  };
-  return cachedAccessToken2.token;
-}
-async function driveFetch(path13, init = {}) {
-  const token = await getAccessToken2();
-  if (!token) return null;
-  return fetch(driveUrl(path13), {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...init.headers || {}
-    }
-  });
-}
-function buildClientFolderName(input2) {
-  const sanitize = (s) => s.replace(/[\\/]/g, "-").trim();
-  const company = sanitize(input2.companyName) || "Unknown Company";
-  const contact = sanitize(input2.contactName) || "Unknown Contact";
-  return `${input2.date}.${company}.${contact}`;
-}
-async function findClientFolderByName(name) {
-  const c = creds2();
-  if (!c) return null;
-  const q = [
-    `name = '${name.replace(/'/g, "\\'")}'`,
-    `'${c.parentFolderId}' in parents`,
-    `mimeType = 'application/vnd.google-apps.folder'`,
-    `trashed = false`
-  ].join(" and ");
-  const res = await driveFetch(`/files?q=${encodeURIComponent(q)}&fields=files(id,name,webViewLink)&pageSize=1`);
-  if (!res || !res.ok) return null;
-  const data = await res.json();
-  const f = (data.files || [])[0];
-  if (!f) return null;
-  return { id: f.id, name: f.name, webViewLink: f.webViewLink || `https://drive.google.com/drive/folders/${f.id}` };
-}
-function getSubfolderTemplate() {
-  const env2 = process.env.SIDELINE_DRIVE_SUBFOLDERS;
-  if (env2) {
-    return env2.split(",").map((s) => s.trim()).filter(Boolean);
-  }
-  return [
-    "01. Brief",
-    "02. Mockups",
-    "03. Logos",
-    // elements uploaded on garment lines land here
-    "04. Approvals",
-    "05. Artwork",
-    "06. Production",
-    "07. Delivery",
-    "08. Invoicing"
-  ];
-}
-function normaliseFolderName(n) {
-  return n.toLowerCase().replace(/^\d+[\.\s]*/, "").trim();
-}
-async function resolveUploadTarget(poFolderId, slot) {
-  const targetWords = {
-    mockups: ["mockups", "mockup"],
-    logos: ["logos", "logo"],
-    artwork: ["artwork", "art"],
-    approvals: ["approvals", "approval"]
-  };
-  const q = [
-    `'${poFolderId}' in parents`,
-    `mimeType = 'application/vnd.google-apps.folder'`,
-    `trashed = false`
-  ].join(" and ");
-  const res = await driveFetch(`/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=50`);
-  if (!res?.ok) return poFolderId;
-  const data = await res.json();
-  const folders = data.files || [];
-  const words = targetWords[slot];
-  for (const f of folders) {
-    const n = normaliseFolderName(f.name);
-    if (words.some((w) => n === w || n.startsWith(w))) return f.id;
-  }
-  return poFolderId;
-}
-async function createSubfolder(parentId, name) {
-  const res = await driveFetch("/files?fields=id", {
-    method: "POST",
-    body: JSON.stringify({
-      name,
-      mimeType: "application/vnd.google-apps.folder",
-      parents: [parentId]
-    })
-  });
-  if (!res || !res.ok) return null;
-  const data = await res.json();
-  return data.id || null;
-}
-async function createClientFolder(input2) {
-  const c = creds2();
-  if (!c) {
-    console.log("[Drive] not configured \u2014 skipping folder create for", input2);
-    return null;
-  }
-  const name = buildClientFolderName(input2);
-  const existing = await findClientFolderByName(name);
-  if (existing) return existing;
-  const res = await driveFetch("/files?fields=id,name,webViewLink", {
-    method: "POST",
-    body: JSON.stringify({
-      name,
-      mimeType: "application/vnd.google-apps.folder",
-      parents: [c.parentFolderId]
-    })
-  });
-  if (!res || !res.ok) {
-    console.error("[Drive] create folder failed:", res?.status, await res?.text());
-    return null;
-  }
-  const data = await res.json();
-  const folderId = data.id;
-  const template = getSubfolderTemplate();
-  await Promise.all(template.map((sub) => createSubfolder(folderId, sub).catch(() => null)));
-  return {
-    id: folderId,
-    name: data.name,
-    webViewLink: data.webViewLink || `https://drive.google.com/drive/folders/${folderId}`
-  };
-}
-async function findSubfolderByName(parentId, name) {
-  const q = [
-    `name = '${name.replace(/'/g, "\\'")}'`,
-    `'${parentId}' in parents`,
-    `mimeType = 'application/vnd.google-apps.folder'`,
-    `trashed = false`
-  ].join(" and ");
-  const res = await driveFetch(`/files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`);
-  if (!res || !res.ok) return null;
-  const data = await res.json();
-  return data.files?.[0]?.id || null;
-}
-async function mirrorBlobToPoFolder({
-  poFolderId,
-  slot,
-  subFolderName,
-  blobUrl,
-  fileName
-}) {
-  const token = await getAccessToken2();
-  if (!token) return null;
-  let targetFolderId = poFolderId;
-  if (subFolderName) {
-    const sub = await findSubfolderByName(poFolderId, subFolderName);
-    if (sub) targetFolderId = sub;
-  } else if (slot) {
-    targetFolderId = await resolveUploadTarget(poFolderId, slot);
-  }
-  try {
-    const blobRes = await fetch(blobUrl);
-    if (!blobRes.ok) {
-      console.error("[Drive] mirror: blob fetch failed:", blobRes.status);
-      return null;
-    }
-    const contentType = blobRes.headers.get("content-type") || "application/octet-stream";
-    const buf = Buffer.from(await blobRes.arrayBuffer());
-    const name = fileName || blobUrl.split("/").pop()?.split("?")[0] || "file";
-    const existingQ = [
-      `name = '${name.replace(/'/g, "\\'")}'`,
-      `'${targetFolderId}' in parents`,
-      `trashed = false`
-    ].join(" and ");
-    const existingRes = await driveFetch(`/files?q=${encodeURIComponent(existingQ)}&fields=files(id)&pageSize=1`);
-    if (existingRes?.ok) {
-      const existingData = await existingRes.json();
-      if (existingData.files?.[0]?.id) return existingData.files[0].id;
-    }
-    const boundary = `--sideline-${Date.now().toString(36)}`;
-    const metadata = { name, parents: [targetFolderId] };
-    const metadataPart = `--${boundary}\r
-Content-Type: application/json; charset=UTF-8\r
-\r
-${JSON.stringify(metadata)}\r
-`;
-    const mediaHeader = `--${boundary}\r
-Content-Type: ${contentType}\r
-\r
-`;
-    const closing = `\r
---${boundary}--`;
-    const body = Buffer.concat([
-      Buffer.from(metadataPart, "utf-8"),
-      Buffer.from(mediaHeader, "utf-8"),
-      buf,
-      Buffer.from(closing, "utf-8")
-    ]);
-    const uploadRes = await fetch(
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": `multipart/related; boundary=${boundary}`,
-          "Content-Length": String(body.length)
-        },
-        body
-      }
-    );
-    if (!uploadRes.ok) {
-      console.error("[Drive] multipart upload failed:", uploadRes.status, await uploadRes.text());
-      return null;
-    }
-    const out = await uploadRes.json();
-    return out.id || null;
-  } catch (err) {
-    console.error("[Drive] mirror error:", err);
-    return null;
-  }
-}
-async function listFilesRecursive(rootFolderId) {
-  const rootFilesQ = [
-    `'${rootFolderId}' in parents`,
-    `mimeType != 'application/vnd.google-apps.folder'`,
-    `trashed = false`
-  ].join(" and ");
-  const rootRes = await driveFetch(
-    `/files?q=${encodeURIComponent(rootFilesQ)}&fields=files(id,name,mimeType,webViewLink,iconLink,modifiedTime,size)&pageSize=200&orderBy=modifiedTime desc`
-  );
-  const rootFiles = rootRes?.ok ? (await rootRes.json()).files || [] : [];
-  const foldersQ = [
-    `'${rootFolderId}' in parents`,
-    `mimeType = 'application/vnd.google-apps.folder'`,
-    `trashed = false`
-  ].join(" and ");
-  const foldersRes = await driveFetch(`/files?q=${encodeURIComponent(foldersQ)}&fields=files(id,name)&pageSize=50`);
-  const subfolders = foldersRes?.ok ? (await foldersRes.json()).files || [] : [];
-  const subFiles = [];
-  for (const folder5 of subfolders) {
-    const q = [
-      `'${folder5.id}' in parents`,
-      `mimeType != 'application/vnd.google-apps.folder'`,
-      `trashed = false`
-    ].join(" and ");
-    const res = await driveFetch(
-      `/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,webViewLink,iconLink,modifiedTime,size)&pageSize=100&orderBy=modifiedTime desc`
-    );
-    if (!res?.ok) continue;
-    const files = (await res.json()).files || [];
-    for (const f of files) subFiles.push({ ...f, parentName: folder5.name });
-  }
-  return [...rootFiles, ...subFiles].sort((a, b) => {
-    const at = a.modifiedTime || "";
-    const bt = b.modifiedTime || "";
-    return bt.localeCompare(at);
-  });
-}
-async function listFilesInFolder(folderId) {
-  const q = [
-    `'${folderId}' in parents`,
-    `trashed = false`
-  ].join(" and ");
-  const fields = "files(id,name,mimeType,webViewLink,iconLink,modifiedTime,size)";
-  const res = await driveFetch(
-    `/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent(fields)}&pageSize=200&orderBy=modifiedTime desc`
-  );
-  if (!res || !res.ok) {
-    console.error("[Drive] list files failed:", res?.status, await res?.text());
-    return [];
-  }
-  const data = await res.json();
-  return (data.files || []).map((f) => ({
-    id: f.id,
-    name: f.name,
-    mimeType: f.mimeType,
-    webViewLink: f.webViewLink,
-    iconLink: f.iconLink,
-    modifiedTime: f.modifiedTime,
-    size: f.size
-  }));
-}
-var OAUTH_TOKEN_URL2, DRIVE_API_BASE, cachedAccessToken2;
-var init_google_drive = __esm({
-  "server/google-drive.ts"() {
-    "use strict";
-    OAUTH_TOKEN_URL2 = "https://oauth2.googleapis.com/token";
-    DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
-    cachedAccessToken2 = null;
-  }
-});
-
-// server/mockup/color-extract.ts
-async function fetchAsBase64(url) {
-  try {
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    const mimeType = r.headers.get("content-type") || "image/png";
-    const buf = Buffer.from(await r.arrayBuffer());
-    return { data: buf.toString("base64"), mimeType };
-  } catch (err) {
-    console.error("[color-extract] fetch image failed:", err);
-    return null;
-  }
-}
-async function extractColorsFromImage(imageUrl) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    console.log("[color-extract] GEMINI_API_KEY not set \u2014 skipping");
-    return null;
-  }
-  const img = await fetchAsBase64(imageUrl);
-  if (!img) return null;
-  const model = process.env.GEMINI_COLOR_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { text: COLOR_EXTRACT_PROMPT },
-              { inline_data: { mime_type: img.mimeType, data: img.data } }
-            ]
-          }
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: "application/json"
-        }
-      })
-    });
-    if (!res.ok) {
-      const text2 = await res.text();
-      console.error("[color-extract] Gemini error:", res.status, text2);
-      return null;
-    }
-    const data = await res.json();
-    const textOut = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    if (!textOut) return null;
-    let parsed;
-    try {
-      parsed = JSON.parse(textOut);
-    } catch {
-      const cleaned = textOut.replace(/```json\s*|\s*```/g, "").trim();
-      parsed = JSON.parse(cleaned);
-    }
-    const out = [];
-    for (const c of parsed?.colors || []) {
-      if (typeof c?.hex !== "string" || typeof c?.name !== "string") continue;
-      const hex = c.hex.trim().toUpperCase();
-      if (!/^#[0-9A-F]{6}$/.test(hex)) continue;
-      out.push({ hex, name: c.name.trim().slice(0, 40) });
-      if (out.length >= 5) break;
-    }
-    return out.length ? out : null;
-  } catch (err) {
-    console.error("[color-extract] request failed:", err);
-    return null;
-  }
-}
-var COLOR_EXTRACT_PROMPT;
-var init_color_extract = __esm({
-  "server/mockup/color-extract.ts"() {
-    "use strict";
-    COLOR_EXTRACT_PROMPT = `You are a uniform designer assistant. Look at this design image and identify the main colours used in the garment itself (ignore the background, mannequin, shadows, and tags).
-
-Return STRICT JSON only \u2014 no markdown, no commentary. Shape:
-{
-  "colors": [
-    { "hex": "#RRGGBB", "name": "Short name (1-3 words)" }
-  ]
-}
-
-Rules:
-- 2 to 5 colours max, ordered by dominance (most-used first)
-- Hex must be 6 digits uppercase with leading #
-- Name must be human-friendly (e.g. "Navy Blue", "Off White", "Gold"), not generic ("dark colour 1")
-- Skip neutrals under 5% of the garment
-- If the garment is monochrome, return just that one colour`;
-  }
-});
-
-// server/mockup/design-brief.ts
-async function fetchAsBase642(url) {
-  try {
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    const mimeType = r.headers.get("content-type") || "image/png";
-    const buf = Buffer.from(await r.arrayBuffer());
-    return { data: buf.toString("base64"), mimeType };
-  } catch {
-    return null;
-  }
-}
-async function generateDesignBrief(imageUrls) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    console.log("[design-brief] GEMINI_API_KEY not set \u2014 skipping");
-    return null;
-  }
-  const parts = [{ text: BRIEF_PROMPT }];
-  for (const url of imageUrls) {
-    const img = await fetchAsBase642(url);
-    if (img) parts.push({ inline_data: { mime_type: img.mimeType, data: img.data } });
-  }
-  if (parts.length === 1) return null;
-  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  try {
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 800 }
-      })
-    });
-    if (!res.ok) {
-      console.error("[design-brief] Gemini error:", res.status, await res.text());
-      return null;
-    }
-    const data = await res.json();
-    const text2 = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    return text2.trim() || null;
-  } catch (err) {
-    console.error("[design-brief] request failed:", err);
-    return null;
-  }
-}
-var BRIEF_PROMPT;
-var init_design_brief = __esm({
-  "server/mockup/design-brief.ts"() {
-    "use strict";
-    BRIEF_PROMPT = `You are a sportswear production spec writer for Sideline NZ, a custom teamwear company. Look at these garment design mockup image(s) and write a structured design brief for the factory.
-
-Output a SHORT, STRUCTURED brief covering (skip any section that doesn't apply):
-
-**GARMENT OVERVIEW**: One sentence \u2014 garment type, style, silhouette.
-
-**FRONT PANEL**: Describe what's on the front \u2014 main pattern, colour blocks, fade/gradient direction, stripe placement, panel boundaries.
-
-**BACK PANEL**: Describe what's on the back \u2014 number position, name bar, pattern continuation.
-
-**LOGOS & BRANDING**: For EACH logo/badge/sponsor mark visible, state: name (if readable), position (left chest, right chest, centre back collar, etc.), approximate size (small/medium/large).
-
-**COLLAR & CUFFS**: Style (v-neck, round, traditional), colours, ribbing.
-
-**COLOUR ZONES**: Map which colour goes where (e.g. "Navy dominates body panels; white on side inserts; gold on collar and cuff trim").
-
-**SPECIAL DETAILS**: Sublimation patterns, texture overlays, tonal prints, reflective elements, anything unusual.
-
-Rules:
-- Be CONCISE \u2014 max 250 words total
-- Use plain English the factory can follow
-- Don't describe the image quality or background \u2014 only the garment
-- If there are two images (front + back), integrate both into one brief`;
   }
 });
 
@@ -90653,1380 +89040,6 @@ var init_index_browser = __esm({
   }
 });
 
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/PipeTransport.js
-var PipeTransport;
-var init_PipeTransport = __esm({
-  "node_modules/puppeteer-core/lib/esm/puppeteer/node/PipeTransport.js"() {
-    init_EventEmitter();
-    init_util();
-    init_assert();
-    init_disposable();
-    PipeTransport = class {
-      #pipeWrite;
-      #subscriptions = new DisposableStack();
-      #isClosed = false;
-      #pendingMessage = [];
-      onclose;
-      onmessage;
-      constructor(pipeWrite, pipeRead) {
-        this.#pipeWrite = pipeWrite;
-        const pipeReadEmitter = this.#subscriptions.use(
-          // NodeJS event emitters don't support `*` so we need to typecast
-          // As long as we don't use it we should be OK.
-          new EventEmitter(pipeRead)
-        );
-        pipeReadEmitter.on("data", (buffer) => {
-          return this.#dispatch(buffer);
-        });
-        pipeReadEmitter.on("close", () => {
-          if (this.onclose) {
-            this.onclose.call(null);
-          }
-        });
-        pipeReadEmitter.on("error", debugError);
-        const pipeWriteEmitter = this.#subscriptions.use(
-          // NodeJS event emitters don't support `*` so we need to typecast
-          // As long as we don't use it we should be OK.
-          new EventEmitter(pipeWrite)
-        );
-        pipeWriteEmitter.on("error", debugError);
-      }
-      send(message) {
-        assert(!this.#isClosed, "`PipeTransport` is closed.");
-        this.#pipeWrite.write(message);
-        this.#pipeWrite.write("\0");
-      }
-      #dispatch(buffer) {
-        assert(!this.#isClosed, "`PipeTransport` is closed.");
-        this.#pendingMessage.push(buffer);
-        if (buffer.indexOf("\0") === -1) {
-          return;
-        }
-        const concatBuffer = Buffer.concat(this.#pendingMessage);
-        let start = 0;
-        let end = concatBuffer.indexOf("\0");
-        while (end !== -1) {
-          const message = concatBuffer.toString(void 0, start, end);
-          setImmediate(() => {
-            if (this.onmessage) {
-              this.onmessage.call(null, message);
-            }
-          });
-          start = end + 1;
-          end = concatBuffer.indexOf("\0", start);
-        }
-        if (start >= concatBuffer.length) {
-          this.#pendingMessage = [];
-        } else {
-          this.#pendingMessage = [concatBuffer.subarray(start)];
-        }
-      }
-      close() {
-        this.#isClosed = true;
-        this.#subscriptions.dispose();
-      }
-    };
-  }
-});
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/BrowserLauncher.js
-import { existsSync as existsSync2 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join as join2 } from "node:path";
-var BrowserLauncher;
-var init_BrowserLauncher = __esm({
-  "node_modules/puppeteer-core/lib/esm/puppeteer/node/BrowserLauncher.js"() {
-    init_main();
-    init_rxjs();
-    init_Browser2();
-    init_Connection();
-    init_Errors();
-    init_util();
-    init_incremental_id_generator();
-    init_NodeWebSocketTransport();
-    init_PipeTransport();
-    BrowserLauncher = class {
-      #browser;
-      /**
-       * @internal
-       */
-      puppeteer;
-      /**
-       * @internal
-       */
-      constructor(puppeteer2, browser) {
-        this.puppeteer = puppeteer2;
-        this.#browser = browser;
-      }
-      get browser() {
-        return this.#browser;
-      }
-      async launch(options = {}) {
-        const { dumpio = false, enableExtensions = false, env: env2 = process.env, handleSIGINT = true, handleSIGTERM = true, handleSIGHUP = true, acceptInsecureCerts = false, networkEnabled = true, issuesEnabled = true, defaultViewport = DEFAULT_VIEWPORT, downloadBehavior, slowMo = 0, timeout: timeout2 = 3e4, waitForInitialPage = true, protocolTimeout, handleDevToolsAsPage, idGenerator = createIncrementalIdGenerator() } = options;
-        let { protocol } = options;
-        if (this.#browser === "firefox" && protocol === void 0) {
-          protocol = "webDriverBiDi";
-        }
-        if (this.#browser === "firefox" && protocol === "cdp") {
-          throw new Error("Connecting to Firefox using CDP is no longer supported");
-        }
-        const launchArgs = await this.computeLaunchArguments({
-          ...options,
-          protocol
-        });
-        if (!existsSync2(launchArgs.executablePath)) {
-          throw new Error(`Browser was not found at the configured executablePath (${launchArgs.executablePath})`);
-        }
-        const usePipe = launchArgs.args.includes("--remote-debugging-pipe");
-        const onProcessExit = async () => {
-          await this.cleanUserDataDir(launchArgs.userDataDir, {
-            isTemp: launchArgs.isTempUserDataDir
-          });
-        };
-        if (this.#browser === "firefox" && protocol === "webDriverBiDi" && usePipe) {
-          throw new Error("Pipe connections are not supported with Firefox and WebDriver BiDi");
-        }
-        const browserProcess = launch({
-          executablePath: launchArgs.executablePath,
-          args: launchArgs.args,
-          handleSIGHUP,
-          handleSIGTERM,
-          handleSIGINT,
-          dumpio,
-          env: env2,
-          pipe: usePipe,
-          onExit: onProcessExit,
-          signal: options.signal
-        });
-        let browser;
-        let cdpConnection;
-        let closing = false;
-        const browserCloseCallback = async () => {
-          if (closing) {
-            return;
-          }
-          closing = true;
-          await this.closeBrowser(browserProcess, cdpConnection);
-        };
-        try {
-          if (this.#browser === "firefox") {
-            browser = await this.createBiDiBrowser(browserProcess, browserCloseCallback, {
-              timeout: timeout2,
-              protocolTimeout,
-              slowMo,
-              defaultViewport,
-              acceptInsecureCerts,
-              networkEnabled,
-              idGenerator
-            });
-          } else {
-            if (usePipe) {
-              cdpConnection = await this.createCdpPipeConnection(browserProcess, {
-                timeout: timeout2,
-                protocolTimeout,
-                slowMo,
-                idGenerator
-              });
-            } else {
-              cdpConnection = await this.createCdpSocketConnection(browserProcess, {
-                timeout: timeout2,
-                protocolTimeout,
-                slowMo,
-                idGenerator
-              });
-            }
-            if (protocol === "webDriverBiDi") {
-              browser = await this.createBiDiOverCdpBrowser(browserProcess, cdpConnection, browserCloseCallback, {
-                defaultViewport,
-                acceptInsecureCerts,
-                networkEnabled,
-                issuesEnabled
-              });
-            } else {
-              browser = await CdpBrowser._create(cdpConnection, [], acceptInsecureCerts, defaultViewport, downloadBehavior, browserProcess.nodeProcess, browserCloseCallback, options.targetFilter, void 0, void 0, networkEnabled, issuesEnabled, handleDevToolsAsPage);
-            }
-          }
-        } catch (error) {
-          void browserCloseCallback();
-          const logs = browserProcess.getRecentLogs().join("\n");
-          if (logs.includes("Failed to create a ProcessSingleton for your profile directory") || // On Windows we will not get logs due to the singleton process
-          // handover. See
-          // https://source.chromium.org/chromium/chromium/src/+/main:chrome/browser/process_singleton_win.cc;l=46;drc=fc7952f0422b5073515a205a04ec9c3a1ae81658
-          process.platform === "win32" && existsSync2(join2(launchArgs.userDataDir, "lockfile"))) {
-            throw new Error(`The browser is already running for ${launchArgs.userDataDir}. Use a different \`userDataDir\` or stop the running browser first.`);
-          }
-          if (logs.includes("Missing X server") && options.headless === false) {
-            throw new Error(`Missing X server to start the headful browser. Either set headless to true or use xvfb-run to run your Puppeteer script.`);
-          }
-          if (error instanceof TimeoutError2) {
-            throw new TimeoutError(error.message);
-          }
-          throw error;
-        }
-        if (Array.isArray(enableExtensions)) {
-          if (this.#browser === "chrome" && !usePipe) {
-            throw new Error("To use `enableExtensions` with a list of paths in Chrome, you must be connected with `--remote-debugging-pipe` (`pipe: true`).");
-          }
-          await Promise.all([
-            enableExtensions.map((path13) => {
-              return browser.installExtension(path13);
-            })
-          ]);
-        }
-        if (waitForInitialPage) {
-          await this.waitForPageTarget(browser, timeout2);
-        }
-        return browser;
-      }
-      /**
-       * @internal
-       */
-      async closeBrowser(browserProcess, cdpConnection) {
-        if (cdpConnection) {
-          try {
-            await cdpConnection.closeBrowser();
-            await browserProcess.hasClosed();
-          } catch (error) {
-            debugError(error);
-            await browserProcess.close();
-          }
-        } else {
-          await firstValueFrom(race(from(browserProcess.hasClosed()), timer(5e3).pipe(map(() => {
-            return from(browserProcess.close());
-          }))));
-        }
-      }
-      /**
-       * @internal
-       */
-      async waitForPageTarget(browser, timeout2) {
-        try {
-          await browser.waitForTarget((t) => {
-            return t.type() === "page";
-          }, { timeout: timeout2 });
-        } catch (error) {
-          await browser.close();
-          throw error;
-        }
-      }
-      /**
-       * @internal
-       */
-      async createCdpSocketConnection(browserProcess, opts) {
-        const browserWSEndpoint = await browserProcess.waitForLineOutput(CDP_WEBSOCKET_ENDPOINT_REGEX, opts.timeout);
-        const transport = await NodeWebSocketTransport.create(browserWSEndpoint);
-        return new Connection(
-          browserWSEndpoint,
-          transport,
-          opts.slowMo,
-          opts.protocolTimeout,
-          /* rawErrors */
-          false,
-          opts.idGenerator
-        );
-      }
-      /**
-       * @internal
-       */
-      async createCdpPipeConnection(browserProcess, opts) {
-        const { 3: pipeWrite, 4: pipeRead } = browserProcess.nodeProcess.stdio;
-        const transport = new PipeTransport(pipeWrite, pipeRead);
-        return new Connection(
-          "",
-          transport,
-          opts.slowMo,
-          opts.protocolTimeout,
-          /* rawErrors */
-          false,
-          opts.idGenerator
-        );
-      }
-      /**
-       * @internal
-       */
-      async createBiDiOverCdpBrowser(browserProcess, cdpConnection, closeCallback, opts) {
-        const bidiOnly = process.env["PUPPETEER_WEBDRIVER_BIDI_ONLY"] === "true";
-        const BiDi = await Promise.resolve().then(() => (init_bidi(), bidi_exports));
-        const bidiConnection = await BiDi.connectBidiOverCdp(cdpConnection);
-        return await BiDi.BidiBrowser.create({
-          connection: bidiConnection,
-          // Do not provide CDP connection to Browser, if BiDi-only mode is enabled. This
-          // would restrict Browser to use only BiDi endpoint.
-          cdpConnection: bidiOnly ? void 0 : cdpConnection,
-          closeCallback,
-          process: browserProcess.nodeProcess,
-          defaultViewport: opts.defaultViewport,
-          acceptInsecureCerts: opts.acceptInsecureCerts,
-          networkEnabled: opts.networkEnabled,
-          issuesEnabled: opts.issuesEnabled
-        });
-      }
-      /**
-       * @internal
-       */
-      async createBiDiBrowser(browserProcess, closeCallback, opts) {
-        const browserWSEndpoint = await browserProcess.waitForLineOutput(WEBDRIVER_BIDI_WEBSOCKET_ENDPOINT_REGEX, opts.timeout) + "/session";
-        const transport = await NodeWebSocketTransport.create(browserWSEndpoint);
-        const BiDi = await Promise.resolve().then(() => (init_bidi(), bidi_exports));
-        const bidiConnection = new BiDi.BidiConnection(browserWSEndpoint, transport, opts.idGenerator, opts.slowMo, opts.protocolTimeout);
-        return await BiDi.BidiBrowser.create({
-          connection: bidiConnection,
-          closeCallback,
-          process: browserProcess.nodeProcess,
-          defaultViewport: opts.defaultViewport,
-          acceptInsecureCerts: opts.acceptInsecureCerts,
-          networkEnabled: opts.networkEnabled ?? true,
-          issuesEnabled: opts.issuesEnabled ?? true
-        });
-      }
-      /**
-       * @internal
-       */
-      getProfilePath() {
-        return join2(this.puppeteer.configuration.temporaryDirectory ?? tmpdir(), `puppeteer_dev_${this.browser}_profile-`);
-      }
-      /**
-       * @internal
-       */
-      resolveExecutablePath(headless, validatePath = true) {
-        let executablePath2 = this.puppeteer.configuration.executablePath;
-        if (executablePath2) {
-          if (validatePath && !existsSync2(executablePath2)) {
-            throw new Error(`Tried to find the browser at the configured path (${executablePath2}), but no executable was found.`);
-          }
-          return executablePath2;
-        }
-        function puppeteerBrowserToInstalledBrowser(browser, headless2) {
-          switch (browser) {
-            case "chrome":
-              if (headless2 === "shell") {
-                return Browser3.CHROMEHEADLESSSHELL;
-              }
-              return Browser3.CHROME;
-            case "firefox":
-              return Browser3.FIREFOX;
-          }
-          return Browser3.CHROME;
-        }
-        const browserType = puppeteerBrowserToInstalledBrowser(this.browser, headless);
-        executablePath2 = computeExecutablePath({
-          cacheDir: this.puppeteer.defaultDownloadPath,
-          browser: browserType,
-          buildId: this.puppeteer.browserVersion
-        });
-        if (validatePath && !existsSync2(executablePath2)) {
-          const configVersion = this.puppeteer.configuration?.[this.browser]?.version;
-          if (configVersion) {
-            throw new Error(`Tried to find the browser at the configured path (${executablePath2}) for version ${configVersion}, but no executable was found.`);
-          }
-          switch (this.browser) {
-            case "chrome":
-              throw new Error(`Could not find Chrome (ver. ${this.puppeteer.browserVersion}). This can occur if either
- 1. you did not perform an installation before running the script (e.g. \`npx puppeteer browsers install ${browserType}\`) or
- 2. your cache path is incorrectly configured (which is: ${this.puppeteer.configuration.cacheDirectory}).
-For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.`);
-            case "firefox":
-              throw new Error(`Could not find Firefox (rev. ${this.puppeteer.browserVersion}). This can occur if either
- 1. you did not perform an installation for Firefox before running the script (e.g. \`npx puppeteer browsers install firefox\`) or
- 2. your cache path is incorrectly configured (which is: ${this.puppeteer.configuration.cacheDirectory}).
-For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.`);
-          }
-        }
-        return executablePath2;
-      }
-    };
-  }
-});
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/util/fs.js
-import fs3 from "node:fs";
-async function rm(path13) {
-  await fs3.promises.rm(path13, rmOptions);
-}
-var rmOptions;
-var init_fs = __esm({
-  "node_modules/puppeteer-core/lib/esm/puppeteer/node/util/fs.js"() {
-    rmOptions = {
-      force: true,
-      recursive: true,
-      maxRetries: 5
-    };
-  }
-});
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/ChromeLauncher.js
-import { mkdtemp } from "node:fs/promises";
-import os6 from "node:os";
-import path9 from "node:path";
-function getFeatures(flag, options = []) {
-  return options.filter((s) => {
-    return s.startsWith(flag.endsWith("=") ? flag : `${flag}=`);
-  }).map((s) => {
-    return s.split(new RegExp(`${flag}=\\s*`))[1]?.trim();
-  }).filter((s) => {
-    return s;
-  });
-}
-function removeMatchingFlags(array, flag) {
-  const regex = new RegExp(`^${flag}=.*`);
-  let i = 0;
-  while (i < array.length) {
-    if (regex.test(array[i])) {
-      array.splice(i, 1);
-    } else {
-      i++;
-    }
-  }
-  return array;
-}
-var ChromeLauncher;
-var init_ChromeLauncher = __esm({
-  "node_modules/puppeteer-core/lib/esm/puppeteer/node/ChromeLauncher.js"() {
-    init_main();
-    init_util();
-    init_assert();
-    init_BrowserLauncher();
-    init_LaunchOptions();
-    init_fs();
-    ChromeLauncher = class extends BrowserLauncher {
-      constructor(puppeteer2) {
-        super(puppeteer2, "chrome");
-      }
-      launch(options = {}) {
-        if (this.puppeteer.configuration.logLevel === "warn" && process.platform === "darwin" && process.arch === "x64") {
-          const cpus = os6.cpus();
-          if (cpus[0]?.model.includes("Apple")) {
-            console.warn([
-              "\x1B[1m\x1B[43m\x1B[30m",
-              "Degraded performance warning:\x1B[0m\x1B[33m",
-              "Launching Chrome on Mac Silicon (arm64) from an x64 Node installation results in",
-              "Rosetta translating the Chrome binary, even if Chrome is already arm64. This would",
-              "result in huge performance issues. To resolve this, you must run Puppeteer with",
-              "a version of Node built for arm64."
-            ].join("\n  "));
-          }
-        }
-        return super.launch(options);
-      }
-      /**
-       * @internal
-       */
-      async computeLaunchArguments(options = {}) {
-        const { ignoreDefaultArgs = false, args = [], pipe: pipe2 = false, debuggingPort, channel, executablePath: executablePath2 } = options;
-        const chromeArguments = [];
-        if (!ignoreDefaultArgs) {
-          chromeArguments.push(...this.defaultArgs(options));
-        } else if (Array.isArray(ignoreDefaultArgs)) {
-          chromeArguments.push(...this.defaultArgs(options).filter((arg) => {
-            return !ignoreDefaultArgs.includes(arg);
-          }));
-        } else {
-          chromeArguments.push(...args);
-        }
-        if (!chromeArguments.some((argument) => {
-          return argument.startsWith("--remote-debugging-");
-        })) {
-          if (pipe2) {
-            assert(!debuggingPort, "Browser should be launched with either pipe or debugging port - not both.");
-            chromeArguments.push("--remote-debugging-pipe");
-          } else {
-            chromeArguments.push(`--remote-debugging-port=${debuggingPort || 0}`);
-          }
-        }
-        let isTempUserDataDir = false;
-        let userDataDirIndex = chromeArguments.findIndex((arg) => {
-          return arg.startsWith("--user-data-dir");
-        });
-        if (userDataDirIndex < 0) {
-          isTempUserDataDir = true;
-          chromeArguments.push(`--user-data-dir=${await mkdtemp(this.getProfilePath())}`);
-          userDataDirIndex = chromeArguments.length - 1;
-        }
-        const userDataDir = chromeArguments[userDataDirIndex].split("=", 2)[1];
-        assert(typeof userDataDir === "string", "`--user-data-dir` is malformed");
-        let chromeExecutable = executablePath2;
-        if (!chromeExecutable) {
-          assert(channel || !this.puppeteer._isPuppeteerCore, `An \`executablePath\` or \`channel\` must be specified for \`puppeteer-core\``);
-          chromeExecutable = channel ? this.executablePath(channel) : this.resolveExecutablePath(options.headless ?? true);
-        }
-        return {
-          executablePath: chromeExecutable,
-          args: chromeArguments,
-          isTempUserDataDir,
-          userDataDir
-        };
-      }
-      /**
-       * @internal
-       */
-      async cleanUserDataDir(path13, opts) {
-        if (opts.isTemp) {
-          try {
-            await rm(path13);
-          } catch (error) {
-            debugError(error);
-            throw error;
-          }
-        }
-      }
-      defaultArgs(options = {}) {
-        const userDisabledFeatures = getFeatures("--disable-features", options.args);
-        if (options.args && userDisabledFeatures.length > 0) {
-          removeMatchingFlags(options.args, "--disable-features");
-        }
-        const turnOnExperimentalFeaturesForTesting = process.env["PUPPETEER_TEST_EXPERIMENTAL_CHROME_FEATURES"] === "true";
-        const disabledFeatures = [
-          "Translate",
-          // AcceptCHFrame disabled because of crbug.com/1348106.
-          "AcceptCHFrame",
-          "MediaRouter",
-          "OptimizationHints",
-          "PartitionAllocSchedulerLoopQuarantineTaskControlledPurge",
-          // https://crbug.com/489314676
-          ...turnOnExperimentalFeaturesForTesting ? [] : [
-            // https://crbug.com/1492053
-            "ProcessPerSiteUpToMainFrameThreshold",
-            // https://github.com/puppeteer/puppeteer/issues/10715
-            "IsolateSandboxedIframes"
-          ],
-          ...userDisabledFeatures
-        ].filter((feature) => {
-          return feature !== "";
-        });
-        const userEnabledFeatures = getFeatures("--enable-features", options.args);
-        if (options.args && userEnabledFeatures.length > 0) {
-          removeMatchingFlags(options.args, "--enable-features");
-        }
-        const enabledFeatures = [
-          "PdfOopif",
-          // Add features to enable by default here.
-          ...userEnabledFeatures
-        ].filter((feature) => {
-          return feature !== "";
-        });
-        const chromeArguments = [
-          "--allow-pre-commit-input",
-          "--disable-background-networking",
-          "--disable-background-timer-throttling",
-          "--disable-backgrounding-occluded-windows",
-          "--disable-breakpad",
-          "--disable-client-side-phishing-detection",
-          "--disable-component-extensions-with-background-pages",
-          "--disable-crash-reporter",
-          // No crash reporting in CfT.
-          "--disable-default-apps",
-          "--disable-dev-shm-usage",
-          "--disable-hang-monitor",
-          "--disable-infobars",
-          "--disable-ipc-flooding-protection",
-          "--disable-popup-blocking",
-          "--disable-prompt-on-repost",
-          "--disable-renderer-backgrounding",
-          "--disable-search-engine-choice-screen",
-          "--disable-sync",
-          "--enable-automation",
-          "--export-tagged-pdf",
-          "--force-color-profile=srgb",
-          "--generate-pdf-document-outline",
-          "--metrics-recording-only",
-          "--no-first-run",
-          "--password-store=basic",
-          "--use-mock-keychain",
-          `--disable-features=${disabledFeatures.join(",")}`,
-          `--enable-features=${enabledFeatures.join(",")}`
-        ].filter((arg) => {
-          return arg !== "";
-        });
-        const { devtools = false, headless = !devtools, args = [], userDataDir, enableExtensions = false } = options;
-        if (process.env["PUPPETEER_DANGEROUS_NO_SANDBOX"] === "true" && !args.includes("--no-sandbox")) {
-          chromeArguments.push("--no-sandbox");
-        }
-        if (userDataDir) {
-          chromeArguments.push(`--user-data-dir=${path9.posix.isAbsolute(userDataDir) || path9.win32.isAbsolute(userDataDir) ? userDataDir : path9.resolve(userDataDir)}`);
-        }
-        if (devtools) {
-          chromeArguments.push("--auto-open-devtools-for-tabs");
-        }
-        if (headless) {
-          chromeArguments.push(headless === "shell" ? "--headless" : "--headless=new", "--hide-scrollbars", "--mute-audio");
-        }
-        chromeArguments.push(enableExtensions ? "--enable-unsafe-extension-debugging" : "--disable-extensions");
-        if (args.every((arg) => {
-          return arg.startsWith("-");
-        })) {
-          chromeArguments.push("about:blank");
-        }
-        chromeArguments.push(...args);
-        return chromeArguments;
-      }
-      executablePath(channel, validatePath = true) {
-        if (channel) {
-          return computeSystemExecutablePath({
-            browser: Browser3.CHROME,
-            channel: convertPuppeteerChannelToBrowsersChannel(channel)
-          });
-        } else {
-          return this.resolveExecutablePath(void 0, validatePath);
-        }
-      }
-    };
-  }
-});
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/FirefoxLauncher.js
-import fs4 from "node:fs";
-import { rename, unlink as unlink2, mkdtemp as mkdtemp2 } from "node:fs/promises";
-import os7 from "node:os";
-import path10 from "node:path";
-var FirefoxLauncher;
-var init_FirefoxLauncher = __esm({
-  "node_modules/puppeteer-core/lib/esm/puppeteer/node/FirefoxLauncher.js"() {
-    init_main();
-    init_util();
-    init_assert();
-    init_BrowserLauncher();
-    init_fs();
-    FirefoxLauncher = class _FirefoxLauncher extends BrowserLauncher {
-      constructor(puppeteer2) {
-        super(puppeteer2, "firefox");
-      }
-      static getPreferences(extraPrefsFirefox) {
-        return {
-          ...extraPrefsFirefox,
-          // Force all web content to use a single content process. TODO: remove
-          // this once Firefox supports mouse event dispatch from the main frame
-          // context. See https://bugzilla.mozilla.org/show_bug.cgi?id=1773393.
-          "fission.webContentIsolationStrategy": 0
-        };
-      }
-      /**
-       * @internal
-       */
-      async computeLaunchArguments(options = {}) {
-        const { ignoreDefaultArgs = false, args = [], executablePath: executablePath2, pipe: pipe2 = false, extraPrefsFirefox = {}, debuggingPort = null } = options;
-        const firefoxArguments = [];
-        if (!ignoreDefaultArgs) {
-          firefoxArguments.push(...this.defaultArgs(options));
-        } else if (Array.isArray(ignoreDefaultArgs)) {
-          firefoxArguments.push(...this.defaultArgs(options).filter((arg) => {
-            return !ignoreDefaultArgs.includes(arg);
-          }));
-        } else {
-          firefoxArguments.push(...args);
-        }
-        if (!firefoxArguments.some((argument) => {
-          return argument.startsWith("--remote-debugging-");
-        })) {
-          if (pipe2) {
-            assert(debuggingPort === null, "Browser should be launched with either pipe or debugging port - not both.");
-          }
-          firefoxArguments.push(`--remote-debugging-port=${debuggingPort || 0}`);
-        }
-        let userDataDir;
-        let isTempUserDataDir = true;
-        const profileArgIndex = firefoxArguments.findIndex((arg) => {
-          return ["-profile", "--profile"].includes(arg);
-        });
-        if (profileArgIndex !== -1) {
-          userDataDir = firefoxArguments[profileArgIndex + 1];
-          if (!userDataDir) {
-            throw new Error(`Missing value for profile command line argument`);
-          }
-          isTempUserDataDir = false;
-        } else {
-          userDataDir = await mkdtemp2(this.getProfilePath());
-          firefoxArguments.push("--profile");
-          firefoxArguments.push(userDataDir);
-        }
-        await createProfile2(Browser3.FIREFOX, {
-          path: userDataDir,
-          preferences: _FirefoxLauncher.getPreferences(extraPrefsFirefox)
-        });
-        let firefoxExecutable;
-        if (this.puppeteer._isPuppeteerCore || executablePath2) {
-          assert(executablePath2, `An \`executablePath\` must be specified for \`puppeteer-core\``);
-          firefoxExecutable = executablePath2;
-        } else {
-          firefoxExecutable = this.executablePath(void 0);
-        }
-        return {
-          isTempUserDataDir,
-          userDataDir,
-          args: firefoxArguments,
-          executablePath: firefoxExecutable
-        };
-      }
-      /**
-       * @internal
-       */
-      async cleanUserDataDir(userDataDir, opts) {
-        if (opts.isTemp) {
-          try {
-            await rm(userDataDir);
-          } catch (error) {
-            debugError(error);
-            throw error;
-          }
-        } else {
-          try {
-            const backupSuffix = ".puppeteer";
-            const backupFiles = ["prefs.js", "user.js"];
-            const results = await Promise.allSettled(backupFiles.map(async (file) => {
-              const prefsBackupPath = path10.join(userDataDir, file + backupSuffix);
-              if (fs4.existsSync(prefsBackupPath)) {
-                const prefsPath = path10.join(userDataDir, file);
-                await unlink2(prefsPath);
-                await rename(prefsBackupPath, prefsPath);
-              }
-            }));
-            for (const result of results) {
-              if (result.status === "rejected") {
-                throw result.reason;
-              }
-            }
-          } catch (error) {
-            debugError(error);
-          }
-        }
-      }
-      executablePath(_, validatePath = true) {
-        return this.resolveExecutablePath(
-          void 0,
-          /* validatePath=*/
-          validatePath
-        );
-      }
-      defaultArgs(options = {}) {
-        const { devtools = false, headless = !devtools, args = [], userDataDir = null } = options;
-        const firefoxArguments = [];
-        switch (os7.platform()) {
-          case "darwin":
-            firefoxArguments.push("--foreground");
-            break;
-          case "win32":
-            firefoxArguments.push("--wait-for-browser");
-            break;
-        }
-        if (userDataDir) {
-          firefoxArguments.push("--profile");
-          firefoxArguments.push(userDataDir);
-        }
-        if (headless) {
-          firefoxArguments.push("--headless");
-        }
-        if (devtools) {
-          firefoxArguments.push("--devtools");
-        }
-        if (args.every((arg) => {
-          return arg.startsWith("-");
-        })) {
-          firefoxArguments.push("about:blank");
-        }
-        firefoxArguments.push(...args);
-        return firefoxArguments;
-      }
-    };
-  }
-});
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/PuppeteerNode.js
-var PuppeteerNode;
-var init_PuppeteerNode = __esm({
-  "node_modules/puppeteer-core/lib/esm/puppeteer/node/PuppeteerNode.js"() {
-    init_main();
-    init_Puppeteer();
-    init_revisions();
-    init_ChromeLauncher();
-    init_FirefoxLauncher();
-    PuppeteerNode = class extends Puppeteer {
-      #launcher;
-      #lastLaunchedBrowser;
-      /**
-       * @internal
-       */
-      defaultBrowserRevision;
-      /**
-       * @internal
-       */
-      configuration = {};
-      /**
-       * @internal
-       */
-      constructor(settings) {
-        const { configuration, ...commonSettings } = settings;
-        super(commonSettings);
-        if (configuration) {
-          this.configuration = configuration;
-        }
-        switch (this.configuration.defaultBrowser) {
-          case "firefox":
-            this.defaultBrowserRevision = PUPPETEER_REVISIONS.firefox;
-            break;
-          default:
-            this.configuration.defaultBrowser = "chrome";
-            this.defaultBrowserRevision = PUPPETEER_REVISIONS.chrome;
-            break;
-        }
-        this.connect = this.connect.bind(this);
-        this.launch = this.launch.bind(this);
-        this.executablePath = this.executablePath.bind(this);
-        this.defaultArgs = this.defaultArgs.bind(this);
-        this.trimCache = this.trimCache.bind(this);
-      }
-      /**
-       * This method attaches Puppeteer to an existing browser instance.
-       *
-       * @param options - Set of configurable options to set on the browser.
-       * @returns Promise which resolves to browser instance.
-       */
-      connect(options) {
-        return super.connect(options);
-      }
-      /**
-       * Launches a browser instance with given arguments and options when
-       * specified.
-       *
-       * When using with `puppeteer-core`,
-       * {@link LaunchOptions.executablePath | options.executablePath} or
-       * {@link LaunchOptions.channel | options.channel} must be provided.
-       *
-       * @example
-       * You can use {@link LaunchOptions.ignoreDefaultArgs | options.ignoreDefaultArgs}
-       * to filter out `--mute-audio` from default arguments:
-       *
-       * ```ts
-       * const browser = await puppeteer.launch({
-       *   ignoreDefaultArgs: ['--mute-audio'],
-       * });
-       * ```
-       *
-       * @remarks
-       * Puppeteer can also be used to control the Chrome browser, but it works best
-       * with the version of Chrome for Testing downloaded by default.
-       * There is no guarantee it will work with any other version. If Google Chrome
-       * (rather than Chrome for Testing) is preferred, a
-       * {@link https://www.google.com/chrome/browser/canary.html | Chrome Canary}
-       * or
-       * {@link https://www.chromium.org/getting-involved/dev-channel | Dev Channel}
-       * build is suggested. See
-       * {@link https://www.howtogeek.com/202825/what%E2%80%99s-the-difference-between-chromium-and-chrome/ | this article}
-       * for a description of the differences between Chromium and Chrome.
-       * {@link https://chromium.googlesource.com/chromium/src/+/lkgr/docs/chromium_browser_vs_google_chrome.md | This article}
-       * describes some differences for Linux users. See
-       * {@link https://developer.chrome.com/blog/chrome-for-testing/ | this doc} for the description
-       * of Chrome for Testing.
-       *
-       * @param options - Options to configure launching behavior.
-       */
-      launch(options = {}) {
-        const { browser = this.defaultBrowser } = options;
-        this.#lastLaunchedBrowser = browser;
-        switch (browser) {
-          case "chrome":
-            this.defaultBrowserRevision = PUPPETEER_REVISIONS.chrome;
-            break;
-          case "firefox":
-            this.defaultBrowserRevision = PUPPETEER_REVISIONS.firefox;
-            break;
-          default:
-            throw new Error(`Unknown product: ${browser}`);
-        }
-        this.#launcher = this.#getLauncher(browser);
-        return this.#launcher.launch(options);
-      }
-      /**
-       * @internal
-       */
-      #getLauncher(browser) {
-        if (this.#launcher && this.#launcher.browser === browser) {
-          return this.#launcher;
-        }
-        switch (browser) {
-          case "chrome":
-            return new ChromeLauncher(this);
-          case "firefox":
-            return new FirefoxLauncher(this);
-          default:
-            throw new Error(`Unknown product: ${browser}`);
-        }
-      }
-      executablePath(optsOrChannel) {
-        if (optsOrChannel === void 0) {
-          return this.#getLauncher(this.lastLaunchedBrowser).executablePath(
-            void 0,
-            /* validatePath= */
-            false
-          );
-        }
-        if (typeof optsOrChannel === "string") {
-          return this.#getLauncher("chrome").executablePath(
-            optsOrChannel,
-            /* validatePath= */
-            false
-          );
-        }
-        return this.#getLauncher(optsOrChannel.browser ?? this.lastLaunchedBrowser).resolveExecutablePath(
-          optsOrChannel.headless,
-          /* validatePath= */
-          false
-        );
-      }
-      /**
-       * @internal
-       */
-      get browserVersion() {
-        return this.configuration?.[this.lastLaunchedBrowser]?.version ?? this.defaultBrowserRevision;
-      }
-      /**
-       * The default download path for puppeteer. For puppeteer-core, this
-       * code should never be called as it is never defined.
-       *
-       * @internal
-       */
-      get defaultDownloadPath() {
-        return this.configuration.cacheDirectory;
-      }
-      /**
-       * The name of the browser that was last launched.
-       */
-      get lastLaunchedBrowser() {
-        return this.#lastLaunchedBrowser ?? this.defaultBrowser;
-      }
-      /**
-       * The name of the browser that will be launched by default. For
-       * `puppeteer`, this is influenced by your configuration. Otherwise, it's
-       * `chrome`.
-       */
-      get defaultBrowser() {
-        return this.configuration.defaultBrowser ?? "chrome";
-      }
-      /**
-       * @deprecated Do not use as this field as it does not take into account
-       * multiple browsers of different types. Use
-       * {@link PuppeteerNode.defaultBrowser | defaultBrowser} or
-       * {@link PuppeteerNode.lastLaunchedBrowser | lastLaunchedBrowser}.
-       *
-       * @returns The name of the browser that is under automation.
-       */
-      get product() {
-        return this.lastLaunchedBrowser;
-      }
-      /**
-       * @param options - Set of configurable options to set on the browser.
-       *
-       * @returns The default arguments that the browser will be launched with.
-       */
-      defaultArgs(options = {}) {
-        return this.#getLauncher(options.browser ?? this.lastLaunchedBrowser).defaultArgs(options);
-      }
-      /**
-       * Removes all non-current Firefox and Chrome binaries in the cache directory
-       * identified by the provided Puppeteer configuration. The current browser
-       * version is determined by resolving PUPPETEER_REVISIONS from Puppeteer
-       * unless `configuration.browserRevision` is provided.
-       *
-       * @remarks
-       *
-       * Note that the method does not check if any other Puppeteer versions
-       * installed on the host that use the same cache directory require the
-       * non-current binaries.
-       *
-       * @public
-       */
-      async trimCache() {
-        const platform = detectBrowserPlatform();
-        if (!platform) {
-          throw new Error("The current platform is not supported.");
-        }
-        const cacheDir = this.configuration.cacheDirectory;
-        const installedBrowsers = await getInstalledBrowsers({
-          cacheDir
-        });
-        const puppeteerBrowsers = [
-          {
-            product: "chrome",
-            browser: Browser3.CHROME,
-            currentBuildId: ""
-          },
-          {
-            product: "firefox",
-            browser: Browser3.FIREFOX,
-            currentBuildId: ""
-          }
-        ];
-        await Promise.all(puppeteerBrowsers.map(async (item) => {
-          const tag = this.configuration?.[item.product]?.version ?? PUPPETEER_REVISIONS[item.product];
-          item.currentBuildId = await resolveBuildId4(item.browser, platform, tag);
-        }));
-        const currentBrowserBuilds = new Set(puppeteerBrowsers.map((browser) => {
-          return `${browser.browser}_${browser.currentBuildId}`;
-        }));
-        const currentBrowsers = new Set(puppeteerBrowsers.map((browser) => {
-          return browser.browser;
-        }));
-        for (const installedBrowser of installedBrowsers) {
-          if (!currentBrowsers.has(installedBrowser.browser)) {
-            continue;
-          }
-          if (currentBrowserBuilds.has(`${installedBrowser.browser}_${installedBrowser.buildId}`)) {
-            continue;
-          }
-          await uninstall({
-            browser: installedBrowser.browser,
-            platform,
-            cacheDir,
-            buildId: installedBrowser.buildId
-          });
-        }
-      }
-    };
-  }
-});
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/ScreenRecorder.js
-import { spawn as spawn2, spawnSync as spawnSync3 } from "node:child_process";
-import fs5 from "node:fs";
-import os8 from "node:os";
-import { dirname as dirname3 } from "node:path";
-import { PassThrough } from "node:stream";
-var import_debug6, __runInitializers23, __esDecorate23, __setFunctionName6, CRF_VALUE, DEFAULT_FPS, debugFfmpeg, ScreenRecorder;
-var init_ScreenRecorder = __esm({
-  "node_modules/puppeteer-core/lib/esm/puppeteer/node/ScreenRecorder.js"() {
-    import_debug6 = __toESM(require_src(), 1);
-    init_rxjs();
-    init_CDPSession();
-    init_util();
-    init_decorators();
-    init_disposable();
-    __runInitializers23 = function(thisArg, initializers, value) {
-      var useValue = arguments.length > 2;
-      for (var i = 0; i < initializers.length; i++) {
-        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);
-      }
-      return useValue ? value : void 0;
-    };
-    __esDecorate23 = function(ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {
-      function accept(f) {
-        if (f !== void 0 && typeof f !== "function") throw new TypeError("Function expected");
-        return f;
-      }
-      var kind = contextIn.kind, key = kind === "getter" ? "get" : kind === "setter" ? "set" : "value";
-      var target = !descriptorIn && ctor ? contextIn["static"] ? ctor : ctor.prototype : null;
-      var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});
-      var _, done = false;
-      for (var i = decorators.length - 1; i >= 0; i--) {
-        var context2 = {};
-        for (var p in contextIn) context2[p] = p === "access" ? {} : contextIn[p];
-        for (var p in contextIn.access) context2.access[p] = contextIn.access[p];
-        context2.addInitializer = function(f) {
-          if (done) throw new TypeError("Cannot add initializers after decoration has completed");
-          extraInitializers.push(accept(f || null));
-        };
-        var result = (0, decorators[i])(kind === "accessor" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context2);
-        if (kind === "accessor") {
-          if (result === void 0) continue;
-          if (result === null || typeof result !== "object") throw new TypeError("Object expected");
-          if (_ = accept(result.get)) descriptor.get = _;
-          if (_ = accept(result.set)) descriptor.set = _;
-          if (_ = accept(result.init)) initializers.unshift(_);
-        } else if (_ = accept(result)) {
-          if (kind === "field") initializers.unshift(_);
-          else descriptor[key] = _;
-        }
-      }
-      if (target) Object.defineProperty(target, contextIn.name, descriptor);
-      done = true;
-    };
-    __setFunctionName6 = function(f, name, prefix) {
-      if (typeof name === "symbol") name = name.description ? "[".concat(name.description, "]") : "";
-      return Object.defineProperty(f, "name", { configurable: true, value: prefix ? "".concat(prefix, " ", name) : name });
-    };
-    CRF_VALUE = 30;
-    DEFAULT_FPS = 30;
-    debugFfmpeg = (0, import_debug6.default)("puppeteer:ffmpeg");
-    ScreenRecorder = (() => {
-      let _classSuper = PassThrough;
-      let _instanceExtraInitializers = [];
-      let _private_writeFrame_decorators;
-      let _private_writeFrame_descriptor;
-      let _stop_decorators;
-      return class ScreenRecorder extends _classSuper {
-        static {
-          const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
-          __esDecorate23(this, _private_writeFrame_descriptor = { value: __setFunctionName6(async function(buffer) {
-            const error = await new Promise((resolve6) => {
-              this.#process.stdin.write(buffer, resolve6);
-            });
-            if (error) {
-              console.log(`ffmpeg failed to write: ${error.message}.`);
-            }
-          }, "#writeFrame") }, _private_writeFrame_decorators, { kind: "method", name: "#writeFrame", static: false, private: true, access: { has: (obj) => #writeFrame in obj, get: (obj) => obj.#writeFrame }, metadata: _metadata }, null, _instanceExtraInitializers);
-          __esDecorate23(this, null, _stop_decorators, { kind: "method", name: "stop", static: false, private: false, access: { has: (obj) => "stop" in obj, get: (obj) => obj.stop }, metadata: _metadata }, null, _instanceExtraInitializers);
-          if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
-        }
-        #page = __runInitializers23(this, _instanceExtraInitializers);
-        #process;
-        #controller = new AbortController();
-        #lastFrame;
-        #fps;
-        /**
-         * @internal
-         */
-        constructor(page, width, height, { ffmpegPath, speed, scale, crop, format: format3, fps, loop, delay, quality, colors, path: path13, overwrite } = {}) {
-          super({ allowHalfOpen: false });
-          ffmpegPath ??= "ffmpeg";
-          format3 ??= "webm";
-          fps ??= DEFAULT_FPS;
-          loop ||= -1;
-          delay ??= -1;
-          quality ??= CRF_VALUE;
-          colors ??= 256;
-          overwrite ??= true;
-          this.#fps = fps;
-          const { error } = spawnSync3(ffmpegPath);
-          if (error) {
-            throw error;
-          }
-          const filters = [
-            `crop='min(${width},iw):min(${height},ih):0:0'`,
-            `pad=${width}:${height}:0:0`
-          ];
-          if (speed) {
-            filters.push(`setpts=${1 / speed}*PTS`);
-          }
-          if (crop) {
-            filters.push(`crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}`);
-          }
-          if (scale) {
-            filters.push(`scale=iw*${scale}:-1:flags=lanczos`);
-          }
-          const formatArgs = this.#getFormatArgs(format3, fps, loop, delay, quality, colors);
-          const vf = formatArgs.indexOf("-vf");
-          if (vf !== -1) {
-            filters.push(formatArgs.splice(vf, 2).at(-1) ?? "");
-          }
-          if (path13) {
-            fs5.mkdirSync(dirname3(path13), { recursive: overwrite });
-          }
-          this.#process = spawn2(
-            ffmpegPath,
-            // See https://trac.ffmpeg.org/wiki/Encode/VP9 for more information on flags.
-            [
-              ["-loglevel", "error"],
-              // Reduces general buffering.
-              ["-avioflags", "direct"],
-              // Reduces initial buffering while analyzing input fps and other stats.
-              [
-                "-fpsprobesize",
-                "0",
-                "-probesize",
-                "32",
-                "-analyzeduration",
-                "0",
-                "-fflags",
-                "nobuffer"
-              ],
-              // Forces input to be read from standard input, and forces png input
-              // image format.
-              ["-f", "image2pipe", "-vcodec", "png", "-i", "pipe:0"],
-              // No audio
-              ["-an"],
-              // This drastically reduces stalling when cpu is overbooked. By default
-              // VP9 tries to use all available threads?
-              ["-threads", "1"],
-              // Specifies the frame rate we are giving ffmpeg.
-              ["-framerate", `${fps}`],
-              // Disable bitrate.
-              ["-b:v", "0"],
-              // Specifies the encoding and format we are using.
-              formatArgs,
-              // Filters to ensure the images are piped correctly,
-              // combined with any format-specific filters.
-              ["-vf", filters.join()],
-              // Overwrite output, or exit immediately if file already exists.
-              [overwrite ? "-y" : "-n"],
-              "pipe:1"
-            ].flat(),
-            { stdio: ["pipe", "pipe", "pipe"] }
-          );
-          this.#process.stdout.pipe(this);
-          this.#process.stderr.on("data", (data) => {
-            debugFfmpeg(data.toString("utf8"));
-          });
-          this.#page = page;
-          const { client } = this.#page.mainFrame();
-          client.once(CDPSessionEvent.Disconnected, () => {
-            void this.stop().catch(debugError);
-          });
-          this.#lastFrame = lastValueFrom(fromEmitterEvent(client, "Page.screencastFrame").pipe(tap((event) => {
-            void client.send("Page.screencastFrameAck", {
-              sessionId: event.sessionId
-            });
-          }), filter((event) => {
-            return event.metadata.timestamp !== void 0;
-          }), map((event) => {
-            return {
-              buffer: Buffer.from(event.data, "base64"),
-              timestamp: event.metadata.timestamp
-            };
-          }), bufferCount(2, 1), concatMap(([{ timestamp: previousTimestamp, buffer }, { timestamp: timestamp2 }]) => {
-            return from(Array(Math.round(fps * Math.max(timestamp2 - previousTimestamp, 0))).fill(buffer));
-          }), map((buffer) => {
-            void this.#writeFrame(buffer);
-            return [buffer, performance.now()];
-          }), takeUntil(fromEvent(this.#controller.signal, "abort"))), { defaultValue: [Buffer.from([]), performance.now()] });
-        }
-        #getFormatArgs(format3, fps, loop, delay, quality, colors) {
-          const libvpx = [
-            ["-vcodec", "vp9"],
-            // Sets the quality. Lower the better.
-            ["-crf", `${quality}`],
-            // Sets the quality and how efficient the compression will be.
-            [
-              "-deadline",
-              "realtime",
-              "-cpu-used",
-              `${Math.min(os8.cpus().length / 2, 8)}`
-            ]
-          ];
-          switch (format3) {
-            case "webm":
-              return [
-                ...libvpx,
-                // Sets the format
-                ["-f", "webm"]
-              ].flat();
-            case "gif":
-              fps = DEFAULT_FPS === fps ? 20 : "source_fps";
-              if (loop === Infinity) {
-                loop = 0;
-              }
-              if (delay !== -1) {
-                delay /= 10;
-              }
-              return [
-                // Sets the frame rate and uses a custom palette generated from the
-                // input.
-                [
-                  "-vf",
-                  `fps=${fps},split[s0][s1];[s0]palettegen=stats_mode=diff:max_colors=${colors}[p];[s1][p]paletteuse=dither=bayer`
-                ],
-                // Sets the number of times to loop playback.
-                ["-loop", `${loop}`],
-                // Sets the delay between iterations of a loop.
-                ["-final_delay", `${delay}`],
-                // Sets the format
-                ["-f", "gif"]
-              ].flat();
-            case "mp4":
-              return [
-                ...libvpx,
-                // Fragment file during stream to avoid errors.
-                ["-movflags", "hybrid_fragmented"],
-                // Sets the format
-                ["-f", "mp4"]
-              ].flat();
-          }
-        }
-        get #writeFrame() {
-          return _private_writeFrame_descriptor.value;
-        }
-        /**
-         * Stops the recorder.
-         *
-         * @public
-         */
-        async stop() {
-          if (this.#controller.signal.aborted) {
-            return;
-          }
-          await this.#page._stopScreencast().catch(debugError);
-          this.#controller.abort();
-          const [buffer, timestamp2] = await this.#lastFrame;
-          await Promise.all(Array(Math.max(1, Math.round(this.#fps * (performance.now() - timestamp2) / 1e3))).fill(buffer).map(this.#writeFrame.bind(this)));
-          this.#process.stdin.end();
-          await new Promise((resolve6) => {
-            this.#process.once("close", resolve6);
-          });
-        }
-        /**
-         * @internal
-         */
-        async [(_private_writeFrame_decorators = [guarded()], _stop_decorators = [guarded()], asyncDisposeSymbol)]() {
-          await this.stop();
-        }
-      };
-    })();
-  }
-});
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/node.js
-var init_node2 = __esm({
-  "node_modules/puppeteer-core/lib/esm/puppeteer/node/node.js"() {
-    init_ChromeLauncher();
-    init_FirefoxLauncher();
-    init_PipeTransport();
-    init_BrowserLauncher();
-    init_PuppeteerNode();
-    init_ScreenRecorder();
-  }
-});
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/index.js
-var init_puppeteer = __esm({
-  "node_modules/puppeteer-core/lib/esm/puppeteer/index.js"() {
-    init_index_browser();
-    init_node2();
-  }
-});
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js
-import fs6 from "node:fs";
-import path11 from "node:path";
-var puppeteer, connect, defaultArgs, executablePath, launch2, puppeteer_core_default;
-var init_puppeteer_core = __esm({
-  "node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js"() {
-    init_puppeteer();
-    init_environment();
-    init_puppeteer();
-    environment.value = {
-      fs: fs6,
-      path: path11,
-      ScreenRecorder
-    };
-    puppeteer = new PuppeteerNode({
-      isPuppeteerCore: true
-    });
-    ({
-      connect: (
-        /**
-         * @public
-         */
-        connect
-      ),
-      defaultArgs: (
-        /**
-         * @public
-         */
-        defaultArgs
-      ),
-      executablePath: (
-        /**
-         * @public
-         */
-        executablePath
-      ),
-      launch: (
-        /**
-         * @public
-         */
-        launch2
-      )
-    } = puppeteer);
-    puppeteer_core_default = puppeteer;
-  }
-});
-
 // node_modules/follow-redirects/debug.js
 var require_debug3 = __commonJS({
   "node_modules/follow-redirects/debug.js"(exports, module) {
@@ -92558,133 +89571,3105 @@ var require_follow_redirects = __commonJS({
   }
 });
 
-// node_modules/@sparticuz/chromium/build/esm/helper.js
-import { access, createWriteStream as createWriteStream2, rm as rm2, symlink } from "node:fs";
-import { tmpdir as tmpdir2 } from "node:os";
-import { join as join3 } from "node:path";
-var import_follow_redirects, import_tar_fs, setupLambdaEnvironment, isValidUrl, isRunningInAmazonLinux2023, downloadAndExtract;
-var init_helper = __esm({
-  "node_modules/@sparticuz/chromium/build/esm/helper.js"() {
-    import_follow_redirects = __toESM(require_follow_redirects(), 1);
-    import_tar_fs = __toESM(require_tar_fs(), 1);
-    setupLambdaEnvironment = (baseLibPath) => {
-      process.env["FONTCONFIG_PATH"] ??= join3(tmpdir2(), "fonts");
-      process.env["HOME"] ??= tmpdir2();
-      if (process.env["LD_LIBRARY_PATH"] === void 0) {
-        process.env["LD_LIBRARY_PATH"] = baseLibPath;
-      } else if (!process.env["LD_LIBRARY_PATH"].startsWith(baseLibPath)) {
-        process.env["LD_LIBRARY_PATH"] = [
-          baseLibPath,
-          ...new Set(process.env["LD_LIBRARY_PATH"].split(":"))
-        ].join(":");
+// server/mockup/video.ts
+var video_exports = {};
+__export(video_exports, {
+  createVideoMontage: () => createVideoMontage
+});
+import { execFile } from "child_process";
+import { promisify } from "util";
+import * as fs7 from "fs";
+import * as path12 from "path";
+import * as os9 from "os";
+async function createVideoMontage(opts) {
+  const tmpDir = await fs7.promises.mkdtemp(path12.join(os9.tmpdir(), "sideline-mockup-"));
+  try {
+    const imagePaths = [];
+    for (let i = 0; i < opts.images.length; i++) {
+      const imgPath = path12.join(tmpDir, `design_${i + 1}.png`);
+      await fs7.promises.writeFile(imgPath, opts.images[i]);
+      imagePaths.push(imgPath);
+    }
+    const audioPath = path12.join(tmpDir, "voiceover.mp3");
+    await fs7.promises.writeFile(audioPath, opts.audio);
+    const outputPath = path12.join(tmpDir, "mockup_video.mp4");
+    const durationSeconds = await getAudioDuration(audioPath);
+    const perImageDuration = Math.max(3, Math.floor(durationSeconds / opts.images.length));
+    const fadeDuration = 0.5;
+    const filterParts = [];
+    const inputs = [];
+    for (let i = 0; i < imagePaths.length; i++) {
+      inputs.push("-loop", "1", "-t", String(perImageDuration), "-i", imagePaths[i]);
+    }
+    inputs.push("-i", audioPath);
+    for (let i = 0; i < imagePaths.length; i++) {
+      const fadeIn = i === 0 ? 0 : 0;
+      filterParts.push(
+        `[${i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=white,drawtext=text='${opts.teamName.replace(/'/g, "\\'")}':fontsize=28:fontcolor=0x333333:x=(w-text_w)/2:y=h-60:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf,drawtext=text='Design ${i + 1} of ${imagePaths.length}':fontsize=20:fontcolor=0x999999:x=(w-text_w)/2:y=h-30:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf,fade=t=in:st=0:d=${fadeDuration},fade=t=out:st=${perImageDuration - fadeDuration}:d=${fadeDuration}[v${i}]`
+      );
+    }
+    const concatInputs = imagePaths.map((_, i) => `[v${i}]`).join("");
+    filterParts.push(`${concatInputs}concat=n=${imagePaths.length}:v=1:a=0[outv]`);
+    const filterComplex = filterParts.join("; ");
+    const ffmpegArgs = [
+      ...inputs,
+      "-filter_complex",
+      filterComplex,
+      "-map",
+      "[outv]",
+      "-map",
+      `${imagePaths.length}:a`,
+      "-c:v",
+      "libx264",
+      "-preset",
+      "fast",
+      "-crf",
+      "23",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      "-shortest",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      "-y",
+      outputPath
+    ];
+    await execFileAsync("ffmpeg", ffmpegArgs, { timeout: 12e4 });
+    const videoBuffer = await fs7.promises.readFile(outputPath);
+    const totalDuration = perImageDuration * imagePaths.length;
+    return { videoBuffer, durationSeconds: totalDuration };
+  } finally {
+    await fs7.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {
+    });
+  }
+}
+async function getAudioDuration(audioPath) {
+  try {
+    const { stdout } = await execFileAsync("ffprobe", [
+      "-i",
+      audioPath,
+      "-show_entries",
+      "format=duration",
+      "-v",
+      "quiet",
+      "-of",
+      "csv=p=0"
+    ]);
+    return parseFloat(stdout.trim()) || 20;
+  } catch {
+    return 20;
+  }
+}
+var execFileAsync;
+var init_video = __esm({
+  "server/mockup/video.ts"() {
+    "use strict";
+    execFileAsync = promisify(execFile);
+  }
+});
+
+// server/webhookHandlers.ts
+var webhookHandlers_exports = {};
+__export(webhookHandlers_exports, {
+  WebhookHandlers: () => WebhookHandlers
+});
+import { eq as eq8 } from "drizzle-orm";
+var WebhookHandlers;
+var init_webhookHandlers = __esm({
+  "server/webhookHandlers.ts"() {
+    "use strict";
+    init_stripeClient();
+    init_db();
+    init_schema();
+    WebhookHandlers = class {
+      static async processWebhook(payload, signature) {
+        if (!Buffer.isBuffer(payload)) {
+          throw new Error(
+            "STRIPE WEBHOOK ERROR: Payload must be a Buffer. Received type: " + typeof payload + ". Ensure webhook route is registered BEFORE app.use(express.json())."
+          );
+        }
+        const stripe = getStripeClient();
+        const webhookSecret = getStripeWebhookSecret();
+        const event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+        if (event.type === "checkout.session.completed") {
+          const session = event.data.object;
+          await db.update(orders).set({
+            status: "paid",
+            stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id,
+            customerEmail: session.customer_details?.email,
+            customerName: session.customer_details?.name,
+            paidAt: /* @__PURE__ */ new Date(),
+            updatedAt: /* @__PURE__ */ new Date()
+          }).where(eq8(orders.stripeCheckoutSessionId, session.id));
+          console.log(`Order paid: ${session.id}`);
+        }
+        if (event.type === "payment_intent.succeeded") {
+          const paymentIntent = event.data.object;
+          await db.update(orders).set({
+            status: "paid",
+            paidAt: /* @__PURE__ */ new Date(),
+            updatedAt: /* @__PURE__ */ new Date()
+          }).where(eq8(orders.stripePaymentIntentId, paymentIntent.id));
+        }
       }
-    };
-    isValidUrl = (input2) => {
-      try {
-        return Boolean(new URL(input2));
-      } catch {
-        return false;
-      }
-    };
-    isRunningInAmazonLinux2023 = (nodeMajorVersion2) => {
-      const awsExecEnv = process.env["AWS_EXECUTION_ENV"] ?? "";
-      const awsLambdaJsRuntime = process.env["AWS_LAMBDA_JS_RUNTIME"] ?? "";
-      const codebuildImage = process.env["CODEBUILD_BUILD_IMAGE"] ?? "";
-      if (awsExecEnv.includes("20.x") || awsExecEnv.includes("22.x") || awsExecEnv.includes("24.x") || awsLambdaJsRuntime.includes("20.x") || awsLambdaJsRuntime.includes("22.x") || awsLambdaJsRuntime.includes("24.x") || codebuildImage.includes("nodejs20") || codebuildImage.includes("nodejs22") || codebuildImage.includes("nodejs24")) {
-        return true;
-      }
-      if (process.env["VERCEL"] && nodeMajorVersion2 >= 20) {
-        return true;
-      }
-      return false;
-    };
-    downloadAndExtract = async (url) => {
-      const getOptions = new URL(url);
-      getOptions.maxBodyLength = 60 * 1024 * 1024;
-      const destDir = join3(tmpdir2(), "chromium-pack");
-      return new Promise((resolve6, reject) => {
-        const extractObj = (0, import_tar_fs.extract)(destDir);
-        const cleanupOnError = (err) => {
-          rm2(destDir, { force: true, recursive: true }, () => {
-            reject(err);
-          });
-        };
-        extractObj.once("error", cleanupOnError);
-        extractObj.once("finish", () => {
-          resolve6(destDir);
-        });
-        const req = import_follow_redirects.default.https.get(url, (response) => {
-          if (response.statusCode !== 200) {
-            reject(new Error(`Unexpected status code: ${response.statusCode?.toFixed(0) ?? "UNK"}.`));
-            return;
-          }
-          response.pipe(extractObj);
-          response.once("error", cleanupOnError);
-        });
-        req.once("error", cleanupOnError);
-        req.setTimeout(60 * 1e3, () => {
-          req.destroy();
-          cleanupOnError(new Error("Request timeout"));
-        });
-      });
     };
   }
 });
 
+// api/index.ts
+import express from "express";
+import cookieParser from "cookie-parser";
+import { createServer } from "http";
+
+// server/routes/index.ts
+init_ghl();
+
+// server/routes/store.ts
+init_storage();
+init_stripeClient();
+import { Router as Router2 } from "express";
+import { z as z3 } from "zod";
+var router2 = Router2();
+function generateOrderNumber() {
+  const prefix = "SNZ";
+  const timestamp2 = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `${prefix}-${timestamp2}-${random}`;
+}
+router2.get("/stripe/config", async (req, res) => {
+  try {
+    const publishableKey = await getStripePublishableKey();
+    res.json({ publishableKey });
+  } catch (e) {
+    console.error("Stripe config error:", e);
+    res.status(500).json({ error: "Stripe not configured" });
+  }
+});
+router2.get("/products", async (req, res) => {
+  try {
+    const storeSlug = req.query.store;
+    const products = await storage.getStripeProducts(storeSlug);
+    const grouped = products.reduce((acc, row) => {
+      if (!acc[row.id]) {
+        acc[row.id] = {
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          images: row.images,
+          metadata: row.metadata,
+          prices: []
+        };
+      }
+      if (row.price_id) {
+        acc[row.id].prices.push({
+          id: row.price_id,
+          unitAmount: row.unit_amount,
+          currency: row.currency,
+          metadata: row.price_metadata
+        });
+      }
+      return acc;
+    }, {});
+    res.json({ data: Object.values(grouped) });
+  } catch (e) {
+    console.error("Products error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+router2.get("/products/:productId", async (req, res) => {
+  try {
+    const product = await storage.getStripeProduct(req.params.productId);
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+    const prices = await storage.getStripePrices(req.params.productId);
+    res.json({
+      ...product,
+      prices: prices.map((p) => ({
+        id: p.id,
+        unitAmount: p.unit_amount,
+        currency: p.currency,
+        metadata: p.metadata
+      }))
+    });
+  } catch (e) {
+    console.error("Product error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+var cartItemSchema = z3.object({
+  productId: z3.string(),
+  priceId: z3.string(),
+  productName: z3.string(),
+  productImage: z3.string().optional(),
+  size: z3.string().optional(),
+  quantity: z3.number().min(1).default(1),
+  unitAmount: z3.number(),
+  currency: z3.string().default("nzd")
+});
+router2.get("/cart", async (req, res) => {
+  try {
+    const sessionId = req.headers["x-session-id"];
+    const storeSlug = req.query.store;
+    if (!sessionId || !storeSlug) {
+      return res.status(400).json({ error: "Session ID and store slug required" });
+    }
+    let cart = await storage.getCartBySession(sessionId, storeSlug);
+    if (!cart) {
+      cart = await storage.createCart({ sessionId, storeSlug });
+    }
+    const items = await storage.getCartItems(cart.id);
+    const subtotal = items.reduce((sum, item) => sum + item.unitAmount * item.quantity, 0);
+    res.json({
+      id: cart.id,
+      storeSlug: cart.storeSlug,
+      items,
+      subtotal,
+      itemCount: items.reduce((sum, item) => sum + item.quantity, 0)
+    });
+  } catch (e) {
+    console.error("Cart error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+router2.post("/cart/items", async (req, res) => {
+  try {
+    const sessionId = req.headers["x-session-id"];
+    const storeSlug = req.query.store;
+    if (!sessionId || !storeSlug) {
+      return res.status(400).json({ error: "Session ID and store slug required" });
+    }
+    const itemData = cartItemSchema.parse(req.body);
+    let cart = await storage.getCartBySession(sessionId, storeSlug);
+    if (!cart) {
+      cart = await storage.createCart({ sessionId, storeSlug });
+    }
+    const item = await storage.addCartItem({
+      cartId: cart.id,
+      ...itemData
+    });
+    const items = await storage.getCartItems(cart.id);
+    const subtotal = items.reduce((sum, i) => sum + i.unitAmount * i.quantity, 0);
+    res.json({
+      id: cart.id,
+      items,
+      subtotal,
+      itemCount: items.reduce((sum, i) => sum + i.quantity, 0)
+    });
+  } catch (e) {
+    console.error("Add to cart error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+router2.patch("/cart/items/:itemId", async (req, res) => {
+  try {
+    const sessionId = req.headers["x-session-id"];
+    if (!sessionId) {
+      return res.status(400).json({ error: "Session ID required" });
+    }
+    const { quantity } = req.body;
+    if (typeof quantity !== "number" || quantity < 0) {
+      return res.status(400).json({ error: "Invalid quantity" });
+    }
+    const item = await storage.getCartItem(req.params.itemId);
+    if (!item) {
+      return res.status(404).json({ error: "Item not found" });
+    }
+    const cart = await storage.getCart(item.cartId);
+    if (!cart || cart.sessionId !== sessionId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    if (quantity < 1) {
+      await storage.removeCartItem(req.params.itemId);
+    } else {
+      await storage.updateCartItemQuantity(req.params.itemId, quantity);
+    }
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Update cart error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+router2.delete("/cart/items/:itemId", async (req, res) => {
+  try {
+    const sessionId = req.headers["x-session-id"];
+    if (!sessionId) {
+      return res.status(400).json({ error: "Session ID required" });
+    }
+    const item = await storage.getCartItem(req.params.itemId);
+    if (!item) {
+      return res.status(404).json({ error: "Item not found" });
+    }
+    const cart = await storage.getCart(item.cartId);
+    if (!cart || cart.sessionId !== sessionId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    await storage.removeCartItem(req.params.itemId);
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Remove from cart error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+router2.post("/checkout", async (req, res) => {
+  try {
+    const sessionId = req.headers["x-session-id"];
+    const storeSlug = req.query.store;
+    if (!sessionId || !storeSlug) {
+      return res.status(400).json({ error: "Session ID and store slug required" });
+    }
+    const cart = await storage.getCartBySession(sessionId, storeSlug);
+    if (!cart) {
+      return res.status(400).json({ error: "Cart not found" });
+    }
+    const items = await storage.getCartItems(cart.id);
+    if (items.length === 0) {
+      return res.status(400).json({ error: "Cart is empty" });
+    }
+    const stripe = await getUncachableStripeClient();
+    const subtotal = items.reduce((sum, item) => sum + item.unitAmount * item.quantity, 0);
+    const auCollections = ["narre-warren-fc"];
+    const isAuStore = auCollections.includes(storeSlug);
+    const shipping = isAuStore ? 0 : 1e3;
+    const total = subtotal + shipping;
+    const orderNumber = generateOrderNumber();
+    const order = await storage.createOrder({
+      orderNumber,
+      sessionId,
+      storeSlug,
+      status: "pending",
+      subtotal,
+      shipping,
+      tax: 0,
+      total,
+      currency: isAuStore ? "aud" : "nzd"
+    });
+    for (const item of items) {
+      await storage.createOrderItem({
+        orderId: order.id,
+        productId: item.productId,
+        priceId: item.priceId,
+        productName: item.productName,
+        productImage: item.productImage,
+        size: item.size,
+        quantity: item.quantity,
+        unitAmount: item.unitAmount,
+        currency: item.currency
+      });
+    }
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const checkoutSession = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card", "afterpay_clearpay"],
+      line_items: items.map((item) => ({
+        price_data: {
+          currency: item.currency,
+          product_data: {
+            name: item.productName + (item.size ? ` - ${item.size}` : ""),
+            images: item.productImage ? [item.productImage] : []
+          },
+          unit_amount: item.unitAmount
+        },
+        quantity: item.quantity
+      })),
+      shipping_options: [
+        {
+          shipping_rate_data: {
+            type: "fixed_amount",
+            fixed_amount: { amount: shipping, currency: isAuStore ? "aud" : "nzd" },
+            display_name: isAuStore ? "Free Shipping (Club Pickup)" : "Standard Shipping",
+            delivery_estimate: {
+              minimum: { unit: "business_day", value: isAuStore ? 10 : 5 },
+              maximum: { unit: "business_day", value: isAuStore ? 14 : 10 }
+            }
+          }
+        }
+      ],
+      shipping_address_collection: {
+        allowed_countries: isAuStore ? ["AU"] : ["NZ"]
+      },
+      success_url: `${baseUrl}/team-stores/${storeSlug}/order-confirmation?order=${order.orderNumber}`,
+      cancel_url: `${baseUrl}/team-stores/${storeSlug}/cart`,
+      metadata: {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        storeSlug
+      }
+    });
+    await storage.updateOrderStatus(order.id, "pending");
+    const { db: db2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+    const { orders: orders2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+    const { eq: eq9 } = await import("drizzle-orm");
+    await db2.update(orders2).set({ stripeCheckoutSessionId: checkoutSession.id }).where(eq9(orders2.id, order.id));
+    await storage.clearCart(cart.id);
+    res.json({ url: checkoutSession.url, orderNumber: order.orderNumber });
+  } catch (e) {
+    console.error("Checkout error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+router2.get("/orders", async (req, res) => {
+  try {
+    const sessionId = req.headers["x-session-id"];
+    if (!sessionId) {
+      return res.status(400).json({ error: "Session ID required" });
+    }
+    const orders2 = await storage.getOrdersBySession(sessionId);
+    res.json({ data: orders2 });
+  } catch (e) {
+    console.error("Orders error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+router2.get("/orders/:orderNumber", async (req, res) => {
+  try {
+    const order = await storage.getOrderByNumber(req.params.orderNumber);
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+    const items = await storage.getOrderItems(order.id);
+    res.json({ ...order, items });
+  } catch (e) {
+    console.error("Order error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+var store_default = router2;
+
+// server/routes/shopify.ts
+import { Router as Router3 } from "express";
+var router3 = Router3();
+var SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL || "sideline-nz-2.myshopify.com";
+var SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN || "53a3ae5ea0eeacac29d10e09646a7cac";
+var shopifyEndpoint = `https://${SHOPIFY_STORE_URL}/api/2025-01/graphql.json`;
+async function shopifyFetch(query, variables) {
+  const queryPreview = query.replace(/\s+/g, " ").substring(0, 60) + "...";
+  try {
+    const res = await fetch(shopifyEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Storefront-Access-Token": SHOPIFY_TOKEN
+      },
+      body: JSON.stringify({ query, variables })
+    });
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => "unknown error");
+      throw new Error(`Shopify HTTP ${res.status}: ${errorText.substring(0, 200)}`);
+    }
+    const json = await res.json().catch((e) => {
+      throw new Error(`Failed to parse JSON: ${e.message}`);
+    });
+    if (json.errors && Array.isArray(json.errors)) {
+      const errorMsg = json.errors.map((e) => e.message).join("; ");
+      throw new Error("Shopify GraphQL error: " + errorMsg);
+    }
+    return json.data;
+  } catch (err) {
+    throw err;
+  }
+}
+router3.get("/ping", (_req, res) => {
+  res.json({ ok: true });
+});
+router3.get("/status", async (_req, res) => {
+  try {
+    if (!SHOPIFY_STORE_URL || !SHOPIFY_TOKEN) {
+      return res.status(503).json({ ok: false, error: "Config missing" });
+    }
+    const data = await shopifyFetch(`query { shop { name } }`);
+    res.json({ ok: true, store: SHOPIFY_STORE_URL });
+  } catch (e) {
+    res.status(502).json({ ok: false, error: String(e.message).substring(0, 200) });
+  }
+});
+router3.get("/collections", async (_req, res) => {
+  try {
+    const data = await shopifyFetch(`query { collections(first: 50) { edges { node { handle title description image { url altText } } } } }`);
+    const collections = (data?.collections?.edges || []).map((e) => e?.node).filter(Boolean);
+    res.json(collections);
+  } catch (e) {
+    res.status(500).json({ error: String(e.message).substring(0, 300) });
+  }
+});
+router3.get("/collections/:handle", async (req, res) => {
+  try {
+    const data = await shopifyFetch(`query CollectionByHandle($handle: String!) { collection(handle: $handle) { handle title description image { url altText } products(first: 50) { edges { node { id handle title description tags featuredImage { url altText } priceRange { minVariantPrice { amount currencyCode } } variants(first: 20) { edges { node { id title availableForSale price { amount currencyCode } } } } } } } } }`, { handle: req.params.handle });
+    const coll = data?.collection;
+    if (!coll) return res.status(404).json({ error: "Not found" });
+    res.json({ collection: coll, products: (coll.products?.edges || []).map((e) => e?.node).filter(Boolean) });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message).substring(0, 300) });
+  }
+});
+router3.get("/products", async (_req, res) => {
+  try {
+    const f = `id handle title description tags featuredImage { url altText } priceRange { minVariantPrice { amount currencyCode } } variants(first: 20) { edges { node { id title availableForSale price { amount currencyCode } } } }`;
+    const data = await shopifyFetch(`query { products(first: 12, sortKey: BEST_SELLING) { edges { node { ${f} } } } }`);
+    const products = (data?.products?.edges || []).map((e) => e?.node).filter(Boolean);
+    res.json(products.slice(0, 12));
+  } catch (e) {
+    res.status(500).json({ error: String(e.message).substring(0, 300) });
+  }
+});
+router3.post("/cart", async (req, res) => {
+  try {
+    const { lines } = req.body;
+    if (!lines || !Array.isArray(lines) || lines.length === 0) {
+      return res.status(400).json({ error: "lines required" });
+    }
+    const data = await shopifyFetch(`mutation cartCreate($input: CartInput!) { cartCreate(input: $input) { cart { id checkoutUrl } userErrors { field message } } }`, { input: { lines } });
+    const cart = data?.cartCreate?.cart;
+    const userErrors = data?.cartCreate?.userErrors;
+    if (userErrors?.length) {
+      return res.status(400).json({ error: userErrors[0].message });
+    }
+    res.json(cart);
+  } catch (e) {
+    res.status(500).json({ error: String(e.message).substring(0, 300) });
+  }
+});
+router3.post("/create-collection", async (req, res) => {
+  try {
+    const { club_name, club_handle, description } = req.body;
+    if (!club_name || !club_handle) {
+      return res.status(400).json({ error: "club_name and club_handle are required" });
+    }
+    const apiKey = process.env.APIEASE_API_KEY;
+    const baseUrl = process.env.APIEASE_BASE_URL || "https://app-admin.apiease.com";
+    const shopName = process.env.APIEASE_SHOP_NAME || "sideline-nz";
+    if (!apiKey) {
+      console.error("APIEASE_API_KEY not configured");
+      return res.status(503).json({ error: "APIEase not configured" });
+    }
+    const proxyUrl = `${baseUrl}/api/proxy/${shopName}/create-collection`;
+    console.log(`[Shopify] Creating collection via APIEase: club_name=${club_name}, club_handle=${club_handle}`);
+    const response = await fetch(proxyUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        club_name,
+        club_handle,
+        description: description || `${club_name} Team Store`
+      })
+    });
+    const responseData = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const errorMsg = responseData.error || responseData.message || `HTTP ${response.status}`;
+      console.error(`[Shopify] APIEase error: ${errorMsg}`, responseData);
+      return res.status(response.status || 500).json({ error: errorMsg });
+    }
+    console.log(`[Shopify] Collection created successfully:`, responseData);
+    const collectionUrl = `https://${SHOPIFY_STORE_URL}/collections/club-${club_handle}`;
+    res.json({
+      ok: true,
+      collection: responseData.collection,
+      collectionUrl
+    });
+  } catch (e) {
+    console.error(`[Shopify] Collection creation failed:`, e.message);
+    res.status(500).json({ error: String(e.message).substring(0, 300) });
+  }
+});
+var shopify_default = router3;
+
+// server/routes/auth.ts
+init_storage();
+import { Router as Router4 } from "express";
+
+// server/auth.ts
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+var JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
+var JWT_EXPIRES_IN = "7d";
+var COOKIE_NAME = "snz_token";
+function signToken(payload) {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+}
+function setAuthCookie(res, token) {
+  const isProxied = process.env.COOKIE_SECURE === "true" || process.env.NODE_ENV === "production";
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: isProxied,
+    sameSite: isProxied ? "none" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1e3,
+    // 7 days
+    path: "/"
+  });
+}
+function clearAuthCookie(res) {
+  res.clearCookie(COOKIE_NAME, { path: "/" });
+}
+function requireAuth(req, res, next) {
+  const token = req.cookies?.[COOKIE_NAME];
+  if (!token) return res.status(401).json({ error: "Not authenticated" });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+}
+function requireAdmin(req, res, next) {
+  requireAuth(req, res, () => {
+    if (req.user?.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    next();
+  });
+}
+function requireSupplier(req, res, next) {
+  requireAuth(req, res, () => {
+    if (req.user?.role !== "supplier") {
+      return res.status(403).json({ error: "Supplier access required" });
+    }
+    next();
+  });
+}
+async function hashPassword(password) {
+  return bcrypt.hash(password, 10);
+}
+async function verifyPassword(password, hash) {
+  return bcrypt.compare(password, hash);
+}
+
+// server/routes/auth.ts
+import { z as z4 } from "zod";
+var router4 = Router4();
+var registerSchema = z4.object({
+  email: z4.string().email("Valid email is required"),
+  password: z4.string().min(8, "Password must be at least 8 characters"),
+  teamName: z4.string().optional(),
+  contactPhone: z4.string().optional()
+});
+router4.post("/register", async (req, res) => {
+  try {
+    const parsed = registerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const firstError = parsed.error.errors[0]?.message || "Invalid data";
+      return res.status(400).json({ error: firstError });
+    }
+    const { email, password, teamName, contactPhone } = parsed.data;
+    const existing = await storage.getUserByEmail(email);
+    if (existing) {
+      return res.status(409).json({ error: "An account with this email already exists" });
+    }
+    const hashed = await hashPassword(password);
+    const user = await storage.createUser({
+      username: email,
+      // Use email as username
+      email,
+      password: hashed,
+      role: "customer",
+      teamName,
+      contactPhone
+    });
+    const token = signToken({ userId: user.id, role: "customer" });
+    setAuthCookie(res, token);
+    await storage.linkOrdersByEmail(email, user.id);
+    res.json({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      teamName: user.teamName,
+      contactPhone: user.contactPhone
+    });
+  } catch (e) {
+    console.error("Register error:", e);
+    res.status(500).json({ error: "Registration failed" });
+  }
+});
+var loginSchema = z4.object({
+  email: z4.string().email("Valid email is required"),
+  password: z4.string().min(1, "Password is required")
+});
+router4.post("/login", async (req, res) => {
+  try {
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const firstError = parsed.error.errors[0]?.message || "Invalid data";
+      return res.status(400).json({ error: firstError });
+    }
+    const { email, password } = parsed.data;
+    const user = await storage.getUserByEmail(email);
+    if (!user) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+    const valid = await verifyPassword(password, user.password);
+    if (!valid) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+    const role = user.role === "admin" || user.role === "supplier" ? user.role : "customer";
+    const token = signToken({ userId: user.id, role });
+    setAuthCookie(res, token);
+    if (role === "customer" && user.email) {
+      await storage.linkOrdersByEmail(user.email, user.id);
+    }
+    res.json({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      teamName: user.teamName,
+      contactPhone: user.contactPhone
+    });
+  } catch (e) {
+    console.error("Login error:", e);
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+router4.post("/logout", (_req, res) => {
+  clearAuthCookie(res);
+  res.json({ ok: true });
+});
+router4.get("/me", requireAuth, async (req, res) => {
+  try {
+    const { userId } = req.user;
+    const user = await storage.getUser(userId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      teamName: user.teamName,
+      contactPhone: user.contactPhone
+    });
+  } catch (e) {
+    console.error("Me error:", e);
+    res.status(500).json({ error: "Failed to fetch user" });
+  }
+});
+var acceptInviteSchema = z4.object({
+  token: z4.string().min(1, "Invite token is required"),
+  password: z4.string().min(8, "Password must be at least 8 characters")
+});
+router4.post("/accept-invite", async (req, res) => {
+  try {
+    const parsed = acceptInviteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const firstError = parsed.error.errors[0]?.message || "Invalid data";
+      return res.status(400).json({ error: firstError });
+    }
+    const { token, password } = parsed.data;
+    const user = await storage.getUserByInviteToken(token);
+    if (!user) {
+      return res.status(400).json({ error: "Invalid or expired invite link" });
+    }
+    if (user.inviteExpiresAt && new Date(user.inviteExpiresAt) < /* @__PURE__ */ new Date()) {
+      return res.status(400).json({ error: "Invite link has expired" });
+    }
+    const hashed = await hashPassword(password);
+    await storage.acceptInvite(user.id, hashed);
+    const role = user.role === "admin" || user.role === "supplier" ? user.role : "customer";
+    const authToken = signToken({ userId: user.id, role });
+    setAuthCookie(res, authToken);
+    res.json({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      teamName: user.teamName,
+      contactPhone: user.contactPhone
+    });
+  } catch (e) {
+    console.error("Accept invite error:", e);
+    res.status(500).json({ error: "Failed to accept invite" });
+  }
+});
+var auth_default = router4;
+
+// server/routes/admin.ts
+import { Router as Router6 } from "express";
+init_storage();
+import { z as z6 } from "zod";
+
+// server/notifications.ts
+init_storage();
+init_email();
+
+// server/ghl-sync.ts
+var GHL_API_BASE2 = "https://services.leadconnectorhq.com";
+async function findContactByEmail(email) {
+  const apiKey = process.env.SIDELINE_GHL_API_KEY;
+  const locationId = process.env.SIDELINE_GHL_LOCATION_ID;
+  if (!apiKey || !locationId) return null;
+  try {
+    const res = await fetch(
+      `${GHL_API_BASE2}/contacts/search/duplicate?locationId=${locationId}&email=${encodeURIComponent(email)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Version: "2021-07-28"
+        }
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const contact = data.contact;
+    if (!contact) return null;
+    return { id: contact.id, tags: contact.tags || [] };
+  } catch (err) {
+    console.error("GHL find contact error:", err);
+    return null;
+  }
+}
+async function addTagToContact(contactId, tags) {
+  const apiKey = process.env.SIDELINE_GHL_API_KEY;
+  if (!apiKey) return false;
+  try {
+    const res = await fetch(`${GHL_API_BASE2}/contacts/${contactId}`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        Version: "2021-07-28"
+      },
+      body: JSON.stringify({ tags })
+    });
+    return res.ok;
+  } catch (err) {
+    console.error("GHL add tag error:", err);
+    return false;
+  }
+}
+async function syncGhlTag(email, tag) {
+  const apiKey = process.env.SIDELINE_GHL_API_KEY;
+  if (!apiKey) {
+    console.log(`[GHL] Credentials not configured \u2014 would add tag "${tag}" to ${email}`);
+    return;
+  }
+  const contact = await findContactByEmail(email);
+  if (!contact) {
+    console.log(`[GHL] Contact not found for ${email} \u2014 skipping tag "${tag}"`);
+    return;
+  }
+  if (contact.tags.includes(tag)) {
+    console.log(`[GHL] Contact ${email} already has tag "${tag}"`);
+    return;
+  }
+  const updatedTags = [...contact.tags, tag];
+  const success = await addTagToContact(contact.id, updatedTags);
+  if (success) {
+    console.log(`[GHL] Added tag "${tag}" to contact ${email}`);
+  } else {
+    console.error(`[GHL] Failed to add tag "${tag}" to contact ${email}`);
+  }
+}
+
+// server/notifications.ts
+async function notifyDesignApproved(opts) {
+  await storage.createNotification({
+    userId: opts.userId,
+    type: "design_approved",
+    title: "Design Approved",
+    message: `Your ${opts.label} design has been approved.`,
+    orderId: opts.orderId,
+    designFileId: opts.designFileId
+  });
+  if (opts.customerEmail) {
+    await sendDesignApprovedEmail(opts.customerEmail, opts.orderNumber, opts.label).catch(
+      (err) => console.error("Failed to send design approved email:", err)
+    );
+  }
+  if (opts.customerEmail) {
+    await syncGhlTag(opts.customerEmail, "Design Approved").catch(
+      (err) => console.error("Failed to sync GHL tag:", err)
+    );
+  }
+}
+async function notifyDesignRejected(opts) {
+  await storage.createNotification({
+    userId: opts.userId,
+    type: "design_rejected",
+    title: "Design Needs Revision",
+    message: opts.comment || `Your ${opts.label} design needs revision.`,
+    orderId: opts.orderId,
+    designFileId: opts.designFileId
+  });
+  if (opts.customerEmail) {
+    await sendDesignRejectedEmail(opts.customerEmail, opts.orderNumber, opts.label, opts.comment).catch(
+      (err) => console.error("Failed to send design rejected email:", err)
+    );
+  }
+}
+async function notifyOrderShipped(opts) {
+  await storage.createNotification({
+    userId: opts.userId,
+    type: "order_shipped",
+    title: "Order Shipped",
+    message: `Your order ${opts.orderNumber} has been shipped!`,
+    orderId: opts.orderId
+  });
+  if (opts.customerEmail) {
+    await sendOrderShippedEmail(opts.customerEmail, opts.orderNumber).catch(
+      (err) => console.error("Failed to send order shipped email:", err)
+    );
+  }
+  if (opts.customerEmail) {
+    await syncGhlTag(opts.customerEmail, "Order Shipped").catch(
+      (err) => console.error("Failed to sync GHL tag:", err)
+    );
+  }
+}
+async function notifyOrderStatusChange(opts) {
+  const notifyStatuses = ["processing", "shipped", "delivered"];
+  if (!notifyStatuses.includes(opts.newStatus)) return;
+  if (opts.newStatus === "shipped") {
+    return notifyOrderShipped(opts);
+  }
+  await storage.createNotification({
+    userId: opts.userId,
+    type: `order_${opts.newStatus}`,
+    title: `Order ${opts.newStatus.charAt(0).toUpperCase() + opts.newStatus.slice(1)}`,
+    message: `Your order ${opts.orderNumber} is now ${opts.newStatus}.`,
+    orderId: opts.orderId
+  });
+}
+
+// server/routes/admin.ts
+init_email();
+init_db();
+init_schema();
+init_ghl();
+import { eq as eq4 } from "drizzle-orm";
+
+// server/routes/approvals.ts
+init_db();
+init_schema();
+init_storage();
+init_ghl();
+init_email();
+import { Router as Router5 } from "express";
+import { z as z5 } from "zod";
+import crypto2 from "crypto";
+import { eq as eq3 } from "drizzle-orm";
+async function createApprovalToken(params) {
+  const token = crypto2.randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1e3);
+  await db.insert(approvalTokens).values({
+    orderId: params.orderId,
+    token,
+    expiresAt,
+    createdBy: params.createdBy
+  });
+  const baseUrl = process.env.BASE_URL || "https://sidelinenz.com";
+  const link = `${baseUrl}/approve/${token}`;
+  sendMockupApprovalRequest(
+    params.clientEmail,
+    params.orderNumber || "your order",
+    link,
+    params.clientName || null
+  ).catch((err) => console.error("Failed to send mockup approval email:", err));
+  if (params.ghlOpportunityId) {
+    updateGhlOpportunityStage(params.ghlOpportunityId, "Mockup Sent").catch(
+      (err) => console.error("Failed to push GHL to Mockup Sent:", err)
+    );
+  }
+  await db.insert(orderActivity).values({
+    orderId: params.orderId,
+    userId: params.createdBy,
+    action: "approval_link_issued",
+    details: { token, expiresAt: expiresAt.toISOString(), clientEmail: params.clientEmail }
+  });
+  return { token, expiresAt };
+}
+var publicApprovalRouter = Router5();
+publicApprovalRouter.get("/:token", async (req, res) => {
+  try {
+    const [tokenRow] = await db.select().from(approvalTokens).where(eq3(approvalTokens.token, req.params.token)).limit(1);
+    if (!tokenRow) {
+      return res.status(404).json({ error: "Invalid or expired approval link" });
+    }
+    if (tokenRow.expiresAt && new Date(tokenRow.expiresAt) < /* @__PURE__ */ new Date()) {
+      return res.status(410).json({ error: "This approval link has expired. Contact Sideline NZ for a new one." });
+    }
+    if (tokenRow.usedAt) {
+      return res.status(409).json({
+        error: "This approval link has already been used.",
+        decision: tokenRow.decision,
+        usedAt: tokenRow.usedAt
+      });
+    }
+    const [order] = await db.select().from(orders).where(eq3(orders.id, tokenRow.orderId)).limit(1);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const allFiles = await db.select().from(designFiles).where(eq3(designFiles.orderId, order.id));
+    const mockups = allFiles.filter((f) => f.folder === "mockups").map((f) => ({
+      id: f.id,
+      fileName: f.fileName,
+      fileUrl: f.fileUrl,
+      mimeType: f.mimeType
+    }));
+    const items = await storage.getOrderItems(order.id);
+    const safeItems = items.map((i) => ({
+      id: i.id,
+      productName: i.productName,
+      quantity: i.quantity,
+      size: i.size,
+      brandingMethod: i.brandingMethod,
+      gradeGroup: i.gradeGroup
+      // NO unit price — clients see totals elsewhere via the quote, not here
+    }));
+    res.json({
+      order: {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        poReference: order.poReference,
+        accountName: order.accountName,
+        customerName: order.customerName
+      },
+      items: safeItems,
+      mockups,
+      expiresAt: tokenRow.expiresAt
+    });
+  } catch (e) {
+    console.error("Approval hydrate error:", e);
+    res.status(500).json({ error: "Failed to load approval page" });
+  }
+});
+var decisionSchema = z5.object({
+  decision: z5.enum(["approved", "changes_requested"]),
+  changesNotes: z5.string().optional()
+});
+publicApprovalRouter.post("/:token", async (req, res) => {
+  try {
+    const parsed = decisionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0]?.message || "Invalid payload" });
+    }
+    const { decision, changesNotes } = parsed.data;
+    const [tokenRow] = await db.select().from(approvalTokens).where(eq3(approvalTokens.token, req.params.token)).limit(1);
+    if (!tokenRow) return res.status(404).json({ error: "Invalid approval link" });
+    if (tokenRow.usedAt) {
+      return res.status(409).json({ error: "This approval link has already been used." });
+    }
+    if (tokenRow.expiresAt && new Date(tokenRow.expiresAt) < /* @__PURE__ */ new Date()) {
+      return res.status(410).json({ error: "This approval link has expired." });
+    }
+    const [order] = await db.select().from(orders).where(eq3(orders.id, tokenRow.orderId)).limit(1);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    await db.update(approvalTokens).set({ usedAt: /* @__PURE__ */ new Date(), decision, changesNotes: changesNotes || null }).where(eq3(approvalTokens.id, tokenRow.id));
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId: null,
+      // client has no user account
+      action: decision === "approved" ? "client_approved" : "client_requested_changes",
+      details: {
+        source: "public_approval_link",
+        tokenId: tokenRow.id,
+        changesNotes: changesNotes || null
+      }
+    });
+    await db.update(orders).set({
+      designStatus: decision === "approved" ? "approved" : "needs_revision",
+      mockupApprovedAt: decision === "approved" ? /* @__PURE__ */ new Date() : null,
+      revisionNotes: decision === "changes_requested" ? changesNotes || null : null,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq3(orders.id, order.id));
+    if (decision === "changes_requested" && order.ghlOpportunityId) {
+      updateGhlOpportunityStage(order.ghlOpportunityId, "Mockup In Progress").catch(
+        (err) => console.error("Failed to push GHL back to Mockup In Progress:", err)
+      );
+    }
+    const adminEmail = process.env.ADMIN_NOTIFY_EMAIL || "info@sidelinenz.com";
+    sendClientApprovalResult(
+      adminEmail,
+      order.orderNumber || order.id,
+      decision,
+      changesNotes || null
+    ).catch((err) => console.error("Failed to send admin approval notification:", err));
+    res.json({ ok: true, decision });
+  } catch (e) {
+    console.error("Approval submission error:", e);
+    res.status(500).json({ error: "Failed to submit decision" });
+  }
+});
+
+// server/po-number.ts
+init_db();
+init_schema();
+import { like, sql as sql3 } from "drizzle-orm";
+function slugFromClient(name) {
+  if (!name) return "CUST";
+  const cleaned = name.replace(/['\u2019]/g, "").replace(/[^a-zA-Z0-9\s]/g, " ").trim().replace(/\s+/g, " ").toUpperCase();
+  if (!cleaned) return "CUST";
+  const words = cleaned.split(" ").filter((w) => w.length > 0);
+  if (words.length === 0) return "CUST";
+  if (words.length >= 2) {
+    return words.slice(0, 5).map((w) => w[0]).join("");
+  }
+  const single = words[0].slice(0, 4);
+  return single.length >= 3 ? single : single.padEnd(3, single[single.length - 1] || "X");
+}
+async function nextSeqFor(year, slug) {
+  const prefix = `SL-${year}-${slug}-`;
+  const rows = await db.select({ orderNumber: orders.orderNumber }).from(orders).where(like(orders.orderNumber, `${prefix}%`));
+  if (rows.length === 0) return 1;
+  let maxSeq = 0;
+  for (const row of rows) {
+    const tail = row.orderNumber.slice(prefix.length);
+    const seq = parseInt(tail, 10);
+    if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
+  }
+  return maxSeq + 1;
+}
+async function buildPoNumber(clientName, now = /* @__PURE__ */ new Date()) {
+  const year = now.getFullYear();
+  const slug = slugFromClient(clientName);
+  const seq = await nextSeqFor(year, slug);
+  return `SL-${year}-${slug}-${String(seq).padStart(3, "0")}`;
+}
+async function withPoNumberRetry(clientName, insertFn, maxAttempts = 4) {
+  let lastErr;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const poNumber = await buildPoNumber(clientName);
+    try {
+      return await insertFn(poNumber);
+    } catch (err) {
+      lastErr = err;
+      const isUniqueViolation = err?.code === "23505" || String(err?.message || "").includes("orders_order_number_unique") || String(err?.message || "").includes("duplicate key value");
+      if (!isUniqueViolation) throw err;
+    }
+  }
+  throw lastErr ?? new Error("Failed to allocate a unique PO number after retries");
+}
+async function nextPoReferenceSeq(year) {
+  const prefix = `PO-${year}-`;
+  const rows = await db.select({ poReference: orders.poReference }).from(orders).where(like(orders.poReference, `${prefix}%`));
+  if (rows.length === 0) return 1;
+  let maxSeq = 0;
+  for (const row of rows) {
+    if (!row.poReference) continue;
+    const tail = row.poReference.slice(prefix.length);
+    const seq = parseInt(tail, 10);
+    if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
+  }
+  return maxSeq + 1;
+}
+async function buildPoReference(now = /* @__PURE__ */ new Date()) {
+  const year = now.getFullYear();
+  const seq = await nextPoReferenceSeq(year);
+  return `PO-${year}-${String(seq).padStart(4, "0")}`;
+}
+
+// server/google-drive.ts
+var OAUTH_TOKEN_URL2 = "https://oauth2.googleapis.com/token";
+var DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
+function driveUrl(path13, extra = {}) {
+  const url = new URL(`${DRIVE_API_BASE}${path13}`);
+  url.searchParams.set("supportsAllDrives", "true");
+  if (path13.startsWith("/files?") || path13 === "/files") {
+    url.searchParams.set("includeItemsFromAllDrives", "true");
+  }
+  for (const [k, v] of Object.entries(extra)) url.searchParams.set(k, v);
+  return url.toString();
+}
+var cachedAccessToken2 = null;
+function creds2() {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+  const parentFolderId = process.env.SIDELINE_DRIVE_PARENT_FOLDER_ID;
+  if (!clientId || !clientSecret || !refreshToken || !parentFolderId) return null;
+  return { clientId, clientSecret, refreshToken, parentFolderId };
+}
+function isDriveConfigured() {
+  return creds2() !== null;
+}
+async function getAccessToken2() {
+  const c = creds2();
+  if (!c) return null;
+  const now = Date.now();
+  if (cachedAccessToken2 && cachedAccessToken2.expiresAt - 6e4 > now) {
+    return cachedAccessToken2.token;
+  }
+  const body = new URLSearchParams({
+    client_id: c.clientId,
+    client_secret: c.clientSecret,
+    refresh_token: c.refreshToken,
+    grant_type: "refresh_token"
+  });
+  const res = await fetch(OAUTH_TOKEN_URL2, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString()
+  });
+  if (!res.ok) {
+    console.error("[Drive] token refresh failed:", res.status, await res.text());
+    return null;
+  }
+  const data = await res.json();
+  const expiresIn = data.expires_in || 3600;
+  cachedAccessToken2 = {
+    token: data.access_token,
+    expiresAt: now + expiresIn * 1e3
+  };
+  return cachedAccessToken2.token;
+}
+async function driveFetch(path13, init = {}) {
+  const token = await getAccessToken2();
+  if (!token) return null;
+  return fetch(driveUrl(path13), {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...init.headers || {}
+    }
+  });
+}
+function buildClientFolderName(input2) {
+  const sanitize = (s) => s.replace(/[\\/]/g, "-").trim();
+  const company = sanitize(input2.companyName) || "Unknown Company";
+  const contact = sanitize(input2.contactName) || "Unknown Contact";
+  return `${input2.date}.${company}.${contact}`;
+}
+async function findClientFolderByName(name) {
+  const c = creds2();
+  if (!c) return null;
+  const q = [
+    `name = '${name.replace(/'/g, "\\'")}'`,
+    `'${c.parentFolderId}' in parents`,
+    `mimeType = 'application/vnd.google-apps.folder'`,
+    `trashed = false`
+  ].join(" and ");
+  const res = await driveFetch(`/files?q=${encodeURIComponent(q)}&fields=files(id,name,webViewLink)&pageSize=1`);
+  if (!res || !res.ok) return null;
+  const data = await res.json();
+  const f = (data.files || [])[0];
+  if (!f) return null;
+  return { id: f.id, name: f.name, webViewLink: f.webViewLink || `https://drive.google.com/drive/folders/${f.id}` };
+}
+function getSubfolderTemplate() {
+  const env2 = process.env.SIDELINE_DRIVE_SUBFOLDERS;
+  if (env2) {
+    return env2.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return [
+    "01. Brief",
+    "02. Mockups",
+    "03. Logos",
+    // elements uploaded on garment lines land here
+    "04. Approvals",
+    "05. Artwork",
+    "06. Production",
+    "07. Delivery",
+    "08. Invoicing"
+  ];
+}
+function normaliseFolderName(n) {
+  return n.toLowerCase().replace(/^\d+[\.\s]*/, "").trim();
+}
+async function resolveUploadTarget(poFolderId, slot) {
+  const targetWords = {
+    mockups: ["mockups", "mockup"],
+    logos: ["logos", "logo"],
+    artwork: ["artwork", "art"],
+    approvals: ["approvals", "approval"]
+  };
+  const q = [
+    `'${poFolderId}' in parents`,
+    `mimeType = 'application/vnd.google-apps.folder'`,
+    `trashed = false`
+  ].join(" and ");
+  const res = await driveFetch(`/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=50`);
+  if (!res?.ok) return poFolderId;
+  const data = await res.json();
+  const folders = data.files || [];
+  const words = targetWords[slot];
+  for (const f of folders) {
+    const n = normaliseFolderName(f.name);
+    if (words.some((w) => n === w || n.startsWith(w))) return f.id;
+  }
+  return poFolderId;
+}
+async function createSubfolder(parentId, name) {
+  const res = await driveFetch("/files?fields=id", {
+    method: "POST",
+    body: JSON.stringify({
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [parentId]
+    })
+  });
+  if (!res || !res.ok) return null;
+  const data = await res.json();
+  return data.id || null;
+}
+async function createClientFolder(input2) {
+  const c = creds2();
+  if (!c) {
+    console.log("[Drive] not configured \u2014 skipping folder create for", input2);
+    return null;
+  }
+  const name = buildClientFolderName(input2);
+  const existing = await findClientFolderByName(name);
+  if (existing) return existing;
+  const res = await driveFetch("/files?fields=id,name,webViewLink", {
+    method: "POST",
+    body: JSON.stringify({
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [c.parentFolderId]
+    })
+  });
+  if (!res || !res.ok) {
+    console.error("[Drive] create folder failed:", res?.status, await res?.text());
+    return null;
+  }
+  const data = await res.json();
+  const folderId = data.id;
+  const template = getSubfolderTemplate();
+  await Promise.all(template.map((sub) => createSubfolder(folderId, sub).catch(() => null)));
+  return {
+    id: folderId,
+    name: data.name,
+    webViewLink: data.webViewLink || `https://drive.google.com/drive/folders/${folderId}`
+  };
+}
+async function findSubfolderByName(parentId, name) {
+  const q = [
+    `name = '${name.replace(/'/g, "\\'")}'`,
+    `'${parentId}' in parents`,
+    `mimeType = 'application/vnd.google-apps.folder'`,
+    `trashed = false`
+  ].join(" and ");
+  const res = await driveFetch(`/files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`);
+  if (!res || !res.ok) return null;
+  const data = await res.json();
+  return data.files?.[0]?.id || null;
+}
+async function mirrorBlobToPoFolder({
+  poFolderId,
+  slot,
+  subFolderName,
+  blobUrl,
+  fileName
+}) {
+  const token = await getAccessToken2();
+  if (!token) return null;
+  let targetFolderId = poFolderId;
+  if (subFolderName) {
+    const sub = await findSubfolderByName(poFolderId, subFolderName);
+    if (sub) targetFolderId = sub;
+  } else if (slot) {
+    targetFolderId = await resolveUploadTarget(poFolderId, slot);
+  }
+  try {
+    const blobRes = await fetch(blobUrl);
+    if (!blobRes.ok) {
+      console.error("[Drive] mirror: blob fetch failed:", blobRes.status);
+      return null;
+    }
+    const contentType = blobRes.headers.get("content-type") || "application/octet-stream";
+    const buf = Buffer.from(await blobRes.arrayBuffer());
+    const name = fileName || blobUrl.split("/").pop()?.split("?")[0] || "file";
+    const existingQ = [
+      `name = '${name.replace(/'/g, "\\'")}'`,
+      `'${targetFolderId}' in parents`,
+      `trashed = false`
+    ].join(" and ");
+    const existingRes = await driveFetch(`/files?q=${encodeURIComponent(existingQ)}&fields=files(id)&pageSize=1`);
+    if (existingRes?.ok) {
+      const existingData = await existingRes.json();
+      if (existingData.files?.[0]?.id) return existingData.files[0].id;
+    }
+    const boundary = `--sideline-${Date.now().toString(36)}`;
+    const metadata = { name, parents: [targetFolderId] };
+    const metadataPart = `--${boundary}\r
+Content-Type: application/json; charset=UTF-8\r
+\r
+${JSON.stringify(metadata)}\r
+`;
+    const mediaHeader = `--${boundary}\r
+Content-Type: ${contentType}\r
+\r
+`;
+    const closing = `\r
+--${boundary}--`;
+    const body = Buffer.concat([
+      Buffer.from(metadataPart, "utf-8"),
+      Buffer.from(mediaHeader, "utf-8"),
+      buf,
+      Buffer.from(closing, "utf-8")
+    ]);
+    const uploadRes = await fetch(
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": `multipart/related; boundary=${boundary}`,
+          "Content-Length": String(body.length)
+        },
+        body
+      }
+    );
+    if (!uploadRes.ok) {
+      console.error("[Drive] multipart upload failed:", uploadRes.status, await uploadRes.text());
+      return null;
+    }
+    const out = await uploadRes.json();
+    return out.id || null;
+  } catch (err) {
+    console.error("[Drive] mirror error:", err);
+    return null;
+  }
+}
+async function listFilesRecursive(rootFolderId) {
+  const rootFilesQ = [
+    `'${rootFolderId}' in parents`,
+    `mimeType != 'application/vnd.google-apps.folder'`,
+    `trashed = false`
+  ].join(" and ");
+  const rootRes = await driveFetch(
+    `/files?q=${encodeURIComponent(rootFilesQ)}&fields=files(id,name,mimeType,webViewLink,iconLink,modifiedTime,size)&pageSize=200&orderBy=modifiedTime desc`
+  );
+  const rootFiles = rootRes?.ok ? (await rootRes.json()).files || [] : [];
+  const foldersQ = [
+    `'${rootFolderId}' in parents`,
+    `mimeType = 'application/vnd.google-apps.folder'`,
+    `trashed = false`
+  ].join(" and ");
+  const foldersRes = await driveFetch(`/files?q=${encodeURIComponent(foldersQ)}&fields=files(id,name)&pageSize=50`);
+  const subfolders = foldersRes?.ok ? (await foldersRes.json()).files || [] : [];
+  const subFiles = [];
+  for (const folder5 of subfolders) {
+    const q = [
+      `'${folder5.id}' in parents`,
+      `mimeType != 'application/vnd.google-apps.folder'`,
+      `trashed = false`
+    ].join(" and ");
+    const res = await driveFetch(
+      `/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,webViewLink,iconLink,modifiedTime,size)&pageSize=100&orderBy=modifiedTime desc`
+    );
+    if (!res?.ok) continue;
+    const files = (await res.json()).files || [];
+    for (const f of files) subFiles.push({ ...f, parentName: folder5.name });
+  }
+  return [...rootFiles, ...subFiles].sort((a, b) => {
+    const at = a.modifiedTime || "";
+    const bt = b.modifiedTime || "";
+    return bt.localeCompare(at);
+  });
+}
+async function listFilesInFolder(folderId) {
+  const q = [
+    `'${folderId}' in parents`,
+    `trashed = false`
+  ].join(" and ");
+  const fields = "files(id,name,mimeType,webViewLink,iconLink,modifiedTime,size)";
+  const res = await driveFetch(
+    `/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent(fields)}&pageSize=200&orderBy=modifiedTime desc`
+  );
+  if (!res || !res.ok) {
+    console.error("[Drive] list files failed:", res?.status, await res?.text());
+    return [];
+  }
+  const data = await res.json();
+  return (data.files || []).map((f) => ({
+    id: f.id,
+    name: f.name,
+    mimeType: f.mimeType,
+    webViewLink: f.webViewLink,
+    iconLink: f.iconLink,
+    modifiedTime: f.modifiedTime,
+    size: f.size
+  }));
+}
+
+// server/mockup/color-extract.ts
+var COLOR_EXTRACT_PROMPT = `You are a uniform designer assistant. Look at this design image and identify the main colours used in the garment itself (ignore the background, mannequin, shadows, and tags).
+
+Return STRICT JSON only \u2014 no markdown, no commentary. Shape:
+{
+  "colors": [
+    { "hex": "#RRGGBB", "name": "Short name (1-3 words)" }
+  ]
+}
+
+Rules:
+- 2 to 5 colours max, ordered by dominance (most-used first)
+- Hex must be 6 digits uppercase with leading #
+- Name must be human-friendly (e.g. "Navy Blue", "Off White", "Gold"), not generic ("dark colour 1")
+- Skip neutrals under 5% of the garment
+- If the garment is monochrome, return just that one colour`;
+async function fetchAsBase64(url) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const mimeType = r.headers.get("content-type") || "image/png";
+    const buf = Buffer.from(await r.arrayBuffer());
+    return { data: buf.toString("base64"), mimeType };
+  } catch (err) {
+    console.error("[color-extract] fetch image failed:", err);
+    return null;
+  }
+}
+async function extractColorsFromImage(imageUrl) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.log("[color-extract] GEMINI_API_KEY not set \u2014 skipping");
+    return null;
+  }
+  const img = await fetchAsBase64(imageUrl);
+  if (!img) return null;
+  const model = process.env.GEMINI_COLOR_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: COLOR_EXTRACT_PROMPT },
+              { inline_data: { mime_type: img.mimeType, data: img.data } }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: "application/json"
+        }
+      })
+    });
+    if (!res.ok) {
+      const text2 = await res.text();
+      console.error("[color-extract] Gemini error:", res.status, text2);
+      return null;
+    }
+    const data = await res.json();
+    const textOut = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    if (!textOut) return null;
+    let parsed;
+    try {
+      parsed = JSON.parse(textOut);
+    } catch {
+      const cleaned = textOut.replace(/```json\s*|\s*```/g, "").trim();
+      parsed = JSON.parse(cleaned);
+    }
+    const out = [];
+    for (const c of parsed?.colors || []) {
+      if (typeof c?.hex !== "string" || typeof c?.name !== "string") continue;
+      const hex = c.hex.trim().toUpperCase();
+      if (!/^#[0-9A-F]{6}$/.test(hex)) continue;
+      out.push({ hex, name: c.name.trim().slice(0, 40) });
+      if (out.length >= 5) break;
+    }
+    return out.length ? out : null;
+  } catch (err) {
+    console.error("[color-extract] request failed:", err);
+    return null;
+  }
+}
+
+// server/mockup/design-brief.ts
+var BRIEF_PROMPT = `You are a sportswear production spec writer for Sideline NZ, a custom teamwear company. Look at these garment design mockup image(s) and write a structured design brief for the factory.
+
+Output a SHORT, STRUCTURED brief covering (skip any section that doesn't apply):
+
+**GARMENT OVERVIEW**: One sentence \u2014 garment type, style, silhouette.
+
+**FRONT PANEL**: Describe what's on the front \u2014 main pattern, colour blocks, fade/gradient direction, stripe placement, panel boundaries.
+
+**BACK PANEL**: Describe what's on the back \u2014 number position, name bar, pattern continuation.
+
+**LOGOS & BRANDING**: For EACH logo/badge/sponsor mark visible, state: name (if readable), position (left chest, right chest, centre back collar, etc.), approximate size (small/medium/large).
+
+**COLLAR & CUFFS**: Style (v-neck, round, traditional), colours, ribbing.
+
+**COLOUR ZONES**: Map which colour goes where (e.g. "Navy dominates body panels; white on side inserts; gold on collar and cuff trim").
+
+**SPECIAL DETAILS**: Sublimation patterns, texture overlays, tonal prints, reflective elements, anything unusual.
+
+Rules:
+- Be CONCISE \u2014 max 250 words total
+- Use plain English the factory can follow
+- Don't describe the image quality or background \u2014 only the garment
+- If there are two images (front + back), integrate both into one brief`;
+async function fetchAsBase642(url) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const mimeType = r.headers.get("content-type") || "image/png";
+    const buf = Buffer.from(await r.arrayBuffer());
+    return { data: buf.toString("base64"), mimeType };
+  } catch {
+    return null;
+  }
+}
+async function generateDesignBrief(imageUrls) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.log("[design-brief] GEMINI_API_KEY not set \u2014 skipping");
+    return null;
+  }
+  const parts = [{ text: BRIEF_PROMPT }];
+  for (const url of imageUrls) {
+    const img = await fetchAsBase642(url);
+    if (img) parts.push({ inline_data: { mime_type: img.mimeType, data: img.data } });
+  }
+  if (parts.length === 1) return null;
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 800 }
+      })
+    });
+    if (!res.ok) {
+      console.error("[design-brief] Gemini error:", res.status, await res.text());
+      return null;
+    }
+    const data = await res.json();
+    const text2 = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    return text2.trim() || null;
+  } catch (err) {
+    console.error("[design-brief] request failed:", err);
+    return null;
+  }
+}
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/index.js
+init_index_browser();
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/ChromeLauncher.js
+init_main();
+init_util();
+init_assert();
+import { mkdtemp } from "node:fs/promises";
+import os6 from "node:os";
+import path9 from "node:path";
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/BrowserLauncher.js
+init_main();
+init_rxjs();
+init_Browser2();
+init_Connection();
+init_Errors();
+init_util();
+init_incremental_id_generator();
+init_NodeWebSocketTransport();
+import { existsSync as existsSync2 } from "node:fs";
+import { tmpdir } from "node:os";
+import { join as join2 } from "node:path";
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/PipeTransport.js
+init_EventEmitter();
+init_util();
+init_assert();
+init_disposable();
+var PipeTransport = class {
+  #pipeWrite;
+  #subscriptions = new DisposableStack();
+  #isClosed = false;
+  #pendingMessage = [];
+  onclose;
+  onmessage;
+  constructor(pipeWrite, pipeRead) {
+    this.#pipeWrite = pipeWrite;
+    const pipeReadEmitter = this.#subscriptions.use(
+      // NodeJS event emitters don't support `*` so we need to typecast
+      // As long as we don't use it we should be OK.
+      new EventEmitter(pipeRead)
+    );
+    pipeReadEmitter.on("data", (buffer) => {
+      return this.#dispatch(buffer);
+    });
+    pipeReadEmitter.on("close", () => {
+      if (this.onclose) {
+        this.onclose.call(null);
+      }
+    });
+    pipeReadEmitter.on("error", debugError);
+    const pipeWriteEmitter = this.#subscriptions.use(
+      // NodeJS event emitters don't support `*` so we need to typecast
+      // As long as we don't use it we should be OK.
+      new EventEmitter(pipeWrite)
+    );
+    pipeWriteEmitter.on("error", debugError);
+  }
+  send(message) {
+    assert(!this.#isClosed, "`PipeTransport` is closed.");
+    this.#pipeWrite.write(message);
+    this.#pipeWrite.write("\0");
+  }
+  #dispatch(buffer) {
+    assert(!this.#isClosed, "`PipeTransport` is closed.");
+    this.#pendingMessage.push(buffer);
+    if (buffer.indexOf("\0") === -1) {
+      return;
+    }
+    const concatBuffer = Buffer.concat(this.#pendingMessage);
+    let start = 0;
+    let end = concatBuffer.indexOf("\0");
+    while (end !== -1) {
+      const message = concatBuffer.toString(void 0, start, end);
+      setImmediate(() => {
+        if (this.onmessage) {
+          this.onmessage.call(null, message);
+        }
+      });
+      start = end + 1;
+      end = concatBuffer.indexOf("\0", start);
+    }
+    if (start >= concatBuffer.length) {
+      this.#pendingMessage = [];
+    } else {
+      this.#pendingMessage = [concatBuffer.subarray(start)];
+    }
+  }
+  close() {
+    this.#isClosed = true;
+    this.#subscriptions.dispose();
+  }
+};
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/BrowserLauncher.js
+var BrowserLauncher = class {
+  #browser;
+  /**
+   * @internal
+   */
+  puppeteer;
+  /**
+   * @internal
+   */
+  constructor(puppeteer2, browser) {
+    this.puppeteer = puppeteer2;
+    this.#browser = browser;
+  }
+  get browser() {
+    return this.#browser;
+  }
+  async launch(options = {}) {
+    const { dumpio = false, enableExtensions = false, env: env2 = process.env, handleSIGINT = true, handleSIGTERM = true, handleSIGHUP = true, acceptInsecureCerts = false, networkEnabled = true, issuesEnabled = true, defaultViewport = DEFAULT_VIEWPORT, downloadBehavior, slowMo = 0, timeout: timeout2 = 3e4, waitForInitialPage = true, protocolTimeout, handleDevToolsAsPage, idGenerator = createIncrementalIdGenerator() } = options;
+    let { protocol } = options;
+    if (this.#browser === "firefox" && protocol === void 0) {
+      protocol = "webDriverBiDi";
+    }
+    if (this.#browser === "firefox" && protocol === "cdp") {
+      throw new Error("Connecting to Firefox using CDP is no longer supported");
+    }
+    const launchArgs = await this.computeLaunchArguments({
+      ...options,
+      protocol
+    });
+    if (!existsSync2(launchArgs.executablePath)) {
+      throw new Error(`Browser was not found at the configured executablePath (${launchArgs.executablePath})`);
+    }
+    const usePipe = launchArgs.args.includes("--remote-debugging-pipe");
+    const onProcessExit = async () => {
+      await this.cleanUserDataDir(launchArgs.userDataDir, {
+        isTemp: launchArgs.isTempUserDataDir
+      });
+    };
+    if (this.#browser === "firefox" && protocol === "webDriverBiDi" && usePipe) {
+      throw new Error("Pipe connections are not supported with Firefox and WebDriver BiDi");
+    }
+    const browserProcess = launch({
+      executablePath: launchArgs.executablePath,
+      args: launchArgs.args,
+      handleSIGHUP,
+      handleSIGTERM,
+      handleSIGINT,
+      dumpio,
+      env: env2,
+      pipe: usePipe,
+      onExit: onProcessExit,
+      signal: options.signal
+    });
+    let browser;
+    let cdpConnection;
+    let closing = false;
+    const browserCloseCallback = async () => {
+      if (closing) {
+        return;
+      }
+      closing = true;
+      await this.closeBrowser(browserProcess, cdpConnection);
+    };
+    try {
+      if (this.#browser === "firefox") {
+        browser = await this.createBiDiBrowser(browserProcess, browserCloseCallback, {
+          timeout: timeout2,
+          protocolTimeout,
+          slowMo,
+          defaultViewport,
+          acceptInsecureCerts,
+          networkEnabled,
+          idGenerator
+        });
+      } else {
+        if (usePipe) {
+          cdpConnection = await this.createCdpPipeConnection(browserProcess, {
+            timeout: timeout2,
+            protocolTimeout,
+            slowMo,
+            idGenerator
+          });
+        } else {
+          cdpConnection = await this.createCdpSocketConnection(browserProcess, {
+            timeout: timeout2,
+            protocolTimeout,
+            slowMo,
+            idGenerator
+          });
+        }
+        if (protocol === "webDriverBiDi") {
+          browser = await this.createBiDiOverCdpBrowser(browserProcess, cdpConnection, browserCloseCallback, {
+            defaultViewport,
+            acceptInsecureCerts,
+            networkEnabled,
+            issuesEnabled
+          });
+        } else {
+          browser = await CdpBrowser._create(cdpConnection, [], acceptInsecureCerts, defaultViewport, downloadBehavior, browserProcess.nodeProcess, browserCloseCallback, options.targetFilter, void 0, void 0, networkEnabled, issuesEnabled, handleDevToolsAsPage);
+        }
+      }
+    } catch (error) {
+      void browserCloseCallback();
+      const logs = browserProcess.getRecentLogs().join("\n");
+      if (logs.includes("Failed to create a ProcessSingleton for your profile directory") || // On Windows we will not get logs due to the singleton process
+      // handover. See
+      // https://source.chromium.org/chromium/chromium/src/+/main:chrome/browser/process_singleton_win.cc;l=46;drc=fc7952f0422b5073515a205a04ec9c3a1ae81658
+      process.platform === "win32" && existsSync2(join2(launchArgs.userDataDir, "lockfile"))) {
+        throw new Error(`The browser is already running for ${launchArgs.userDataDir}. Use a different \`userDataDir\` or stop the running browser first.`);
+      }
+      if (logs.includes("Missing X server") && options.headless === false) {
+        throw new Error(`Missing X server to start the headful browser. Either set headless to true or use xvfb-run to run your Puppeteer script.`);
+      }
+      if (error instanceof TimeoutError2) {
+        throw new TimeoutError(error.message);
+      }
+      throw error;
+    }
+    if (Array.isArray(enableExtensions)) {
+      if (this.#browser === "chrome" && !usePipe) {
+        throw new Error("To use `enableExtensions` with a list of paths in Chrome, you must be connected with `--remote-debugging-pipe` (`pipe: true`).");
+      }
+      await Promise.all([
+        enableExtensions.map((path13) => {
+          return browser.installExtension(path13);
+        })
+      ]);
+    }
+    if (waitForInitialPage) {
+      await this.waitForPageTarget(browser, timeout2);
+    }
+    return browser;
+  }
+  /**
+   * @internal
+   */
+  async closeBrowser(browserProcess, cdpConnection) {
+    if (cdpConnection) {
+      try {
+        await cdpConnection.closeBrowser();
+        await browserProcess.hasClosed();
+      } catch (error) {
+        debugError(error);
+        await browserProcess.close();
+      }
+    } else {
+      await firstValueFrom(race(from(browserProcess.hasClosed()), timer(5e3).pipe(map(() => {
+        return from(browserProcess.close());
+      }))));
+    }
+  }
+  /**
+   * @internal
+   */
+  async waitForPageTarget(browser, timeout2) {
+    try {
+      await browser.waitForTarget((t) => {
+        return t.type() === "page";
+      }, { timeout: timeout2 });
+    } catch (error) {
+      await browser.close();
+      throw error;
+    }
+  }
+  /**
+   * @internal
+   */
+  async createCdpSocketConnection(browserProcess, opts) {
+    const browserWSEndpoint = await browserProcess.waitForLineOutput(CDP_WEBSOCKET_ENDPOINT_REGEX, opts.timeout);
+    const transport = await NodeWebSocketTransport.create(browserWSEndpoint);
+    return new Connection(
+      browserWSEndpoint,
+      transport,
+      opts.slowMo,
+      opts.protocolTimeout,
+      /* rawErrors */
+      false,
+      opts.idGenerator
+    );
+  }
+  /**
+   * @internal
+   */
+  async createCdpPipeConnection(browserProcess, opts) {
+    const { 3: pipeWrite, 4: pipeRead } = browserProcess.nodeProcess.stdio;
+    const transport = new PipeTransport(pipeWrite, pipeRead);
+    return new Connection(
+      "",
+      transport,
+      opts.slowMo,
+      opts.protocolTimeout,
+      /* rawErrors */
+      false,
+      opts.idGenerator
+    );
+  }
+  /**
+   * @internal
+   */
+  async createBiDiOverCdpBrowser(browserProcess, cdpConnection, closeCallback, opts) {
+    const bidiOnly = process.env["PUPPETEER_WEBDRIVER_BIDI_ONLY"] === "true";
+    const BiDi = await Promise.resolve().then(() => (init_bidi(), bidi_exports));
+    const bidiConnection = await BiDi.connectBidiOverCdp(cdpConnection);
+    return await BiDi.BidiBrowser.create({
+      connection: bidiConnection,
+      // Do not provide CDP connection to Browser, if BiDi-only mode is enabled. This
+      // would restrict Browser to use only BiDi endpoint.
+      cdpConnection: bidiOnly ? void 0 : cdpConnection,
+      closeCallback,
+      process: browserProcess.nodeProcess,
+      defaultViewport: opts.defaultViewport,
+      acceptInsecureCerts: opts.acceptInsecureCerts,
+      networkEnabled: opts.networkEnabled,
+      issuesEnabled: opts.issuesEnabled
+    });
+  }
+  /**
+   * @internal
+   */
+  async createBiDiBrowser(browserProcess, closeCallback, opts) {
+    const browserWSEndpoint = await browserProcess.waitForLineOutput(WEBDRIVER_BIDI_WEBSOCKET_ENDPOINT_REGEX, opts.timeout) + "/session";
+    const transport = await NodeWebSocketTransport.create(browserWSEndpoint);
+    const BiDi = await Promise.resolve().then(() => (init_bidi(), bidi_exports));
+    const bidiConnection = new BiDi.BidiConnection(browserWSEndpoint, transport, opts.idGenerator, opts.slowMo, opts.protocolTimeout);
+    return await BiDi.BidiBrowser.create({
+      connection: bidiConnection,
+      closeCallback,
+      process: browserProcess.nodeProcess,
+      defaultViewport: opts.defaultViewport,
+      acceptInsecureCerts: opts.acceptInsecureCerts,
+      networkEnabled: opts.networkEnabled ?? true,
+      issuesEnabled: opts.issuesEnabled ?? true
+    });
+  }
+  /**
+   * @internal
+   */
+  getProfilePath() {
+    return join2(this.puppeteer.configuration.temporaryDirectory ?? tmpdir(), `puppeteer_dev_${this.browser}_profile-`);
+  }
+  /**
+   * @internal
+   */
+  resolveExecutablePath(headless, validatePath = true) {
+    let executablePath2 = this.puppeteer.configuration.executablePath;
+    if (executablePath2) {
+      if (validatePath && !existsSync2(executablePath2)) {
+        throw new Error(`Tried to find the browser at the configured path (${executablePath2}), but no executable was found.`);
+      }
+      return executablePath2;
+    }
+    function puppeteerBrowserToInstalledBrowser(browser, headless2) {
+      switch (browser) {
+        case "chrome":
+          if (headless2 === "shell") {
+            return Browser3.CHROMEHEADLESSSHELL;
+          }
+          return Browser3.CHROME;
+        case "firefox":
+          return Browser3.FIREFOX;
+      }
+      return Browser3.CHROME;
+    }
+    const browserType = puppeteerBrowserToInstalledBrowser(this.browser, headless);
+    executablePath2 = computeExecutablePath({
+      cacheDir: this.puppeteer.defaultDownloadPath,
+      browser: browserType,
+      buildId: this.puppeteer.browserVersion
+    });
+    if (validatePath && !existsSync2(executablePath2)) {
+      const configVersion = this.puppeteer.configuration?.[this.browser]?.version;
+      if (configVersion) {
+        throw new Error(`Tried to find the browser at the configured path (${executablePath2}) for version ${configVersion}, but no executable was found.`);
+      }
+      switch (this.browser) {
+        case "chrome":
+          throw new Error(`Could not find Chrome (ver. ${this.puppeteer.browserVersion}). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. \`npx puppeteer browsers install ${browserType}\`) or
+ 2. your cache path is incorrectly configured (which is: ${this.puppeteer.configuration.cacheDirectory}).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.`);
+        case "firefox":
+          throw new Error(`Could not find Firefox (rev. ${this.puppeteer.browserVersion}). This can occur if either
+ 1. you did not perform an installation for Firefox before running the script (e.g. \`npx puppeteer browsers install firefox\`) or
+ 2. your cache path is incorrectly configured (which is: ${this.puppeteer.configuration.cacheDirectory}).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.`);
+      }
+    }
+    return executablePath2;
+  }
+};
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/ChromeLauncher.js
+init_LaunchOptions();
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/util/fs.js
+import fs3 from "node:fs";
+var rmOptions = {
+  force: true,
+  recursive: true,
+  maxRetries: 5
+};
+async function rm(path13) {
+  await fs3.promises.rm(path13, rmOptions);
+}
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/ChromeLauncher.js
+var ChromeLauncher = class extends BrowserLauncher {
+  constructor(puppeteer2) {
+    super(puppeteer2, "chrome");
+  }
+  launch(options = {}) {
+    if (this.puppeteer.configuration.logLevel === "warn" && process.platform === "darwin" && process.arch === "x64") {
+      const cpus = os6.cpus();
+      if (cpus[0]?.model.includes("Apple")) {
+        console.warn([
+          "\x1B[1m\x1B[43m\x1B[30m",
+          "Degraded performance warning:\x1B[0m\x1B[33m",
+          "Launching Chrome on Mac Silicon (arm64) from an x64 Node installation results in",
+          "Rosetta translating the Chrome binary, even if Chrome is already arm64. This would",
+          "result in huge performance issues. To resolve this, you must run Puppeteer with",
+          "a version of Node built for arm64."
+        ].join("\n  "));
+      }
+    }
+    return super.launch(options);
+  }
+  /**
+   * @internal
+   */
+  async computeLaunchArguments(options = {}) {
+    const { ignoreDefaultArgs = false, args = [], pipe: pipe2 = false, debuggingPort, channel, executablePath: executablePath2 } = options;
+    const chromeArguments = [];
+    if (!ignoreDefaultArgs) {
+      chromeArguments.push(...this.defaultArgs(options));
+    } else if (Array.isArray(ignoreDefaultArgs)) {
+      chromeArguments.push(...this.defaultArgs(options).filter((arg) => {
+        return !ignoreDefaultArgs.includes(arg);
+      }));
+    } else {
+      chromeArguments.push(...args);
+    }
+    if (!chromeArguments.some((argument) => {
+      return argument.startsWith("--remote-debugging-");
+    })) {
+      if (pipe2) {
+        assert(!debuggingPort, "Browser should be launched with either pipe or debugging port - not both.");
+        chromeArguments.push("--remote-debugging-pipe");
+      } else {
+        chromeArguments.push(`--remote-debugging-port=${debuggingPort || 0}`);
+      }
+    }
+    let isTempUserDataDir = false;
+    let userDataDirIndex = chromeArguments.findIndex((arg) => {
+      return arg.startsWith("--user-data-dir");
+    });
+    if (userDataDirIndex < 0) {
+      isTempUserDataDir = true;
+      chromeArguments.push(`--user-data-dir=${await mkdtemp(this.getProfilePath())}`);
+      userDataDirIndex = chromeArguments.length - 1;
+    }
+    const userDataDir = chromeArguments[userDataDirIndex].split("=", 2)[1];
+    assert(typeof userDataDir === "string", "`--user-data-dir` is malformed");
+    let chromeExecutable = executablePath2;
+    if (!chromeExecutable) {
+      assert(channel || !this.puppeteer._isPuppeteerCore, `An \`executablePath\` or \`channel\` must be specified for \`puppeteer-core\``);
+      chromeExecutable = channel ? this.executablePath(channel) : this.resolveExecutablePath(options.headless ?? true);
+    }
+    return {
+      executablePath: chromeExecutable,
+      args: chromeArguments,
+      isTempUserDataDir,
+      userDataDir
+    };
+  }
+  /**
+   * @internal
+   */
+  async cleanUserDataDir(path13, opts) {
+    if (opts.isTemp) {
+      try {
+        await rm(path13);
+      } catch (error) {
+        debugError(error);
+        throw error;
+      }
+    }
+  }
+  defaultArgs(options = {}) {
+    const userDisabledFeatures = getFeatures("--disable-features", options.args);
+    if (options.args && userDisabledFeatures.length > 0) {
+      removeMatchingFlags(options.args, "--disable-features");
+    }
+    const turnOnExperimentalFeaturesForTesting = process.env["PUPPETEER_TEST_EXPERIMENTAL_CHROME_FEATURES"] === "true";
+    const disabledFeatures = [
+      "Translate",
+      // AcceptCHFrame disabled because of crbug.com/1348106.
+      "AcceptCHFrame",
+      "MediaRouter",
+      "OptimizationHints",
+      "PartitionAllocSchedulerLoopQuarantineTaskControlledPurge",
+      // https://crbug.com/489314676
+      ...turnOnExperimentalFeaturesForTesting ? [] : [
+        // https://crbug.com/1492053
+        "ProcessPerSiteUpToMainFrameThreshold",
+        // https://github.com/puppeteer/puppeteer/issues/10715
+        "IsolateSandboxedIframes"
+      ],
+      ...userDisabledFeatures
+    ].filter((feature) => {
+      return feature !== "";
+    });
+    const userEnabledFeatures = getFeatures("--enable-features", options.args);
+    if (options.args && userEnabledFeatures.length > 0) {
+      removeMatchingFlags(options.args, "--enable-features");
+    }
+    const enabledFeatures = [
+      "PdfOopif",
+      // Add features to enable by default here.
+      ...userEnabledFeatures
+    ].filter((feature) => {
+      return feature !== "";
+    });
+    const chromeArguments = [
+      "--allow-pre-commit-input",
+      "--disable-background-networking",
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-breakpad",
+      "--disable-client-side-phishing-detection",
+      "--disable-component-extensions-with-background-pages",
+      "--disable-crash-reporter",
+      // No crash reporting in CfT.
+      "--disable-default-apps",
+      "--disable-dev-shm-usage",
+      "--disable-hang-monitor",
+      "--disable-infobars",
+      "--disable-ipc-flooding-protection",
+      "--disable-popup-blocking",
+      "--disable-prompt-on-repost",
+      "--disable-renderer-backgrounding",
+      "--disable-search-engine-choice-screen",
+      "--disable-sync",
+      "--enable-automation",
+      "--export-tagged-pdf",
+      "--force-color-profile=srgb",
+      "--generate-pdf-document-outline",
+      "--metrics-recording-only",
+      "--no-first-run",
+      "--password-store=basic",
+      "--use-mock-keychain",
+      `--disable-features=${disabledFeatures.join(",")}`,
+      `--enable-features=${enabledFeatures.join(",")}`
+    ].filter((arg) => {
+      return arg !== "";
+    });
+    const { devtools = false, headless = !devtools, args = [], userDataDir, enableExtensions = false } = options;
+    if (process.env["PUPPETEER_DANGEROUS_NO_SANDBOX"] === "true" && !args.includes("--no-sandbox")) {
+      chromeArguments.push("--no-sandbox");
+    }
+    if (userDataDir) {
+      chromeArguments.push(`--user-data-dir=${path9.posix.isAbsolute(userDataDir) || path9.win32.isAbsolute(userDataDir) ? userDataDir : path9.resolve(userDataDir)}`);
+    }
+    if (devtools) {
+      chromeArguments.push("--auto-open-devtools-for-tabs");
+    }
+    if (headless) {
+      chromeArguments.push(headless === "shell" ? "--headless" : "--headless=new", "--hide-scrollbars", "--mute-audio");
+    }
+    chromeArguments.push(enableExtensions ? "--enable-unsafe-extension-debugging" : "--disable-extensions");
+    if (args.every((arg) => {
+      return arg.startsWith("-");
+    })) {
+      chromeArguments.push("about:blank");
+    }
+    chromeArguments.push(...args);
+    return chromeArguments;
+  }
+  executablePath(channel, validatePath = true) {
+    if (channel) {
+      return computeSystemExecutablePath({
+        browser: Browser3.CHROME,
+        channel: convertPuppeteerChannelToBrowsersChannel(channel)
+      });
+    } else {
+      return this.resolveExecutablePath(void 0, validatePath);
+    }
+  }
+};
+function getFeatures(flag, options = []) {
+  return options.filter((s) => {
+    return s.startsWith(flag.endsWith("=") ? flag : `${flag}=`);
+  }).map((s) => {
+    return s.split(new RegExp(`${flag}=\\s*`))[1]?.trim();
+  }).filter((s) => {
+    return s;
+  });
+}
+function removeMatchingFlags(array, flag) {
+  const regex = new RegExp(`^${flag}=.*`);
+  let i = 0;
+  while (i < array.length) {
+    if (regex.test(array[i])) {
+      array.splice(i, 1);
+    } else {
+      i++;
+    }
+  }
+  return array;
+}
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/FirefoxLauncher.js
+init_main();
+init_util();
+init_assert();
+import fs4 from "node:fs";
+import { rename, unlink as unlink2, mkdtemp as mkdtemp2 } from "node:fs/promises";
+import os7 from "node:os";
+import path10 from "node:path";
+var FirefoxLauncher = class _FirefoxLauncher extends BrowserLauncher {
+  constructor(puppeteer2) {
+    super(puppeteer2, "firefox");
+  }
+  static getPreferences(extraPrefsFirefox) {
+    return {
+      ...extraPrefsFirefox,
+      // Force all web content to use a single content process. TODO: remove
+      // this once Firefox supports mouse event dispatch from the main frame
+      // context. See https://bugzilla.mozilla.org/show_bug.cgi?id=1773393.
+      "fission.webContentIsolationStrategy": 0
+    };
+  }
+  /**
+   * @internal
+   */
+  async computeLaunchArguments(options = {}) {
+    const { ignoreDefaultArgs = false, args = [], executablePath: executablePath2, pipe: pipe2 = false, extraPrefsFirefox = {}, debuggingPort = null } = options;
+    const firefoxArguments = [];
+    if (!ignoreDefaultArgs) {
+      firefoxArguments.push(...this.defaultArgs(options));
+    } else if (Array.isArray(ignoreDefaultArgs)) {
+      firefoxArguments.push(...this.defaultArgs(options).filter((arg) => {
+        return !ignoreDefaultArgs.includes(arg);
+      }));
+    } else {
+      firefoxArguments.push(...args);
+    }
+    if (!firefoxArguments.some((argument) => {
+      return argument.startsWith("--remote-debugging-");
+    })) {
+      if (pipe2) {
+        assert(debuggingPort === null, "Browser should be launched with either pipe or debugging port - not both.");
+      }
+      firefoxArguments.push(`--remote-debugging-port=${debuggingPort || 0}`);
+    }
+    let userDataDir;
+    let isTempUserDataDir = true;
+    const profileArgIndex = firefoxArguments.findIndex((arg) => {
+      return ["-profile", "--profile"].includes(arg);
+    });
+    if (profileArgIndex !== -1) {
+      userDataDir = firefoxArguments[profileArgIndex + 1];
+      if (!userDataDir) {
+        throw new Error(`Missing value for profile command line argument`);
+      }
+      isTempUserDataDir = false;
+    } else {
+      userDataDir = await mkdtemp2(this.getProfilePath());
+      firefoxArguments.push("--profile");
+      firefoxArguments.push(userDataDir);
+    }
+    await createProfile2(Browser3.FIREFOX, {
+      path: userDataDir,
+      preferences: _FirefoxLauncher.getPreferences(extraPrefsFirefox)
+    });
+    let firefoxExecutable;
+    if (this.puppeteer._isPuppeteerCore || executablePath2) {
+      assert(executablePath2, `An \`executablePath\` must be specified for \`puppeteer-core\``);
+      firefoxExecutable = executablePath2;
+    } else {
+      firefoxExecutable = this.executablePath(void 0);
+    }
+    return {
+      isTempUserDataDir,
+      userDataDir,
+      args: firefoxArguments,
+      executablePath: firefoxExecutable
+    };
+  }
+  /**
+   * @internal
+   */
+  async cleanUserDataDir(userDataDir, opts) {
+    if (opts.isTemp) {
+      try {
+        await rm(userDataDir);
+      } catch (error) {
+        debugError(error);
+        throw error;
+      }
+    } else {
+      try {
+        const backupSuffix = ".puppeteer";
+        const backupFiles = ["prefs.js", "user.js"];
+        const results = await Promise.allSettled(backupFiles.map(async (file) => {
+          const prefsBackupPath = path10.join(userDataDir, file + backupSuffix);
+          if (fs4.existsSync(prefsBackupPath)) {
+            const prefsPath = path10.join(userDataDir, file);
+            await unlink2(prefsPath);
+            await rename(prefsBackupPath, prefsPath);
+          }
+        }));
+        for (const result of results) {
+          if (result.status === "rejected") {
+            throw result.reason;
+          }
+        }
+      } catch (error) {
+        debugError(error);
+      }
+    }
+  }
+  executablePath(_, validatePath = true) {
+    return this.resolveExecutablePath(
+      void 0,
+      /* validatePath=*/
+      validatePath
+    );
+  }
+  defaultArgs(options = {}) {
+    const { devtools = false, headless = !devtools, args = [], userDataDir = null } = options;
+    const firefoxArguments = [];
+    switch (os7.platform()) {
+      case "darwin":
+        firefoxArguments.push("--foreground");
+        break;
+      case "win32":
+        firefoxArguments.push("--wait-for-browser");
+        break;
+    }
+    if (userDataDir) {
+      firefoxArguments.push("--profile");
+      firefoxArguments.push(userDataDir);
+    }
+    if (headless) {
+      firefoxArguments.push("--headless");
+    }
+    if (devtools) {
+      firefoxArguments.push("--devtools");
+    }
+    if (args.every((arg) => {
+      return arg.startsWith("-");
+    })) {
+      firefoxArguments.push("about:blank");
+    }
+    firefoxArguments.push(...args);
+    return firefoxArguments;
+  }
+};
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/PuppeteerNode.js
+init_main();
+init_Puppeteer();
+init_revisions();
+var PuppeteerNode = class extends Puppeteer {
+  #launcher;
+  #lastLaunchedBrowser;
+  /**
+   * @internal
+   */
+  defaultBrowserRevision;
+  /**
+   * @internal
+   */
+  configuration = {};
+  /**
+   * @internal
+   */
+  constructor(settings) {
+    const { configuration, ...commonSettings } = settings;
+    super(commonSettings);
+    if (configuration) {
+      this.configuration = configuration;
+    }
+    switch (this.configuration.defaultBrowser) {
+      case "firefox":
+        this.defaultBrowserRevision = PUPPETEER_REVISIONS.firefox;
+        break;
+      default:
+        this.configuration.defaultBrowser = "chrome";
+        this.defaultBrowserRevision = PUPPETEER_REVISIONS.chrome;
+        break;
+    }
+    this.connect = this.connect.bind(this);
+    this.launch = this.launch.bind(this);
+    this.executablePath = this.executablePath.bind(this);
+    this.defaultArgs = this.defaultArgs.bind(this);
+    this.trimCache = this.trimCache.bind(this);
+  }
+  /**
+   * This method attaches Puppeteer to an existing browser instance.
+   *
+   * @param options - Set of configurable options to set on the browser.
+   * @returns Promise which resolves to browser instance.
+   */
+  connect(options) {
+    return super.connect(options);
+  }
+  /**
+   * Launches a browser instance with given arguments and options when
+   * specified.
+   *
+   * When using with `puppeteer-core`,
+   * {@link LaunchOptions.executablePath | options.executablePath} or
+   * {@link LaunchOptions.channel | options.channel} must be provided.
+   *
+   * @example
+   * You can use {@link LaunchOptions.ignoreDefaultArgs | options.ignoreDefaultArgs}
+   * to filter out `--mute-audio` from default arguments:
+   *
+   * ```ts
+   * const browser = await puppeteer.launch({
+   *   ignoreDefaultArgs: ['--mute-audio'],
+   * });
+   * ```
+   *
+   * @remarks
+   * Puppeteer can also be used to control the Chrome browser, but it works best
+   * with the version of Chrome for Testing downloaded by default.
+   * There is no guarantee it will work with any other version. If Google Chrome
+   * (rather than Chrome for Testing) is preferred, a
+   * {@link https://www.google.com/chrome/browser/canary.html | Chrome Canary}
+   * or
+   * {@link https://www.chromium.org/getting-involved/dev-channel | Dev Channel}
+   * build is suggested. See
+   * {@link https://www.howtogeek.com/202825/what%E2%80%99s-the-difference-between-chromium-and-chrome/ | this article}
+   * for a description of the differences between Chromium and Chrome.
+   * {@link https://chromium.googlesource.com/chromium/src/+/lkgr/docs/chromium_browser_vs_google_chrome.md | This article}
+   * describes some differences for Linux users. See
+   * {@link https://developer.chrome.com/blog/chrome-for-testing/ | this doc} for the description
+   * of Chrome for Testing.
+   *
+   * @param options - Options to configure launching behavior.
+   */
+  launch(options = {}) {
+    const { browser = this.defaultBrowser } = options;
+    this.#lastLaunchedBrowser = browser;
+    switch (browser) {
+      case "chrome":
+        this.defaultBrowserRevision = PUPPETEER_REVISIONS.chrome;
+        break;
+      case "firefox":
+        this.defaultBrowserRevision = PUPPETEER_REVISIONS.firefox;
+        break;
+      default:
+        throw new Error(`Unknown product: ${browser}`);
+    }
+    this.#launcher = this.#getLauncher(browser);
+    return this.#launcher.launch(options);
+  }
+  /**
+   * @internal
+   */
+  #getLauncher(browser) {
+    if (this.#launcher && this.#launcher.browser === browser) {
+      return this.#launcher;
+    }
+    switch (browser) {
+      case "chrome":
+        return new ChromeLauncher(this);
+      case "firefox":
+        return new FirefoxLauncher(this);
+      default:
+        throw new Error(`Unknown product: ${browser}`);
+    }
+  }
+  executablePath(optsOrChannel) {
+    if (optsOrChannel === void 0) {
+      return this.#getLauncher(this.lastLaunchedBrowser).executablePath(
+        void 0,
+        /* validatePath= */
+        false
+      );
+    }
+    if (typeof optsOrChannel === "string") {
+      return this.#getLauncher("chrome").executablePath(
+        optsOrChannel,
+        /* validatePath= */
+        false
+      );
+    }
+    return this.#getLauncher(optsOrChannel.browser ?? this.lastLaunchedBrowser).resolveExecutablePath(
+      optsOrChannel.headless,
+      /* validatePath= */
+      false
+    );
+  }
+  /**
+   * @internal
+   */
+  get browserVersion() {
+    return this.configuration?.[this.lastLaunchedBrowser]?.version ?? this.defaultBrowserRevision;
+  }
+  /**
+   * The default download path for puppeteer. For puppeteer-core, this
+   * code should never be called as it is never defined.
+   *
+   * @internal
+   */
+  get defaultDownloadPath() {
+    return this.configuration.cacheDirectory;
+  }
+  /**
+   * The name of the browser that was last launched.
+   */
+  get lastLaunchedBrowser() {
+    return this.#lastLaunchedBrowser ?? this.defaultBrowser;
+  }
+  /**
+   * The name of the browser that will be launched by default. For
+   * `puppeteer`, this is influenced by your configuration. Otherwise, it's
+   * `chrome`.
+   */
+  get defaultBrowser() {
+    return this.configuration.defaultBrowser ?? "chrome";
+  }
+  /**
+   * @deprecated Do not use as this field as it does not take into account
+   * multiple browsers of different types. Use
+   * {@link PuppeteerNode.defaultBrowser | defaultBrowser} or
+   * {@link PuppeteerNode.lastLaunchedBrowser | lastLaunchedBrowser}.
+   *
+   * @returns The name of the browser that is under automation.
+   */
+  get product() {
+    return this.lastLaunchedBrowser;
+  }
+  /**
+   * @param options - Set of configurable options to set on the browser.
+   *
+   * @returns The default arguments that the browser will be launched with.
+   */
+  defaultArgs(options = {}) {
+    return this.#getLauncher(options.browser ?? this.lastLaunchedBrowser).defaultArgs(options);
+  }
+  /**
+   * Removes all non-current Firefox and Chrome binaries in the cache directory
+   * identified by the provided Puppeteer configuration. The current browser
+   * version is determined by resolving PUPPETEER_REVISIONS from Puppeteer
+   * unless `configuration.browserRevision` is provided.
+   *
+   * @remarks
+   *
+   * Note that the method does not check if any other Puppeteer versions
+   * installed on the host that use the same cache directory require the
+   * non-current binaries.
+   *
+   * @public
+   */
+  async trimCache() {
+    const platform = detectBrowserPlatform();
+    if (!platform) {
+      throw new Error("The current platform is not supported.");
+    }
+    const cacheDir = this.configuration.cacheDirectory;
+    const installedBrowsers = await getInstalledBrowsers({
+      cacheDir
+    });
+    const puppeteerBrowsers = [
+      {
+        product: "chrome",
+        browser: Browser3.CHROME,
+        currentBuildId: ""
+      },
+      {
+        product: "firefox",
+        browser: Browser3.FIREFOX,
+        currentBuildId: ""
+      }
+    ];
+    await Promise.all(puppeteerBrowsers.map(async (item) => {
+      const tag = this.configuration?.[item.product]?.version ?? PUPPETEER_REVISIONS[item.product];
+      item.currentBuildId = await resolveBuildId4(item.browser, platform, tag);
+    }));
+    const currentBrowserBuilds = new Set(puppeteerBrowsers.map((browser) => {
+      return `${browser.browser}_${browser.currentBuildId}`;
+    }));
+    const currentBrowsers = new Set(puppeteerBrowsers.map((browser) => {
+      return browser.browser;
+    }));
+    for (const installedBrowser of installedBrowsers) {
+      if (!currentBrowsers.has(installedBrowser.browser)) {
+        continue;
+      }
+      if (currentBrowserBuilds.has(`${installedBrowser.browser}_${installedBrowser.buildId}`)) {
+        continue;
+      }
+      await uninstall({
+        browser: installedBrowser.browser,
+        platform,
+        cacheDir,
+        buildId: installedBrowser.buildId
+      });
+    }
+  }
+};
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/ScreenRecorder.js
+var import_debug6 = __toESM(require_src(), 1);
+init_rxjs();
+init_CDPSession();
+init_util();
+init_decorators();
+init_disposable();
+import { spawn as spawn2, spawnSync as spawnSync3 } from "node:child_process";
+import fs5 from "node:fs";
+import os8 from "node:os";
+import { dirname as dirname3 } from "node:path";
+import { PassThrough } from "node:stream";
+var __runInitializers23 = function(thisArg, initializers, value) {
+  var useValue = arguments.length > 2;
+  for (var i = 0; i < initializers.length; i++) {
+    value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);
+  }
+  return useValue ? value : void 0;
+};
+var __esDecorate23 = function(ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {
+  function accept(f) {
+    if (f !== void 0 && typeof f !== "function") throw new TypeError("Function expected");
+    return f;
+  }
+  var kind = contextIn.kind, key = kind === "getter" ? "get" : kind === "setter" ? "set" : "value";
+  var target = !descriptorIn && ctor ? contextIn["static"] ? ctor : ctor.prototype : null;
+  var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});
+  var _, done = false;
+  for (var i = decorators.length - 1; i >= 0; i--) {
+    var context2 = {};
+    for (var p in contextIn) context2[p] = p === "access" ? {} : contextIn[p];
+    for (var p in contextIn.access) context2.access[p] = contextIn.access[p];
+    context2.addInitializer = function(f) {
+      if (done) throw new TypeError("Cannot add initializers after decoration has completed");
+      extraInitializers.push(accept(f || null));
+    };
+    var result = (0, decorators[i])(kind === "accessor" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context2);
+    if (kind === "accessor") {
+      if (result === void 0) continue;
+      if (result === null || typeof result !== "object") throw new TypeError("Object expected");
+      if (_ = accept(result.get)) descriptor.get = _;
+      if (_ = accept(result.set)) descriptor.set = _;
+      if (_ = accept(result.init)) initializers.unshift(_);
+    } else if (_ = accept(result)) {
+      if (kind === "field") initializers.unshift(_);
+      else descriptor[key] = _;
+    }
+  }
+  if (target) Object.defineProperty(target, contextIn.name, descriptor);
+  done = true;
+};
+var __setFunctionName6 = function(f, name, prefix) {
+  if (typeof name === "symbol") name = name.description ? "[".concat(name.description, "]") : "";
+  return Object.defineProperty(f, "name", { configurable: true, value: prefix ? "".concat(prefix, " ", name) : name });
+};
+var CRF_VALUE = 30;
+var DEFAULT_FPS = 30;
+var debugFfmpeg = (0, import_debug6.default)("puppeteer:ffmpeg");
+var ScreenRecorder = (() => {
+  let _classSuper = PassThrough;
+  let _instanceExtraInitializers = [];
+  let _private_writeFrame_decorators;
+  let _private_writeFrame_descriptor;
+  let _stop_decorators;
+  return class ScreenRecorder extends _classSuper {
+    static {
+      const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+      __esDecorate23(this, _private_writeFrame_descriptor = { value: __setFunctionName6(async function(buffer) {
+        const error = await new Promise((resolve6) => {
+          this.#process.stdin.write(buffer, resolve6);
+        });
+        if (error) {
+          console.log(`ffmpeg failed to write: ${error.message}.`);
+        }
+      }, "#writeFrame") }, _private_writeFrame_decorators, { kind: "method", name: "#writeFrame", static: false, private: true, access: { has: (obj) => #writeFrame in obj, get: (obj) => obj.#writeFrame }, metadata: _metadata }, null, _instanceExtraInitializers);
+      __esDecorate23(this, null, _stop_decorators, { kind: "method", name: "stop", static: false, private: false, access: { has: (obj) => "stop" in obj, get: (obj) => obj.stop }, metadata: _metadata }, null, _instanceExtraInitializers);
+      if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
+    }
+    #page = __runInitializers23(this, _instanceExtraInitializers);
+    #process;
+    #controller = new AbortController();
+    #lastFrame;
+    #fps;
+    /**
+     * @internal
+     */
+    constructor(page, width, height, { ffmpegPath, speed, scale, crop, format: format3, fps, loop, delay, quality, colors, path: path13, overwrite } = {}) {
+      super({ allowHalfOpen: false });
+      ffmpegPath ??= "ffmpeg";
+      format3 ??= "webm";
+      fps ??= DEFAULT_FPS;
+      loop ||= -1;
+      delay ??= -1;
+      quality ??= CRF_VALUE;
+      colors ??= 256;
+      overwrite ??= true;
+      this.#fps = fps;
+      const { error } = spawnSync3(ffmpegPath);
+      if (error) {
+        throw error;
+      }
+      const filters = [
+        `crop='min(${width},iw):min(${height},ih):0:0'`,
+        `pad=${width}:${height}:0:0`
+      ];
+      if (speed) {
+        filters.push(`setpts=${1 / speed}*PTS`);
+      }
+      if (crop) {
+        filters.push(`crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}`);
+      }
+      if (scale) {
+        filters.push(`scale=iw*${scale}:-1:flags=lanczos`);
+      }
+      const formatArgs = this.#getFormatArgs(format3, fps, loop, delay, quality, colors);
+      const vf = formatArgs.indexOf("-vf");
+      if (vf !== -1) {
+        filters.push(formatArgs.splice(vf, 2).at(-1) ?? "");
+      }
+      if (path13) {
+        fs5.mkdirSync(dirname3(path13), { recursive: overwrite });
+      }
+      this.#process = spawn2(
+        ffmpegPath,
+        // See https://trac.ffmpeg.org/wiki/Encode/VP9 for more information on flags.
+        [
+          ["-loglevel", "error"],
+          // Reduces general buffering.
+          ["-avioflags", "direct"],
+          // Reduces initial buffering while analyzing input fps and other stats.
+          [
+            "-fpsprobesize",
+            "0",
+            "-probesize",
+            "32",
+            "-analyzeduration",
+            "0",
+            "-fflags",
+            "nobuffer"
+          ],
+          // Forces input to be read from standard input, and forces png input
+          // image format.
+          ["-f", "image2pipe", "-vcodec", "png", "-i", "pipe:0"],
+          // No audio
+          ["-an"],
+          // This drastically reduces stalling when cpu is overbooked. By default
+          // VP9 tries to use all available threads?
+          ["-threads", "1"],
+          // Specifies the frame rate we are giving ffmpeg.
+          ["-framerate", `${fps}`],
+          // Disable bitrate.
+          ["-b:v", "0"],
+          // Specifies the encoding and format we are using.
+          formatArgs,
+          // Filters to ensure the images are piped correctly,
+          // combined with any format-specific filters.
+          ["-vf", filters.join()],
+          // Overwrite output, or exit immediately if file already exists.
+          [overwrite ? "-y" : "-n"],
+          "pipe:1"
+        ].flat(),
+        { stdio: ["pipe", "pipe", "pipe"] }
+      );
+      this.#process.stdout.pipe(this);
+      this.#process.stderr.on("data", (data) => {
+        debugFfmpeg(data.toString("utf8"));
+      });
+      this.#page = page;
+      const { client } = this.#page.mainFrame();
+      client.once(CDPSessionEvent.Disconnected, () => {
+        void this.stop().catch(debugError);
+      });
+      this.#lastFrame = lastValueFrom(fromEmitterEvent(client, "Page.screencastFrame").pipe(tap((event) => {
+        void client.send("Page.screencastFrameAck", {
+          sessionId: event.sessionId
+        });
+      }), filter((event) => {
+        return event.metadata.timestamp !== void 0;
+      }), map((event) => {
+        return {
+          buffer: Buffer.from(event.data, "base64"),
+          timestamp: event.metadata.timestamp
+        };
+      }), bufferCount(2, 1), concatMap(([{ timestamp: previousTimestamp, buffer }, { timestamp: timestamp2 }]) => {
+        return from(Array(Math.round(fps * Math.max(timestamp2 - previousTimestamp, 0))).fill(buffer));
+      }), map((buffer) => {
+        void this.#writeFrame(buffer);
+        return [buffer, performance.now()];
+      }), takeUntil(fromEvent(this.#controller.signal, "abort"))), { defaultValue: [Buffer.from([]), performance.now()] });
+    }
+    #getFormatArgs(format3, fps, loop, delay, quality, colors) {
+      const libvpx = [
+        ["-vcodec", "vp9"],
+        // Sets the quality. Lower the better.
+        ["-crf", `${quality}`],
+        // Sets the quality and how efficient the compression will be.
+        [
+          "-deadline",
+          "realtime",
+          "-cpu-used",
+          `${Math.min(os8.cpus().length / 2, 8)}`
+        ]
+      ];
+      switch (format3) {
+        case "webm":
+          return [
+            ...libvpx,
+            // Sets the format
+            ["-f", "webm"]
+          ].flat();
+        case "gif":
+          fps = DEFAULT_FPS === fps ? 20 : "source_fps";
+          if (loop === Infinity) {
+            loop = 0;
+          }
+          if (delay !== -1) {
+            delay /= 10;
+          }
+          return [
+            // Sets the frame rate and uses a custom palette generated from the
+            // input.
+            [
+              "-vf",
+              `fps=${fps},split[s0][s1];[s0]palettegen=stats_mode=diff:max_colors=${colors}[p];[s1][p]paletteuse=dither=bayer`
+            ],
+            // Sets the number of times to loop playback.
+            ["-loop", `${loop}`],
+            // Sets the delay between iterations of a loop.
+            ["-final_delay", `${delay}`],
+            // Sets the format
+            ["-f", "gif"]
+          ].flat();
+        case "mp4":
+          return [
+            ...libvpx,
+            // Fragment file during stream to avoid errors.
+            ["-movflags", "hybrid_fragmented"],
+            // Sets the format
+            ["-f", "mp4"]
+          ].flat();
+      }
+    }
+    get #writeFrame() {
+      return _private_writeFrame_descriptor.value;
+    }
+    /**
+     * Stops the recorder.
+     *
+     * @public
+     */
+    async stop() {
+      if (this.#controller.signal.aborted) {
+        return;
+      }
+      await this.#page._stopScreencast().catch(debugError);
+      this.#controller.abort();
+      const [buffer, timestamp2] = await this.#lastFrame;
+      await Promise.all(Array(Math.max(1, Math.round(this.#fps * (performance.now() - timestamp2) / 1e3))).fill(buffer).map(this.#writeFrame.bind(this)));
+      this.#process.stdin.end();
+      await new Promise((resolve6) => {
+        this.#process.once("close", resolve6);
+      });
+    }
+    /**
+     * @internal
+     */
+    async [(_private_writeFrame_decorators = [guarded()], _stop_decorators = [guarded()], asyncDisposeSymbol)]() {
+      await this.stop();
+    }
+  };
+})();
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js
+init_environment();
+import fs6 from "node:fs";
+import path11 from "node:path";
+environment.value = {
+  fs: fs6,
+  path: path11,
+  ScreenRecorder
+};
+var puppeteer = new PuppeteerNode({
+  isPuppeteerCore: true
+});
+var {
+  /**
+   * @public
+   */
+  connect,
+  /**
+   * @public
+   */
+  defaultArgs,
+  /**
+   * @public
+   */
+  executablePath,
+  /**
+   * @public
+   */
+  launch: launch2
+} = puppeteer;
+var puppeteer_core_default = puppeteer;
+
+// node_modules/@sparticuz/chromium/build/esm/index.js
+import { existsSync as existsSync4 } from "node:fs";
+import { tmpdir as tmpdir4 } from "node:os";
+import { join as join6 } from "node:path";
+
+// node_modules/@sparticuz/chromium/build/esm/helper.js
+var import_follow_redirects = __toESM(require_follow_redirects(), 1);
+var import_tar_fs = __toESM(require_tar_fs(), 1);
+import { access, createWriteStream as createWriteStream2, rm as rm2, symlink } from "node:fs";
+import { tmpdir as tmpdir2 } from "node:os";
+import { join as join3 } from "node:path";
+var setupLambdaEnvironment = (baseLibPath) => {
+  process.env["FONTCONFIG_PATH"] ??= join3(tmpdir2(), "fonts");
+  process.env["HOME"] ??= tmpdir2();
+  if (process.env["LD_LIBRARY_PATH"] === void 0) {
+    process.env["LD_LIBRARY_PATH"] = baseLibPath;
+  } else if (!process.env["LD_LIBRARY_PATH"].startsWith(baseLibPath)) {
+    process.env["LD_LIBRARY_PATH"] = [
+      baseLibPath,
+      ...new Set(process.env["LD_LIBRARY_PATH"].split(":"))
+    ].join(":");
+  }
+};
+var isValidUrl = (input2) => {
+  try {
+    return Boolean(new URL(input2));
+  } catch {
+    return false;
+  }
+};
+var isRunningInAmazonLinux2023 = (nodeMajorVersion2) => {
+  const awsExecEnv = process.env["AWS_EXECUTION_ENV"] ?? "";
+  const awsLambdaJsRuntime = process.env["AWS_LAMBDA_JS_RUNTIME"] ?? "";
+  const codebuildImage = process.env["CODEBUILD_BUILD_IMAGE"] ?? "";
+  if (awsExecEnv.includes("20.x") || awsExecEnv.includes("22.x") || awsExecEnv.includes("24.x") || awsLambdaJsRuntime.includes("20.x") || awsLambdaJsRuntime.includes("22.x") || awsLambdaJsRuntime.includes("24.x") || codebuildImage.includes("nodejs20") || codebuildImage.includes("nodejs22") || codebuildImage.includes("nodejs24")) {
+    return true;
+  }
+  if (process.env["VERCEL"] && nodeMajorVersion2 >= 20) {
+    return true;
+  }
+  return false;
+};
+var downloadAndExtract = async (url) => {
+  const getOptions = new URL(url);
+  getOptions.maxBodyLength = 60 * 1024 * 1024;
+  const destDir = join3(tmpdir2(), "chromium-pack");
+  return new Promise((resolve6, reject) => {
+    const extractObj = (0, import_tar_fs.extract)(destDir);
+    const cleanupOnError = (err) => {
+      rm2(destDir, { force: true, recursive: true }, () => {
+        reject(err);
+      });
+    };
+    extractObj.once("error", cleanupOnError);
+    extractObj.once("finish", () => {
+      resolve6(destDir);
+    });
+    const req = import_follow_redirects.default.https.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`Unexpected status code: ${response.statusCode?.toFixed(0) ?? "UNK"}.`));
+        return;
+      }
+      response.pipe(extractObj);
+      response.once("error", cleanupOnError);
+    });
+    req.once("error", cleanupOnError);
+    req.setTimeout(60 * 1e3, () => {
+      req.destroy();
+      cleanupOnError(new Error("Request timeout"));
+    });
+  });
+};
+
 // node_modules/@sparticuz/chromium/build/esm/lambdafs.js
+var import_tar_fs2 = __toESM(require_tar_fs(), 1);
 import { createReadStream as createReadStream2, createWriteStream as createWriteStream3, existsSync as existsSync3 } from "node:fs";
 import { tmpdir as tmpdir3 } from "node:os";
 import { basename as basename2, join as join4 } from "node:path";
 import { createBrotliDecompress, createUnzip } from "node:zlib";
-var import_tar_fs2, inflate;
-var init_lambdafs = __esm({
-  "node_modules/@sparticuz/chromium/build/esm/lambdafs.js"() {
-    import_tar_fs2 = __toESM(require_tar_fs(), 1);
-    inflate = (filePath) => {
-      const output2 = filePath.includes("swiftshader") ? tmpdir3() : join4(tmpdir3(), basename2(filePath).replace(/\.(?:t(?:ar(?:\.(?:br|gz))?|br|gz)|br|gz)$/i, ""));
-      return new Promise((resolve6, reject) => {
-        if (filePath.includes("swiftshader")) {
-          if (existsSync3(`${output2}/libGLESv2.so`)) {
-            resolve6(output2);
-            return;
-          }
-        } else if (existsSync3(output2)) {
-          resolve6(output2);
-          return;
-        }
-        const isBrotli = /br$/i.test(filePath);
-        const isGzip = /gz$/i.test(filePath);
-        const isTar = /\.t(?:ar(?:\.(?:br|gz))?|br|gz)$/i.test(filePath);
-        const highWaterMark = 2 ** 22;
-        const source2 = createReadStream2(filePath, { highWaterMark });
-        let target;
-        const handleError2 = (error) => {
-          reject(error);
-        };
-        source2.once("error", handleError2);
-        if (isTar) {
-          target = (0, import_tar_fs2.extract)(output2);
-          target.once("finish", () => {
-            resolve6(output2);
-          });
-        } else {
-          target = createWriteStream3(output2, { mode: 448 });
-          target.once("close", () => {
-            resolve6(output2);
-          });
-        }
-        target.once("error", handleError2);
-        if (isBrotli || isGzip) {
-          const decompressor = isBrotli ? createBrotliDecompress({ chunkSize: 2 ** 21 }) : createUnzip({ chunkSize: 2 ** 21 });
-          decompressor.once("error", handleError2);
-          source2.pipe(decompressor).pipe(target);
-        } else {
-          source2.pipe(target);
-        }
-      });
+var inflate = (filePath) => {
+  const output2 = filePath.includes("swiftshader") ? tmpdir3() : join4(tmpdir3(), basename2(filePath).replace(/\.(?:t(?:ar(?:\.(?:br|gz))?|br|gz)|br|gz)$/i, ""));
+  return new Promise((resolve6, reject) => {
+    if (filePath.includes("swiftshader")) {
+      if (existsSync3(`${output2}/libGLESv2.so`)) {
+        resolve6(output2);
+        return;
+      }
+    } else if (existsSync3(output2)) {
+      resolve6(output2);
+      return;
+    }
+    const isBrotli = /br$/i.test(filePath);
+    const isGzip = /gz$/i.test(filePath);
+    const isTar = /\.t(?:ar(?:\.(?:br|gz))?|br|gz)$/i.test(filePath);
+    const highWaterMark = 2 ** 22;
+    const source2 = createReadStream2(filePath, { highWaterMark });
+    let target;
+    const handleError2 = (error) => {
+      reject(error);
     };
-  }
-});
+    source2.once("error", handleError2);
+    if (isTar) {
+      target = (0, import_tar_fs2.extract)(output2);
+      target.once("finish", () => {
+        resolve6(output2);
+      });
+    } else {
+      target = createWriteStream3(output2, { mode: 448 });
+      target.once("close", () => {
+        resolve6(output2);
+      });
+    }
+    target.once("error", handleError2);
+    if (isBrotli || isGzip) {
+      const decompressor = isBrotli ? createBrotliDecompress({ chunkSize: 2 ** 21 }) : createUnzip({ chunkSize: 2 ** 21 });
+      decompressor.once("error", handleError2);
+      source2.pipe(decompressor).pipe(target);
+    } else {
+      source2.pipe(target);
+    }
+  });
+};
 
 // node_modules/@sparticuz/chromium/build/esm/paths.esm.js
 import { dirname as dirname4, join as join5 } from "node:path";
@@ -92692,158 +92677,455 @@ import { fileURLToPath as fileURLToPath2 } from "node:url";
 function getBinPath() {
   return join5(dirname4(fileURLToPath2(import.meta.url)), "..", "..", "bin");
 }
-var init_paths_esm = __esm({
-  "node_modules/@sparticuz/chromium/build/esm/paths.esm.js"() {
-  }
-});
 
 // node_modules/@sparticuz/chromium/build/esm/index.js
-import { existsSync as existsSync4 } from "node:fs";
-import { tmpdir as tmpdir4 } from "node:os";
-import { join as join6 } from "node:path";
-var nodeMajorVersion, Chromium, esm_default2;
-var init_esm2 = __esm({
-  "node_modules/@sparticuz/chromium/build/esm/index.js"() {
-    init_helper();
-    init_lambdafs();
-    init_paths_esm();
-    nodeMajorVersion = Number.parseInt(process.versions.node.split(".")[0] ?? "");
-    if (isRunningInAmazonLinux2023(nodeMajorVersion)) {
-      setupLambdaEnvironment(join6(tmpdir4(), "al2023", "lib"));
+var nodeMajorVersion = Number.parseInt(process.versions.node.split(".")[0] ?? "");
+if (isRunningInAmazonLinux2023(nodeMajorVersion)) {
+  setupLambdaEnvironment(join6(tmpdir4(), "al2023", "lib"));
+}
+var Chromium = class {
+  /**
+   * Returns a list of additional Chromium flags recommended for serverless environments.
+   * The canonical list of flags can be found on https://peter.sh/experiments/chromium-command-line-switches/.
+   * Most of below can be found here: https://github.com/GoogleChrome/chrome-launcher/blob/main/docs/chrome-flags-for-tools.md
+   */
+  static get args() {
+    const chromiumFlags = [
+      "--ash-no-nudges",
+      // Avoids blue bubble "user education" nudges (eg., "… give your browser a new look", Memory Saver)
+      "--disable-domain-reliability",
+      // Disables Domain Reliability Monitoring, which tracks whether the browser has difficulty contacting Google-owned sites and uploads reports to Google.
+      "--disable-print-preview",
+      // https://source.chromium.org/search?q=lang:cpp+symbol:kDisablePrintPreview&ss=chromium
+      "--disk-cache-size=33554432",
+      // https://source.chromium.org/search?q=lang:cpp+symbol:kDiskCacheSize&ss=chromium Forces the maximum disk space to be used by the disk cache, in bytes.
+      "--no-default-browser-check",
+      // Disable the default browser check, do not prompt to set it as such. (This is already set by Playwright, but not Puppeteer)
+      "--no-pings",
+      // Don't send hyperlink auditing pings
+      "--single-process",
+      // Runs the renderer and plugins in the same process as the browser. NOTES: Needs to be single-process to avoid `prctl(PR_SET_NO_NEW_PRIVS) failed` error
+      "--font-render-hinting=none"
+      // https://github.com/puppeteer/puppeteer/issues/2410#issuecomment-560573612
+    ];
+    const chromiumDisableFeatures = [
+      "AudioServiceOutOfProcess",
+      "IsolateOrigins",
+      "site-per-process"
+      // Disables OOPIF. https://www.chromium.org/Home/chromium-security/site-isolation
+    ];
+    const chromiumEnableFeatures = ["SharedArrayBuffer"];
+    const graphicsFlags = [
+      "--ignore-gpu-blocklist",
+      // https://source.chromium.org/search?q=lang:cpp+symbol:kIgnoreGpuBlocklist&ss=chromium
+      "--in-process-gpu"
+      // Saves some memory by moving GPU process into a browser process thread
+    ];
+    if (this.graphics) {
+      graphicsFlags.push(
+        // As the unsafe WebGL fallback, SwANGLE (ANGLE + SwiftShader Vulkan)
+        "--use-gl=angle",
+        "--use-angle=swiftshader",
+        "--enable-unsafe-swiftshader"
+      );
+    } else {
+      graphicsFlags.push("--disable-webgl");
     }
-    Chromium = class {
-      /**
-       * Returns a list of additional Chromium flags recommended for serverless environments.
-       * The canonical list of flags can be found on https://peter.sh/experiments/chromium-command-line-switches/.
-       * Most of below can be found here: https://github.com/GoogleChrome/chrome-launcher/blob/main/docs/chrome-flags-for-tools.md
-       */
-      static get args() {
-        const chromiumFlags = [
-          "--ash-no-nudges",
-          // Avoids blue bubble "user education" nudges (eg., "… give your browser a new look", Memory Saver)
-          "--disable-domain-reliability",
-          // Disables Domain Reliability Monitoring, which tracks whether the browser has difficulty contacting Google-owned sites and uploads reports to Google.
-          "--disable-print-preview",
-          // https://source.chromium.org/search?q=lang:cpp+symbol:kDisablePrintPreview&ss=chromium
-          "--disk-cache-size=33554432",
-          // https://source.chromium.org/search?q=lang:cpp+symbol:kDiskCacheSize&ss=chromium Forces the maximum disk space to be used by the disk cache, in bytes.
-          "--no-default-browser-check",
-          // Disable the default browser check, do not prompt to set it as such. (This is already set by Playwright, but not Puppeteer)
-          "--no-pings",
-          // Don't send hyperlink auditing pings
-          "--single-process",
-          // Runs the renderer and plugins in the same process as the browser. NOTES: Needs to be single-process to avoid `prctl(PR_SET_NO_NEW_PRIVS) failed` error
-          "--font-render-hinting=none"
-          // https://github.com/puppeteer/puppeteer/issues/2410#issuecomment-560573612
-        ];
-        const chromiumDisableFeatures = [
-          "AudioServiceOutOfProcess",
-          "IsolateOrigins",
-          "site-per-process"
-          // Disables OOPIF. https://www.chromium.org/Home/chromium-security/site-isolation
-        ];
-        const chromiumEnableFeatures = ["SharedArrayBuffer"];
-        const graphicsFlags = [
-          "--ignore-gpu-blocklist",
-          // https://source.chromium.org/search?q=lang:cpp+symbol:kIgnoreGpuBlocklist&ss=chromium
-          "--in-process-gpu"
-          // Saves some memory by moving GPU process into a browser process thread
-        ];
-        if (this.graphics) {
-          graphicsFlags.push(
-            // As the unsafe WebGL fallback, SwANGLE (ANGLE + SwiftShader Vulkan)
-            "--use-gl=angle",
-            "--use-angle=swiftshader",
-            "--enable-unsafe-swiftshader"
-          );
-        } else {
-          graphicsFlags.push("--disable-webgl");
-        }
-        const insecureFlags = [
-          "--allow-running-insecure-content",
-          // https://source.chromium.org/search?q=lang:cpp+symbol:kAllowRunningInsecureContent&ss=chromium
-          "--disable-setuid-sandbox",
-          // Lambda runs as root, so this is required to allow Chromium to run as root
-          "--disable-site-isolation-trials",
-          // https://source.chromium.org/search?q=lang:cpp+symbol:kDisableSiteIsolation&ss=chromium
-          "--disable-web-security"
-          // https://source.chromium.org/search?q=lang:cpp+symbol:kDisableWebSecurity&ss=chromium
-        ];
-        const headlessFlags = [
-          "--headless='shell'",
-          // We only support running chrome-headless-shell
-          "--no-sandbox",
-          // https://source.chromium.org/search?q=lang:cpp+symbol:kNoSandbox&ss=chromium
-          "--no-zygote"
-          // https://source.chromium.org/search?q=lang:cpp+symbol:kNoZygote&ss=chromium
-        ];
-        return [
-          ...chromiumFlags,
-          `--disable-features=${[...chromiumDisableFeatures].join(",")}`,
-          `--enable-features=${[...chromiumEnableFeatures].join(",")}`,
-          ...graphicsFlags,
-          ...insecureFlags,
-          ...headlessFlags
-        ];
-      }
-      /**
-       * Returns whether the graphics stack is enabled or disabled
-       * @returns boolean
-       */
-      static get graphics() {
-        return this.graphicsMode;
-      }
-      /**
-       * Sets whether the graphics stack is enabled or disabled.
-       * @param true means the stack is enabled. WebGL will work.
-       * @param false means that the stack is disabled. WebGL will not work.
-       * @default true
-       */
-      static set setGraphicsMode(value) {
-        if (typeof value !== "boolean") {
-          throw new TypeError(`Graphics mode must be a boolean, you entered '${String(value)}'`);
-        }
-        this.graphicsMode = value;
-      }
-      /**
-       * If true, the graphics stack and webgl is enabled,
-       * If false, webgl will be disabled.
-       * (If false, the swiftshader.tar.br file will also not extract)
-       */
-      static graphicsMode = true;
-      /**
-       * Inflates the included version of Chromium
-       * @param input The location of the `bin` folder
-       * @returns The path to the `chromium` binary
-       */
-      static async executablePath(input2) {
-        if (existsSync4(join6(tmpdir4(), "chromium"))) {
-          return join6(tmpdir4(), "chromium");
-        }
-        if (input2 && isValidUrl(input2)) {
-          return this.executablePath(await downloadAndExtract(input2));
-        }
-        input2 ??= getBinPath();
-        if (!existsSync4(input2)) {
-          throw new Error(`The input directory "${input2}" does not exist. Please provide the location of the brotli files.`);
-        }
-        const promises2 = [
-          inflate(join6(input2, "chromium.br")),
-          inflate(join6(input2, "fonts.tar.br")),
-          inflate(join6(input2, "swiftshader.tar.br"))
-        ];
-        if (isRunningInAmazonLinux2023(nodeMajorVersion)) {
-          promises2.push(inflate(join6(input2, "al2023.tar.br")));
-        }
-        const result = await Promise.all(promises2);
-        return result.shift();
-      }
-    };
-    esm_default2 = Chromium;
+    const insecureFlags = [
+      "--allow-running-insecure-content",
+      // https://source.chromium.org/search?q=lang:cpp+symbol:kAllowRunningInsecureContent&ss=chromium
+      "--disable-setuid-sandbox",
+      // Lambda runs as root, so this is required to allow Chromium to run as root
+      "--disable-site-isolation-trials",
+      // https://source.chromium.org/search?q=lang:cpp+symbol:kDisableSiteIsolation&ss=chromium
+      "--disable-web-security"
+      // https://source.chromium.org/search?q=lang:cpp+symbol:kDisableWebSecurity&ss=chromium
+    ];
+    const headlessFlags = [
+      "--headless='shell'",
+      // We only support running chrome-headless-shell
+      "--no-sandbox",
+      // https://source.chromium.org/search?q=lang:cpp+symbol:kNoSandbox&ss=chromium
+      "--no-zygote"
+      // https://source.chromium.org/search?q=lang:cpp+symbol:kNoZygote&ss=chromium
+    ];
+    return [
+      ...chromiumFlags,
+      `--disable-features=${[...chromiumDisableFeatures].join(",")}`,
+      `--enable-features=${[...chromiumEnableFeatures].join(",")}`,
+      ...graphicsFlags,
+      ...insecureFlags,
+      ...headlessFlags
+    ];
   }
-});
+  /**
+   * Returns whether the graphics stack is enabled or disabled
+   * @returns boolean
+   */
+  static get graphics() {
+    return this.graphicsMode;
+  }
+  /**
+   * Sets whether the graphics stack is enabled or disabled.
+   * @param true means the stack is enabled. WebGL will work.
+   * @param false means that the stack is disabled. WebGL will not work.
+   * @default true
+   */
+  static set setGraphicsMode(value) {
+    if (typeof value !== "boolean") {
+      throw new TypeError(`Graphics mode must be a boolean, you entered '${String(value)}'`);
+    }
+    this.graphicsMode = value;
+  }
+  /**
+   * If true, the graphics stack and webgl is enabled,
+   * If false, webgl will be disabled.
+   * (If false, the swiftshader.tar.br file will also not extract)
+   */
+  static graphicsMode = true;
+  /**
+   * Inflates the included version of Chromium
+   * @param input The location of the `bin` folder
+   * @returns The path to the `chromium` binary
+   */
+  static async executablePath(input2) {
+    if (existsSync4(join6(tmpdir4(), "chromium"))) {
+      return join6(tmpdir4(), "chromium");
+    }
+    if (input2 && isValidUrl(input2)) {
+      return this.executablePath(await downloadAndExtract(input2));
+    }
+    input2 ??= getBinPath();
+    if (!existsSync4(input2)) {
+      throw new Error(`The input directory "${input2}" does not exist. Please provide the location of the brotli files.`);
+    }
+    const promises2 = [
+      inflate(join6(input2, "chromium.br")),
+      inflate(join6(input2, "fonts.tar.br")),
+      inflate(join6(input2, "swiftshader.tar.br"))
+    ];
+    if (isRunningInAmazonLinux2023(nodeMajorVersion)) {
+      promises2.push(inflate(join6(input2, "al2023.tar.br")));
+    }
+    const result = await Promise.all(promises2);
+    return result.shift();
+  }
+};
+var esm_default2 = Chromium;
+
+// server/po-pdf.ts
+init_storage();
+init_po_milestones();
 
 // shared/size-charts.ts
+var SIZE_CHART_LABELS = {
+  tshirt: "T-Shirts / Polos",
+  hoodie: "Hoodies / Crew Necks",
+  singlet: "Singlets",
+  shorts: "Shorts",
+  trackpants: "Trackpants",
+  "rain-jacket": "Rain / Wet Weather Jackets",
+  "tracksuit-jacket": "Tracksuit / Softshell Jackets",
+  "baseball-jersey": "Baseball Jersey",
+  "rugby-jersey": "Rugby Jersey + Shorts",
+  socks: "Socks",
+  beanie: "Beanie (Pom-Pom)"
+};
+var SIZE_CHART_DATA = {
+  tshirt: [
+    {
+      title: "Youth / Adult Unisex",
+      headers: ["", "Y2", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [32, 34, 36, 38, 40, 42, 44, 46, 49, 51, 53, 56, 58, 61, 64, 67, 70] },
+        { label: "B. Centre Back", values: [42, 46, 50, 54, 57, 62, 66, 70, 66, 68, 70, 73, 75, 77, 79, 80, 81] },
+        { label: "B. Centre Back (Tall)", values: [45, 49, 53, 57, 60, 65, 69, 73, 71, 73, 75, 78, 80, 82, 84, 85, 86] }
+      ],
+      tolerance: "\xB1 1.0cm"
+    },
+    {
+      title: "Women",
+      headers: ["", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [40, 42, 45, 48, 51, 53, 55, 56, 59] },
+        { label: "B. Centre Back", values: [58, 60, 62, 64, 67, 69, 71, 73, 74] },
+        { label: "B. Centre Back (Tall)", values: [63, 65, 67, 69, 72, 74, 76, 78, 79] }
+      ],
+      tolerance: "\xB1 1.0cm"
+    }
+  ],
+  hoodie: [
+    {
+      title: "Youth / Adult Unisex",
+      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      rows: [
+        { label: "A. Centre Back Length", values: [46, 49, 52, 55, 58, 61, 64, 66, 68, 70, 72, 74, 76, 78, 80, 82] },
+        { label: "B. \xBD Chest", values: [38, 40, 42, 44, 46, 48, 50, 52, 55, 58, 61, 64, 67, 70, 73, 76] },
+        { label: "C. Sleeve (neck to cuff)", values: [58, 61, 64, 65, 68, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, "\u2014"] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    },
+    {
+      title: "Women",
+      headers: ["", "W3XS", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
+      rows: [
+        { label: "A. Centre Back Length", values: [56, 59, 62, 65, 68, 71, 74, 77, 80, 83, 86] },
+        { label: "B. \xBD Chest", values: [43, 45.5, 48, 50.5, 54.5, 58.5, 62.5, 66.5, 70.5, 74.5, 78.5] },
+        { label: "C. Sleeve (neck to cuff)", values: [65, 68, 71, 73, 75, 77, 79, 82, 85, 88, 91] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    }
+  ],
+  singlet: [
+    {
+      title: "Youth",
+      headers: ["", "Y2", "Y3", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16"],
+      rows: [
+        { label: "A. \xBD Chest", values: [33.5, 35.5, 37.5, 39.5, 41.5, 43.5, 45.5, 47.5, 49.5] },
+        { label: "B. Back Length", values: [40.5, 44.5, 48.5, 52.5, 56.5, 60.5, 64.5, 68.5, 72.5] },
+        { label: "B. Back Length (Tall)", values: [43.5, 47.5, 51.5, 55.5, 59.5, 63.5, 67.5, 71.5, 75.5] }
+      ],
+      tolerance: "\xB1 1.0cm"
+    },
+    {
+      title: "Adult Unisex",
+      headers: ["", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [52, 54.5, 57, 59.5, 62, 64.5, 67, 69.5, 72] },
+        { label: "B. Back Length", values: [72.5, 74.5, 76.5, 78.5, 80.5, 84.5, 86, "\u2014", "\u2014"] },
+        { label: "B. Back Length (Tall)", values: [77.5, 79.5, 81.5, 83.5, 85.5, 89.5, 91, 93, 95] }
+      ],
+      tolerance: "\xB1 1.0cm"
+    }
+  ],
+  shorts: [
+    {
+      title: "Adult Football Shorts",
+      headers: ["", "XS", "S", "M", "L", "XL", "2XL", "3XL"],
+      rows: [
+        { label: "A. \xBD Waist", values: [32.5, 36.4, 40.3, 44.2, 48.1, 52, 55.9] },
+        { label: "B. \xBD Hip", values: [41.2, 45, 48.8, 52.6, 56.4, 60.2, 64] },
+        { label: "C. Leg Opening", values: [49.7, 55.7, 61.7, 67.6, 73.6, 80, 85.5] },
+        { label: "D. Front Rise", values: [35.5, 36, 36.5, 37, 37.5, 38, 38.5] },
+        { label: "E. Back Rise", values: [41.5, 42, 42.5, 43, 43.5, 44, 44.5] },
+        { label: "F. Inseam", values: [14, 14, 14, 14, 14, 14, 14] }
+      ],
+      tolerance: "\xB1 1.0cm"
+    },
+    {
+      title: "Youth Football Shorts",
+      headers: ["", "YS", "YM", "YL", "YXL"],
+      rows: [
+        { label: "A. \xBD Waist", values: [30, 32.5, 35.1, 37.7] },
+        { label: "B. \xBD Hip", values: [36, 38.5, 41, 43.5] },
+        { label: "C. Leg Opening", values: [45.9, 49.8, 53.7, 57.6] },
+        { label: "D. Front Rise", values: [25.9, 30, 34, 38] },
+        { label: "E. Back Rise", values: [29.9, 34, 38, 42] },
+        { label: "F. Inseam", values: [12, 12, 12, 12] }
+      ],
+      tolerance: "\xB1 1.0cm"
+    }
+  ],
+  trackpants: [
+    {
+      title: "Youth / Adult Unisex",
+      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      rows: [
+        { label: "A. \xBD Waist", values: [23, 25.5, 28, 30.5, 33, 35.5, 38, 40, 43, 45, 48, 50, 53, 55, 58] },
+        { label: "B. Outside Leg (incl W/B)", values: [70, 75, 80, 85, 90, 95, 99, 100, 101, 102, 103, 104, 105, 106, 107] },
+        { label: "C. \xBD Leg Opening (Regular)", values: [13, 14, 15, 17, 18, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] },
+        { label: "C. \xBD Leg Opening (Tapered)", values: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24] }
+      ],
+      tolerance: "\xB1 1.5cm"
+    },
+    {
+      title: "Women",
+      headers: ["", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
+      rows: [
+        { label: "A. \xBD Waist Relaxed", values: [32, 34, 36, 38, 40, 42, 44, 46, 48, 50] },
+        { label: "B. Outside Leg (incl W/B)", values: [96, 98, 100, 102, 104, 106, 108, 110, 112, 114] },
+        { label: "C. \xBD Leg Opening (Regular)", values: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29] },
+        { label: "C. \xBD Leg Opening (Tapered)", values: [12.5, 13, 13.5, 14, 14.5, 15, 15, 15.5, 15.5, 16] }
+      ],
+      tolerance: "\xB1 1.5cm"
+    }
+  ],
+  "rain-jacket": [
+    {
+      title: "Youth / Adult Unisex",
+      headers: ["", "YXS", "YS", "YM", "YL", "YXL", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [41, 44, 47, 50, 53, 55, 59, 62, 65, 68, 71, 74, 77] },
+        { label: "B. Centre Back Length", values: [54, 58, 62, 66, 70, 74, 78.5, 80, 81.5, 83, 84.5, 87, 90] },
+        { label: "C. Sleeve (neck to cuff)", values: [57, 60, 62, 65, 68, 71, 74, 77, 81, 84, 87, 90, 93] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    },
+    {
+      title: "Women",
+      headers: ["", "W3XS", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [43, 45.5, 48, 50.5, 54.5, 58.5, 62.5, 66.5, 70.5, 74.5, 78.5] },
+        { label: "B. Centre Back Length", values: [60, 63.5, 67, 70.5, 74, 77.5, 81, 84.5, 88, 91, 94] },
+        { label: "C. Sleeve (neck to cuff)", values: [65, 68, 71, 73, 75, 77, 79, 82, 85, 88, 91] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    }
+  ],
+  "tracksuit-jacket": [
+    {
+      title: "Youth / Adult Unisex",
+      headers: ["", "4", "6", "8", "10", "12", "14", "S", "M", "L", "XL", "2XL", "3XL", "4XL"],
+      rows: [
+        { label: "A. Length", values: [51, 55, 58, 61, 64, 67, 70, 73, 76, 79, 82, 85, "\u2014"] },
+        { label: "B. \xBD Chest", values: [41, 44, 47, 50, 53, 56, 59, 62, 65, 68, 71, 74, 77] },
+        { label: "C. Sleeve Length", values: [57, 60, 62, 65, 68, 71, 74, 77, 81, 84, 87, 90, 93] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    },
+    {
+      title: "Women",
+      headers: ["", "W3XS", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
+      rows: [
+        { label: "A. Length", values: [56, 59, 62, 65, 68, 71, 74, 77, 80, 83, 86] },
+        { label: "B. \xBD Chest", values: [43, 45.5, 48, 50.5, 54.5, 58.5, 62.5, 66.5, 70.5, 74.5, 78.5] },
+        { label: "C. Sleeve Length", values: [65, 68, 71, 73, 75, 77, 79, 82, 85, 88, 91] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    }
+  ],
+  "baseball-jersey": [
+    {
+      title: "Youth / Adult Unisex",
+      headers: ["", "Y2", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [32, 34, 36, 38, 40, 42, 44, 46, 49, 51, 53, 56, 58, 61, 64, 67, 70] },
+        { label: "B. Centre Back", values: [42, 46, 50, 54, 57, 62, 66, 70, 66, 68, 70, 73, 75, 77, 79, 80, 81] },
+        { label: "B. Centre Back (Tall)", values: [45, 49, 53, 57, 60, 65, 69, 73, 71, 73, 75, 78, 80, 82, 84, 85, 86] }
+      ],
+      tolerance: "\xB1 1.5cm"
+    },
+    {
+      title: "Women",
+      headers: ["", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [40, 42, 45, 48, 51, 53, 55, 56, 59] },
+        { label: "B. Centre Back", values: [58, 60, 62, 64, 67, 69, 71, 73, 74] },
+        { label: "B. Centre Back (Tall)", values: [63, 65, 67, 69, 72, 74, 76, 78, 79] }
+      ],
+      tolerance: "\xB1 1.5cm"
+    }
+  ],
+  "rugby-jersey": [
+    {
+      title: "Rugby Jersey",
+      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [35, 37, 39, 41, 43, 45, 43.5, 46, 48.5, 51, 53.5, 56, 58.5, 61, 63.5, 66, 68.5] },
+        { label: "B. Length", values: [50, 54, 58, 62, 66, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, 90, 92] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    },
+    {
+      title: "Rugby Shorts",
+      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
+      rows: [
+        { label: "A. \xBD Waist", values: [26, 28, 30, 32, 34, 36, 40, 42, 44, 45, 48, 50, 52, 54, 56, 58, "\u2014"] },
+        { label: "B. Outside Leg", values: [27.5, 28.5, 29.5, 30.5, 31.5, 32.5, 33.5, 34.5, 35.5, 36.5, 37.5, 38.5, 39.5, 40.5, 41.5, 42.5, 43.5] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    }
+  ],
+  beanie: [
+    {
+      title: "Pom-Pom Beanie \u2014 One Size Fits Most",
+      headers: ["", "One Size"],
+      rows: [
+        { label: "A. Width (\xBD flat)", values: [20.8] },
+        { label: "B. Height (excl pom-pom)", values: [23.5] },
+        { label: "C. Cuff Depth", values: [7.6] },
+        { label: "Pom-Pom Diameter", values: [7.6] },
+        { label: "Circumference (stretched)", values: ["45\u201348"] },
+        { label: "Total Height (knit)", values: [30.5] }
+      ],
+      tolerance: "\xB1 1.0cm"
+    }
+  ],
+  socks: [
+    {
+      title: "Rugby Socks",
+      headers: ["", "XXS", "XS", "S", "M", "L", "XL", "XXL"],
+      rows: [
+        { label: "A. Heel", values: [14, 15, 18, 21, 24, 27, 29] },
+        { label: "B. Heel Flap", values: [34, 37, 40, 45, 50, 54, 57] },
+        { label: "C. Cuff", values: [8, 8, 9, 9, 10, 10, 10] },
+        { label: "D. Ribbed Top", values: [10, 10, 10, 12, 12, 12, 12] },
+        { label: "Shoe Size", values: ["9-12", "13-3", "2-7", "7-11", "11-14", "\u2014", "\u2014"] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    }
+  ]
+};
+var PRODUCT_TO_CHART = {
+  "rugby-match-jersey": "rugby-jersey",
+  "rugby-training-jersey": "tshirt",
+  "rugby-shorts": "rugby-jersey",
+  // rugby shorts table is inside the rugby-jersey entry
+  "rugby-socks": "socks",
+  "league-jersey": "tshirt",
+  "league-shorts": "shorts",
+  "netball-dress": "tshirt",
+  "netball-singlet": "singlet",
+  "netball-skirt": "shorts",
+  "netball-bike-shorts": "shorts",
+  "football-jersey": "tshirt",
+  "football-shorts": "shorts",
+  "football-socks": "socks",
+  "basketball-singlet": "singlet",
+  "basketball-shorts": "shorts",
+  "cricket-polo": "tshirt",
+  "cricket-trousers": "trackpants",
+  "hockey-jersey": "tshirt",
+  "hockey-skort": "shorts",
+  "training-tee": "tshirt",
+  "training-polo": "tshirt",
+  "training-singlet": "singlet",
+  "training-shorts": "shorts",
+  "track-pants": "trackpants",
+  "hoodie": "hoodie",
+  "zip-hoodie": "hoodie",
+  "quarter-zip": "tracksuit-jacket",
+  "crew-neck": "hoodie",
+  "softshell-jacket": "rain-jacket",
+  "puffer-jacket": "rain-jacket",
+  "wet-weather-jacket": "rain-jacket",
+  "gameday-jacket": "tracksuit-jacket",
+  "supporters-tee": "tshirt",
+  "supporters-polo": "tshirt",
+  "supporters-singlet": "singlet",
+  "bucket-hat": "tshirt",
+  // no specific hat chart; won't render in PO
+  "cap-structured": "tshirt",
+  "cap-snapback": "tshirt",
+  "beanie": "beanie",
+  "kit-bag": "tshirt",
+  "backpack": "tshirt",
+  "drawstring-bag": "tshirt",
+  "baseball-jersey": "baseball-jersey"
+};
+var SIZE_CHART_DIAGRAMS = {
+  tshirt: "/size-charts/tshirt-diagram.png",
+  hoodie: "/size-charts/hoodie-diagram.png",
+  singlet: "/size-charts/singlet-diagram.png",
+  shorts: "/size-charts/shorts-diagram.png",
+  trackpants: "/size-charts/trackpants-diagram.png",
+  "rain-jacket": "/size-charts/rain-jacket-diagram.png",
+  "tracksuit-jacket": "/size-charts/tracksuit-jacket-diagram.png",
+  "baseball-jersey": "/size-charts/baseball-jersey-diagram.png",
+  "rugby-jersey": "/size-charts/rugby-jersey-diagram.png",
+  socks: "/size-charts/socks-diagram.png",
+  beanie: "/size-charts/beanie-diagram.png"
+};
 function suggestSizeChart(productType) {
   if (!productType) return "tshirt";
   return PRODUCT_TO_CHART[productType] || "tshirt";
@@ -92851,322 +93133,11 @@ function suggestSizeChart(productType) {
 function getSizeChartTables(chartType) {
   return SIZE_CHART_DATA[chartType] || SIZE_CHART_DATA.tshirt;
 }
-var SIZE_CHART_LABELS, SIZE_CHART_DATA, PRODUCT_TO_CHART, SIZE_CHART_DIAGRAMS;
-var init_size_charts = __esm({
-  "shared/size-charts.ts"() {
-    "use strict";
-    SIZE_CHART_LABELS = {
-      tshirt: "T-Shirts / Polos",
-      hoodie: "Hoodies / Crew Necks",
-      singlet: "Singlets",
-      shorts: "Shorts",
-      trackpants: "Trackpants",
-      "rain-jacket": "Rain / Wet Weather Jackets",
-      "tracksuit-jacket": "Tracksuit / Softshell Jackets",
-      "baseball-jersey": "Baseball Jersey",
-      "rugby-jersey": "Rugby Jersey + Shorts",
-      socks: "Socks",
-      beanie: "Beanie (Pom-Pom)"
-    };
-    SIZE_CHART_DATA = {
-      tshirt: [
-        {
-          title: "Youth / Adult Unisex",
-          headers: ["", "Y2", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
-          rows: [
-            { label: "A. \xBD Chest", values: [32, 34, 36, 38, 40, 42, 44, 46, 49, 51, 53, 56, 58, 61, 64, 67, 70] },
-            { label: "B. Centre Back", values: [42, 46, 50, 54, 57, 62, 66, 70, 66, 68, 70, 73, 75, 77, 79, 80, 81] },
-            { label: "B. Centre Back (Tall)", values: [45, 49, 53, 57, 60, 65, 69, 73, 71, 73, 75, 78, 80, 82, 84, 85, 86] }
-          ],
-          tolerance: "\xB1 1.0cm"
-        },
-        {
-          title: "Women",
-          headers: ["", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL"],
-          rows: [
-            { label: "A. \xBD Chest", values: [40, 42, 45, 48, 51, 53, 55, 56, 59] },
-            { label: "B. Centre Back", values: [58, 60, 62, 64, 67, 69, 71, 73, 74] },
-            { label: "B. Centre Back (Tall)", values: [63, 65, 67, 69, 72, 74, 76, 78, 79] }
-          ],
-          tolerance: "\xB1 1.0cm"
-        }
-      ],
-      hoodie: [
-        {
-          title: "Youth / Adult Unisex",
-          headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
-          rows: [
-            { label: "A. Centre Back Length", values: [46, 49, 52, 55, 58, 61, 64, 66, 68, 70, 72, 74, 76, 78, 80, 82] },
-            { label: "B. \xBD Chest", values: [38, 40, 42, 44, 46, 48, 50, 52, 55, 58, 61, 64, 67, 70, 73, 76] },
-            { label: "C. Sleeve (neck to cuff)", values: [58, 61, 64, 65, 68, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, "\u2014"] }
-          ],
-          tolerance: "\xB1 2.0cm"
-        },
-        {
-          title: "Women",
-          headers: ["", "W3XS", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
-          rows: [
-            { label: "A. Centre Back Length", values: [56, 59, 62, 65, 68, 71, 74, 77, 80, 83, 86] },
-            { label: "B. \xBD Chest", values: [43, 45.5, 48, 50.5, 54.5, 58.5, 62.5, 66.5, 70.5, 74.5, 78.5] },
-            { label: "C. Sleeve (neck to cuff)", values: [65, 68, 71, 73, 75, 77, 79, 82, 85, 88, 91] }
-          ],
-          tolerance: "\xB1 2.0cm"
-        }
-      ],
-      singlet: [
-        {
-          title: "Youth",
-          headers: ["", "Y2", "Y3", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16"],
-          rows: [
-            { label: "A. \xBD Chest", values: [33.5, 35.5, 37.5, 39.5, 41.5, 43.5, 45.5, 47.5, 49.5] },
-            { label: "B. Back Length", values: [40.5, 44.5, 48.5, 52.5, 56.5, 60.5, 64.5, 68.5, 72.5] },
-            { label: "B. Back Length (Tall)", values: [43.5, 47.5, 51.5, 55.5, 59.5, 63.5, 67.5, 71.5, 75.5] }
-          ],
-          tolerance: "\xB1 1.0cm"
-        },
-        {
-          title: "Adult Unisex",
-          headers: ["", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
-          rows: [
-            { label: "A. \xBD Chest", values: [52, 54.5, 57, 59.5, 62, 64.5, 67, 69.5, 72] },
-            { label: "B. Back Length", values: [72.5, 74.5, 76.5, 78.5, 80.5, 84.5, 86, "\u2014", "\u2014"] },
-            { label: "B. Back Length (Tall)", values: [77.5, 79.5, 81.5, 83.5, 85.5, 89.5, 91, 93, 95] }
-          ],
-          tolerance: "\xB1 1.0cm"
-        }
-      ],
-      shorts: [
-        {
-          title: "Adult Football Shorts",
-          headers: ["", "XS", "S", "M", "L", "XL", "2XL", "3XL"],
-          rows: [
-            { label: "A. \xBD Waist", values: [32.5, 36.4, 40.3, 44.2, 48.1, 52, 55.9] },
-            { label: "B. \xBD Hip", values: [41.2, 45, 48.8, 52.6, 56.4, 60.2, 64] },
-            { label: "C. Leg Opening", values: [49.7, 55.7, 61.7, 67.6, 73.6, 80, 85.5] },
-            { label: "D. Front Rise", values: [35.5, 36, 36.5, 37, 37.5, 38, 38.5] },
-            { label: "E. Back Rise", values: [41.5, 42, 42.5, 43, 43.5, 44, 44.5] },
-            { label: "F. Inseam", values: [14, 14, 14, 14, 14, 14, 14] }
-          ],
-          tolerance: "\xB1 1.0cm"
-        },
-        {
-          title: "Youth Football Shorts",
-          headers: ["", "YS", "YM", "YL", "YXL"],
-          rows: [
-            { label: "A. \xBD Waist", values: [30, 32.5, 35.1, 37.7] },
-            { label: "B. \xBD Hip", values: [36, 38.5, 41, 43.5] },
-            { label: "C. Leg Opening", values: [45.9, 49.8, 53.7, 57.6] },
-            { label: "D. Front Rise", values: [25.9, 30, 34, 38] },
-            { label: "E. Back Rise", values: [29.9, 34, 38, 42] },
-            { label: "F. Inseam", values: [12, 12, 12, 12] }
-          ],
-          tolerance: "\xB1 1.0cm"
-        }
-      ],
-      trackpants: [
-        {
-          title: "Youth / Adult Unisex",
-          headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
-          rows: [
-            { label: "A. \xBD Waist", values: [23, 25.5, 28, 30.5, 33, 35.5, 38, 40, 43, 45, 48, 50, 53, 55, 58] },
-            { label: "B. Outside Leg (incl W/B)", values: [70, 75, 80, 85, 90, 95, 99, 100, 101, 102, 103, 104, 105, 106, 107] },
-            { label: "C. \xBD Leg Opening (Regular)", values: [13, 14, 15, 17, 18, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] },
-            { label: "C. \xBD Leg Opening (Tapered)", values: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24] }
-          ],
-          tolerance: "\xB1 1.5cm"
-        },
-        {
-          title: "Women",
-          headers: ["", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
-          rows: [
-            { label: "A. \xBD Waist Relaxed", values: [32, 34, 36, 38, 40, 42, 44, 46, 48, 50] },
-            { label: "B. Outside Leg (incl W/B)", values: [96, 98, 100, 102, 104, 106, 108, 110, 112, 114] },
-            { label: "C. \xBD Leg Opening (Regular)", values: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29] },
-            { label: "C. \xBD Leg Opening (Tapered)", values: [12.5, 13, 13.5, 14, 14.5, 15, 15, 15.5, 15.5, 16] }
-          ],
-          tolerance: "\xB1 1.5cm"
-        }
-      ],
-      "rain-jacket": [
-        {
-          title: "Youth / Adult Unisex",
-          headers: ["", "YXS", "YS", "YM", "YL", "YXL", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"],
-          rows: [
-            { label: "A. \xBD Chest", values: [41, 44, 47, 50, 53, 55, 59, 62, 65, 68, 71, 74, 77] },
-            { label: "B. Centre Back Length", values: [54, 58, 62, 66, 70, 74, 78.5, 80, 81.5, 83, 84.5, 87, 90] },
-            { label: "C. Sleeve (neck to cuff)", values: [57, 60, 62, 65, 68, 71, 74, 77, 81, 84, 87, 90, 93] }
-          ],
-          tolerance: "\xB1 2.0cm"
-        },
-        {
-          title: "Women",
-          headers: ["", "W3XS", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
-          rows: [
-            { label: "A. \xBD Chest", values: [43, 45.5, 48, 50.5, 54.5, 58.5, 62.5, 66.5, 70.5, 74.5, 78.5] },
-            { label: "B. Centre Back Length", values: [60, 63.5, 67, 70.5, 74, 77.5, 81, 84.5, 88, 91, 94] },
-            { label: "C. Sleeve (neck to cuff)", values: [65, 68, 71, 73, 75, 77, 79, 82, 85, 88, 91] }
-          ],
-          tolerance: "\xB1 2.0cm"
-        }
-      ],
-      "tracksuit-jacket": [
-        {
-          title: "Youth / Adult Unisex",
-          headers: ["", "4", "6", "8", "10", "12", "14", "S", "M", "L", "XL", "2XL", "3XL", "4XL"],
-          rows: [
-            { label: "A. Length", values: [51, 55, 58, 61, 64, 67, 70, 73, 76, 79, 82, 85, "\u2014"] },
-            { label: "B. \xBD Chest", values: [41, 44, 47, 50, 53, 56, 59, 62, 65, 68, 71, 74, 77] },
-            { label: "C. Sleeve Length", values: [57, 60, 62, 65, 68, 71, 74, 77, 81, 84, 87, 90, 93] }
-          ],
-          tolerance: "\xB1 2.0cm"
-        },
-        {
-          title: "Women",
-          headers: ["", "W3XS", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
-          rows: [
-            { label: "A. Length", values: [56, 59, 62, 65, 68, 71, 74, 77, 80, 83, 86] },
-            { label: "B. \xBD Chest", values: [43, 45.5, 48, 50.5, 54.5, 58.5, 62.5, 66.5, 70.5, 74.5, 78.5] },
-            { label: "C. Sleeve Length", values: [65, 68, 71, 73, 75, 77, 79, 82, 85, 88, 91] }
-          ],
-          tolerance: "\xB1 2.0cm"
-        }
-      ],
-      "baseball-jersey": [
-        {
-          title: "Youth / Adult Unisex",
-          headers: ["", "Y2", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
-          rows: [
-            { label: "A. \xBD Chest", values: [32, 34, 36, 38, 40, 42, 44, 46, 49, 51, 53, 56, 58, 61, 64, 67, 70] },
-            { label: "B. Centre Back", values: [42, 46, 50, 54, 57, 62, 66, 70, 66, 68, 70, 73, 75, 77, 79, 80, 81] },
-            { label: "B. Centre Back (Tall)", values: [45, 49, 53, 57, 60, 65, 69, 73, 71, 73, 75, 78, 80, 82, 84, 85, 86] }
-          ],
-          tolerance: "\xB1 1.5cm"
-        },
-        {
-          title: "Women",
-          headers: ["", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL"],
-          rows: [
-            { label: "A. \xBD Chest", values: [40, 42, 45, 48, 51, 53, 55, 56, 59] },
-            { label: "B. Centre Back", values: [58, 60, 62, 64, 67, 69, 71, 73, 74] },
-            { label: "B. Centre Back (Tall)", values: [63, 65, 67, 69, 72, 74, 76, 78, 79] }
-          ],
-          tolerance: "\xB1 1.5cm"
-        }
-      ],
-      "rugby-jersey": [
-        {
-          title: "Rugby Jersey",
-          headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
-          rows: [
-            { label: "A. \xBD Chest", values: [35, 37, 39, 41, 43, 45, 43.5, 46, 48.5, 51, 53.5, 56, 58.5, 61, 63.5, 66, 68.5] },
-            { label: "B. Length", values: [50, 54, 58, 62, 66, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, 90, 92] }
-          ],
-          tolerance: "\xB1 2.0cm"
-        },
-        {
-          title: "Rugby Shorts",
-          headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
-          rows: [
-            { label: "A. \xBD Waist", values: [26, 28, 30, 32, 34, 36, 40, 42, 44, 45, 48, 50, 52, 54, 56, 58, "\u2014"] },
-            { label: "B. Outside Leg", values: [27.5, 28.5, 29.5, 30.5, 31.5, 32.5, 33.5, 34.5, 35.5, 36.5, 37.5, 38.5, 39.5, 40.5, 41.5, 42.5, 43.5] }
-          ],
-          tolerance: "\xB1 2.0cm"
-        }
-      ],
-      beanie: [
-        {
-          title: "Pom-Pom Beanie \u2014 One Size Fits Most",
-          headers: ["", "One Size"],
-          rows: [
-            { label: "A. Width (\xBD flat)", values: [20.8] },
-            { label: "B. Height (excl pom-pom)", values: [23.5] },
-            { label: "C. Cuff Depth", values: [7.6] },
-            { label: "Pom-Pom Diameter", values: [7.6] },
-            { label: "Circumference (stretched)", values: ["45\u201348"] },
-            { label: "Total Height (knit)", values: [30.5] }
-          ],
-          tolerance: "\xB1 1.0cm"
-        }
-      ],
-      socks: [
-        {
-          title: "Rugby Socks",
-          headers: ["", "XXS", "XS", "S", "M", "L", "XL", "XXL"],
-          rows: [
-            { label: "A. Heel", values: [14, 15, 18, 21, 24, 27, 29] },
-            { label: "B. Heel Flap", values: [34, 37, 40, 45, 50, 54, 57] },
-            { label: "C. Cuff", values: [8, 8, 9, 9, 10, 10, 10] },
-            { label: "D. Ribbed Top", values: [10, 10, 10, 12, 12, 12, 12] },
-            { label: "Shoe Size", values: ["9-12", "13-3", "2-7", "7-11", "11-14", "\u2014", "\u2014"] }
-          ],
-          tolerance: "\xB1 2.0cm"
-        }
-      ]
-    };
-    PRODUCT_TO_CHART = {
-      "rugby-match-jersey": "rugby-jersey",
-      "rugby-training-jersey": "tshirt",
-      "rugby-shorts": "rugby-jersey",
-      // rugby shorts table is inside the rugby-jersey entry
-      "rugby-socks": "socks",
-      "league-jersey": "tshirt",
-      "league-shorts": "shorts",
-      "netball-dress": "tshirt",
-      "netball-singlet": "singlet",
-      "netball-skirt": "shorts",
-      "netball-bike-shorts": "shorts",
-      "football-jersey": "tshirt",
-      "football-shorts": "shorts",
-      "football-socks": "socks",
-      "basketball-singlet": "singlet",
-      "basketball-shorts": "shorts",
-      "cricket-polo": "tshirt",
-      "cricket-trousers": "trackpants",
-      "hockey-jersey": "tshirt",
-      "hockey-skort": "shorts",
-      "training-tee": "tshirt",
-      "training-polo": "tshirt",
-      "training-singlet": "singlet",
-      "training-shorts": "shorts",
-      "track-pants": "trackpants",
-      "hoodie": "hoodie",
-      "zip-hoodie": "hoodie",
-      "quarter-zip": "tracksuit-jacket",
-      "crew-neck": "hoodie",
-      "softshell-jacket": "rain-jacket",
-      "puffer-jacket": "rain-jacket",
-      "wet-weather-jacket": "rain-jacket",
-      "gameday-jacket": "tracksuit-jacket",
-      "supporters-tee": "tshirt",
-      "supporters-polo": "tshirt",
-      "supporters-singlet": "singlet",
-      "bucket-hat": "tshirt",
-      // no specific hat chart; won't render in PO
-      "cap-structured": "tshirt",
-      "cap-snapback": "tshirt",
-      "beanie": "beanie",
-      "kit-bag": "tshirt",
-      "backpack": "tshirt",
-      "drawstring-bag": "tshirt",
-      "baseball-jersey": "baseball-jersey"
-    };
-    SIZE_CHART_DIAGRAMS = {
-      tshirt: "/size-charts/tshirt-diagram.png",
-      hoodie: "/size-charts/hoodie-diagram.png",
-      singlet: "/size-charts/singlet-diagram.png",
-      shorts: "/size-charts/shorts-diagram.png",
-      trackpants: "/size-charts/trackpants-diagram.png",
-      "rain-jacket": "/size-charts/rain-jacket-diagram.png",
-      "tracksuit-jacket": "/size-charts/tracksuit-jacket-diagram.png",
-      "baseball-jersey": "/size-charts/baseball-jersey-diagram.png",
-      "rugby-jersey": "/size-charts/rugby-jersey-diagram.png",
-      socks: "/size-charts/socks-diagram.png",
-      beanie: "/size-charts/beanie-diagram.png"
-    };
-  }
-});
 
 // server/po-pdf.ts
+var OAUTH_TOKEN_URL3 = "https://oauth2.googleapis.com/token";
+var DRIVE_API = "https://www.googleapis.com/drive/v3";
+var UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
 async function getAccessToken3() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -93460,22 +93431,10 @@ Content-Type: application/pdf\r
     return null;
   }
 }
-var OAUTH_TOKEN_URL3, DRIVE_API, UPLOAD_API;
-var init_po_pdf = __esm({
-  "server/po-pdf.ts"() {
-    "use strict";
-    init_puppeteer_core();
-    init_esm2();
-    init_storage();
-    init_po_milestones();
-    init_size_charts();
-    OAUTH_TOKEN_URL3 = "https://oauth2.googleapis.com/token";
-    DRIVE_API = "https://www.googleapis.com/drive/v3";
-    UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
-  }
-});
 
 // server/ghl-contacts.ts
+var GHL_API_BASE3 = "https://services.leadconnectorhq.com";
+var GHL_VERSION = "2021-07-28";
 function creds3() {
   const apiKey = process.env.SIDELINE_GHL_API_KEY;
   const locationId = process.env.SIDELINE_GHL_LOCATION_ID;
@@ -93627,1655 +93586,1687 @@ async function createGhlOpportunity2(input2) {
     return { opportunityId: null, error: err.message || "unknown" };
   }
 }
-var GHL_API_BASE3, GHL_VERSION;
-var init_ghl_contacts = __esm({
-  "server/ghl-contacts.ts"() {
-    "use strict";
-    GHL_API_BASE3 = "https://services.leadconnectorhq.com";
-    GHL_VERSION = "2021-07-28";
-  }
-});
 
 // server/routes/admin.ts
-import { Router as Router6 } from "express";
-import { z as z6 } from "zod";
-import { eq as eq5 } from "drizzle-orm";
-var router5, updateOrderSchema, designReviewSchema, ghlImportSchema, updateCustomerSchema, inviteSchema, supplierInviteSchema, updateItemSchema, extractColorsSchema, createPoSchema, addItemSchema, sizeBreakdownSchema, qcSchema, messageSchema, assignSupplierSchema, raisePoSchema, adminUploadDesignSchema, updateFolderSchema, sendForApprovalSchema, admin_default;
-var init_admin = __esm({
-  "server/routes/admin.ts"() {
-    "use strict";
-    init_auth();
-    init_storage();
-    init_notifications();
-    init_email();
-    init_db();
-    init_schema();
-    init_ghl();
-    init_approvals();
-    init_po_number();
-    init_google_drive();
-    init_color_extract();
-    init_design_brief();
-    init_po_pdf();
-    init_ghl_contacts();
-    init_ghl_config();
-    router5 = Router6();
-    router5.use(requireAdmin);
-    router5.get("/dashboard", async (_req, res) => {
-      try {
-        const stats = await storage.getDashboardStats();
-        res.json(stats);
-      } catch (err) {
-        console.error("Admin dashboard error:", err);
-        res.status(500).json({ error: "Failed to load dashboard" });
+init_ghl_config();
+var router5 = Router6();
+router5.use(requireAdmin);
+router5.get("/dashboard", async (_req, res) => {
+  try {
+    const stats = await storage.getDashboardStats();
+    res.json(stats);
+  } catch (err) {
+    console.error("Admin dashboard error:", err);
+    res.status(500).json({ error: "Failed to load dashboard" });
+  }
+});
+router5.get("/orders", async (req, res) => {
+  try {
+    const { status, designStatus, search, limit, offset } = req.query;
+    const result = await storage.getAllOrders({
+      status,
+      designStatus,
+      search,
+      limit: limit ? parseInt(limit) : void 0,
+      offset: offset ? parseInt(offset) : void 0
+    });
+    res.json(result);
+  } catch (err) {
+    console.error("Admin orders error:", err);
+    res.status(500).json({ error: "Failed to load orders" });
+  }
+});
+router5.get("/orders/:id", async (req, res) => {
+  try {
+    const result = await storage.getOrderWithDetails(req.params.id);
+    if (!result) return res.status(404).json({ error: "Order not found" });
+    res.json(result);
+  } catch (err) {
+    console.error("Admin order detail error:", err);
+    res.status(500).json({ error: "Failed to load order" });
+  }
+});
+var updateOrderSchema = z6.object({
+  status: z6.string().optional(),
+  designStatus: z6.string().optional(),
+  adminNotes: z6.string().optional(),
+  trackingNumber: z6.string().optional(),
+  trackingUrl: z6.string().optional(),
+  estimatedDeliveryDate: z6.string().transform((v) => v ? new Date(v) : void 0).optional(),
+  customerName: z6.string().optional(),
+  customerEmail: z6.string().optional(),
+  customerFirstName: z6.string().optional(),
+  customerLastName: z6.string().optional(),
+  customerPhone: z6.string().optional(),
+  companyEmail: z6.string().optional(),
+  companyPhone: z6.string().optional(),
+  poReference: z6.string().optional(),
+  accountName: z6.string().optional(),
+  isRepeatOrder: z6.boolean().optional(),
+  poComments: z6.string().optional(),
+  deliveryAttention: z6.string().optional(),
+  deliveryAddress: z6.string().optional(),
+  deliveryEmail: z6.string().optional(),
+  deliveryPhone: z6.string().optional(),
+  dueDate: z6.union([z6.string().regex(/^\d{4}-\d{2}-\d{2}$/), z6.null()]).optional(),
+  orderType: z6.enum(["team-store", "bulk-order", "sample-run"]).optional()
+});
+router5.patch("/orders/:id", async (req, res) => {
+  try {
+    const data = updateOrderSchema.parse(req.body);
+    const oldOrder = await storage.getOrder(req.params.id);
+    const order = await storage.updateOrder(req.params.id, data);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (data.status && data.status !== oldOrder?.status && order.userId) {
+      notifyOrderStatusChange({
+        userId: order.userId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        newStatus: data.status,
+        customerEmail: order.customerEmail
+      }).catch((err) => console.error("Notify order status error:", err));
+    }
+    res.json(order);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin update order error:", err);
+    res.status(500).json({ error: "Failed to update order" });
+  }
+});
+var designReviewSchema = z6.object({
+  designFileId: z6.string(),
+  action: z6.enum(["approved", "rejected"]),
+  comment: z6.string().optional()
+});
+router5.post("/orders/:id/design-review", async (req, res) => {
+  try {
+    const { designFileId, action, comment } = designReviewSchema.parse(req.body);
+    const user = req.user;
+    const file = await storage.updateDesignFileStatus(designFileId, action);
+    if (!file) return res.status(404).json({ error: "Design file not found" });
+    if (comment || action) {
+      await storage.createDesignComment({
+        designFileId,
+        userId: user.userId,
+        comment: comment || `Design ${action}`,
+        action
+      });
+    }
+    if (file.userId) {
+      const order = await storage.getOrder(file.orderId);
+      const customer = await storage.getUser(file.userId);
+      const notifyOpts = {
+        userId: file.userId,
+        orderId: file.orderId,
+        designFileId: file.id,
+        label: file.label,
+        orderNumber: order?.orderNumber || "",
+        customerEmail: customer?.email || order?.customerEmail
+      };
+      if (action === "approved") {
+        await notifyDesignApproved(notifyOpts);
+      } else {
+        await notifyDesignRejected({ ...notifyOpts, comment });
       }
-    });
-    router5.get("/orders", async (req, res) => {
-      try {
-        const { status, designStatus, search, limit, offset } = req.query;
-        const result = await storage.getAllOrders({
-          status,
-          designStatus,
-          search,
-          limit: limit ? parseInt(limit) : void 0,
-          offset: offset ? parseInt(offset) : void 0
-        });
-        res.json(result);
-      } catch (err) {
-        console.error("Admin orders error:", err);
-        res.status(500).json({ error: "Failed to load orders" });
+    }
+    const allDesigns = await storage.getDesignFilesByOrder(file.orderId);
+    const latestByLabel = /* @__PURE__ */ new Map();
+    for (const d of allDesigns) {
+      const existing = latestByLabel.get(d.label);
+      if (!existing || d.createdAt && existing.createdAt && d.createdAt > existing.createdAt) {
+        latestByLabel.set(d.label, d);
       }
+    }
+    const latestDesigns = Array.from(latestByLabel.values());
+    const allApproved = latestDesigns.length > 0 && latestDesigns.every((d) => d.status === "approved");
+    if (allApproved) {
+      await storage.updateOrder(file.orderId, { designStatus: "approved" });
+    } else if (action === "rejected") {
+      await storage.updateOrder(file.orderId, { designStatus: "needs_revision" });
+    }
+    res.json({ file, allApproved });
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin design review error:", err);
+    res.status(500).json({ error: "Failed to review design" });
+  }
+});
+router5.get("/vault", async (_req, res) => {
+  try {
+    const rows = await db.select({
+      id: orders.id,
+      orderNumber: orders.orderNumber,
+      poReference: orders.poReference,
+      accountName: orders.accountName,
+      customerEmail: orders.customerEmail,
+      customerFirstName: orders.customerFirstName,
+      customerLastName: orders.customerLastName,
+      driveFolderId: orders.driveFolderId,
+      driveFolderUrl: orders.driveFolderUrl,
+      driveFolderName: orders.driveFolderName,
+      pipelineStage: orders.pipelineStage,
+      createdAt: orders.createdAt
+    }).from(orders).orderBy(orders.createdAt);
+    res.json({
+      configured: isDriveConfigured(),
+      orders: rows.reverse()
+      // most recent first
     });
-    router5.get("/orders/:id", async (req, res) => {
-      try {
-        const result = await storage.getOrderWithDetails(req.params.id);
-        if (!result) return res.status(404).json({ error: "Order not found" });
-        res.json(result);
-      } catch (err) {
-        console.error("Admin order detail error:", err);
-        res.status(500).json({ error: "Failed to load order" });
+  } catch (err) {
+    console.error("Admin vault list error:", err);
+    res.status(500).json({ error: "Failed to load vault" });
+  }
+});
+router5.get("/vault/:orderId/files", async (req, res) => {
+  try {
+    const [row] = await db.select({
+      id: orders.id,
+      orderNumber: orders.orderNumber,
+      poReference: orders.poReference,
+      accountName: orders.accountName,
+      driveFolderId: orders.driveFolderId,
+      driveFolderUrl: orders.driveFolderUrl,
+      driveFolderName: orders.driveFolderName
+    }).from(orders).where(eq4(orders.id, req.params.orderId)).limit(1);
+    if (!row) return res.status(404).json({ error: "Order not found" });
+    if (!row.driveFolderId) {
+      return res.json({ order: row, files: [], missing: true });
+    }
+    const folderId = req.query.folderId || row.driveFolderId;
+    const recursive = req.query.recursive !== "false" && !req.query.folderId;
+    const files = recursive ? await listFilesRecursive(row.driveFolderId) : await listFilesInFolder(folderId);
+    let subfolders = [];
+    if (recursive) {
+      const all = await listFilesInFolder(row.driveFolderId);
+      subfolders = all.filter((f) => f.mimeType === "application/vnd.google-apps.folder");
+    }
+    res.json({
+      order: row,
+      files,
+      subfolders,
+      folderId,
+      rootFolderId: row.driveFolderId,
+      recursive,
+      missing: false
+    });
+  } catch (err) {
+    console.error("Admin vault files error:", err);
+    res.status(500).json({ error: "Failed to load vault files" });
+  }
+});
+router5.post("/vault/:orderId/create-folder", async (req, res) => {
+  try {
+    const [row] = await db.select().from(orders).where(eq4(orders.id, req.params.orderId)).limit(1);
+    if (!row) return res.status(404).json({ error: "Order not found" });
+    if (row.driveFolderId) return res.json({ ok: true, folderId: row.driveFolderId, already: true });
+    const dateStr = (row.createdAt ? new Date(row.createdAt) : /* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const companyForFolder = row.accountName?.trim() || "Sideline";
+    const contactForFolder = [row.customerFirstName, row.customerLastName].filter(Boolean).join(" ").trim() || row.customerName?.trim() || row.customerEmail || "Unnamed Contact";
+    const folder5 = await createClientFolder({
+      date: dateStr,
+      companyName: companyForFolder,
+      contactName: contactForFolder
+    });
+    if (!folder5) return res.status(500).json({ error: "Drive folder creation failed \u2014 check GOOGLE_* env vars" });
+    await storage.updateOrder(row.id, {
+      driveFolderId: folder5.id,
+      driveFolderUrl: folder5.webViewLink,
+      driveFolderName: folder5.name
+    });
+    res.json({ ok: true, folder: folder5 });
+  } catch (err) {
+    console.error("Admin vault create-folder error:", err);
+    res.status(500).json({ error: "Failed to create Drive folder" });
+  }
+});
+router5.get("/ghl/search", async (req, res) => {
+  try {
+    const q = (req.query.q || "").trim();
+    if (q.length < 2) return res.json({ contacts: [], total: 0 });
+    const result = await searchGhlContacts(q, 10);
+    const emails = result.contacts.map((c) => c.email).filter((e) => !!e);
+    const localLinks = {};
+    for (const email of emails) {
+      const local = await storage.getUserByEmail(email);
+      if (local) localLinks[email] = { userId: local.id, teamName: local.teamName };
+    }
+    res.json({
+      contacts: result.contacts.map((c) => ({
+        id: c.id,
+        email: c.email,
+        firstName: c.firstName,
+        lastName: c.lastName,
+        phone: c.phone,
+        companyName: c.companyName,
+        tags: c.tags,
+        linkedUser: c.email ? localLinks[c.email] || null : null
+      })),
+      total: result.total
+    });
+  } catch (err) {
+    console.error("Admin GHL search error:", err);
+    res.status(500).json({ error: "GHL search failed" });
+  }
+});
+router5.get("/ghl/lookup", async (req, res) => {
+  try {
+    const email = (req.query.email || "").trim();
+    if (!email) return res.status(400).json({ error: "email required" });
+    const ghlContact = await findGhlContactByEmail(email);
+    const local = await storage.getUserByEmail(email);
+    res.json({
+      ghl: ghlContact ? {
+        id: ghlContact.id,
+        email: ghlContact.email,
+        firstName: ghlContact.firstName,
+        lastName: ghlContact.lastName,
+        phone: ghlContact.phone,
+        companyName: ghlContact.companyName,
+        tags: ghlContact.tags
+      } : null,
+      local: local ? { id: local.id, email: local.email, teamName: local.teamName, ghlContactId: local.ghlContactId } : null
+    });
+  } catch (err) {
+    console.error("Admin GHL lookup error:", err);
+    res.status(500).json({ error: "GHL lookup failed" });
+  }
+});
+var ghlImportSchema = z6.object({
+  ghlContactId: z6.string().min(1),
+  sendInvite: z6.boolean().optional().default(true)
+});
+router5.post("/ghl/import", async (req, res) => {
+  try {
+    const { ghlContactId, sendInvite } = ghlImportSchema.parse(req.body);
+    const contact = await getGhlContact(ghlContactId);
+    if (!contact || !contact.email) {
+      return res.status(404).json({ error: "GHL contact not found or missing email" });
+    }
+    const existing = await storage.getUserByEmail(contact.email);
+    if (existing) {
+      if (!existing.ghlContactId) {
+        await storage.updateCustomer(existing.id, { ghlContactId: contact.id });
       }
+      return res.status(200).json({
+        id: existing.id,
+        email: existing.email,
+        imported: false,
+        reason: "already_linked"
+      });
+    }
+    const teamName = contact.companyName || [contact.firstName, contact.lastName].filter(Boolean).join(" ").trim() || void 0;
+    const phone = contact.phone || void 0;
+    const user = await storage.createInvite(contact.email, teamName, "customer", contact.id, phone);
+    if (sendInvite && user.inviteToken) {
+      sendInviteEmail(contact.email, user.inviteToken, teamName).catch(
+        (err) => console.error("Failed to send invite email:", err)
+      );
+    }
+    res.status(201).json({
+      id: user.id,
+      email: user.email,
+      ghlContactId: contact.id,
+      inviteToken: user.inviteToken,
+      inviteExpiresAt: user.inviteExpiresAt,
+      imported: true
     });
-    updateOrderSchema = z6.object({
-      status: z6.string().optional(),
-      designStatus: z6.string().optional(),
-      adminNotes: z6.string().optional(),
-      trackingNumber: z6.string().optional(),
-      trackingUrl: z6.string().optional(),
-      estimatedDeliveryDate: z6.string().transform((v) => v ? new Date(v) : void 0).optional(),
-      customerName: z6.string().optional(),
-      customerEmail: z6.string().optional(),
-      customerFirstName: z6.string().optional(),
-      customerLastName: z6.string().optional(),
-      customerPhone: z6.string().optional(),
-      companyEmail: z6.string().optional(),
-      companyPhone: z6.string().optional(),
-      poReference: z6.string().optional(),
-      accountName: z6.string().optional(),
-      isRepeatOrder: z6.boolean().optional(),
-      poComments: z6.string().optional(),
-      deliveryAttention: z6.string().optional(),
-      deliveryAddress: z6.string().optional(),
-      deliveryEmail: z6.string().optional(),
-      deliveryPhone: z6.string().optional(),
-      dueDate: z6.union([z6.string().regex(/^\d{4}-\d{2}-\d{2}$/), z6.null()]).optional(),
-      orderType: z6.enum(["team-store", "bulk-order", "sample-run"]).optional()
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin GHL import error:", err);
+    res.status(500).json({ error: "Failed to import GHL contact" });
+  }
+});
+router5.get("/customers", async (req, res) => {
+  try {
+    const { search, limit, offset } = req.query;
+    const result = await storage.getAllCustomers({
+      search,
+      limit: limit ? parseInt(limit) : void 0,
+      offset: offset ? parseInt(offset) : void 0
     });
-    router5.patch("/orders/:id", async (req, res) => {
-      try {
-        const data = updateOrderSchema.parse(req.body);
-        const oldOrder = await storage.getOrder(req.params.id);
-        const order = await storage.updateOrder(req.params.id, data);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        if (data.status && data.status !== oldOrder?.status && order.userId) {
-          notifyOrderStatusChange({
-            userId: order.userId,
-            orderId: order.id,
-            orderNumber: order.orderNumber,
-            newStatus: data.status,
-            customerEmail: order.customerEmail
-          }).catch((err) => console.error("Notify order status error:", err));
+    res.json(result);
+  } catch (err) {
+    console.error("Admin customers error:", err);
+    res.status(500).json({ error: "Failed to load customers" });
+  }
+});
+router5.get("/customers/:id", async (req, res) => {
+  try {
+    const result = await storage.getCustomerWithOrders(req.params.id);
+    if (!result) return res.status(404).json({ error: "Customer not found" });
+    res.json(result);
+  } catch (err) {
+    console.error("Admin customer detail error:", err);
+    res.status(500).json({ error: "Failed to load customer" });
+  }
+});
+var updateCustomerSchema = z6.object({
+  teamName: z6.string().optional(),
+  contactPhone: z6.string().optional()
+});
+router5.patch("/customers/:id", async (req, res) => {
+  try {
+    const data = updateCustomerSchema.parse(req.body);
+    const customer = await storage.updateCustomer(req.params.id, data);
+    if (!customer) return res.status(404).json({ error: "Customer not found" });
+    if (customer.email) {
+      upsertGhlContact({
+        email: customer.email,
+        phone: data.contactPhone ?? customer.contactPhone ?? void 0,
+        companyName: data.teamName ?? customer.teamName ?? void 0
+      }).then(async (result) => {
+        if (result.contactId && !customer.ghlContactId) {
+          await storage.updateCustomer(customer.id, { ghlContactId: result.contactId });
         }
-        res.json(order);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin update order error:", err);
-        res.status(500).json({ error: "Failed to update order" });
+      }).catch((err) => console.error("[admin PATCH customer] GHL sync failed:", err));
+    }
+    res.json(customer);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin update customer error:", err);
+    res.status(500).json({ error: "Failed to update customer" });
+  }
+});
+var inviteSchema = z6.object({
+  email: z6.string().email(),
+  teamName: z6.string().optional(),
+  firstName: z6.string().optional(),
+  lastName: z6.string().optional(),
+  phone: z6.string().optional()
+});
+router5.post("/customers/invite", async (req, res) => {
+  try {
+    const { email, teamName, firstName, lastName, phone } = inviteSchema.parse(req.body);
+    const existing = await storage.getUserByEmail(email);
+    if (existing) return res.status(409).json({ error: "An account with this email already exists" });
+    const ghlResult = await upsertGhlContact({
+      email,
+      firstName,
+      lastName,
+      phone,
+      companyName: teamName,
+      tags: ["sideline-customer"]
+    });
+    const user = await storage.createInvite(email, teamName, "customer", ghlResult.contactId || void 0, phone);
+    if (user.inviteToken) {
+      sendInviteEmail(email, user.inviteToken, teamName).catch(
+        (err) => console.error("Failed to send invite email:", err)
+      );
+    }
+    res.status(201).json({
+      id: user.id,
+      email: user.email,
+      ghlContactId: ghlResult.contactId,
+      ghlCreated: ghlResult.created,
+      inviteToken: user.inviteToken,
+      inviteExpiresAt: user.inviteExpiresAt
+    });
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin invite error:", err);
+    res.status(500).json({ error: "Failed to create invite" });
+  }
+});
+var supplierInviteSchema = z6.object({
+  email: z6.string().email(),
+  supplierName: z6.string().min(1, "Supplier name is required")
+  // stored on users.teamName
+});
+router5.post("/suppliers/invite", async (req, res) => {
+  try {
+    const { email, supplierName } = supplierInviteSchema.parse(req.body);
+    const existing = await storage.getUserByEmail(email);
+    if (existing) return res.status(409).json({ error: "An account with this email already exists" });
+    const user = await storage.createInvite(email, supplierName, "supplier");
+    if (user.inviteToken) {
+      sendInviteEmail(email, user.inviteToken, supplierName).catch(
+        (err) => console.error("Failed to send supplier invite email:", err)
+      );
+    }
+    res.status(201).json({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      inviteToken: user.inviteToken,
+      inviteExpiresAt: user.inviteExpiresAt
+    });
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin supplier invite error:", err);
+    res.status(500).json({ error: "Failed to create supplier invite" });
+  }
+});
+router5.get("/orders/:id/invoice", async (req, res) => {
+  try {
+    const result = await storage.getOrderWithDetails(req.params.id);
+    if (!result) return res.status(404).json({ error: "Order not found" });
+    let customer = null;
+    if (result.order.userId) {
+      const user = await storage.getUser(result.order.userId);
+      if (user) {
+        customer = { email: user.email, teamName: user.teamName, contactPhone: user.contactPhone };
+      }
+    }
+    res.json({
+      order: result.order,
+      items: result.items,
+      customer: customer || {
+        email: result.order.customerEmail,
+        teamName: null,
+        contactPhone: null
+      },
+      company: {
+        name: "Sideline NZ Ltd",
+        address: "New Zealand",
+        email: "info@sidelinenz.com",
+        website: "sidelinenz.com"
       }
     });
-    designReviewSchema = z6.object({
-      designFileId: z6.string(),
-      action: z6.enum(["approved", "rejected"]),
-      comment: z6.string().optional()
-    });
-    router5.post("/orders/:id/design-review", async (req, res) => {
-      try {
-        const { designFileId, action, comment } = designReviewSchema.parse(req.body);
-        const user = req.user;
-        const file = await storage.updateDesignFileStatus(designFileId, action);
-        if (!file) return res.status(404).json({ error: "Design file not found" });
-        if (comment || action) {
-          await storage.createDesignComment({
-            designFileId,
-            userId: user.userId,
-            comment: comment || `Design ${action}`,
-            action
+  } catch (err) {
+    console.error("Admin invoice error:", err);
+    res.status(500).json({ error: "Failed to load invoice" });
+  }
+});
+var updateItemSchema = z6.object({
+  productColors: z6.array(z6.object({ hex: z6.string(), name: z6.string().optional() })).optional(),
+  brandingMethod: z6.string().optional(),
+  productType: z6.string().optional(),
+  material: z6.string().optional(),
+  productName: z6.string().optional(),
+  frontDesignUrl: z6.string().optional(),
+  backDesignUrl: z6.string().optional(),
+  elementUrls: z6.array(z6.object({ name: z6.string(), url: z6.string() })).optional(),
+  gradeGroup: z6.string().optional(),
+  designNotes: z6.string().optional(),
+  designBrief: z6.string().optional(),
+  sizeChartType: z6.string().optional()
+});
+router5.patch("/orders/:id/items/:itemId", async (req, res) => {
+  try {
+    const data = updateItemSchema.parse(req.body);
+    const user = req.user;
+    const updated = await storage.updateOrderItem(req.params.itemId, data);
+    if (!updated) return res.status(404).json({ error: "Item not found" });
+    const mirrorJobs = [];
+    if (data.frontDesignUrl) mirrorJobs.push({ url: data.frontDesignUrl, slot: "mockups" });
+    if (data.backDesignUrl) mirrorJobs.push({ url: data.backDesignUrl, slot: "mockups" });
+    if (data.elementUrls?.length) {
+      for (const el of data.elementUrls) mirrorJobs.push({ url: el.url, slot: "logos" });
+    }
+    if (mirrorJobs.length) {
+      (async () => {
+        const [ord] = await db.select({ id: orders.id, driveFolderId: orders.driveFolderId }).from(orders).where(eq4(orders.id, req.params.id)).limit(1);
+        if (!ord?.driveFolderId) return;
+        for (const job of mirrorJobs) {
+          await mirrorBlobToPoFolder({
+            poFolderId: ord.driveFolderId,
+            slot: job.slot,
+            blobUrl: job.url
           });
         }
-        if (file.userId) {
-          const order = await storage.getOrder(file.orderId);
-          const customer = await storage.getUser(file.userId);
-          const notifyOpts = {
-            userId: file.userId,
-            orderId: file.orderId,
-            designFileId: file.id,
-            label: file.label,
-            orderNumber: order?.orderNumber || "",
-            customerEmail: customer?.email || order?.customerEmail
-          };
-          if (action === "approved") {
-            await notifyDesignApproved(notifyOpts);
-          } else {
-            await notifyDesignRejected({ ...notifyOpts, comment });
-          }
-        }
-        const allDesigns = await storage.getDesignFilesByOrder(file.orderId);
-        const latestByLabel = /* @__PURE__ */ new Map();
-        for (const d of allDesigns) {
-          const existing = latestByLabel.get(d.label);
-          if (!existing || d.createdAt && existing.createdAt && d.createdAt > existing.createdAt) {
-            latestByLabel.set(d.label, d);
-          }
-        }
-        const latestDesigns = Array.from(latestByLabel.values());
-        const allApproved = latestDesigns.length > 0 && latestDesigns.every((d) => d.status === "approved");
-        if (allApproved) {
-          await storage.updateOrder(file.orderId, { designStatus: "approved" });
-        } else if (action === "rejected") {
-          await storage.updateOrder(file.orderId, { designStatus: "needs_revision" });
-        }
-        res.json({ file, allApproved });
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin design review error:", err);
-        res.status(500).json({ error: "Failed to review design" });
-      }
+      })().catch((err) => console.error("[item-patch] Drive mirror failed:", err));
+    }
+    await storage.logOrderActivity({
+      orderId: req.params.id,
+      userId: user.userId,
+      action: "item_updated",
+      details: { itemId: req.params.itemId, fields: Object.keys(data), mirroredCount: mirrorJobs.length }
     });
-    router5.get("/vault", async (_req, res) => {
-      try {
-        const rows = await db.select({
-          id: orders.id,
-          orderNumber: orders.orderNumber,
-          poReference: orders.poReference,
-          accountName: orders.accountName,
-          customerEmail: orders.customerEmail,
-          customerFirstName: orders.customerFirstName,
-          customerLastName: orders.customerLastName,
-          driveFolderId: orders.driveFolderId,
-          driveFolderUrl: orders.driveFolderUrl,
-          driveFolderName: orders.driveFolderName,
-          pipelineStage: orders.pipelineStage,
-          createdAt: orders.createdAt
-        }).from(orders).orderBy(orders.createdAt);
-        res.json({
-          configured: isDriveConfigured(),
-          orders: rows.reverse()
-          // most recent first
-        });
-      } catch (err) {
-        console.error("Admin vault list error:", err);
-        res.status(500).json({ error: "Failed to load vault" });
-      }
+    res.json(updated);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin update item error:", err);
+    res.status(500).json({ error: "Failed to update item" });
+  }
+});
+var extractColorsSchema = z6.object({
+  imageUrl: z6.string().url().optional(),
+  apply: z6.boolean().optional().default(true),
+  side: z6.enum(["front", "back"]).optional()
+});
+router5.post("/orders/:id/items/:itemId/extract-colors", async (req, res) => {
+  try {
+    const { imageUrl, apply, side } = extractColorsSchema.parse(req.body);
+    const user = req.user;
+    const [item] = await db.select().from(orderItems).where(eq4(orderItems.id, req.params.itemId)).limit(1);
+    if (!item) return res.status(404).json({ error: "Item not found" });
+    const sourceUrl = imageUrl || (side === "back" ? item.backDesignUrl : side === "front" ? item.frontDesignUrl : null) || item.frontDesignUrl || item.backDesignUrl;
+    if (!sourceUrl) return res.status(400).json({ error: "No design image on this item to analyse" });
+    const colors = await extractColorsFromImage(sourceUrl);
+    if (!colors) {
+      return res.status(502).json({ error: "Colour extraction failed \u2014 check GEMINI_API_KEY or try a different image" });
+    }
+    if (apply) {
+      await storage.updateOrderItem(req.params.itemId, { productColors: colors });
+      await storage.logOrderActivity({
+        orderId: req.params.id,
+        userId: user?.userId,
+        action: "colors_extracted",
+        details: { itemId: req.params.itemId, sourceUrl, colorCount: colors.length }
+      });
+    }
+    res.json({ colors, sourceUrl, applied: apply });
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin extract-colors error:", err);
+    res.status(500).json({ error: "Failed to extract colours" });
+  }
+});
+router5.post("/orders/:id/items/:itemId/generate-brief", async (req, res) => {
+  try {
+    const user = req.user;
+    const [item] = await db.select().from(orderItems).where(eq4(orderItems.id, req.params.itemId)).limit(1);
+    if (!item) return res.status(404).json({ error: "Item not found" });
+    const imageUrls = [];
+    if (item.frontDesignUrl) imageUrls.push(item.frontDesignUrl);
+    if (item.backDesignUrl) imageUrls.push(item.backDesignUrl);
+    if (!imageUrls.length) return res.status(400).json({ error: "Upload front or back design first" });
+    const brief = await generateDesignBrief(imageUrls);
+    if (!brief) return res.status(502).json({ error: "Design brief generation failed \u2014 check GEMINI_API_KEY" });
+    await storage.updateOrderItem(req.params.itemId, { designBrief: brief });
+    await storage.logOrderActivity({
+      orderId: req.params.id,
+      userId: user?.userId,
+      action: "design_brief_generated",
+      details: { itemId: req.params.itemId, wordCount: brief.split(/\s+/).length }
     });
-    router5.get("/vault/:orderId/files", async (req, res) => {
-      try {
-        const [row] = await db.select({
-          id: orders.id,
-          orderNumber: orders.orderNumber,
-          poReference: orders.poReference,
-          accountName: orders.accountName,
-          driveFolderId: orders.driveFolderId,
-          driveFolderUrl: orders.driveFolderUrl,
-          driveFolderName: orders.driveFolderName
-        }).from(orders).where(eq5(orders.id, req.params.orderId)).limit(1);
-        if (!row) return res.status(404).json({ error: "Order not found" });
-        if (!row.driveFolderId) {
-          return res.json({ order: row, files: [], missing: true });
-        }
-        const folderId = req.query.folderId || row.driveFolderId;
-        const recursive = req.query.recursive !== "false" && !req.query.folderId;
-        const files = recursive ? await listFilesRecursive(row.driveFolderId) : await listFilesInFolder(folderId);
-        let subfolders = [];
-        if (recursive) {
-          const all = await listFilesInFolder(row.driveFolderId);
-          subfolders = all.filter((f) => f.mimeType === "application/vnd.google-apps.folder");
-        }
-        res.json({
-          order: row,
-          files,
-          subfolders,
-          folderId,
-          rootFolderId: row.driveFolderId,
-          recursive,
-          missing: false
-        });
-      } catch (err) {
-        console.error("Admin vault files error:", err);
-        res.status(500).json({ error: "Failed to load vault files" });
-      }
-    });
-    router5.post("/vault/:orderId/create-folder", async (req, res) => {
-      try {
-        const [row] = await db.select().from(orders).where(eq5(orders.id, req.params.orderId)).limit(1);
-        if (!row) return res.status(404).json({ error: "Order not found" });
-        if (row.driveFolderId) return res.json({ ok: true, folderId: row.driveFolderId, already: true });
-        const dateStr = (row.createdAt ? new Date(row.createdAt) : /* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-        const companyForFolder = row.accountName?.trim() || "Sideline";
-        const contactForFolder = [row.customerFirstName, row.customerLastName].filter(Boolean).join(" ").trim() || row.customerName?.trim() || row.customerEmail || "Unnamed Contact";
-        const folder5 = await createClientFolder({
-          date: dateStr,
-          companyName: companyForFolder,
-          contactName: contactForFolder
-        });
-        if (!folder5) return res.status(500).json({ error: "Drive folder creation failed \u2014 check GOOGLE_* env vars" });
-        await storage.updateOrder(row.id, {
+    res.json({ brief });
+  } catch (err) {
+    console.error("Admin generate-brief error:", err);
+    res.status(500).json({ error: "Failed to generate design brief" });
+  }
+});
+router5.get("/orders/next-po-reference", async (_req, res) => {
+  try {
+    const reference = await buildPoReference();
+    res.json({ reference });
+  } catch (err) {
+    console.error("Admin next-po-reference error:", err);
+    res.status(500).json({ error: "Failed to preview PO reference" });
+  }
+});
+var createPoSchema = z6.object({
+  storeSlug: z6.string(),
+  orderType: z6.enum(["team-store", "bulk-order", "sample-run"]).optional().default("bulk-order"),
+  customerEmail: z6.string().email().optional(),
+  customerName: z6.string().optional(),
+  // full name (kept for back-compat / display)
+  customerFirstName: z6.string().optional(),
+  customerLastName: z6.string().optional(),
+  customerPhone: z6.string().optional(),
+  poReference: z6.string().optional(),
+  accountName: z6.string().optional(),
+  // company / team / club name
+  companyEmail: z6.string().email().optional(),
+  companyPhone: z6.string().optional(),
+  isRepeatOrder: z6.boolean().optional(),
+  poComments: z6.string().optional(),
+  dueDate: z6.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  // customer "Door to Customer" date
+  deliveryAttention: z6.string().optional(),
+  deliveryAddress: z6.string().optional(),
+  deliveryEmail: z6.string().optional(),
+  deliveryPhone: z6.string().optional(),
+  items: z6.array(z6.object({
+    productName: z6.string(),
+    productType: z6.string().optional(),
+    material: z6.string().optional(),
+    quantity: z6.number().int().min(1),
+    unitAmount: z6.number().int().min(0),
+    brandingMethod: z6.string().optional(),
+    gradeGroup: z6.string().optional()
+    // deprecated but still accepted
+  })).min(1)
+});
+router5.post("/orders/create-po", async (req, res) => {
+  try {
+    const data = createPoSchema.parse(req.body);
+    const user = req.user;
+    const poReference = data.poReference?.trim() || await buildPoReference();
+    const firstName = data.customerFirstName?.trim() || data.customerName?.trim().split(" ")[0];
+    const lastName = data.customerLastName?.trim() || data.customerName?.trim().split(" ").slice(1).join(" ") || void 0;
+    const fullName = data.customerName?.trim() || [firstName, lastName].filter(Boolean).join(" ") || void 0;
+    const subtotal = data.items.reduce((sum, i) => sum + i.unitAmount * i.quantity, 0);
+    const clientForSlug = data.accountName || data.customerName || null;
+    const order = await withPoNumberRetry(
+      clientForSlug,
+      async (orderNumber) => storage.createOrder({
+        orderNumber,
+        storeSlug: data.storeSlug,
+        orderType: data.orderType,
+        status: "processing",
+        subtotal,
+        total: subtotal,
+        currency: "nzd",
+        customerEmail: data.customerEmail ?? null,
+        customerName: fullName ?? null,
+        customerFirstName: firstName ?? null,
+        customerLastName: lastName ?? null,
+        companyEmail: data.companyEmail ?? null,
+        companyPhone: data.companyPhone ?? null,
+        poReference,
+        accountName: data.accountName ?? null,
+        isRepeatOrder: data.isRepeatOrder ?? false,
+        poComments: data.poComments ?? null,
+        dueDate: data.dueDate ?? null,
+        deliveryAttention: data.deliveryAttention ?? null,
+        deliveryAddress: data.deliveryAddress ?? null,
+        deliveryEmail: data.deliveryEmail ?? null,
+        deliveryPhone: data.deliveryPhone ?? null
+      })
+    );
+    for (const item of data.items) {
+      await storage.createOrderItem({
+        orderId: order.id,
+        productId: "manual",
+        priceId: "manual",
+        productName: item.productName,
+        productType: item.productType ?? null,
+        material: item.material ?? null,
+        quantity: item.quantity,
+        unitAmount: item.unitAmount,
+        currency: "nzd",
+        gradeGroup: item.gradeGroup ?? null,
+        brandingMethod: item.brandingMethod ?? null
+      });
+    }
+    try {
+      const today = /* @__PURE__ */ new Date();
+      const dateStr = today.toISOString().slice(0, 10);
+      const companyForFolder = data.accountName?.trim() || "Sideline";
+      const contactForFolder = [firstName, lastName].filter(Boolean).join(" ").trim() || data.customerEmail || "Unnamed Contact";
+      const folder5 = await createClientFolder({
+        date: dateStr,
+        companyName: companyForFolder,
+        contactName: contactForFolder
+      });
+      if (folder5) {
+        await storage.updateOrder(order.id, {
           driveFolderId: folder5.id,
           driveFolderUrl: folder5.webViewLink,
           driveFolderName: folder5.name
         });
-        res.json({ ok: true, folder: folder5 });
-      } catch (err) {
-        console.error("Admin vault create-folder error:", err);
-        res.status(500).json({ error: "Failed to create Drive folder" });
       }
-    });
-    router5.get("/ghl/search", async (req, res) => {
-      try {
-        const q = (req.query.q || "").trim();
-        if (q.length < 2) return res.json({ contacts: [], total: 0 });
-        const result = await searchGhlContacts(q, 10);
-        const emails = result.contacts.map((c) => c.email).filter((e) => !!e);
-        const localLinks = {};
-        for (const email of emails) {
-          const local = await storage.getUserByEmail(email);
-          if (local) localLinks[email] = { userId: local.id, teamName: local.teamName };
+    } catch (err) {
+      console.error("[create-po] Drive folder creation failed (non-fatal):", err);
+    }
+    let ghlContactId = null;
+    if (data.customerEmail) {
+      const customer = await storage.getUserByEmail(data.customerEmail);
+      if (customer) {
+        ghlContactId = customer.ghlContactId || null;
+        await storage.linkOrdersByEmail(data.customerEmail, customer.id);
+      }
+      const customFields = [];
+      if (data.companyEmail) customFields.push({ key: "company_email", field_value: data.companyEmail });
+      if (data.companyPhone) customFields.push({ key: "company_phone", field_value: data.companyPhone });
+      const upsert = await upsertGhlContact({
+        email: data.customerEmail,
+        firstName,
+        lastName,
+        phone: data.customerPhone,
+        companyName: data.accountName,
+        tags: ["sideline-customer", "portal-po"],
+        customFields: customFields.length ? customFields : void 0
+      });
+      if (upsert.contactId) {
+        ghlContactId = upsert.contactId;
+        if (customer && !customer.ghlContactId) {
+          await storage.updateCustomer(customer.id, { ghlContactId: upsert.contactId });
         }
-        res.json({
-          contacts: result.contacts.map((c) => ({
-            id: c.id,
-            email: c.email,
-            firstName: c.firstName,
-            lastName: c.lastName,
-            phone: c.phone,
-            companyName: c.companyName,
-            tags: c.tags,
-            linkedUser: c.email ? localLinks[c.email] || null : null
-          })),
-          total: result.total
+      }
+    }
+    if (ghlContactId) {
+      const opp = await createGhlOpportunity2({
+        contactId: ghlContactId,
+        pipelineId: SIDELINE_PIPELINE_ID,
+        stageId: SIDELINE_STAGE_IDS["Lead Received"],
+        name: poReference || data.accountName || order.orderNumber || "Sideline Order",
+        monetaryValue: Math.round(subtotal / 100),
+        status: "open"
+      });
+      if (opp.opportunityId) {
+        await storage.updateOrder(order.id, {
+          ghlOpportunityId: opp.opportunityId,
+          pipelineStage: "Lead Received"
         });
-      } catch (err) {
-        console.error("Admin GHL search error:", err);
-        res.status(500).json({ error: "GHL search failed" });
       }
+    }
+    await storage.initializeProductionPipeline(order.id);
+    await storage.logOrderActivity({
+      orderId: order.id,
+      userId: user.userId,
+      action: "po_created",
+      details: { poReference, itemCount: data.items.length }
     });
-    router5.get("/ghl/lookup", async (req, res) => {
-      try {
-        const email = (req.query.email || "").trim();
-        if (!email) return res.status(400).json({ error: "email required" });
-        const ghlContact = await findGhlContactByEmail(email);
-        const local = await storage.getUserByEmail(email);
-        res.json({
-          ghl: ghlContact ? {
-            id: ghlContact.id,
-            email: ghlContact.email,
-            firstName: ghlContact.firstName,
-            lastName: ghlContact.lastName,
-            phone: ghlContact.phone,
-            companyName: ghlContact.companyName,
-            tags: ghlContact.tags
-          } : null,
-          local: local ? { id: local.id, email: local.email, teamName: local.teamName, ghlContactId: local.ghlContactId } : null
+    res.status(201).json(order);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin create PO error:", err);
+    res.status(500).json({ error: "Failed to create purchase order" });
+  }
+});
+var addItemSchema = z6.object({
+  productName: z6.string().min(1),
+  quantity: z6.number().int().min(1).default(1),
+  unitAmount: z6.number().int().min(0).default(0),
+  gradeGroup: z6.string().optional(),
+  brandingMethod: z6.string().optional(),
+  designNotes: z6.string().optional()
+});
+router5.post("/orders/:id/items", async (req, res) => {
+  try {
+    const data = addItemSchema.parse(req.body);
+    const user = req.user;
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const item = await storage.createOrderItem({
+      orderId: order.id,
+      productId: "manual",
+      priceId: "manual",
+      productName: data.productName,
+      quantity: data.quantity,
+      unitAmount: data.unitAmount,
+      currency: "nzd",
+      gradeGroup: data.gradeGroup ?? null,
+      brandingMethod: data.brandingMethod ?? null,
+      designNotes: data.designNotes ?? null
+    });
+    await storage.logOrderActivity({
+      orderId: order.id,
+      userId: user.userId,
+      action: "item_added",
+      details: { itemId: item.id, productName: data.productName }
+    });
+    res.status(201).json(item);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin add item error:", err);
+    res.status(500).json({ error: "Failed to add item" });
+  }
+});
+var sizeBreakdownSchema = z6.object({
+  orderItemId: z6.string(),
+  size: z6.string(),
+  quantity: z6.number().int().min(1),
+  playerName: z6.string().optional(),
+  playerNumber: z6.string().optional(),
+  notes: z6.string().optional()
+});
+router5.post("/orders/:id/size-breakdowns", async (req, res) => {
+  try {
+    const data = sizeBreakdownSchema.parse(req.body);
+    const user = req.user;
+    const breakdown = await storage.createSizeBreakdown({
+      ...data,
+      orderId: req.params.id,
+      playerName: data.playerName ?? null,
+      playerNumber: data.playerNumber ?? null,
+      notes: data.notes ?? null
+    });
+    await storage.logOrderActivity({
+      orderId: req.params.id,
+      userId: user.userId,
+      action: "size_breakdown_added",
+      details: { size: data.size, quantity: data.quantity, playerName: data.playerName, playerNumber: data.playerNumber }
+    });
+    res.status(201).json(breakdown);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin size breakdown error:", err);
+    res.status(500).json({ error: "Failed to create size breakdown" });
+  }
+});
+router5.patch("/orders/:id/size-breakdowns/:bid", async (req, res) => {
+  try {
+    const updated = await storage.updateSizeBreakdown(req.params.bid, req.body);
+    if (!updated) return res.status(404).json({ error: "Breakdown not found" });
+    res.json(updated);
+  } catch (err) {
+    console.error("Admin update breakdown error:", err);
+    res.status(500).json({ error: "Failed to update breakdown" });
+  }
+});
+router5.delete("/orders/:id/size-breakdowns/:bid", async (req, res) => {
+  try {
+    await storage.deleteSizeBreakdown(req.params.bid);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Admin delete breakdown error:", err);
+    res.status(500).json({ error: "Failed to delete breakdown" });
+  }
+});
+router5.post("/orders/:id/production/initialize", async (req, res) => {
+  try {
+    const user = req.user;
+    const existing = await storage.getProductionStages(req.params.id);
+    if (existing.length > 0) return res.status(409).json({ error: "Pipeline already initialized" });
+    const stages = await storage.initializeProductionPipeline(req.params.id);
+    await storage.logOrderActivity({
+      orderId: req.params.id,
+      userId: user.userId,
+      action: "production_initialized",
+      details: { stageCount: stages.length }
+    });
+    res.status(201).json(stages);
+  } catch (err) {
+    console.error("Admin init pipeline error:", err);
+    res.status(500).json({ error: "Failed to initialize pipeline" });
+  }
+});
+router5.post("/orders/:id/production/advance", async (req, res) => {
+  try {
+    const user = req.user;
+    const { notes } = req.body || {};
+    const stages = await storage.getProductionStages(req.params.id);
+    if (stages.length === 0) return res.status(400).json({ error: "Pipeline not initialized" });
+    const currentIdx = stages.findIndex((s) => s.status === "in_progress");
+    if (currentIdx === -1) return res.status(400).json({ error: "No active stage" });
+    if (currentIdx >= stages.length - 1) return res.status(400).json({ error: "Already at final stage" });
+    const now = /* @__PURE__ */ new Date();
+    await storage.updateProductionStage(stages[currentIdx].id, {
+      status: "completed",
+      completedAt: now,
+      completedBy: user.userId,
+      notes: notes || null
+    });
+    const nextStage = stages[currentIdx + 1];
+    await storage.updateProductionStage(nextStage.id, {
+      status: "in_progress",
+      enteredAt: now
+    });
+    await storage.updateOrder(req.params.id, { productionStage: nextStage.stage });
+    await storage.logOrderActivity({
+      orderId: req.params.id,
+      userId: user.userId,
+      action: "stage_advanced",
+      details: { from: stages[currentIdx].stage, to: nextStage.stage, notes }
+    });
+    const order = await storage.getOrder(req.params.id);
+    if (order?.userId) {
+      const stageLabels = {
+        design_confirmed: "Your designs have been confirmed",
+        in_production: "Your order is now in production",
+        printing: "Your order is being printed/embroidered",
+        quality_check: "Your order is undergoing quality checks",
+        packing: "Your order is being packed",
+        shipped: "Your order has been shipped",
+        delivered: "Your order has been delivered"
+      };
+      const label = stageLabels[nextStage.stage];
+      if (label) {
+        await storage.createNotification({
+          userId: order.userId,
+          type: "production_update",
+          title: "Production Update",
+          message: `${label} \u2014 Order ${order.orderNumber}`,
+          orderId: order.id
         });
-      } catch (err) {
-        console.error("Admin GHL lookup error:", err);
-        res.status(500).json({ error: "GHL lookup failed" });
       }
+    }
+    const updated = await storage.getProductionStages(req.params.id);
+    res.json(updated);
+  } catch (err) {
+    console.error("Admin advance stage error:", err);
+    res.status(500).json({ error: "Failed to advance stage" });
+  }
+});
+router5.patch("/orders/:id/production/:stageId", async (req, res) => {
+  try {
+    const updated = await storage.updateProductionStage(req.params.stageId, req.body);
+    if (!updated) return res.status(404).json({ error: "Stage not found" });
+    res.json(updated);
+  } catch (err) {
+    console.error("Admin update stage error:", err);
+    res.status(500).json({ error: "Failed to update stage" });
+  }
+});
+var qcSchema = z6.object({
+  productionStageId: z6.string().optional(),
+  checkType: z6.enum(["pre_production", "mid_production", "final", "packaging"]),
+  status: z6.enum(["pending", "passed", "failed", "conditional"]).default("pending"),
+  notes: z6.string().optional(),
+  photoUrls: z6.array(z6.string()).optional(),
+  issues: z6.string().optional()
+});
+router5.post("/orders/:id/qc", async (req, res) => {
+  try {
+    const data = qcSchema.parse(req.body);
+    const user = req.user;
+    const check = await storage.createQualityCheck({
+      orderId: req.params.id,
+      productionStageId: data.productionStageId ?? null,
+      checkType: data.checkType,
+      status: data.status,
+      checkedBy: user.userId,
+      notes: data.notes ?? null,
+      photoUrls: data.photoUrls ?? null,
+      issues: data.issues ?? null
     });
-    ghlImportSchema = z6.object({
-      ghlContactId: z6.string().min(1),
-      sendInvite: z6.boolean().optional().default(true)
+    await storage.logOrderActivity({
+      orderId: req.params.id,
+      userId: user.userId,
+      action: "qc_created",
+      details: { checkType: data.checkType, status: data.status }
     });
-    router5.post("/ghl/import", async (req, res) => {
-      try {
-        const { ghlContactId, sendInvite } = ghlImportSchema.parse(req.body);
-        const contact = await getGhlContact(ghlContactId);
-        if (!contact || !contact.email) {
-          return res.status(404).json({ error: "GHL contact not found or missing email" });
-        }
-        const existing = await storage.getUserByEmail(contact.email);
-        if (existing) {
-          if (!existing.ghlContactId) {
-            await storage.updateCustomer(existing.id, { ghlContactId: contact.id });
-          }
-          return res.status(200).json({
-            id: existing.id,
-            email: existing.email,
-            imported: false,
-            reason: "already_linked"
-          });
-        }
-        const teamName = contact.companyName || [contact.firstName, contact.lastName].filter(Boolean).join(" ").trim() || void 0;
-        const phone = contact.phone || void 0;
-        const user = await storage.createInvite(contact.email, teamName, "customer", contact.id, phone);
-        if (sendInvite && user.inviteToken) {
-          sendInviteEmail(contact.email, user.inviteToken, teamName).catch(
-            (err) => console.error("Failed to send invite email:", err)
-          );
-        }
-        res.status(201).json({
-          id: user.id,
-          email: user.email,
-          ghlContactId: contact.id,
-          inviteToken: user.inviteToken,
-          inviteExpiresAt: user.inviteExpiresAt,
-          imported: true
+    if (data.status === "failed") {
+      const order = await storage.getOrder(req.params.id);
+      if (order?.userId) {
+        await storage.createNotification({
+          userId: order.userId,
+          type: "qc_issue",
+          title: "Quality Check Issue",
+          message: `A quality issue was found on your order ${order.orderNumber}. Our team is working on it.`,
+          orderId: order.id
         });
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin GHL import error:", err);
-        res.status(500).json({ error: "Failed to import GHL contact" });
       }
+    }
+    res.status(201).json(check);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin QC create error:", err);
+    res.status(500).json({ error: "Failed to create QC check" });
+  }
+});
+router5.patch("/orders/:id/qc/:checkId", async (req, res) => {
+  try {
+    const user = req.user;
+    const existing = await storage.getQualityCheck(req.params.checkId);
+    if (!existing) return res.status(404).json({ error: "QC check not found" });
+    const updated = await storage.updateQualityCheck(req.params.checkId, {
+      ...req.body,
+      checkedBy: user.userId,
+      resolvedAt: req.body.status === "passed" ? /* @__PURE__ */ new Date() : void 0
     });
-    router5.get("/customers", async (req, res) => {
+    await storage.logOrderActivity({
+      orderId: req.params.id,
+      userId: user.userId,
+      action: "qc_updated",
+      details: { checkId: req.params.checkId, status: req.body.status }
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error("Admin QC update error:", err);
+    res.status(500).json({ error: "Failed to update QC check" });
+  }
+});
+router5.get("/orders/:id/messages", async (req, res) => {
+  try {
+    const messages = await storage.getOrderMessages(req.params.id);
+    res.json(messages);
+  } catch (err) {
+    console.error("Admin messages error:", err);
+    res.status(500).json({ error: "Failed to load messages" });
+  }
+});
+var messageSchema = z6.object({
+  message: z6.string().min(1),
+  attachmentUrl: z6.string().url().optional(),
+  attachmentName: z6.string().optional()
+});
+router5.post("/orders/:id/messages", async (req, res) => {
+  try {
+    const data = messageSchema.parse(req.body);
+    const user = req.user;
+    const msg = await storage.createOrderMessage({
+      orderId: req.params.id,
+      userId: user.userId,
+      senderRole: "admin",
+      message: data.message,
+      attachmentUrl: data.attachmentUrl ?? null,
+      attachmentName: data.attachmentName ?? null
+    });
+    const order = await storage.getOrder(req.params.id);
+    if (order?.userId) {
+      await storage.createNotification({
+        userId: order.userId,
+        type: "new_message",
+        title: "New Message",
+        message: `New message on order ${order.orderNumber}`,
+        orderId: order.id
+      });
+    }
+    res.status(201).json(msg);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin message error:", err);
+    res.status(500).json({ error: "Failed to send message" });
+  }
+});
+router5.get("/orders/:id/activity", async (req, res) => {
+  try {
+    const activity = await storage.getOrderActivityLog(req.params.id);
+    res.json(activity);
+  } catch (err) {
+    console.error("Admin activity error:", err);
+    res.status(500).json({ error: "Failed to load activity" });
+  }
+});
+router5.get("/designs/pending", async (_req, res) => {
+  try {
+    const files = await storage.getPendingDesignFiles();
+    res.json(files);
+  } catch (err) {
+    console.error("Admin pending designs error:", err);
+    res.status(500).json({ error: "Failed to load pending designs" });
+  }
+});
+router5.get("/suppliers", async (_req, res) => {
+  try {
+    const list = await storage.listSuppliers();
+    res.json({
+      suppliers: list.map((u) => ({
+        id: u.id,
+        email: u.email,
+        supplierName: u.teamName,
+        // `password === ""` means the invite hasn't been accepted yet
+        inviteAccepted: u.password !== "",
+        createdAt: u.createdAt
+      }))
+    });
+  } catch (err) {
+    console.error("Admin list suppliers error:", err);
+    res.status(500).json({ error: "Failed to load suppliers" });
+  }
+});
+var assignSupplierSchema = z6.object({
+  supplierId: z6.string().min(1, "supplierId is required")
+});
+router5.post("/orders/:id/assign-supplier", async (req, res) => {
+  try {
+    const { supplierId } = assignSupplierSchema.parse(req.body);
+    const supplier = await storage.getUser(supplierId);
+    if (!supplier || supplier.role !== "supplier") {
+      return res.status(400).json({ error: "Invalid supplier ID" });
+    }
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const previousSupplierId = order.assignedSupplierId;
+    await db.update(orders).set({ assignedSupplierId: supplierId, updatedAt: /* @__PURE__ */ new Date() }).where(eq4(orders.id, order.id));
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId: req.user?.userId,
+      action: "supplier_assigned",
+      details: { from: previousSupplierId, to: supplierId, supplierName: supplier.teamName }
+    });
+    res.json({ ok: true, supplierId });
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin assign supplier error:", err);
+    res.status(500).json({ error: "Failed to assign supplier" });
+  }
+});
+router5.post("/orders/:id/generate-pdf", async (req, res) => {
+  try {
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (!order.driveFolderId) return res.status(400).json({ error: "No Drive folder \u2014 create one first" });
+    const result = await uploadPoPdfToDrive(order.id, order.driveFolderId);
+    if (!result) return res.status(502).json({ error: "PDF generation or Drive upload failed" });
+    await storage.logOrderActivity({
+      orderId: order.id,
+      userId: req.user?.userId,
+      action: "po_pdf_generated",
+      details: { pdfId: result.pdfId }
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("Admin generate-pdf error:", err);
+    res.status(500).json({ error: "Failed to generate PDF" });
+  }
+});
+var raisePoSchema = z6.object({
+  supplierId: z6.string().optional()
+  // optional if already assigned
+});
+router5.post("/orders/:id/raise-po", async (req, res) => {
+  try {
+    const { supplierId: bodySupplierId } = raisePoSchema.parse(req.body ?? {});
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const supplierId = bodySupplierId || order.assignedSupplierId;
+    if (!supplierId) {
+      return res.status(400).json({ error: "No supplier assigned \u2014 pass supplierId in the body or assign first" });
+    }
+    const supplier = await storage.getUser(supplierId);
+    if (!supplier || supplier.role !== "supplier") {
+      return res.status(400).json({ error: "Invalid supplier ID" });
+    }
+    if (order.assignedSupplierId !== supplierId) {
+      await db.update(orders).set({ assignedSupplierId: supplierId, updatedAt: /* @__PURE__ */ new Date() }).where(eq4(orders.id, order.id));
+    }
+    let ghlPushResult = { success: false, reason: "no_ghl_link" };
+    if (order.ghlOpportunityId) {
+      ghlPushResult = await updateGhlOpportunityStage(order.ghlOpportunityId, "PO Raised");
+    }
+    let gmailMessageId = null;
+    if (supplier.email) {
       try {
-        const { search, limit, offset } = req.query;
-        const result = await storage.getAllCustomers({
-          search,
-          limit: limit ? parseInt(limit) : void 0,
-          offset: offset ? parseInt(offset) : void 0
-        });
-        res.json(result);
-      } catch (err) {
-        console.error("Admin customers error:", err);
-        res.status(500).json({ error: "Failed to load customers" });
-      }
-    });
-    router5.get("/customers/:id", async (req, res) => {
-      try {
-        const result = await storage.getCustomerWithOrders(req.params.id);
-        if (!result) return res.status(404).json({ error: "Customer not found" });
-        res.json(result);
-      } catch (err) {
-        console.error("Admin customer detail error:", err);
-        res.status(500).json({ error: "Failed to load customer" });
-      }
-    });
-    updateCustomerSchema = z6.object({
-      teamName: z6.string().optional(),
-      contactPhone: z6.string().optional()
-    });
-    router5.patch("/customers/:id", async (req, res) => {
-      try {
-        const data = updateCustomerSchema.parse(req.body);
-        const customer = await storage.updateCustomer(req.params.id, data);
-        if (!customer) return res.status(404).json({ error: "Customer not found" });
-        if (customer.email) {
-          upsertGhlContact({
-            email: customer.email,
-            phone: data.contactPhone ?? customer.contactPhone ?? void 0,
-            companyName: data.teamName ?? customer.teamName ?? void 0
-          }).then(async (result) => {
-            if (result.contactId && !customer.ghlContactId) {
-              await storage.updateCustomer(customer.id, { ghlContactId: result.contactId });
-            }
-          }).catch((err) => console.error("[admin PATCH customer] GHL sync failed:", err));
-        }
-        res.json(customer);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin update customer error:", err);
-        res.status(500).json({ error: "Failed to update customer" });
-      }
-    });
-    inviteSchema = z6.object({
-      email: z6.string().email(),
-      teamName: z6.string().optional(),
-      firstName: z6.string().optional(),
-      lastName: z6.string().optional(),
-      phone: z6.string().optional()
-    });
-    router5.post("/customers/invite", async (req, res) => {
-      try {
-        const { email, teamName, firstName, lastName, phone } = inviteSchema.parse(req.body);
-        const existing = await storage.getUserByEmail(email);
-        if (existing) return res.status(409).json({ error: "An account with this email already exists" });
-        const ghlResult = await upsertGhlContact({
-          email,
-          firstName,
-          lastName,
-          phone,
-          companyName: teamName,
-          tags: ["sideline-customer"]
-        });
-        const user = await storage.createInvite(email, teamName, "customer", ghlResult.contactId || void 0, phone);
-        if (user.inviteToken) {
-          sendInviteEmail(email, user.inviteToken, teamName).catch(
-            (err) => console.error("Failed to send invite email:", err)
-          );
-        }
-        res.status(201).json({
-          id: user.id,
-          email: user.email,
-          ghlContactId: ghlResult.contactId,
-          ghlCreated: ghlResult.created,
-          inviteToken: user.inviteToken,
-          inviteExpiresAt: user.inviteExpiresAt
-        });
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin invite error:", err);
-        res.status(500).json({ error: "Failed to create invite" });
-      }
-    });
-    supplierInviteSchema = z6.object({
-      email: z6.string().email(),
-      supplierName: z6.string().min(1, "Supplier name is required")
-      // stored on users.teamName
-    });
-    router5.post("/suppliers/invite", async (req, res) => {
-      try {
-        const { email, supplierName } = supplierInviteSchema.parse(req.body);
-        const existing = await storage.getUserByEmail(email);
-        if (existing) return res.status(409).json({ error: "An account with this email already exists" });
-        const user = await storage.createInvite(email, supplierName, "supplier");
-        if (user.inviteToken) {
-          sendInviteEmail(email, user.inviteToken, supplierName).catch(
-            (err) => console.error("Failed to send supplier invite email:", err)
-          );
-        }
-        res.status(201).json({
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          inviteToken: user.inviteToken,
-          inviteExpiresAt: user.inviteExpiresAt
-        });
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin supplier invite error:", err);
-        res.status(500).json({ error: "Failed to create supplier invite" });
-      }
-    });
-    router5.get("/orders/:id/invoice", async (req, res) => {
-      try {
-        const result = await storage.getOrderWithDetails(req.params.id);
-        if (!result) return res.status(404).json({ error: "Order not found" });
-        let customer = null;
-        if (result.order.userId) {
-          const user = await storage.getUser(result.order.userId);
-          if (user) {
-            customer = { email: user.email, teamName: user.teamName, contactPhone: user.contactPhone };
-          }
-        }
-        res.json({
-          order: result.order,
-          items: result.items,
-          customer: customer || {
-            email: result.order.customerEmail,
-            teamName: null,
-            contactPhone: null
-          },
-          company: {
-            name: "Sideline NZ Ltd",
-            address: "New Zealand",
-            email: "info@sidelinenz.com",
-            website: "sidelinenz.com"
-          }
-        });
-      } catch (err) {
-        console.error("Admin invoice error:", err);
-        res.status(500).json({ error: "Failed to load invoice" });
-      }
-    });
-    updateItemSchema = z6.object({
-      productColors: z6.array(z6.object({ hex: z6.string(), name: z6.string().optional() })).optional(),
-      brandingMethod: z6.string().optional(),
-      productType: z6.string().optional(),
-      material: z6.string().optional(),
-      productName: z6.string().optional(),
-      frontDesignUrl: z6.string().optional(),
-      backDesignUrl: z6.string().optional(),
-      elementUrls: z6.array(z6.object({ name: z6.string(), url: z6.string() })).optional(),
-      gradeGroup: z6.string().optional(),
-      designNotes: z6.string().optional(),
-      designBrief: z6.string().optional(),
-      sizeChartType: z6.string().optional()
-    });
-    router5.patch("/orders/:id/items/:itemId", async (req, res) => {
-      try {
-        const data = updateItemSchema.parse(req.body);
-        const user = req.user;
-        const updated = await storage.updateOrderItem(req.params.itemId, data);
-        if (!updated) return res.status(404).json({ error: "Item not found" });
-        const mirrorJobs = [];
-        if (data.frontDesignUrl) mirrorJobs.push({ url: data.frontDesignUrl, slot: "mockups" });
-        if (data.backDesignUrl) mirrorJobs.push({ url: data.backDesignUrl, slot: "mockups" });
-        if (data.elementUrls?.length) {
-          for (const el of data.elementUrls) mirrorJobs.push({ url: el.url, slot: "logos" });
-        }
-        if (mirrorJobs.length) {
-          (async () => {
-            const [ord] = await db.select({ id: orders.id, driveFolderId: orders.driveFolderId }).from(orders).where(eq5(orders.id, req.params.id)).limit(1);
-            if (!ord?.driveFolderId) return;
-            for (const job of mirrorJobs) {
-              await mirrorBlobToPoFolder({
-                poFolderId: ord.driveFolderId,
-                slot: job.slot,
-                blobUrl: job.url
-              });
-            }
-          })().catch((err) => console.error("[item-patch] Drive mirror failed:", err));
-        }
-        await storage.logOrderActivity({
-          orderId: req.params.id,
-          userId: user.userId,
-          action: "item_updated",
-          details: { itemId: req.params.itemId, fields: Object.keys(data), mirroredCount: mirrorJobs.length }
-        });
-        res.json(updated);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin update item error:", err);
-        res.status(500).json({ error: "Failed to update item" });
-      }
-    });
-    extractColorsSchema = z6.object({
-      imageUrl: z6.string().url().optional(),
-      apply: z6.boolean().optional().default(true),
-      side: z6.enum(["front", "back"]).optional()
-    });
-    router5.post("/orders/:id/items/:itemId/extract-colors", async (req, res) => {
-      try {
-        const { imageUrl, apply, side } = extractColorsSchema.parse(req.body);
-        const user = req.user;
-        const [item] = await db.select().from(orderItems).where(eq5(orderItems.id, req.params.itemId)).limit(1);
-        if (!item) return res.status(404).json({ error: "Item not found" });
-        const sourceUrl = imageUrl || (side === "back" ? item.backDesignUrl : side === "front" ? item.frontDesignUrl : null) || item.frontDesignUrl || item.backDesignUrl;
-        if (!sourceUrl) return res.status(400).json({ error: "No design image on this item to analyse" });
-        const colors = await extractColorsFromImage(sourceUrl);
-        if (!colors) {
-          return res.status(502).json({ error: "Colour extraction failed \u2014 check GEMINI_API_KEY or try a different image" });
-        }
-        if (apply) {
-          await storage.updateOrderItem(req.params.itemId, { productColors: colors });
-          await storage.logOrderActivity({
-            orderId: req.params.id,
-            userId: user?.userId,
-            action: "colors_extracted",
-            details: { itemId: req.params.itemId, sourceUrl, colorCount: colors.length }
-          });
-        }
-        res.json({ colors, sourceUrl, applied: apply });
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin extract-colors error:", err);
-        res.status(500).json({ error: "Failed to extract colours" });
-      }
-    });
-    router5.post("/orders/:id/items/:itemId/generate-brief", async (req, res) => {
-      try {
-        const user = req.user;
-        const [item] = await db.select().from(orderItems).where(eq5(orderItems.id, req.params.itemId)).limit(1);
-        if (!item) return res.status(404).json({ error: "Item not found" });
-        const imageUrls = [];
-        if (item.frontDesignUrl) imageUrls.push(item.frontDesignUrl);
-        if (item.backDesignUrl) imageUrls.push(item.backDesignUrl);
-        if (!imageUrls.length) return res.status(400).json({ error: "Upload front or back design first" });
-        const brief = await generateDesignBrief(imageUrls);
-        if (!brief) return res.status(502).json({ error: "Design brief generation failed \u2014 check GEMINI_API_KEY" });
-        await storage.updateOrderItem(req.params.itemId, { designBrief: brief });
-        await storage.logOrderActivity({
-          orderId: req.params.id,
-          userId: user?.userId,
-          action: "design_brief_generated",
-          details: { itemId: req.params.itemId, wordCount: brief.split(/\s+/).length }
-        });
-        res.json({ brief });
-      } catch (err) {
-        console.error("Admin generate-brief error:", err);
-        res.status(500).json({ error: "Failed to generate design brief" });
-      }
-    });
-    router5.get("/orders/next-po-reference", async (_req, res) => {
-      try {
-        const reference = await buildPoReference();
-        res.json({ reference });
-      } catch (err) {
-        console.error("Admin next-po-reference error:", err);
-        res.status(500).json({ error: "Failed to preview PO reference" });
-      }
-    });
-    createPoSchema = z6.object({
-      storeSlug: z6.string(),
-      orderType: z6.enum(["team-store", "bulk-order", "sample-run"]).optional().default("bulk-order"),
-      customerEmail: z6.string().email().optional(),
-      customerName: z6.string().optional(),
-      // full name (kept for back-compat / display)
-      customerFirstName: z6.string().optional(),
-      customerLastName: z6.string().optional(),
-      customerPhone: z6.string().optional(),
-      poReference: z6.string().optional(),
-      accountName: z6.string().optional(),
-      // company / team / club name
-      companyEmail: z6.string().email().optional(),
-      companyPhone: z6.string().optional(),
-      isRepeatOrder: z6.boolean().optional(),
-      poComments: z6.string().optional(),
-      dueDate: z6.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-      // customer "Door to Customer" date
-      deliveryAttention: z6.string().optional(),
-      deliveryAddress: z6.string().optional(),
-      deliveryEmail: z6.string().optional(),
-      deliveryPhone: z6.string().optional(),
-      items: z6.array(z6.object({
-        productName: z6.string(),
-        productType: z6.string().optional(),
-        material: z6.string().optional(),
-        quantity: z6.number().int().min(1),
-        unitAmount: z6.number().int().min(0),
-        brandingMethod: z6.string().optional(),
-        gradeGroup: z6.string().optional()
-        // deprecated but still accepted
-      })).min(1)
-    });
-    router5.post("/orders/create-po", async (req, res) => {
-      try {
-        const data = createPoSchema.parse(req.body);
-        const user = req.user;
-        const poReference = data.poReference?.trim() || await buildPoReference();
-        const firstName = data.customerFirstName?.trim() || data.customerName?.trim().split(" ")[0];
-        const lastName = data.customerLastName?.trim() || data.customerName?.trim().split(" ").slice(1).join(" ") || void 0;
-        const fullName = data.customerName?.trim() || [firstName, lastName].filter(Boolean).join(" ") || void 0;
-        const subtotal = data.items.reduce((sum, i) => sum + i.unitAmount * i.quantity, 0);
-        const clientForSlug = data.accountName || data.customerName || null;
-        const order = await withPoNumberRetry(
-          clientForSlug,
-          async (orderNumber) => storage.createOrder({
-            orderNumber,
-            storeSlug: data.storeSlug,
-            orderType: data.orderType,
-            status: "processing",
-            subtotal,
-            total: subtotal,
-            currency: "nzd",
-            customerEmail: data.customerEmail ?? null,
-            customerName: fullName ?? null,
-            customerFirstName: firstName ?? null,
-            customerLastName: lastName ?? null,
-            companyEmail: data.companyEmail ?? null,
-            companyPhone: data.companyPhone ?? null,
-            poReference,
-            accountName: data.accountName ?? null,
-            isRepeatOrder: data.isRepeatOrder ?? false,
-            poComments: data.poComments ?? null,
-            dueDate: data.dueDate ?? null,
-            deliveryAttention: data.deliveryAttention ?? null,
-            deliveryAddress: data.deliveryAddress ?? null,
-            deliveryEmail: data.deliveryEmail ?? null,
-            deliveryPhone: data.deliveryPhone ?? null
-          })
-        );
-        for (const item of data.items) {
-          await storage.createOrderItem({
-            orderId: order.id,
-            productId: "manual",
-            priceId: "manual",
-            productName: item.productName,
-            productType: item.productType ?? null,
-            material: item.material ?? null,
-            quantity: item.quantity,
-            unitAmount: item.unitAmount,
-            currency: "nzd",
-            gradeGroup: item.gradeGroup ?? null,
-            brandingMethod: item.brandingMethod ?? null
-          });
-        }
-        try {
-          const today = /* @__PURE__ */ new Date();
-          const dateStr = today.toISOString().slice(0, 10);
-          const companyForFolder = data.accountName?.trim() || "Sideline";
-          const contactForFolder = [firstName, lastName].filter(Boolean).join(" ").trim() || data.customerEmail || "Unnamed Contact";
-          const folder5 = await createClientFolder({
-            date: dateStr,
-            companyName: companyForFolder,
-            contactName: contactForFolder
-          });
-          if (folder5) {
-            await storage.updateOrder(order.id, {
-              driveFolderId: folder5.id,
-              driveFolderUrl: folder5.webViewLink,
-              driveFolderName: folder5.name
-            });
-          }
-        } catch (err) {
-          console.error("[create-po] Drive folder creation failed (non-fatal):", err);
-        }
-        let ghlContactId = null;
-        if (data.customerEmail) {
-          const customer = await storage.getUserByEmail(data.customerEmail);
-          if (customer) {
-            ghlContactId = customer.ghlContactId || null;
-            await storage.linkOrdersByEmail(data.customerEmail, customer.id);
-          }
-          const customFields = [];
-          if (data.companyEmail) customFields.push({ key: "company_email", field_value: data.companyEmail });
-          if (data.companyPhone) customFields.push({ key: "company_phone", field_value: data.companyPhone });
-          const upsert = await upsertGhlContact({
-            email: data.customerEmail,
-            firstName,
-            lastName,
-            phone: data.customerPhone,
-            companyName: data.accountName,
-            tags: ["sideline-customer", "portal-po"],
-            customFields: customFields.length ? customFields : void 0
-          });
-          if (upsert.contactId) {
-            ghlContactId = upsert.contactId;
-            if (customer && !customer.ghlContactId) {
-              await storage.updateCustomer(customer.id, { ghlContactId: upsert.contactId });
-            }
-          }
-        }
-        if (ghlContactId) {
-          const opp = await createGhlOpportunity2({
-            contactId: ghlContactId,
-            pipelineId: SIDELINE_PIPELINE_ID,
-            stageId: SIDELINE_STAGE_IDS["Lead Received"],
-            name: poReference || data.accountName || order.orderNumber || "Sideline Order",
-            monetaryValue: Math.round(subtotal / 100),
-            status: "open"
-          });
-          if (opp.opportunityId) {
-            await storage.updateOrder(order.id, {
-              ghlOpportunityId: opp.opportunityId,
-              pipelineStage: "Lead Received"
-            });
-          }
-        }
-        await storage.initializeProductionPipeline(order.id);
-        await storage.logOrderActivity({
-          orderId: order.id,
-          userId: user.userId,
-          action: "po_created",
-          details: { poReference, itemCount: data.items.length }
-        });
-        res.status(201).json(order);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin create PO error:", err);
-        res.status(500).json({ error: "Failed to create purchase order" });
-      }
-    });
-    addItemSchema = z6.object({
-      productName: z6.string().min(1),
-      quantity: z6.number().int().min(1).default(1),
-      unitAmount: z6.number().int().min(0).default(0),
-      gradeGroup: z6.string().optional(),
-      brandingMethod: z6.string().optional(),
-      designNotes: z6.string().optional()
-    });
-    router5.post("/orders/:id/items", async (req, res) => {
-      try {
-        const data = addItemSchema.parse(req.body);
-        const user = req.user;
-        const order = await storage.getOrder(req.params.id);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        const item = await storage.createOrderItem({
-          orderId: order.id,
-          productId: "manual",
-          priceId: "manual",
-          productName: data.productName,
-          quantity: data.quantity,
-          unitAmount: data.unitAmount,
-          currency: "nzd",
-          gradeGroup: data.gradeGroup ?? null,
-          brandingMethod: data.brandingMethod ?? null,
-          designNotes: data.designNotes ?? null
-        });
-        await storage.logOrderActivity({
-          orderId: order.id,
-          userId: user.userId,
-          action: "item_added",
-          details: { itemId: item.id, productName: data.productName }
-        });
-        res.status(201).json(item);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin add item error:", err);
-        res.status(500).json({ error: "Failed to add item" });
-      }
-    });
-    sizeBreakdownSchema = z6.object({
-      orderItemId: z6.string(),
-      size: z6.string(),
-      quantity: z6.number().int().min(1),
-      playerName: z6.string().optional(),
-      playerNumber: z6.string().optional(),
-      notes: z6.string().optional()
-    });
-    router5.post("/orders/:id/size-breakdowns", async (req, res) => {
-      try {
-        const data = sizeBreakdownSchema.parse(req.body);
-        const user = req.user;
-        const breakdown = await storage.createSizeBreakdown({
-          ...data,
-          orderId: req.params.id,
-          playerName: data.playerName ?? null,
-          playerNumber: data.playerNumber ?? null,
-          notes: data.notes ?? null
-        });
-        await storage.logOrderActivity({
-          orderId: req.params.id,
-          userId: user.userId,
-          action: "size_breakdown_added",
-          details: { size: data.size, quantity: data.quantity, playerName: data.playerName, playerNumber: data.playerNumber }
-        });
-        res.status(201).json(breakdown);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin size breakdown error:", err);
-        res.status(500).json({ error: "Failed to create size breakdown" });
-      }
-    });
-    router5.patch("/orders/:id/size-breakdowns/:bid", async (req, res) => {
-      try {
-        const updated = await storage.updateSizeBreakdown(req.params.bid, req.body);
-        if (!updated) return res.status(404).json({ error: "Breakdown not found" });
-        res.json(updated);
-      } catch (err) {
-        console.error("Admin update breakdown error:", err);
-        res.status(500).json({ error: "Failed to update breakdown" });
-      }
-    });
-    router5.delete("/orders/:id/size-breakdowns/:bid", async (req, res) => {
-      try {
-        await storage.deleteSizeBreakdown(req.params.bid);
-        res.json({ success: true });
-      } catch (err) {
-        console.error("Admin delete breakdown error:", err);
-        res.status(500).json({ error: "Failed to delete breakdown" });
-      }
-    });
-    router5.post("/orders/:id/production/initialize", async (req, res) => {
-      try {
-        const user = req.user;
-        const existing = await storage.getProductionStages(req.params.id);
-        if (existing.length > 0) return res.status(409).json({ error: "Pipeline already initialized" });
-        const stages = await storage.initializeProductionPipeline(req.params.id);
-        await storage.logOrderActivity({
-          orderId: req.params.id,
-          userId: user.userId,
-          action: "production_initialized",
-          details: { stageCount: stages.length }
-        });
-        res.status(201).json(stages);
-      } catch (err) {
-        console.error("Admin init pipeline error:", err);
-        res.status(500).json({ error: "Failed to initialize pipeline" });
-      }
-    });
-    router5.post("/orders/:id/production/advance", async (req, res) => {
-      try {
-        const user = req.user;
-        const { notes } = req.body || {};
-        const stages = await storage.getProductionStages(req.params.id);
-        if (stages.length === 0) return res.status(400).json({ error: "Pipeline not initialized" });
-        const currentIdx = stages.findIndex((s) => s.status === "in_progress");
-        if (currentIdx === -1) return res.status(400).json({ error: "No active stage" });
-        if (currentIdx >= stages.length - 1) return res.status(400).json({ error: "Already at final stage" });
-        const now = /* @__PURE__ */ new Date();
-        await storage.updateProductionStage(stages[currentIdx].id, {
-          status: "completed",
-          completedAt: now,
-          completedBy: user.userId,
-          notes: notes || null
-        });
-        const nextStage = stages[currentIdx + 1];
-        await storage.updateProductionStage(nextStage.id, {
-          status: "in_progress",
-          enteredAt: now
-        });
-        await storage.updateOrder(req.params.id, { productionStage: nextStage.stage });
-        await storage.logOrderActivity({
-          orderId: req.params.id,
-          userId: user.userId,
-          action: "stage_advanced",
-          details: { from: stages[currentIdx].stage, to: nextStage.stage, notes }
-        });
-        const order = await storage.getOrder(req.params.id);
-        if (order?.userId) {
-          const stageLabels = {
-            design_confirmed: "Your designs have been confirmed",
-            in_production: "Your order is now in production",
-            printing: "Your order is being printed/embroidered",
-            quality_check: "Your order is undergoing quality checks",
-            packing: "Your order is being packed",
-            shipped: "Your order has been shipped",
-            delivered: "Your order has been delivered"
-          };
-          const label = stageLabels[nextStage.stage];
-          if (label) {
-            await storage.createNotification({
-              userId: order.userId,
-              type: "production_update",
-              title: "Production Update",
-              message: `${label} \u2014 Order ${order.orderNumber}`,
-              orderId: order.id
-            });
-          }
-        }
-        const updated = await storage.getProductionStages(req.params.id);
-        res.json(updated);
-      } catch (err) {
-        console.error("Admin advance stage error:", err);
-        res.status(500).json({ error: "Failed to advance stage" });
-      }
-    });
-    router5.patch("/orders/:id/production/:stageId", async (req, res) => {
-      try {
-        const updated = await storage.updateProductionStage(req.params.stageId, req.body);
-        if (!updated) return res.status(404).json({ error: "Stage not found" });
-        res.json(updated);
-      } catch (err) {
-        console.error("Admin update stage error:", err);
-        res.status(500).json({ error: "Failed to update stage" });
-      }
-    });
-    qcSchema = z6.object({
-      productionStageId: z6.string().optional(),
-      checkType: z6.enum(["pre_production", "mid_production", "final", "packaging"]),
-      status: z6.enum(["pending", "passed", "failed", "conditional"]).default("pending"),
-      notes: z6.string().optional(),
-      photoUrls: z6.array(z6.string()).optional(),
-      issues: z6.string().optional()
-    });
-    router5.post("/orders/:id/qc", async (req, res) => {
-      try {
-        const data = qcSchema.parse(req.body);
-        const user = req.user;
-        const check = await storage.createQualityCheck({
-          orderId: req.params.id,
-          productionStageId: data.productionStageId ?? null,
-          checkType: data.checkType,
-          status: data.status,
-          checkedBy: user.userId,
-          notes: data.notes ?? null,
-          photoUrls: data.photoUrls ?? null,
-          issues: data.issues ?? null
-        });
-        await storage.logOrderActivity({
-          orderId: req.params.id,
-          userId: user.userId,
-          action: "qc_created",
-          details: { checkType: data.checkType, status: data.status }
-        });
-        if (data.status === "failed") {
-          const order = await storage.getOrder(req.params.id);
-          if (order?.userId) {
-            await storage.createNotification({
-              userId: order.userId,
-              type: "qc_issue",
-              title: "Quality Check Issue",
-              message: `A quality issue was found on your order ${order.orderNumber}. Our team is working on it.`,
-              orderId: order.id
-            });
-          }
-        }
-        res.status(201).json(check);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin QC create error:", err);
-        res.status(500).json({ error: "Failed to create QC check" });
-      }
-    });
-    router5.patch("/orders/:id/qc/:checkId", async (req, res) => {
-      try {
-        const user = req.user;
-        const existing = await storage.getQualityCheck(req.params.checkId);
-        if (!existing) return res.status(404).json({ error: "QC check not found" });
-        const updated = await storage.updateQualityCheck(req.params.checkId, {
-          ...req.body,
-          checkedBy: user.userId,
-          resolvedAt: req.body.status === "passed" ? /* @__PURE__ */ new Date() : void 0
-        });
-        await storage.logOrderActivity({
-          orderId: req.params.id,
-          userId: user.userId,
-          action: "qc_updated",
-          details: { checkId: req.params.checkId, status: req.body.status }
-        });
-        res.json(updated);
-      } catch (err) {
-        console.error("Admin QC update error:", err);
-        res.status(500).json({ error: "Failed to update QC check" });
-      }
-    });
-    router5.get("/orders/:id/messages", async (req, res) => {
-      try {
-        const messages = await storage.getOrderMessages(req.params.id);
-        res.json(messages);
-      } catch (err) {
-        console.error("Admin messages error:", err);
-        res.status(500).json({ error: "Failed to load messages" });
-      }
-    });
-    messageSchema = z6.object({
-      message: z6.string().min(1),
-      attachmentUrl: z6.string().url().optional(),
-      attachmentName: z6.string().optional()
-    });
-    router5.post("/orders/:id/messages", async (req, res) => {
-      try {
-        const data = messageSchema.parse(req.body);
-        const user = req.user;
-        const msg = await storage.createOrderMessage({
-          orderId: req.params.id,
-          userId: user.userId,
-          senderRole: "admin",
-          message: data.message,
-          attachmentUrl: data.attachmentUrl ?? null,
-          attachmentName: data.attachmentName ?? null
-        });
-        const order = await storage.getOrder(req.params.id);
-        if (order?.userId) {
-          await storage.createNotification({
-            userId: order.userId,
-            type: "new_message",
-            title: "New Message",
-            message: `New message on order ${order.orderNumber}`,
-            orderId: order.id
-          });
-        }
-        res.status(201).json(msg);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin message error:", err);
-        res.status(500).json({ error: "Failed to send message" });
-      }
-    });
-    router5.get("/orders/:id/activity", async (req, res) => {
-      try {
-        const activity = await storage.getOrderActivityLog(req.params.id);
-        res.json(activity);
-      } catch (err) {
-        console.error("Admin activity error:", err);
-        res.status(500).json({ error: "Failed to load activity" });
-      }
-    });
-    router5.get("/designs/pending", async (_req, res) => {
-      try {
-        const files = await storage.getPendingDesignFiles();
-        res.json(files);
-      } catch (err) {
-        console.error("Admin pending designs error:", err);
-        res.status(500).json({ error: "Failed to load pending designs" });
-      }
-    });
-    router5.get("/suppliers", async (_req, res) => {
-      try {
-        const list = await storage.listSuppliers();
-        res.json({
-          suppliers: list.map((u) => ({
-            id: u.id,
-            email: u.email,
-            supplierName: u.teamName,
-            // `password === ""` means the invite hasn't been accepted yet
-            inviteAccepted: u.password !== "",
-            createdAt: u.createdAt
+        const items = await storage.getOrderItems(order.id);
+        gmailMessageId = await sendSupplierPoDispatchGmail({
+          to: supplier.email,
+          cc: supplier.ccEmail || void 0,
+          supplierName: supplier.teamName,
+          orderNumber: order.orderNumber,
+          poReference: order.poReference,
+          accountName: order.accountName,
+          dueDate: order.dueDate,
+          deliveryAddress: order.deliveryAddress,
+          driveFolderUrl: order.driveFolderUrl,
+          items: items.map((it) => ({
+            productName: it.productName,
+            material: it.material,
+            brandingMethod: it.brandingMethod,
+            quantity: it.quantity,
+            productColors: it.productColors
           }))
         });
       } catch (err) {
-        console.error("Admin list suppliers error:", err);
-        res.status(500).json({ error: "Failed to load suppliers" });
+        console.error("Failed to send supplier PO email:", err);
+      }
+    }
+    let poPdfResult = null;
+    if (order.driveFolderId) {
+      poPdfResult = await uploadPoPdfToDrive(order.id, order.driveFolderId).catch((err) => {
+        console.error("[raise-po] PDF upload failed:", err);
+        return null;
+      });
+    }
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId: req.user?.userId,
+      action: "po_raised_to_supplier",
+      details: {
+        supplierId,
+        supplierName: supplier.teamName,
+        supplierEmail: supplier.email,
+        supplierCcEmail: supplier.ccEmail || null,
+        gmailMessageId,
+        poPdfId: poPdfResult?.pdfId || null,
+        ghlPushed: ghlPushResult.success,
+        ghlPushReason: ghlPushResult.reason
       }
     });
-    assignSupplierSchema = z6.object({
-      supplierId: z6.string().min(1, "supplierId is required")
+    res.json({
+      ok: true,
+      supplierId,
+      supplierEmail: supplier.email,
+      supplierCcEmail: supplier.ccEmail || null,
+      emailSent: !!gmailMessageId,
+      gmailMessageId,
+      poPdfUploaded: !!poPdfResult,
+      poPdfUrl: poPdfResult?.pdfUrl || null,
+      ghlPushed: ghlPushResult.success,
+      ghlPushReason: ghlPushResult.reason
     });
-    router5.post("/orders/:id/assign-supplier", async (req, res) => {
-      try {
-        const { supplierId } = assignSupplierSchema.parse(req.body);
-        const supplier = await storage.getUser(supplierId);
-        if (!supplier || supplier.role !== "supplier") {
-          return res.status(400).json({ error: "Invalid supplier ID" });
-        }
-        const order = await storage.getOrder(req.params.id);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        const previousSupplierId = order.assignedSupplierId;
-        await db.update(orders).set({ assignedSupplierId: supplierId, updatedAt: /* @__PURE__ */ new Date() }).where(eq5(orders.id, order.id));
-        await db.insert(orderActivity).values({
-          orderId: order.id,
-          userId: req.user?.userId,
-          action: "supplier_assigned",
-          details: { from: previousSupplierId, to: supplierId, supplierName: supplier.teamName }
-        });
-        res.json({ ok: true, supplierId });
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin assign supplier error:", err);
-        res.status(500).json({ error: "Failed to assign supplier" });
-      }
-    });
-    router5.post("/orders/:id/generate-pdf", async (req, res) => {
-      try {
-        const order = await storage.getOrder(req.params.id);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        if (!order.driveFolderId) return res.status(400).json({ error: "No Drive folder \u2014 create one first" });
-        const result = await uploadPoPdfToDrive(order.id, order.driveFolderId);
-        if (!result) return res.status(502).json({ error: "PDF generation or Drive upload failed" });
-        await storage.logOrderActivity({
-          orderId: order.id,
-          userId: req.user?.userId,
-          action: "po_pdf_generated",
-          details: { pdfId: result.pdfId }
-        });
-        res.json({ ok: true, ...result });
-      } catch (err) {
-        console.error("Admin generate-pdf error:", err);
-        res.status(500).json({ error: "Failed to generate PDF" });
-      }
-    });
-    raisePoSchema = z6.object({
-      supplierId: z6.string().optional()
-      // optional if already assigned
-    });
-    router5.post("/orders/:id/raise-po", async (req, res) => {
-      try {
-        const { supplierId: bodySupplierId } = raisePoSchema.parse(req.body ?? {});
-        const order = await storage.getOrder(req.params.id);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        const supplierId = bodySupplierId || order.assignedSupplierId;
-        if (!supplierId) {
-          return res.status(400).json({ error: "No supplier assigned \u2014 pass supplierId in the body or assign first" });
-        }
-        const supplier = await storage.getUser(supplierId);
-        if (!supplier || supplier.role !== "supplier") {
-          return res.status(400).json({ error: "Invalid supplier ID" });
-        }
-        if (order.assignedSupplierId !== supplierId) {
-          await db.update(orders).set({ assignedSupplierId: supplierId, updatedAt: /* @__PURE__ */ new Date() }).where(eq5(orders.id, order.id));
-        }
-        let ghlPushResult = { success: false, reason: "no_ghl_link" };
-        if (order.ghlOpportunityId) {
-          ghlPushResult = await updateGhlOpportunityStage(order.ghlOpportunityId, "PO Raised");
-        }
-        let gmailMessageId = null;
-        if (supplier.email) {
-          try {
-            const items = await storage.getOrderItems(order.id);
-            gmailMessageId = await sendSupplierPoDispatchGmail({
-              to: supplier.email,
-              cc: supplier.ccEmail || void 0,
-              supplierName: supplier.teamName,
-              orderNumber: order.orderNumber,
-              poReference: order.poReference,
-              accountName: order.accountName,
-              dueDate: order.dueDate,
-              deliveryAddress: order.deliveryAddress,
-              driveFolderUrl: order.driveFolderUrl,
-              items: items.map((it) => ({
-                productName: it.productName,
-                material: it.material,
-                brandingMethod: it.brandingMethod,
-                quantity: it.quantity,
-                productColors: it.productColors
-              }))
-            });
-          } catch (err) {
-            console.error("Failed to send supplier PO email:", err);
-          }
-        }
-        let poPdfResult = null;
-        if (order.driveFolderId) {
-          poPdfResult = await uploadPoPdfToDrive(order.id, order.driveFolderId).catch((err) => {
-            console.error("[raise-po] PDF upload failed:", err);
-            return null;
-          });
-        }
-        await db.insert(orderActivity).values({
-          orderId: order.id,
-          userId: req.user?.userId,
-          action: "po_raised_to_supplier",
-          details: {
-            supplierId,
-            supplierName: supplier.teamName,
-            supplierEmail: supplier.email,
-            supplierCcEmail: supplier.ccEmail || null,
-            gmailMessageId,
-            poPdfId: poPdfResult?.pdfId || null,
-            ghlPushed: ghlPushResult.success,
-            ghlPushReason: ghlPushResult.reason
-          }
-        });
-        res.json({
-          ok: true,
-          supplierId,
-          supplierEmail: supplier.email,
-          supplierCcEmail: supplier.ccEmail || null,
-          emailSent: !!gmailMessageId,
-          gmailMessageId,
-          poPdfUploaded: !!poPdfResult,
-          poPdfUrl: poPdfResult?.pdfUrl || null,
-          ghlPushed: ghlPushResult.success,
-          ghlPushReason: ghlPushResult.reason
-        });
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin raise PO error:", err);
-        res.status(500).json({ error: "Failed to raise PO" });
-      }
-    });
-    adminUploadDesignSchema = z6.object({
-      label: z6.string().min(1),
-      folder: z6.enum(["logos", "mockups", "size-run", "tech-pack", "other"]),
-      fileName: z6.string(),
-      fileUrl: z6.string().url(),
-      fileSize: z6.number().optional(),
-      mimeType: z6.string().optional()
-    });
-    router5.post("/orders/:id/designs", async (req, res) => {
-      try {
-        const user = req.user;
-        const order = await storage.getOrder(req.params.id);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        const data = adminUploadDesignSchema.parse(req.body);
-        const designFile = await storage.createDesignFile({
-          orderId: order.id,
-          userId: user.userId,
-          label: data.label,
-          folder: data.folder,
-          fileName: data.fileName,
-          fileUrl: data.fileUrl,
-          fileSize: data.fileSize ?? null,
-          mimeType: data.mimeType ?? null,
-          status: "approved",
-          // admin-uploaded files don't need review
-          version: 1
-        });
-        if (order.driveFolderId) {
-          const slotMap = {
-            mockups: "mockups",
-            logos: "logos",
-            "tech-pack": "artwork",
-            "size-run": void 0,
-            // no direct match — lands in root
-            other: void 0
-          };
-          const slot = slotMap[data.folder];
-          mirrorBlobToPoFolder({
-            poFolderId: order.driveFolderId,
-            slot,
-            blobUrl: data.fileUrl,
-            fileName: data.fileName
-          }).catch((err) => console.error("[designs-upload] Drive mirror failed:", err));
-        }
-        await db.insert(orderActivity).values({
-          orderId: order.id,
-          userId: user.userId,
-          action: "admin_uploaded_file",
-          details: { fileId: designFile.id, folder: data.folder, fileName: data.fileName }
-        });
-        res.status(201).json(designFile);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin upload design error:", err);
-        res.status(500).json({ error: "Failed to upload design" });
-      }
-    });
-    updateFolderSchema = z6.object({
-      folder: z6.enum(["logos", "mockups", "size-run", "tech-pack", "other"]).nullable()
-    });
-    router5.patch("/designs/:id/folder", async (req, res) => {
-      try {
-        const { folder: folder5 } = updateFolderSchema.parse(req.body);
-        const [updated] = await db.update(designFiles).set({ folder: folder5 }).where(eq5(designFiles.id, req.params.id)).returning();
-        if (!updated) return res.status(404).json({ error: "Design file not found" });
-        res.json({ ok: true, folder: updated.folder });
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin update folder error:", err);
-        res.status(500).json({ error: "Failed to update folder" });
-      }
-    });
-    sendForApprovalSchema = z6.object({
-      clientEmail: z6.string().email().optional()
-      // defaults to order.customerEmail if omitted
-    });
-    router5.post("/orders/:id/send-for-approval", async (req, res) => {
-      try {
-        const { clientEmail: bodyEmail } = sendForApprovalSchema.parse(req.body ?? {});
-        const order = await storage.getOrder(req.params.id);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        const clientEmail = bodyEmail || order.customerEmail || order.deliveryEmail;
-        if (!clientEmail) {
-          return res.status(400).json({
-            error: "No client email on file \u2014 pass clientEmail in the body or set customerEmail on the order"
-          });
-        }
-        const files = await storage.getDesignFilesByOrder(order.id);
-        const hasMockup = files.some((f) => f.folder === "mockups");
-        if (!hasMockup) {
-          return res.status(400).json({
-            error: "No mockup files uploaded yet. Upload at least one file with folder=mockups first."
-          });
-        }
-        const { token, expiresAt } = await createApprovalToken({
-          orderId: order.id,
-          createdBy: req.user?.userId,
-          clientEmail,
-          clientName: order.customerName,
-          orderNumber: order.orderNumber,
-          ghlOpportunityId: order.ghlOpportunityId
-        });
-        const baseUrl = process.env.BASE_URL || "https://sidelinenz.com";
-        res.json({
-          ok: true,
-          token,
-          expiresAt,
-          link: `${baseUrl}/approve/${token}`,
-          clientEmail
-        });
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Admin send-for-approval error:", err);
-        res.status(500).json({ error: "Failed to send approval link" });
-      }
-    });
-    admin_default = router5;
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin raise PO error:", err);
+    res.status(500).json({ error: "Failed to raise PO" });
   }
 });
+var adminUploadDesignSchema = z6.object({
+  label: z6.string().min(1),
+  folder: z6.enum(["logos", "mockups", "size-run", "tech-pack", "other"]),
+  fileName: z6.string(),
+  fileUrl: z6.string().url(),
+  fileSize: z6.number().optional(),
+  mimeType: z6.string().optional()
+});
+router5.post("/orders/:id/designs", async (req, res) => {
+  try {
+    const user = req.user;
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const data = adminUploadDesignSchema.parse(req.body);
+    const designFile = await storage.createDesignFile({
+      orderId: order.id,
+      userId: user.userId,
+      label: data.label,
+      folder: data.folder,
+      fileName: data.fileName,
+      fileUrl: data.fileUrl,
+      fileSize: data.fileSize ?? null,
+      mimeType: data.mimeType ?? null,
+      status: "approved",
+      // admin-uploaded files don't need review
+      version: 1
+    });
+    if (order.driveFolderId) {
+      const slotMap = {
+        mockups: "mockups",
+        logos: "logos",
+        "tech-pack": "artwork",
+        "size-run": void 0,
+        // no direct match — lands in root
+        other: void 0
+      };
+      const slot = slotMap[data.folder];
+      mirrorBlobToPoFolder({
+        poFolderId: order.driveFolderId,
+        slot,
+        blobUrl: data.fileUrl,
+        fileName: data.fileName
+      }).catch((err) => console.error("[designs-upload] Drive mirror failed:", err));
+    }
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId: user.userId,
+      action: "admin_uploaded_file",
+      details: { fileId: designFile.id, folder: data.folder, fileName: data.fileName }
+    });
+    res.status(201).json(designFile);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin upload design error:", err);
+    res.status(500).json({ error: "Failed to upload design" });
+  }
+});
+var updateFolderSchema = z6.object({
+  folder: z6.enum(["logos", "mockups", "size-run", "tech-pack", "other"]).nullable()
+});
+router5.patch("/designs/:id/folder", async (req, res) => {
+  try {
+    const { folder: folder5 } = updateFolderSchema.parse(req.body);
+    const [updated] = await db.update(designFiles).set({ folder: folder5 }).where(eq4(designFiles.id, req.params.id)).returning();
+    if (!updated) return res.status(404).json({ error: "Design file not found" });
+    res.json({ ok: true, folder: updated.folder });
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin update folder error:", err);
+    res.status(500).json({ error: "Failed to update folder" });
+  }
+});
+var sendForApprovalSchema = z6.object({
+  clientEmail: z6.string().email().optional()
+  // defaults to order.customerEmail if omitted
+});
+router5.post("/orders/:id/send-for-approval", async (req, res) => {
+  try {
+    const { clientEmail: bodyEmail } = sendForApprovalSchema.parse(req.body ?? {});
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const clientEmail = bodyEmail || order.customerEmail || order.deliveryEmail;
+    if (!clientEmail) {
+      return res.status(400).json({
+        error: "No client email on file \u2014 pass clientEmail in the body or set customerEmail on the order"
+      });
+    }
+    const files = await storage.getDesignFilesByOrder(order.id);
+    const hasMockup = files.some((f) => f.folder === "mockups");
+    if (!hasMockup) {
+      return res.status(400).json({
+        error: "No mockup files uploaded yet. Upload at least one file with folder=mockups first."
+      });
+    }
+    const { token, expiresAt } = await createApprovalToken({
+      orderId: order.id,
+      createdBy: req.user?.userId,
+      clientEmail,
+      clientName: order.customerName,
+      orderNumber: order.orderNumber,
+      ghlOpportunityId: order.ghlOpportunityId
+    });
+    const baseUrl = process.env.BASE_URL || "https://sidelinenz.com";
+    res.json({
+      ok: true,
+      token,
+      expiresAt,
+      link: `${baseUrl}/approve/${token}`,
+      clientEmail
+    });
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin send-for-approval error:", err);
+    res.status(500).json({ error: "Failed to send approval link" });
+  }
+});
+var admin_default = router5;
 
 // server/routes/customer.ts
 import { Router as Router7 } from "express";
+init_storage();
 import { z as z7 } from "zod";
-var router6, uploadDesignSchema, messageSchema2, updateProfileSchema, customer_default;
-var init_customer = __esm({
-  "server/routes/customer.ts"() {
-    "use strict";
-    init_auth();
-    init_storage();
-    router6 = Router7();
-    router6.use(requireAuth);
-    router6.get("/orders", async (req, res) => {
-      try {
-        const user = req.user;
-        const orders2 = await storage.getOrdersByUser(user.userId);
-        res.json(orders2);
-      } catch (err) {
-        console.error("Portal orders error:", err);
-        res.status(500).json({ error: "Failed to load orders" });
-      }
-    });
-    router6.get("/orders/:id", async (req, res) => {
-      try {
-        const user = req.user;
-        const result = await storage.getOrderWithDetails(req.params.id);
-        if (!result) return res.status(404).json({ error: "Order not found" });
-        if (result.order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
-        res.json(result);
-      } catch (err) {
-        console.error("Portal order detail error:", err);
-        res.status(500).json({ error: "Failed to load order" });
-      }
-    });
-    uploadDesignSchema = z7.object({
-      label: z7.enum(["jersey", "shorts", "socks", "logo", "other"]),
-      fileName: z7.string(),
-      fileUrl: z7.string().url(),
-      fileSize: z7.number().optional(),
-      mimeType: z7.string().optional()
-    });
-    router6.post("/orders/:id/designs", async (req, res) => {
-      try {
-        const user = req.user;
-        const order = await storage.getOrder(req.params.id);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        if (order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
-        const data = uploadDesignSchema.parse(req.body);
-        const designFile = await storage.createDesignFile({
-          orderId: order.id,
-          userId: user.userId,
-          label: data.label,
-          fileName: data.fileName,
-          fileUrl: data.fileUrl,
-          fileSize: data.fileSize ?? null,
-          mimeType: data.mimeType ?? null,
-          status: "pending",
-          version: 1
-        });
-        if (order.designStatus === "not_started" || order.designStatus === "needs_revision") {
-          await storage.updateOrder(order.id, { designStatus: "pending_review" });
-        }
-        res.status(201).json(designFile);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Portal upload design error:", err);
-        res.status(500).json({ error: "Failed to upload design" });
-      }
-    });
-    router6.post("/orders/:id/designs/:did/reupload", async (req, res) => {
-      try {
-        const user = req.user;
-        const order = await storage.getOrder(req.params.id);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        if (order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
-        const parentFile = await storage.getDesignFile(req.params.did);
-        if (!parentFile) return res.status(404).json({ error: "Design file not found" });
-        if (parentFile.status !== "rejected") return res.status(400).json({ error: "Only rejected designs can be re-uploaded" });
-        const data = uploadDesignSchema.parse(req.body);
-        const designFile = await storage.createDesignFile({
-          orderId: order.id,
-          userId: user.userId,
-          label: parentFile.label,
-          fileName: data.fileName,
-          fileUrl: data.fileUrl,
-          fileSize: data.fileSize ?? null,
-          mimeType: data.mimeType ?? null,
-          status: "pending",
-          version: parentFile.version + 1,
-          parentFileId: parentFile.id
-        });
-        await storage.updateOrder(order.id, { designStatus: "pending_review" });
-        res.status(201).json(designFile);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Portal reupload design error:", err);
-        res.status(500).json({ error: "Failed to re-upload design" });
-      }
-    });
-    router6.get("/orders/:id/messages", async (req, res) => {
-      try {
-        const user = req.user;
-        const order = await storage.getOrder(req.params.id);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        if (order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
-        const messages = await storage.getOrderMessages(req.params.id);
-        res.json(messages);
-      } catch (err) {
-        console.error("Portal messages error:", err);
-        res.status(500).json({ error: "Failed to load messages" });
-      }
-    });
-    messageSchema2 = z7.object({
-      message: z7.string().min(1),
-      attachmentUrl: z7.string().url().optional(),
-      attachmentName: z7.string().optional()
-    });
-    router6.post("/orders/:id/messages", async (req, res) => {
-      try {
-        const user = req.user;
-        const order = await storage.getOrder(req.params.id);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        if (order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
-        const data = messageSchema2.parse(req.body);
-        const msg = await storage.createOrderMessage({
-          orderId: req.params.id,
-          userId: user.userId,
-          senderRole: "customer",
-          message: data.message,
-          attachmentUrl: data.attachmentUrl ?? null,
-          attachmentName: data.attachmentName ?? null
-        });
-        res.status(201).json(msg);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Portal message error:", err);
-        res.status(500).json({ error: "Failed to send message" });
-      }
-    });
-    router6.get("/notifications", async (req, res) => {
-      try {
-        const user = req.user;
-        const notifs = await storage.getNotifications(user.userId);
-        res.json(notifs);
-      } catch (err) {
-        console.error("Portal notifications error:", err);
-        res.status(500).json({ error: "Failed to load notifications" });
-      }
-    });
-    router6.patch("/notifications/:id/read", async (req, res) => {
-      try {
-        await storage.markNotificationRead(req.params.id);
-        res.json({ success: true });
-      } catch (err) {
-        console.error("Portal mark read error:", err);
-        res.status(500).json({ error: "Failed to mark notification" });
-      }
-    });
-    router6.get("/orders/:id/invoice", async (req, res) => {
-      try {
-        const user = req.user;
-        const result = await storage.getOrderWithDetails(req.params.id);
-        if (!result) return res.status(404).json({ error: "Order not found" });
-        if (result.order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
-        const customer = await storage.getUser(user.userId);
-        res.json({
-          order: result.order,
-          items: result.items,
-          customer: customer ? {
-            email: customer.email,
-            teamName: customer.teamName,
-            contactPhone: customer.contactPhone
-          } : null,
-          company: {
-            name: "Sideline NZ Ltd",
-            address: "New Zealand",
-            email: "info@sidelinenz.com",
-            website: "sidelinenz.com"
-          }
-        });
-      } catch (err) {
-        console.error("Portal invoice error:", err);
-        res.status(500).json({ error: "Failed to load invoice" });
-      }
-    });
-    router6.get("/profile", async (req, res) => {
-      try {
-        const user = req.user;
-        const profile = await storage.getUser(user.userId);
-        if (!profile) return res.status(404).json({ error: "User not found" });
-        const { password, ...safe } = profile;
-        res.json(safe);
-      } catch (err) {
-        console.error("Portal profile error:", err);
-        res.status(500).json({ error: "Failed to load profile" });
-      }
-    });
-    updateProfileSchema = z7.object({
-      teamName: z7.string().optional(),
-      contactPhone: z7.string().optional()
-    });
-    router6.patch("/profile", async (req, res) => {
-      try {
-        const user = req.user;
-        const data = updateProfileSchema.parse(req.body);
-        const updated = await storage.updateCustomer(user.userId, data);
-        if (!updated) return res.status(404).json({ error: "User not found" });
-        const { password, ...safe } = updated;
-        res.json(safe);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
-        console.error("Portal update profile error:", err);
-        res.status(500).json({ error: "Failed to update profile" });
-      }
-    });
-    customer_default = router6;
+var router6 = Router7();
+router6.use(requireAuth);
+router6.get("/orders", async (req, res) => {
+  try {
+    const user = req.user;
+    const orders2 = await storage.getOrdersByUser(user.userId);
+    res.json(orders2);
+  } catch (err) {
+    console.error("Portal orders error:", err);
+    res.status(500).json({ error: "Failed to load orders" });
   }
 });
+router6.get("/orders/:id", async (req, res) => {
+  try {
+    const user = req.user;
+    const result = await storage.getOrderWithDetails(req.params.id);
+    if (!result) return res.status(404).json({ error: "Order not found" });
+    if (result.order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
+    res.json(result);
+  } catch (err) {
+    console.error("Portal order detail error:", err);
+    res.status(500).json({ error: "Failed to load order" });
+  }
+});
+var uploadDesignSchema = z7.object({
+  label: z7.enum(["jersey", "shorts", "socks", "logo", "other"]),
+  fileName: z7.string(),
+  fileUrl: z7.string().url(),
+  fileSize: z7.number().optional(),
+  mimeType: z7.string().optional()
+});
+router6.post("/orders/:id/designs", async (req, res) => {
+  try {
+    const user = req.user;
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
+    const data = uploadDesignSchema.parse(req.body);
+    const designFile = await storage.createDesignFile({
+      orderId: order.id,
+      userId: user.userId,
+      label: data.label,
+      fileName: data.fileName,
+      fileUrl: data.fileUrl,
+      fileSize: data.fileSize ?? null,
+      mimeType: data.mimeType ?? null,
+      status: "pending",
+      version: 1
+    });
+    if (order.designStatus === "not_started" || order.designStatus === "needs_revision") {
+      await storage.updateOrder(order.id, { designStatus: "pending_review" });
+    }
+    res.status(201).json(designFile);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Portal upload design error:", err);
+    res.status(500).json({ error: "Failed to upload design" });
+  }
+});
+router6.post("/orders/:id/designs/:did/reupload", async (req, res) => {
+  try {
+    const user = req.user;
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
+    const parentFile = await storage.getDesignFile(req.params.did);
+    if (!parentFile) return res.status(404).json({ error: "Design file not found" });
+    if (parentFile.status !== "rejected") return res.status(400).json({ error: "Only rejected designs can be re-uploaded" });
+    const data = uploadDesignSchema.parse(req.body);
+    const designFile = await storage.createDesignFile({
+      orderId: order.id,
+      userId: user.userId,
+      label: parentFile.label,
+      fileName: data.fileName,
+      fileUrl: data.fileUrl,
+      fileSize: data.fileSize ?? null,
+      mimeType: data.mimeType ?? null,
+      status: "pending",
+      version: parentFile.version + 1,
+      parentFileId: parentFile.id
+    });
+    await storage.updateOrder(order.id, { designStatus: "pending_review" });
+    res.status(201).json(designFile);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Portal reupload design error:", err);
+    res.status(500).json({ error: "Failed to re-upload design" });
+  }
+});
+router6.get("/orders/:id/messages", async (req, res) => {
+  try {
+    const user = req.user;
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
+    const messages = await storage.getOrderMessages(req.params.id);
+    res.json(messages);
+  } catch (err) {
+    console.error("Portal messages error:", err);
+    res.status(500).json({ error: "Failed to load messages" });
+  }
+});
+var messageSchema2 = z7.object({
+  message: z7.string().min(1),
+  attachmentUrl: z7.string().url().optional(),
+  attachmentName: z7.string().optional()
+});
+router6.post("/orders/:id/messages", async (req, res) => {
+  try {
+    const user = req.user;
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
+    const data = messageSchema2.parse(req.body);
+    const msg = await storage.createOrderMessage({
+      orderId: req.params.id,
+      userId: user.userId,
+      senderRole: "customer",
+      message: data.message,
+      attachmentUrl: data.attachmentUrl ?? null,
+      attachmentName: data.attachmentName ?? null
+    });
+    res.status(201).json(msg);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Portal message error:", err);
+    res.status(500).json({ error: "Failed to send message" });
+  }
+});
+router6.get("/notifications", async (req, res) => {
+  try {
+    const user = req.user;
+    const notifs = await storage.getNotifications(user.userId);
+    res.json(notifs);
+  } catch (err) {
+    console.error("Portal notifications error:", err);
+    res.status(500).json({ error: "Failed to load notifications" });
+  }
+});
+router6.patch("/notifications/:id/read", async (req, res) => {
+  try {
+    await storage.markNotificationRead(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Portal mark read error:", err);
+    res.status(500).json({ error: "Failed to mark notification" });
+  }
+});
+router6.get("/orders/:id/invoice", async (req, res) => {
+  try {
+    const user = req.user;
+    const result = await storage.getOrderWithDetails(req.params.id);
+    if (!result) return res.status(404).json({ error: "Order not found" });
+    if (result.order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
+    const customer = await storage.getUser(user.userId);
+    res.json({
+      order: result.order,
+      items: result.items,
+      customer: customer ? {
+        email: customer.email,
+        teamName: customer.teamName,
+        contactPhone: customer.contactPhone
+      } : null,
+      company: {
+        name: "Sideline NZ Ltd",
+        address: "New Zealand",
+        email: "info@sidelinenz.com",
+        website: "sidelinenz.com"
+      }
+    });
+  } catch (err) {
+    console.error("Portal invoice error:", err);
+    res.status(500).json({ error: "Failed to load invoice" });
+  }
+});
+router6.get("/profile", async (req, res) => {
+  try {
+    const user = req.user;
+    const profile = await storage.getUser(user.userId);
+    if (!profile) return res.status(404).json({ error: "User not found" });
+    const { password, ...safe } = profile;
+    res.json(safe);
+  } catch (err) {
+    console.error("Portal profile error:", err);
+    res.status(500).json({ error: "Failed to load profile" });
+  }
+});
+var updateProfileSchema = z7.object({
+  teamName: z7.string().optional(),
+  contactPhone: z7.string().optional()
+});
+router6.patch("/profile", async (req, res) => {
+  try {
+    const user = req.user;
+    const data = updateProfileSchema.parse(req.body);
+    const updated = await storage.updateCustomer(user.userId, data);
+    if (!updated) return res.status(404).json({ error: "User not found" });
+    const { password, ...safe } = updated;
+    res.json(safe);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Portal update profile error:", err);
+    res.status(500).json({ error: "Failed to update profile" });
+  }
+});
+var customer_default = router6;
 
 // server/routes/uploads.ts
 import { Router as Router8 } from "express";
 import { handleUpload } from "@vercel/blob/client";
-var router7, uploads_default;
-var init_uploads = __esm({
-  "server/routes/uploads.ts"() {
-    "use strict";
-    init_auth();
-    router7 = Router8();
-    router7.use(requireAuth);
-    router7.post("/token", async (req, res) => {
-      try {
-        const body = req.body;
-        const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
-        console.log(
-          "[uploads/token] BLOB_READ_WRITE_TOKEN present:",
-          !!blobToken,
-          "length:",
-          blobToken?.length ?? 0
-        );
-        if (!blobToken) {
-          return res.status(500).json({
-            error: "Vercel Blob is not configured on this environment (BLOB_READ_WRITE_TOKEN missing)"
-          });
-        }
-        const jsonResponse = await handleUpload({
-          body,
-          request: req,
-          token: blobToken,
-          // explicit — don't rely on @vercel/blob auto-env-read
-          onBeforeGenerateToken: async (pathname) => {
-            const user = req.user;
-            if (!user) throw new Error("Not authenticated");
-            return {
-              allowedContentTypes: [
-                "image/png",
-                "image/jpeg",
-                "image/svg+xml",
-                "image/webp",
-                "application/pdf",
-                "application/zip",
-                "application/x-zip-compressed"
-              ],
-              maximumSizeInBytes: 50 * 1024 * 1024,
-              // 50MB
-              addRandomSuffix: true,
-              tokenPayload: JSON.stringify({ userId: user.userId })
-            };
-          },
-          onUploadCompleted: async ({ blob, tokenPayload }) => {
-          }
-        });
-        res.json(jsonResponse);
-      } catch (err) {
-        console.error("Upload token error:", err);
-        res.status(400).json({ error: err.message || "Upload failed" });
+var router7 = Router8();
+router7.use(requireAuth);
+router7.post("/token", async (req, res) => {
+  try {
+    const body = req.body;
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+    console.log(
+      "[uploads/token] BLOB_READ_WRITE_TOKEN present:",
+      !!blobToken,
+      "length:",
+      blobToken?.length ?? 0
+    );
+    if (!blobToken) {
+      return res.status(500).json({
+        error: "Vercel Blob is not configured on this environment (BLOB_READ_WRITE_TOKEN missing)"
+      });
+    }
+    const jsonResponse = await handleUpload({
+      body,
+      request: req,
+      token: blobToken,
+      // explicit — don't rely on @vercel/blob auto-env-read
+      onBeforeGenerateToken: async (pathname) => {
+        const user = req.user;
+        if (!user) throw new Error("Not authenticated");
+        return {
+          allowedContentTypes: [
+            "image/png",
+            "image/jpeg",
+            "image/svg+xml",
+            "image/webp",
+            "application/pdf",
+            "application/zip",
+            "application/x-zip-compressed"
+          ],
+          maximumSizeInBytes: 50 * 1024 * 1024,
+          // 50MB
+          addRandomSuffix: true,
+          tokenPayload: JSON.stringify({ userId: user.userId })
+        };
+      },
+      onUploadCompleted: async ({ blob, tokenPayload }) => {
       }
     });
-    uploads_default = router7;
+    res.json(jsonResponse);
+  } catch (err) {
+    console.error("Upload token error:", err);
+    res.status(400).json({ error: err.message || "Upload failed" });
   }
 });
+var uploads_default = router7;
+
+// server/routes/mockups.ts
+init_db();
+init_schema();
+import { Router as Router9 } from "express";
+import { z as z8 } from "zod";
+import { eq as eq6, desc as desc2, sql as sql4, and as and2 } from "drizzle-orm";
+
+// server/mockup/orchestrator.ts
+init_db();
+init_schema();
+import { eq as eq5 } from "drizzle-orm";
 
 // server/mockup/gemini.ts
+var SPORT_TEMPLATES = {
+  rugby: {
+    garments: "rugby jersey, rugby shorts, and rugby socks",
+    style: "tough, athletic, professional rugby union",
+    details: "reinforced collar, sublimated print, ventilation panels on sides"
+  },
+  netball: {
+    garments: "netball dress with integrated shorts",
+    style: "modern, sleek, feminine athletic",
+    details: "fitted bodice, A-line skirt with built-in shorts, breathable mesh panels"
+  },
+  cricket: {
+    garments: "cricket polo shirt and cricket trousers",
+    style: "classic cricket, clean and professional",
+    details: "buttoned collar, moisture-wicking fabric, side piping detail"
+  },
+  basketball: {
+    garments: "basketball singlet and basketball shorts",
+    style: "bold, modern, NBA-inspired",
+    details: "wide shoulder straps, side panels, elastic waistband shorts"
+  },
+  hockey: {
+    garments: "hockey jersey and hockey skort or shorts",
+    style: "athletic, sleek field hockey",
+    details: "v-neck, sublimated design, breathable panels"
+  },
+  football: {
+    garments: "football/soccer jersey and shorts with socks",
+    style: "modern football kit, professional",
+    details: "crew neck, raglan sleeves, side vents, contrast trim"
+  },
+  league: {
+    garments: "rugby league jersey and shorts",
+    style: "bold, powerful, rugby league",
+    details: "v-neck or crew, sublimated print, reinforced stitching"
+  },
+  touch: {
+    garments: "touch rugby singlet or tee and shorts",
+    style: "lightweight, fast, touch rugby",
+    details: "lightweight fabric, fitted cut, breathable mesh"
+  },
+  volleyball: {
+    garments: "volleyball jersey and shorts",
+    style: "dynamic, athletic volleyball",
+    details: "sleeveless or short sleeve, breathable panels, elastic waistband"
+  }
+};
+var DESIGN_DIRECTIONS = [
+  {
+    name: "Classic Bold",
+    style: "classic bold design with strong horizontal or diagonal stripes, clean typography, dominant primary color with secondary accents"
+  },
+  {
+    name: "Modern Gradient",
+    style: "modern design with subtle gradient fade between the team colors, geometric patterns, contemporary athletic look"
+  },
+  {
+    name: "Heritage Split",
+    style: "heritage-inspired design with vertical halves or quarters in team colors, traditional sport feel with modern touches"
+  },
+  {
+    name: "Dynamic Slash",
+    style: "dynamic design with angular slash patterns, asymmetric color blocking, energetic and aggressive athletic aesthetic"
+  }
+];
 function buildPrompt(opts) {
   const sport = opts.sport.toLowerCase();
   const template = SPORT_TEMPLATES[sport] || SPORT_TEMPLATES.rugby;
@@ -95349,77 +95340,6 @@ async function generateMockupImage(opts) {
     generationTimeMs
   };
 }
-var SPORT_TEMPLATES, DESIGN_DIRECTIONS;
-var init_gemini = __esm({
-  "server/mockup/gemini.ts"() {
-    "use strict";
-    SPORT_TEMPLATES = {
-      rugby: {
-        garments: "rugby jersey, rugby shorts, and rugby socks",
-        style: "tough, athletic, professional rugby union",
-        details: "reinforced collar, sublimated print, ventilation panels on sides"
-      },
-      netball: {
-        garments: "netball dress with integrated shorts",
-        style: "modern, sleek, feminine athletic",
-        details: "fitted bodice, A-line skirt with built-in shorts, breathable mesh panels"
-      },
-      cricket: {
-        garments: "cricket polo shirt and cricket trousers",
-        style: "classic cricket, clean and professional",
-        details: "buttoned collar, moisture-wicking fabric, side piping detail"
-      },
-      basketball: {
-        garments: "basketball singlet and basketball shorts",
-        style: "bold, modern, NBA-inspired",
-        details: "wide shoulder straps, side panels, elastic waistband shorts"
-      },
-      hockey: {
-        garments: "hockey jersey and hockey skort or shorts",
-        style: "athletic, sleek field hockey",
-        details: "v-neck, sublimated design, breathable panels"
-      },
-      football: {
-        garments: "football/soccer jersey and shorts with socks",
-        style: "modern football kit, professional",
-        details: "crew neck, raglan sleeves, side vents, contrast trim"
-      },
-      league: {
-        garments: "rugby league jersey and shorts",
-        style: "bold, powerful, rugby league",
-        details: "v-neck or crew, sublimated print, reinforced stitching"
-      },
-      touch: {
-        garments: "touch rugby singlet or tee and shorts",
-        style: "lightweight, fast, touch rugby",
-        details: "lightweight fabric, fitted cut, breathable mesh"
-      },
-      volleyball: {
-        garments: "volleyball jersey and shorts",
-        style: "dynamic, athletic volleyball",
-        details: "sleeveless or short sleeve, breathable panels, elastic waistband"
-      }
-    };
-    DESIGN_DIRECTIONS = [
-      {
-        name: "Classic Bold",
-        style: "classic bold design with strong horizontal or diagonal stripes, clean typography, dominant primary color with secondary accents"
-      },
-      {
-        name: "Modern Gradient",
-        style: "modern design with subtle gradient fade between the team colors, geometric patterns, contemporary athletic look"
-      },
-      {
-        name: "Heritage Split",
-        style: "heritage-inspired design with vertical halves or quarters in team colors, traditional sport feel with modern touches"
-      },
-      {
-        name: "Dynamic Slash",
-        style: "dynamic design with angular slash patterns, asymmetric color blocking, energetic and aggressive athletic aesthetic"
-      }
-    ];
-  }
-});
 
 // server/mockup/elevenlabs.ts
 function buildScript(opts) {
@@ -95462,11 +95382,6 @@ async function generateVoiceover(opts) {
   const audioBuffer = Buffer.from(arrayBuffer);
   return { audioBuffer, script };
 }
-var init_elevenlabs = __esm({
-  "server/mockup/elevenlabs.ts"() {
-    "use strict";
-  }
-});
 
 // server/mockup/clickup.ts
 async function createClickUpTask(opts) {
@@ -95523,114 +95438,10 @@ async function createClickUpTask(opts) {
     return null;
   }
 }
-var init_clickup = __esm({
-  "server/mockup/clickup.ts"() {
-    "use strict";
-  }
-});
-
-// server/mockup/video.ts
-var video_exports = {};
-__export(video_exports, {
-  createVideoMontage: () => createVideoMontage
-});
-import { execFile } from "child_process";
-import { promisify } from "util";
-import * as fs7 from "fs";
-import * as path12 from "path";
-import * as os9 from "os";
-async function createVideoMontage(opts) {
-  const tmpDir = await fs7.promises.mkdtemp(path12.join(os9.tmpdir(), "sideline-mockup-"));
-  try {
-    const imagePaths = [];
-    for (let i = 0; i < opts.images.length; i++) {
-      const imgPath = path12.join(tmpDir, `design_${i + 1}.png`);
-      await fs7.promises.writeFile(imgPath, opts.images[i]);
-      imagePaths.push(imgPath);
-    }
-    const audioPath = path12.join(tmpDir, "voiceover.mp3");
-    await fs7.promises.writeFile(audioPath, opts.audio);
-    const outputPath = path12.join(tmpDir, "mockup_video.mp4");
-    const durationSeconds = await getAudioDuration(audioPath);
-    const perImageDuration = Math.max(3, Math.floor(durationSeconds / opts.images.length));
-    const fadeDuration = 0.5;
-    const filterParts = [];
-    const inputs = [];
-    for (let i = 0; i < imagePaths.length; i++) {
-      inputs.push("-loop", "1", "-t", String(perImageDuration), "-i", imagePaths[i]);
-    }
-    inputs.push("-i", audioPath);
-    for (let i = 0; i < imagePaths.length; i++) {
-      const fadeIn = i === 0 ? 0 : 0;
-      filterParts.push(
-        `[${i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=white,drawtext=text='${opts.teamName.replace(/'/g, "\\'")}':fontsize=28:fontcolor=0x333333:x=(w-text_w)/2:y=h-60:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf,drawtext=text='Design ${i + 1} of ${imagePaths.length}':fontsize=20:fontcolor=0x999999:x=(w-text_w)/2:y=h-30:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf,fade=t=in:st=0:d=${fadeDuration},fade=t=out:st=${perImageDuration - fadeDuration}:d=${fadeDuration}[v${i}]`
-      );
-    }
-    const concatInputs = imagePaths.map((_, i) => `[v${i}]`).join("");
-    filterParts.push(`${concatInputs}concat=n=${imagePaths.length}:v=1:a=0[outv]`);
-    const filterComplex = filterParts.join("; ");
-    const ffmpegArgs = [
-      ...inputs,
-      "-filter_complex",
-      filterComplex,
-      "-map",
-      "[outv]",
-      "-map",
-      `${imagePaths.length}:a`,
-      "-c:v",
-      "libx264",
-      "-preset",
-      "fast",
-      "-crf",
-      "23",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "128k",
-      "-shortest",
-      "-pix_fmt",
-      "yuv420p",
-      "-movflags",
-      "+faststart",
-      "-y",
-      outputPath
-    ];
-    await execFileAsync("ffmpeg", ffmpegArgs, { timeout: 12e4 });
-    const videoBuffer = await fs7.promises.readFile(outputPath);
-    const totalDuration = perImageDuration * imagePaths.length;
-    return { videoBuffer, durationSeconds: totalDuration };
-  } finally {
-    await fs7.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {
-    });
-  }
-}
-async function getAudioDuration(audioPath) {
-  try {
-    const { stdout } = await execFileAsync("ffprobe", [
-      "-i",
-      audioPath,
-      "-show_entries",
-      "format=duration",
-      "-v",
-      "quiet",
-      "-of",
-      "csv=p=0"
-    ]);
-    return parseFloat(stdout.trim()) || 20;
-  } catch {
-    return 20;
-  }
-}
-var execFileAsync;
-var init_video = __esm({
-  "server/mockup/video.ts"() {
-    "use strict";
-    execFileAsync = promisify(execFile);
-  }
-});
 
 // server/mockup/orchestrator.ts
-import { eq as eq6 } from "drizzle-orm";
+init_email();
+var lazyVideoImport = () => Promise.resolve().then(() => (init_video(), video_exports)).then((m) => m.createVideoMontage);
 async function uploadToBlob(buffer, filename, contentType) {
   const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
   if (blobToken) {
@@ -95647,9 +95458,9 @@ async function uploadToBlob(buffer, filename, contentType) {
 }
 async function runMockupPipeline(requestId) {
   const startTime = Date.now();
-  const [request3] = await db.select().from(mockupRequests).where(eq6(mockupRequests.id, requestId));
+  const [request3] = await db.select().from(mockupRequests).where(eq5(mockupRequests.id, requestId));
   if (!request3) throw new Error(`Mockup request ${requestId} not found`);
-  await db.update(mockupRequests).set({ status: "generating", generationStartedAt: /* @__PURE__ */ new Date() }).where(eq6(mockupRequests.id, requestId));
+  await db.update(mockupRequests).set({ status: "generating", generationStartedAt: /* @__PURE__ */ new Date() }).where(eq5(mockupRequests.id, requestId));
   const designUrls = [];
   const imageBuffers = [];
   try {
@@ -95674,13 +95485,13 @@ async function runMockupPipeline(requestId) {
         designNumber
       };
       try {
-        await db.update(mockupDesigns).set({ status: "generating" }).where(eq6(mockupDesigns.requestId, requestId));
+        await db.update(mockupDesigns).set({ status: "generating" }).where(eq5(mockupDesigns.requestId, requestId));
         const result = await generateMockupImage(opts);
         const imageBuffer = Buffer.from(result.imageBase64, "base64");
         const ext = result.mimeType.includes("png") ? "png" : "jpg";
         const filename = `mockups/${requestId}/design_${designNumber}.${ext}`;
         const imageUrl = await uploadToBlob(imageBuffer, filename, result.mimeType);
-        const allDesigns = await db.select().from(mockupDesigns).where(eq6(mockupDesigns.requestId, requestId));
+        const allDesigns = await db.select().from(mockupDesigns).where(eq5(mockupDesigns.requestId, requestId));
         const design = allDesigns.find((d) => d.designNumber === designNumber);
         if (design) {
           await db.update(mockupDesigns).set({
@@ -95688,15 +95499,15 @@ async function runMockupPipeline(requestId) {
             imageUrl,
             status: "completed",
             generationTimeMs: result.generationTimeMs
-          }).where(eq6(mockupDesigns.id, design.id));
+          }).where(eq5(mockupDesigns.id, design.id));
         }
         return { designNumber, imageUrl, imageBuffer };
       } catch (err) {
         console.error(`[Mockup] Design ${designNumber} failed:`, err.message);
-        const allDesigns = await db.select().from(mockupDesigns).where(eq6(mockupDesigns.requestId, requestId));
+        const allDesigns = await db.select().from(mockupDesigns).where(eq5(mockupDesigns.requestId, requestId));
         const design = allDesigns.find((d) => d.designNumber === designNumber);
         if (design) {
-          await db.update(mockupDesigns).set({ status: "failed", errorMessage: err.message }).where(eq6(mockupDesigns.id, design.id));
+          await db.update(mockupDesigns).set({ status: "failed", errorMessage: err.message }).where(eq5(mockupDesigns.id, design.id));
         }
         return null;
       }
@@ -95710,7 +95521,7 @@ async function runMockupPipeline(requestId) {
       designUrls.push(d.imageUrl);
       imageBuffers.push(d.imageBuffer);
     }
-    await db.update(mockupRequests).set({ status: "designs_ready" }).where(eq6(mockupRequests.id, requestId));
+    await db.update(mockupRequests).set({ status: "designs_ready" }).where(eq5(mockupRequests.id, requestId));
     console.log(`[Mockup] ${designResults.length} designs generated for ${request3.teamName}`);
     let audioBuffer = null;
     let voiceoverUrl = null;
@@ -95728,7 +95539,7 @@ async function runMockupPipeline(requestId) {
           `mockups/${requestId}/voiceover.mp3`,
           "audio/mpeg"
         );
-        await db.update(mockupRequests).set({ voiceoverUrl }).where(eq6(mockupRequests.id, requestId));
+        await db.update(mockupRequests).set({ voiceoverUrl }).where(eq5(mockupRequests.id, requestId));
         console.log(`[Mockup] Voiceover generated`);
       }
     } catch (err) {
@@ -95749,7 +95560,7 @@ async function runMockupPipeline(requestId) {
           `mockups/${requestId}/presentation.mp4`,
           "video/mp4"
         );
-        await db.update(mockupRequests).set({ videoUrl, status: "video_ready" }).where(eq6(mockupRequests.id, requestId));
+        await db.update(mockupRequests).set({ videoUrl, status: "video_ready" }).where(eq5(mockupRequests.id, requestId));
         console.log(`[Mockup] Video created (${videoResult.durationSeconds}s)`);
       }
     } catch (err) {
@@ -95798,7 +95609,7 @@ www.sidelinenz.com`,
           </div>`
       });
       emailSent = true;
-      await db.update(mockupRequests).set({ status: "sent", emailSentAt: /* @__PURE__ */ new Date() }).where(eq6(mockupRequests.id, requestId));
+      await db.update(mockupRequests).set({ status: "sent", emailSentAt: /* @__PURE__ */ new Date() }).where(eq5(mockupRequests.id, requestId));
       console.log(`[Mockup] Email sent to ${request3.contactEmail}`);
     } catch (err) {
       console.error("[Mockup] Email send failed:", err.message);
@@ -95806,7 +95617,7 @@ www.sidelinenz.com`,
     try {
       await syncGhlTag(request3.contactEmail, "Mockup Generated");
       await syncGhlTag(request3.contactEmail, `Sport: ${request3.sport}`);
-      await db.update(mockupRequests).set({ ghlTagsSynced: true }).where(eq6(mockupRequests.id, requestId));
+      await db.update(mockupRequests).set({ ghlTagsSynced: true }).where(eq5(mockupRequests.id, requestId));
     } catch (err) {
       console.error("[Mockup] GHL sync failed:", err.message);
     }
@@ -95821,13 +95632,13 @@ www.sidelinenz.com`,
         designCount: designResults.length
       });
       if (taskId) {
-        await db.update(mockupRequests).set({ clickupTaskId: taskId }).where(eq6(mockupRequests.id, requestId));
+        await db.update(mockupRequests).set({ clickupTaskId: taskId }).where(eq5(mockupRequests.id, requestId));
       }
     } catch (err) {
       console.error("[Mockup] ClickUp task failed:", err.message);
     }
     const totalTimeMs = Date.now() - startTime;
-    await db.update(mockupRequests).set({ generationCompletedAt: /* @__PURE__ */ new Date() }).where(eq6(mockupRequests.id, requestId));
+    await db.update(mockupRequests).set({ generationCompletedAt: /* @__PURE__ */ new Date() }).where(eq5(mockupRequests.id, requestId));
     console.log(`[Mockup] Pipeline complete for ${request3.teamName} in ${(totalTimeMs / 1e3).toFixed(1)}s`);
     return {
       requestId,
@@ -95841,431 +95652,398 @@ www.sidelinenz.com`,
       status: "failed",
       errorMessage: err.message,
       generationCompletedAt: /* @__PURE__ */ new Date()
-    }).where(eq6(mockupRequests.id, requestId));
+    }).where(eq5(mockupRequests.id, requestId));
     console.error(`[Mockup] Pipeline failed for ${request3.teamName}:`, err.message);
     throw err;
   }
 }
-var lazyVideoImport;
-var init_orchestrator = __esm({
-  "server/mockup/orchestrator.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    init_gemini();
-    init_elevenlabs();
-    init_clickup();
-    init_ghl_sync();
-    init_email();
-    lazyVideoImport = () => Promise.resolve().then(() => (init_video(), video_exports)).then((m) => m.createVideoMontage);
-  }
-});
 
 // server/routes/mockups.ts
-import { Router as Router9 } from "express";
-import { z as z8 } from "zod";
-import { eq as eq7, desc as desc2, sql as sql4, and as and2 } from "drizzle-orm";
-var publicRouter, mockupRequestSchema2, adminMockupRouter;
-var init_mockups = __esm({
-  "server/routes/mockups.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    init_orchestrator();
-    init_auth();
-    publicRouter = Router9();
-    mockupRequestSchema2 = z8.object({
-      contactName: z8.string().min(1, "Name is required"),
-      contactEmail: z8.string().email("Valid email required"),
-      contactPhone: z8.string().optional(),
-      teamName: z8.string().min(1, "Team name is required"),
-      sport: z8.string().min(1, "Sport is required"),
-      primaryColor: z8.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a hex color"),
-      secondaryColor: z8.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      accentColor: z8.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      logoUrl: z8.string().url().optional(),
-      notes: z8.string().optional()
+var publicRouter = Router9();
+var mockupRequestSchema2 = z8.object({
+  contactName: z8.string().min(1, "Name is required"),
+  contactEmail: z8.string().email("Valid email required"),
+  contactPhone: z8.string().optional(),
+  teamName: z8.string().min(1, "Team name is required"),
+  sport: z8.string().min(1, "Sport is required"),
+  primaryColor: z8.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a hex color"),
+  secondaryColor: z8.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  accentColor: z8.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  logoUrl: z8.string().url().optional(),
+  notes: z8.string().optional()
+});
+publicRouter.post("/request", async (req, res) => {
+  try {
+    const data = mockupRequestSchema2.parse(req.body);
+    const [request3] = await db.insert(mockupRequests).values({
+      contactName: data.contactName,
+      contactEmail: data.contactEmail,
+      contactPhone: data.contactPhone || null,
+      teamName: data.teamName,
+      sport: data.sport.toLowerCase(),
+      primaryColor: data.primaryColor,
+      secondaryColor: data.secondaryColor || null,
+      accentColor: data.accentColor || null,
+      logoUrl: data.logoUrl || null,
+      notes: data.notes || null,
+      status: "pending"
+    }).returning();
+    runMockupPipeline(request3.id).catch((err) => {
+      console.error(`[Mockup] Background pipeline failed for ${request3.id}:`, err.message);
     });
-    publicRouter.post("/request", async (req, res) => {
-      try {
-        const data = mockupRequestSchema2.parse(req.body);
-        const [request3] = await db.insert(mockupRequests).values({
-          contactName: data.contactName,
-          contactEmail: data.contactEmail,
-          contactPhone: data.contactPhone || null,
-          teamName: data.teamName,
-          sport: data.sport.toLowerCase(),
-          primaryColor: data.primaryColor,
-          secondaryColor: data.secondaryColor || null,
-          accentColor: data.accentColor || null,
-          logoUrl: data.logoUrl || null,
-          notes: data.notes || null,
-          status: "pending"
-        }).returning();
-        runMockupPipeline(request3.id).catch((err) => {
-          console.error(`[Mockup] Background pipeline failed for ${request3.id}:`, err.message);
-        });
-        res.json({
-          id: request3.id,
-          status: "pending",
-          message: "Your custom mockups are being generated! Check your email in a few minutes."
-        });
-      } catch (err) {
-        if (err.name === "ZodError") {
-          return res.status(400).json({ error: "Validation error", details: err.errors });
-        }
-        console.error("[Mockup] Request error:", err);
-        res.status(500).json({ error: "Failed to create mockup request" });
-      }
+    res.json({
+      id: request3.id,
+      status: "pending",
+      message: "Your custom mockups are being generated! Check your email in a few minutes."
     });
-    publicRouter.get("/:id/status", async (req, res) => {
-      try {
-        const [request3] = await db.select().from(mockupRequests).where(eq7(mockupRequests.id, req.params.id));
-        if (!request3) {
-          return res.status(404).json({ error: "Mockup request not found" });
-        }
-        const designs = await db.select().from(mockupDesigns).where(eq7(mockupDesigns.requestId, request3.id)).orderBy(mockupDesigns.designNumber);
-        res.json({
-          id: request3.id,
-          status: request3.status,
-          teamName: request3.teamName,
-          sport: request3.sport,
-          designs: designs.map((d) => ({
-            designNumber: d.designNumber,
-            status: d.status,
-            imageUrl: d.imageUrl
-          })),
-          videoUrl: request3.videoUrl,
-          emailSentAt: request3.emailSentAt,
-          createdAt: request3.createdAt
-        });
-      } catch (err) {
-        console.error("[Mockup] Status error:", err);
-        res.status(500).json({ error: "Failed to get status" });
-      }
+  } catch (err) {
+    if (err.name === "ZodError") {
+      return res.status(400).json({ error: "Validation error", details: err.errors });
+    }
+    console.error("[Mockup] Request error:", err);
+    res.status(500).json({ error: "Failed to create mockup request" });
+  }
+});
+publicRouter.get("/:id/status", async (req, res) => {
+  try {
+    const [request3] = await db.select().from(mockupRequests).where(eq6(mockupRequests.id, req.params.id));
+    if (!request3) {
+      return res.status(404).json({ error: "Mockup request not found" });
+    }
+    const designs = await db.select().from(mockupDesigns).where(eq6(mockupDesigns.requestId, request3.id)).orderBy(mockupDesigns.designNumber);
+    res.json({
+      id: request3.id,
+      status: request3.status,
+      teamName: request3.teamName,
+      sport: request3.sport,
+      designs: designs.map((d) => ({
+        designNumber: d.designNumber,
+        status: d.status,
+        imageUrl: d.imageUrl
+      })),
+      videoUrl: request3.videoUrl,
+      emailSentAt: request3.emailSentAt,
+      createdAt: request3.createdAt
     });
-    adminMockupRouter = Router9();
-    adminMockupRouter.use(requireAdmin);
-    adminMockupRouter.get("/", async (req, res) => {
-      try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = 20;
-        const offset = (page - 1) * limit;
-        const statusFilter = req.query.status;
-        const search = req.query.search;
-        let query = db.select().from(mockupRequests).orderBy(desc2(mockupRequests.createdAt));
-        const conditions = [];
-        if (statusFilter) {
-          conditions.push(eq7(mockupRequests.status, statusFilter));
-        }
-        if (search) {
-          conditions.push(
-            sql4`(${mockupRequests.teamName} ILIKE ${"%" + search + "%"} OR ${mockupRequests.contactEmail} ILIKE ${"%" + search + "%"} OR ${mockupRequests.contactName} ILIKE ${"%" + search + "%"})`
-          );
-        }
-        const whereClause = conditions.length > 0 ? and2(...conditions) : void 0;
-        const requests2 = await db.select().from(mockupRequests).where(whereClause).orderBy(desc2(mockupRequests.createdAt)).limit(limit).offset(offset);
-        const [{ count: count2 }] = await db.select({ count: sql4`count(*)` }).from(mockupRequests).where(whereClause);
-        res.json({
-          requests: requests2,
-          total: Number(count2),
-          page,
-          totalPages: Math.ceil(Number(count2) / limit)
-        });
-      } catch (err) {
-        console.error("[Mockup] List error:", err);
-        res.status(500).json({ error: "Failed to list mockup requests" });
-      }
+  } catch (err) {
+    console.error("[Mockup] Status error:", err);
+    res.status(500).json({ error: "Failed to get status" });
+  }
+});
+var adminMockupRouter = Router9();
+adminMockupRouter.use(requireAdmin);
+adminMockupRouter.get("/", async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20;
+    const offset = (page - 1) * limit;
+    const statusFilter = req.query.status;
+    const search = req.query.search;
+    let query = db.select().from(mockupRequests).orderBy(desc2(mockupRequests.createdAt));
+    const conditions = [];
+    if (statusFilter) {
+      conditions.push(eq6(mockupRequests.status, statusFilter));
+    }
+    if (search) {
+      conditions.push(
+        sql4`(${mockupRequests.teamName} ILIKE ${"%" + search + "%"} OR ${mockupRequests.contactEmail} ILIKE ${"%" + search + "%"} OR ${mockupRequests.contactName} ILIKE ${"%" + search + "%"})`
+      );
+    }
+    const whereClause = conditions.length > 0 ? and2(...conditions) : void 0;
+    const requests2 = await db.select().from(mockupRequests).where(whereClause).orderBy(desc2(mockupRequests.createdAt)).limit(limit).offset(offset);
+    const [{ count: count2 }] = await db.select({ count: sql4`count(*)` }).from(mockupRequests).where(whereClause);
+    res.json({
+      requests: requests2,
+      total: Number(count2),
+      page,
+      totalPages: Math.ceil(Number(count2) / limit)
     });
-    adminMockupRouter.get("/stats", async (req, res) => {
-      try {
-        const [stats] = await db.select({
-          total: sql4`count(*)`,
-          pending: sql4`count(*) filter (where ${mockupRequests.status} = 'pending')`,
-          generating: sql4`count(*) filter (where ${mockupRequests.status} = 'generating')`,
-          sent: sql4`count(*) filter (where ${mockupRequests.status} = 'sent')`,
-          failed: sql4`count(*) filter (where ${mockupRequests.status} = 'failed')`
-        }).from(mockupRequests);
-        const [avgTime] = await db.select({
-          avgMs: sql4`avg(extract(epoch from (${mockupRequests.generationCompletedAt} - ${mockupRequests.generationStartedAt})) * 1000)`
-        }).from(mockupRequests).where(sql4`${mockupRequests.generationCompletedAt} IS NOT NULL AND ${mockupRequests.generationStartedAt} IS NOT NULL`);
-        res.json({
-          ...stats,
-          avgGenerationTimeMs: avgTime?.avgMs ? Math.round(Number(avgTime.avgMs)) : null
-        });
-      } catch (err) {
-        console.error("[Mockup] Stats error:", err);
-        res.status(500).json({ error: "Failed to get stats" });
-      }
+  } catch (err) {
+    console.error("[Mockup] List error:", err);
+    res.status(500).json({ error: "Failed to list mockup requests" });
+  }
+});
+adminMockupRouter.get("/stats", async (req, res) => {
+  try {
+    const [stats] = await db.select({
+      total: sql4`count(*)`,
+      pending: sql4`count(*) filter (where ${mockupRequests.status} = 'pending')`,
+      generating: sql4`count(*) filter (where ${mockupRequests.status} = 'generating')`,
+      sent: sql4`count(*) filter (where ${mockupRequests.status} = 'sent')`,
+      failed: sql4`count(*) filter (where ${mockupRequests.status} = 'failed')`
+    }).from(mockupRequests);
+    const [avgTime] = await db.select({
+      avgMs: sql4`avg(extract(epoch from (${mockupRequests.generationCompletedAt} - ${mockupRequests.generationStartedAt})) * 1000)`
+    }).from(mockupRequests).where(sql4`${mockupRequests.generationCompletedAt} IS NOT NULL AND ${mockupRequests.generationStartedAt} IS NOT NULL`);
+    res.json({
+      ...stats,
+      avgGenerationTimeMs: avgTime?.avgMs ? Math.round(Number(avgTime.avgMs)) : null
     });
-    adminMockupRouter.get("/:id", async (req, res) => {
-      try {
-        const [request3] = await db.select().from(mockupRequests).where(eq7(mockupRequests.id, req.params.id));
-        if (!request3) {
-          return res.status(404).json({ error: "Not found" });
-        }
-        const designs = await db.select().from(mockupDesigns).where(eq7(mockupDesigns.requestId, request3.id)).orderBy(mockupDesigns.designNumber);
-        res.json({ request: request3, designs });
-      } catch (err) {
-        console.error("[Mockup] Detail error:", err);
-        res.status(500).json({ error: "Failed to get mockup details" });
-      }
+  } catch (err) {
+    console.error("[Mockup] Stats error:", err);
+    res.status(500).json({ error: "Failed to get stats" });
+  }
+});
+adminMockupRouter.get("/:id", async (req, res) => {
+  try {
+    const [request3] = await db.select().from(mockupRequests).where(eq6(mockupRequests.id, req.params.id));
+    if (!request3) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    const designs = await db.select().from(mockupDesigns).where(eq6(mockupDesigns.requestId, request3.id)).orderBy(mockupDesigns.designNumber);
+    res.json({ request: request3, designs });
+  } catch (err) {
+    console.error("[Mockup] Detail error:", err);
+    res.status(500).json({ error: "Failed to get mockup details" });
+  }
+});
+adminMockupRouter.post("/:id/retry", async (req, res) => {
+  try {
+    const [request3] = await db.select().from(mockupRequests).where(eq6(mockupRequests.id, req.params.id));
+    if (!request3) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    if (request3.status !== "failed") {
+      return res.status(400).json({ error: "Can only retry failed requests" });
+    }
+    await db.update(mockupRequests).set({ status: "pending", errorMessage: null }).where(eq6(mockupRequests.id, req.params.id));
+    await db.delete(mockupDesigns).where(eq6(mockupDesigns.requestId, req.params.id));
+    runMockupPipeline(req.params.id).catch((err) => {
+      console.error(`[Mockup] Retry pipeline failed:`, err.message);
     });
-    adminMockupRouter.post("/:id/retry", async (req, res) => {
-      try {
-        const [request3] = await db.select().from(mockupRequests).where(eq7(mockupRequests.id, req.params.id));
-        if (!request3) {
-          return res.status(404).json({ error: "Not found" });
-        }
-        if (request3.status !== "failed") {
-          return res.status(400).json({ error: "Can only retry failed requests" });
-        }
-        await db.update(mockupRequests).set({ status: "pending", errorMessage: null }).where(eq7(mockupRequests.id, req.params.id));
-        await db.delete(mockupDesigns).where(eq7(mockupDesigns.requestId, req.params.id));
-        runMockupPipeline(req.params.id).catch((err) => {
-          console.error(`[Mockup] Retry pipeline failed:`, err.message);
-        });
-        res.json({ status: "retrying" });
-      } catch (err) {
-        console.error("[Mockup] Retry error:", err);
-        res.status(500).json({ error: "Failed to retry" });
-      }
-    });
-    adminMockupRouter.delete("/:id", async (req, res) => {
-      try {
-        await db.delete(mockupDesigns).where(eq7(mockupDesigns.requestId, req.params.id));
-        await db.delete(mockupRequests).where(eq7(mockupRequests.id, req.params.id));
-        res.json({ deleted: true });
-      } catch (err) {
-        console.error("[Mockup] Delete error:", err);
-        res.status(500).json({ error: "Failed to delete" });
-      }
-    });
+    res.json({ status: "retrying" });
+  } catch (err) {
+    console.error("[Mockup] Retry error:", err);
+    res.status(500).json({ error: "Failed to retry" });
+  }
+});
+adminMockupRouter.delete("/:id", async (req, res) => {
+  try {
+    await db.delete(mockupDesigns).where(eq6(mockupDesigns.requestId, req.params.id));
+    await db.delete(mockupRequests).where(eq6(mockupRequests.id, req.params.id));
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error("[Mockup] Delete error:", err);
+    res.status(500).json({ error: "Failed to delete" });
   }
 });
 
 // server/routes/quotes.ts
+init_db();
+init_schema();
 import { Router as Router10 } from "express";
 import { z as z9 } from "zod";
-import { eq as eq8, desc as desc3, sql as sql5, and as and3 } from "drizzle-orm";
+import { eq as eq7, desc as desc3, sql as sql5, and as and3 } from "drizzle-orm";
+init_email();
+init_ghl();
 import crypto3 from "crypto";
-var adminQuoteRouter, createQuoteSchema, templateRouter, templateSchema, publicQuoteRouter;
-var init_quotes = __esm({
-  "server/routes/quotes.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    init_auth();
-    init_email();
-    init_ghl();
-    init_ghl_sync();
-    adminQuoteRouter = Router10();
-    adminQuoteRouter.use(requireAdmin);
-    adminQuoteRouter.get("/stats", async (_req, res) => {
-      try {
-        const [stats] = await db.select({
-          total: sql5`count(*)`,
-          draft: sql5`count(*) filter (where ${quotes.status} = 'draft')`,
-          sent: sql5`count(*) filter (where ${quotes.status} = 'sent')`,
-          viewed: sql5`count(*) filter (where ${quotes.status} = 'viewed')`,
-          accepted: sql5`count(*) filter (where ${quotes.status} = 'accepted')`,
-          rejected: sql5`count(*) filter (where ${quotes.status} = 'rejected')`,
-          totalValue: sql5`coalesce(sum(${quotes.total}), 0)`,
-          acceptedValue: sql5`coalesce(sum(${quotes.total}) filter (where ${quotes.status} = 'accepted'), 0)`
-        }).from(quotes);
-        res.json(stats);
-      } catch (err) {
-        console.error("[Quotes] Stats error:", err);
-        res.status(500).json({ error: "Failed to get stats" });
-      }
-    });
-    adminQuoteRouter.get("/", async (req, res) => {
-      try {
-        const status = req.query.status;
-        const search = req.query.search;
-        const page = parseInt(req.query.page) || 1;
-        const limit = 20;
-        const offset = (page - 1) * limit;
-        const conditions = [];
-        if (status) conditions.push(eq8(quotes.status, status));
-        if (search) {
-          conditions.push(
-            sql5`(${quotes.customerName} ILIKE ${"%" + search + "%"} OR ${quotes.customerEmail} ILIKE ${"%" + search + "%"} OR ${quotes.teamName} ILIKE ${"%" + search + "%"} OR ${quotes.quoteNumber} ILIKE ${"%" + search + "%"})`
-          );
-        }
-        const where = conditions.length > 0 ? and3(...conditions) : void 0;
-        const allQuotes = await db.select().from(quotes).where(where).orderBy(desc3(quotes.createdAt)).limit(limit).offset(offset);
-        const [{ count: count2 }] = await db.select({ count: sql5`count(*)` }).from(quotes).where(where);
-        res.json({ quotes: allQuotes, total: Number(count2), page, totalPages: Math.ceil(Number(count2) / limit) });
-      } catch (err) {
-        console.error("[Quotes] List error:", err);
-        res.status(500).json({ error: "Failed to list quotes" });
-      }
-    });
-    createQuoteSchema = z9.object({
-      templateId: z9.string().optional(),
-      customerName: z9.string().min(1),
-      customerEmail: z9.string().email(),
-      customerPhone: z9.string().optional(),
-      teamName: z9.string().optional(),
-      sport: z9.string().optional(),
-      items: z9.array(z9.object({
-        productName: z9.string().min(1),
-        description: z9.string().optional(),
-        quantity: z9.number().min(1),
-        unitPrice: z9.number().min(0),
-        // cents
-        sizes: z9.string().optional(),
-        brandingMethod: z9.string().optional(),
-        sortOrder: z9.number().optional()
-      })),
-      discount: z9.number().optional(),
-      discountLabel: z9.string().optional(),
-      shipping: z9.number().optional(),
-      adminNotes: z9.string().optional(),
-      customerNotes: z9.string().optional(),
-      terms: z9.string().optional(),
-      validUntilDays: z9.number().optional()
-    });
-    adminQuoteRouter.post("/", async (req, res) => {
-      try {
-        const data = createQuoteSchema.parse(req.body);
-        const [{ count: count2 }] = await db.select({ count: sql5`count(*)` }).from(quotes);
-        const quoteNumber = `QT-${String(Number(count2) + 1).padStart(4, "0")}`;
-        const subtotal = data.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
-        const discount = data.discount || 0;
-        const shipping = data.shipping || 0;
-        const tax = Math.round((subtotal - discount + shipping) * 0.15);
-        const total = subtotal - discount + shipping + tax;
-        const validDays = data.validUntilDays || 30;
-        const validUntil = new Date(Date.now() + validDays * 24 * 60 * 60 * 1e3);
-        const accessToken = crypto3.randomBytes(32).toString("hex");
-        const [quote] = await db.insert(quotes).values({
-          quoteNumber,
-          templateId: data.templateId || null,
-          customerName: data.customerName,
-          customerEmail: data.customerEmail,
-          customerPhone: data.customerPhone || null,
-          teamName: data.teamName || null,
-          sport: data.sport || null,
-          status: "draft",
-          subtotal,
-          discount,
-          discountLabel: data.discountLabel || null,
-          shipping,
-          tax,
-          total,
-          adminNotes: data.adminNotes || null,
-          customerNotes: data.customerNotes || null,
-          terms: data.terms || "Quote valid for 30 days. Prices exclude GST unless stated. Production times vary by order size.",
-          validUntil,
-          accessToken,
-          createdBy: req.user?.id || null
-        }).returning();
-        if (data.items.length > 0) {
-          await db.insert(quoteItems).values(
-            data.items.map((item, i) => ({
-              quoteId: quote.id,
-              productName: item.productName,
-              description: item.description || null,
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              totalPrice: item.quantity * item.unitPrice,
-              sizes: item.sizes || null,
-              brandingMethod: item.brandingMethod || null,
-              sortOrder: item.sortOrder ?? i
-            }))
-          );
-        }
-        const baseUrl = process.env.BASE_URL || "https://sidelinenz.com";
-        const quoteUrl = `${baseUrl}/quote-view/${accessToken}`;
-        const itemSummary = data.items.map((i) => `${i.quantity}x ${i.productName}`).join(", ");
-        createGhlContact(
-          {
-            name: data.customerName,
-            email: data.customerEmail,
-            phone: data.customerPhone || "",
-            source: "sidelinenz.com smart-quote",
-            organization: data.teamName || "",
-            sports: data.sport || "",
-            estimated_quantity: String(data.items.reduce((s, i) => s + i.quantity, 0)),
-            needs: data.items.map((i) => i.productName).join(", "),
-            // Quote-specific custom fields
-            quote_number: quoteNumber,
-            quote_total: `$${(total / 100).toFixed(2)}`,
-            quote_status: "draft",
-            quote_items: itemSummary,
-            quote_valid_until: validUntil.toLocaleDateString("en-NZ"),
-            quote_url: quoteUrl
-          },
-          ["Website Lead", "Smart Quote", `Sport: ${data.sport || "General"}`]
-        ).catch((err) => console.error("[Quotes] GHL sync error:", err));
-        res.json(quote);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Validation error", details: err.errors });
-        console.error("[Quotes] Create error:", err);
-        res.status(500).json({ error: "Failed to create quote" });
-      }
-    });
-    adminQuoteRouter.get("/:id", async (req, res) => {
-      try {
-        const [quote] = await db.select().from(quotes).where(eq8(quotes.id, req.params.id));
-        if (!quote) return res.status(404).json({ error: "Not found" });
-        const items = await db.select().from(quoteItems).where(eq8(quoteItems.quoteId, quote.id)).orderBy(quoteItems.sortOrder);
-        res.json({ quote, items });
-      } catch (err) {
-        console.error("[Quotes] Detail error:", err);
-        res.status(500).json({ error: "Failed to get quote" });
-      }
-    });
-    adminQuoteRouter.patch("/:id", async (req, res) => {
-      try {
-        const updates = {};
-        const allowed = [
-          "customerName",
-          "customerEmail",
-          "customerPhone",
-          "teamName",
-          "sport",
-          "status",
-          "discount",
-          "discountLabel",
-          "shipping",
-          "adminNotes",
-          "customerNotes",
-          "terms"
-        ];
-        for (const key of allowed) {
-          if (req.body[key] !== void 0) updates[key] = req.body[key];
-        }
-        if (updates.discount !== void 0 || updates.shipping !== void 0) {
-          const items = await db.select().from(quoteItems).where(eq8(quoteItems.quoteId, req.params.id));
-          const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
-          const discount = updates.discount ?? 0;
-          const shipping = updates.shipping ?? 0;
-          const tax = Math.round((subtotal - discount + shipping) * 0.15);
-          updates.subtotal = subtotal;
-          updates.tax = tax;
-          updates.total = subtotal - discount + shipping + tax;
-        }
-        updates.updatedAt = /* @__PURE__ */ new Date();
-        const [updated] = await db.update(quotes).set(updates).where(eq8(quotes.id, req.params.id)).returning();
-        res.json(updated);
-      } catch (err) {
-        console.error("[Quotes] Update error:", err);
-        res.status(500).json({ error: "Failed to update quote" });
-      }
-    });
-    adminQuoteRouter.post("/:id/send", async (req, res) => {
-      try {
-        const [quote] = await db.select().from(quotes).where(eq8(quotes.id, req.params.id));
-        if (!quote) return res.status(404).json({ error: "Not found" });
-        const baseUrl = process.env.BASE_URL || "https://sidelinenz.com";
-        const quoteUrl = `${baseUrl}/quote-view/${quote.accessToken}`;
-        await emailService.send({
-          to: quote.customerEmail,
-          subject: `Quote ${quote.quoteNumber} from Sideline NZ${quote.teamName ? ` \u2014 ${quote.teamName}` : ""}`,
-          text: `Hi ${quote.customerName},
+var adminQuoteRouter = Router10();
+adminQuoteRouter.use(requireAdmin);
+adminQuoteRouter.get("/stats", async (_req, res) => {
+  try {
+    const [stats] = await db.select({
+      total: sql5`count(*)`,
+      draft: sql5`count(*) filter (where ${quotes.status} = 'draft')`,
+      sent: sql5`count(*) filter (where ${quotes.status} = 'sent')`,
+      viewed: sql5`count(*) filter (where ${quotes.status} = 'viewed')`,
+      accepted: sql5`count(*) filter (where ${quotes.status} = 'accepted')`,
+      rejected: sql5`count(*) filter (where ${quotes.status} = 'rejected')`,
+      totalValue: sql5`coalesce(sum(${quotes.total}), 0)`,
+      acceptedValue: sql5`coalesce(sum(${quotes.total}) filter (where ${quotes.status} = 'accepted'), 0)`
+    }).from(quotes);
+    res.json(stats);
+  } catch (err) {
+    console.error("[Quotes] Stats error:", err);
+    res.status(500).json({ error: "Failed to get stats" });
+  }
+});
+adminQuoteRouter.get("/", async (req, res) => {
+  try {
+    const status = req.query.status;
+    const search = req.query.search;
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20;
+    const offset = (page - 1) * limit;
+    const conditions = [];
+    if (status) conditions.push(eq7(quotes.status, status));
+    if (search) {
+      conditions.push(
+        sql5`(${quotes.customerName} ILIKE ${"%" + search + "%"} OR ${quotes.customerEmail} ILIKE ${"%" + search + "%"} OR ${quotes.teamName} ILIKE ${"%" + search + "%"} OR ${quotes.quoteNumber} ILIKE ${"%" + search + "%"})`
+      );
+    }
+    const where = conditions.length > 0 ? and3(...conditions) : void 0;
+    const allQuotes = await db.select().from(quotes).where(where).orderBy(desc3(quotes.createdAt)).limit(limit).offset(offset);
+    const [{ count: count2 }] = await db.select({ count: sql5`count(*)` }).from(quotes).where(where);
+    res.json({ quotes: allQuotes, total: Number(count2), page, totalPages: Math.ceil(Number(count2) / limit) });
+  } catch (err) {
+    console.error("[Quotes] List error:", err);
+    res.status(500).json({ error: "Failed to list quotes" });
+  }
+});
+var createQuoteSchema = z9.object({
+  templateId: z9.string().optional(),
+  customerName: z9.string().min(1),
+  customerEmail: z9.string().email(),
+  customerPhone: z9.string().optional(),
+  teamName: z9.string().optional(),
+  sport: z9.string().optional(),
+  items: z9.array(z9.object({
+    productName: z9.string().min(1),
+    description: z9.string().optional(),
+    quantity: z9.number().min(1),
+    unitPrice: z9.number().min(0),
+    // cents
+    sizes: z9.string().optional(),
+    brandingMethod: z9.string().optional(),
+    sortOrder: z9.number().optional()
+  })),
+  discount: z9.number().optional(),
+  discountLabel: z9.string().optional(),
+  shipping: z9.number().optional(),
+  adminNotes: z9.string().optional(),
+  customerNotes: z9.string().optional(),
+  terms: z9.string().optional(),
+  validUntilDays: z9.number().optional()
+});
+adminQuoteRouter.post("/", async (req, res) => {
+  try {
+    const data = createQuoteSchema.parse(req.body);
+    const [{ count: count2 }] = await db.select({ count: sql5`count(*)` }).from(quotes);
+    const quoteNumber = `QT-${String(Number(count2) + 1).padStart(4, "0")}`;
+    const subtotal = data.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+    const discount = data.discount || 0;
+    const shipping = data.shipping || 0;
+    const tax = Math.round((subtotal - discount + shipping) * 0.15);
+    const total = subtotal - discount + shipping + tax;
+    const validDays = data.validUntilDays || 30;
+    const validUntil = new Date(Date.now() + validDays * 24 * 60 * 60 * 1e3);
+    const accessToken = crypto3.randomBytes(32).toString("hex");
+    const [quote] = await db.insert(quotes).values({
+      quoteNumber,
+      templateId: data.templateId || null,
+      customerName: data.customerName,
+      customerEmail: data.customerEmail,
+      customerPhone: data.customerPhone || null,
+      teamName: data.teamName || null,
+      sport: data.sport || null,
+      status: "draft",
+      subtotal,
+      discount,
+      discountLabel: data.discountLabel || null,
+      shipping,
+      tax,
+      total,
+      adminNotes: data.adminNotes || null,
+      customerNotes: data.customerNotes || null,
+      terms: data.terms || "Quote valid for 30 days. Prices exclude GST unless stated. Production times vary by order size.",
+      validUntil,
+      accessToken,
+      createdBy: req.user?.id || null
+    }).returning();
+    if (data.items.length > 0) {
+      await db.insert(quoteItems).values(
+        data.items.map((item, i) => ({
+          quoteId: quote.id,
+          productName: item.productName,
+          description: item.description || null,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.quantity * item.unitPrice,
+          sizes: item.sizes || null,
+          brandingMethod: item.brandingMethod || null,
+          sortOrder: item.sortOrder ?? i
+        }))
+      );
+    }
+    const baseUrl = process.env.BASE_URL || "https://sidelinenz.com";
+    const quoteUrl = `${baseUrl}/quote-view/${accessToken}`;
+    const itemSummary = data.items.map((i) => `${i.quantity}x ${i.productName}`).join(", ");
+    createGhlContact(
+      {
+        name: data.customerName,
+        email: data.customerEmail,
+        phone: data.customerPhone || "",
+        source: "sidelinenz.com smart-quote",
+        organization: data.teamName || "",
+        sports: data.sport || "",
+        estimated_quantity: String(data.items.reduce((s, i) => s + i.quantity, 0)),
+        needs: data.items.map((i) => i.productName).join(", "),
+        // Quote-specific custom fields
+        quote_number: quoteNumber,
+        quote_total: `$${(total / 100).toFixed(2)}`,
+        quote_status: "draft",
+        quote_items: itemSummary,
+        quote_valid_until: validUntil.toLocaleDateString("en-NZ"),
+        quote_url: quoteUrl
+      },
+      ["Website Lead", "Smart Quote", `Sport: ${data.sport || "General"}`]
+    ).catch((err) => console.error("[Quotes] GHL sync error:", err));
+    res.json(quote);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Validation error", details: err.errors });
+    console.error("[Quotes] Create error:", err);
+    res.status(500).json({ error: "Failed to create quote" });
+  }
+});
+adminQuoteRouter.get("/:id", async (req, res) => {
+  try {
+    const [quote] = await db.select().from(quotes).where(eq7(quotes.id, req.params.id));
+    if (!quote) return res.status(404).json({ error: "Not found" });
+    const items = await db.select().from(quoteItems).where(eq7(quoteItems.quoteId, quote.id)).orderBy(quoteItems.sortOrder);
+    res.json({ quote, items });
+  } catch (err) {
+    console.error("[Quotes] Detail error:", err);
+    res.status(500).json({ error: "Failed to get quote" });
+  }
+});
+adminQuoteRouter.patch("/:id", async (req, res) => {
+  try {
+    const updates = {};
+    const allowed = [
+      "customerName",
+      "customerEmail",
+      "customerPhone",
+      "teamName",
+      "sport",
+      "status",
+      "discount",
+      "discountLabel",
+      "shipping",
+      "adminNotes",
+      "customerNotes",
+      "terms"
+    ];
+    for (const key of allowed) {
+      if (req.body[key] !== void 0) updates[key] = req.body[key];
+    }
+    if (updates.discount !== void 0 || updates.shipping !== void 0) {
+      const items = await db.select().from(quoteItems).where(eq7(quoteItems.quoteId, req.params.id));
+      const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
+      const discount = updates.discount ?? 0;
+      const shipping = updates.shipping ?? 0;
+      const tax = Math.round((subtotal - discount + shipping) * 0.15);
+      updates.subtotal = subtotal;
+      updates.tax = tax;
+      updates.total = subtotal - discount + shipping + tax;
+    }
+    updates.updatedAt = /* @__PURE__ */ new Date();
+    const [updated] = await db.update(quotes).set(updates).where(eq7(quotes.id, req.params.id)).returning();
+    res.json(updated);
+  } catch (err) {
+    console.error("[Quotes] Update error:", err);
+    res.status(500).json({ error: "Failed to update quote" });
+  }
+});
+adminQuoteRouter.post("/:id/send", async (req, res) => {
+  try {
+    const [quote] = await db.select().from(quotes).where(eq7(quotes.id, req.params.id));
+    if (!quote) return res.status(404).json({ error: "Not found" });
+    const baseUrl = process.env.BASE_URL || "https://sidelinenz.com";
+    const quoteUrl = `${baseUrl}/quote-view/${quote.accessToken}`;
+    await emailService.send({
+      to: quote.customerEmail,
+      subject: `Quote ${quote.quoteNumber} from Sideline NZ${quote.teamName ? ` \u2014 ${quote.teamName}` : ""}`,
+      text: `Hi ${quote.customerName},
 
 We've prepared a quote for you.
 
@@ -96279,7 +96057,7 @@ ${quote.customerNotes || ""}
 
 Cheers,
 The Sideline Team`,
-          html: `
+      html: `
         <div style="font-family:'Inter',sans-serif;max-width:600px;margin:0 auto;color:#333">
           <div style="text-align:center;padding:32px 0;border-bottom:2px solid #f97316">
             <h1 style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:3px;margin:0"><span style="color:#f97316">S</span>IDELINE</h1>
@@ -96299,184 +96077,187 @@ The Sideline Team`,
             <p style="margin-top:32px">Cheers,<br><strong>The Sideline Team</strong></p>
           </div>
         </div>`
-        });
-        await db.update(quotes).set({ status: "sent", sentAt: /* @__PURE__ */ new Date() }).where(eq8(quotes.id, req.params.id));
-        syncGhlTag(quote.customerEmail, "Quote Sent").catch(
-          (err) => console.error("[Quotes] GHL tag sync error:", err)
-        );
-        res.json({ sent: true });
-      } catch (err) {
-        console.error("[Quotes] Send error:", err);
-        res.status(500).json({ error: "Failed to send quote" });
-      }
     });
-    adminQuoteRouter.post("/:id/convert", async (req, res) => {
-      try {
-        const [quote] = await db.select().from(quotes).where(eq8(quotes.id, req.params.id));
-        if (!quote) return res.status(404).json({ error: "Not found" });
-        const items = await db.select().from(quoteItems).where(eq8(quoteItems.quoteId, quote.id));
-        const [{ count: count2 }] = await db.select({ count: sql5`count(*)` }).from(orders);
-        const orderNumber = `PO-${String(Number(count2) + 1).padStart(4, "0")}`;
-        const [order] = await db.insert(orders).values({
-          orderNumber,
-          storeSlug: "custom",
-          status: "pending",
-          customerName: quote.customerName,
-          customerEmail: quote.customerEmail,
-          subtotal: quote.subtotal,
-          shipping: quote.shipping || 0,
-          tax: quote.tax || 0,
-          total: quote.total,
-          poReference: quote.quoteNumber,
-          accountName: quote.teamName
-        }).returning();
-        for (const item of items) {
-          await db.insert(orderItems).values({
-            orderId: order.id,
-            productId: `quote-${item.id}`,
-            priceId: `quote-${item.id}`,
-            productName: item.productName,
-            quantity: item.quantity,
-            unitAmount: item.unitPrice,
-            brandingMethod: item.brandingMethod
-          });
-        }
-        await db.update(quotes).set({ convertedToOrderId: order.id, status: "accepted" }).where(eq8(quotes.id, req.params.id));
-        res.json({ orderId: order.id, orderNumber });
-      } catch (err) {
-        console.error("[Quotes] Convert error:", err);
-        res.status(500).json({ error: "Failed to convert quote" });
-      }
+    await db.update(quotes).set({ status: "sent", sentAt: /* @__PURE__ */ new Date() }).where(eq7(quotes.id, req.params.id));
+    syncGhlTag(quote.customerEmail, "Quote Sent").catch(
+      (err) => console.error("[Quotes] GHL tag sync error:", err)
+    );
+    res.json({ sent: true });
+  } catch (err) {
+    console.error("[Quotes] Send error:", err);
+    res.status(500).json({ error: "Failed to send quote" });
+  }
+});
+adminQuoteRouter.post("/:id/convert", async (req, res) => {
+  try {
+    const [quote] = await db.select().from(quotes).where(eq7(quotes.id, req.params.id));
+    if (!quote) return res.status(404).json({ error: "Not found" });
+    const items = await db.select().from(quoteItems).where(eq7(quoteItems.quoteId, quote.id));
+    const [{ count: count2 }] = await db.select({ count: sql5`count(*)` }).from(orders);
+    const orderNumber = `PO-${String(Number(count2) + 1).padStart(4, "0")}`;
+    const [order] = await db.insert(orders).values({
+      orderNumber,
+      storeSlug: "custom",
+      status: "pending",
+      customerName: quote.customerName,
+      customerEmail: quote.customerEmail,
+      subtotal: quote.subtotal,
+      shipping: quote.shipping || 0,
+      tax: quote.tax || 0,
+      total: quote.total,
+      poReference: quote.quoteNumber,
+      accountName: quote.teamName
+    }).returning();
+    for (const item of items) {
+      await db.insert(orderItems).values({
+        orderId: order.id,
+        productId: `quote-${item.id}`,
+        priceId: `quote-${item.id}`,
+        productName: item.productName,
+        quantity: item.quantity,
+        unitAmount: item.unitPrice,
+        brandingMethod: item.brandingMethod
+      });
+    }
+    await db.update(quotes).set({ convertedToOrderId: order.id, status: "accepted" }).where(eq7(quotes.id, req.params.id));
+    res.json({ orderId: order.id, orderNumber });
+  } catch (err) {
+    console.error("[Quotes] Convert error:", err);
+    res.status(500).json({ error: "Failed to convert quote" });
+  }
+});
+adminQuoteRouter.delete("/:id", async (req, res) => {
+  try {
+    await db.delete(quoteItems).where(eq7(quoteItems.quoteId, req.params.id));
+    await db.delete(quotes).where(eq7(quotes.id, req.params.id));
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error("[Quotes] Delete error:", err);
+    res.status(500).json({ error: "Failed to delete" });
+  }
+});
+var templateRouter = Router10();
+templateRouter.use(requireAdmin);
+templateRouter.get("/", async (_req, res) => {
+  try {
+    const templates = await db.select().from(quoteTemplates).orderBy(desc3(quoteTemplates.createdAt));
+    res.json(templates);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to list templates" });
+  }
+});
+var templateSchema = z9.object({
+  name: z9.string().min(1),
+  description: z9.string().optional(),
+  sport: z9.string().optional(),
+  category: z9.string().optional(),
+  items: z9.array(z9.object({
+    name: z9.string(),
+    description: z9.string().optional(),
+    unitPrice: z9.number(),
+    minQty: z9.number().optional(),
+    sizes: z9.string().optional(),
+    brandingMethod: z9.string().optional()
+  })),
+  validUntilDays: z9.number().optional()
+});
+templateRouter.post("/", async (req, res) => {
+  try {
+    const data = templateSchema.parse(req.body);
+    const [template] = await db.insert(quoteTemplates).values({
+      name: data.name,
+      description: data.description || null,
+      sport: data.sport || null,
+      category: data.category || "custom",
+      items: data.items,
+      validUntilDays: data.validUntilDays || 30,
+      createdBy: req.user?.id || null
+    }).returning();
+    res.json(template);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Validation error", details: err.errors });
+    res.status(500).json({ error: "Failed to create template" });
+  }
+});
+templateRouter.patch("/:id", async (req, res) => {
+  try {
+    const data = templateSchema.partial().parse(req.body);
+    const updates = { updatedAt: /* @__PURE__ */ new Date() };
+    if (data.name) updates.name = data.name;
+    if (data.description !== void 0) updates.description = data.description;
+    if (data.sport !== void 0) updates.sport = data.sport;
+    if (data.category) updates.category = data.category;
+    if (data.items) updates.items = data.items;
+    if (data.validUntilDays) updates.validUntilDays = data.validUntilDays;
+    const [updated] = await db.update(quoteTemplates).set(updates).where(eq7(quoteTemplates.id, req.params.id)).returning();
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to update template" });
+  }
+});
+templateRouter.delete("/:id", async (req, res) => {
+  try {
+    await db.delete(quoteTemplates).where(eq7(quoteTemplates.id, req.params.id));
+    res.json({ deleted: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete template" });
+  }
+});
+var publicQuoteRouter = Router10();
+publicQuoteRouter.get("/:token", async (req, res) => {
+  try {
+    const [quote] = await db.select().from(quotes).where(eq7(quotes.accessToken, req.params.token));
+    if (!quote) return res.status(404).json({ error: "Quote not found" });
+    if (quote.status === "sent") {
+      await db.update(quotes).set({ status: "viewed", viewedAt: /* @__PURE__ */ new Date() }).where(eq7(quotes.id, quote.id));
+      syncGhlTag(quote.customerEmail, "Quote Viewed").catch(() => {
+      });
+    }
+    const items = await db.select().from(quoteItems).where(eq7(quoteItems.quoteId, quote.id)).orderBy(quoteItems.sortOrder);
+    const { accessToken, adminNotes, createdBy, ...publicQuote } = quote;
+    res.json({ quote: publicQuote, items });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to load quote" });
+  }
+});
+publicQuoteRouter.post("/:token/accept", async (req, res) => {
+  try {
+    const [quote] = await db.select().from(quotes).where(eq7(quotes.accessToken, req.params.token));
+    if (!quote) return res.status(404).json({ error: "Quote not found" });
+    if (quote.status === "accepted") return res.json({ already: true });
+    if (quote.status === "expired" || quote.status === "rejected") {
+      return res.status(400).json({ error: `Quote is ${quote.status}` });
+    }
+    await db.update(quotes).set({ status: "accepted", acceptedAt: /* @__PURE__ */ new Date() }).where(eq7(quotes.id, quote.id));
+    syncGhlTag(quote.customerEmail, "Quote Accepted").catch(() => {
     });
-    adminQuoteRouter.delete("/:id", async (req, res) => {
-      try {
-        await db.delete(quoteItems).where(eq8(quoteItems.quoteId, req.params.id));
-        await db.delete(quotes).where(eq8(quotes.id, req.params.id));
-        res.json({ deleted: true });
-      } catch (err) {
-        console.error("[Quotes] Delete error:", err);
-        res.status(500).json({ error: "Failed to delete" });
-      }
+    res.json({ accepted: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to accept quote" });
+  }
+});
+publicQuoteRouter.post("/:token/reject", async (req, res) => {
+  try {
+    const [quote] = await db.select().from(quotes).where(eq7(quotes.accessToken, req.params.token));
+    if (!quote) return res.status(404).json({ error: "Quote not found" });
+    await db.update(quotes).set({ status: "rejected", rejectedAt: /* @__PURE__ */ new Date(), rejectionReason: req.body.reason || null }).where(eq7(quotes.id, quote.id));
+    syncGhlTag(quote.customerEmail, "Quote Rejected").catch(() => {
     });
-    templateRouter = Router10();
-    templateRouter.use(requireAdmin);
-    templateRouter.get("/", async (_req, res) => {
-      try {
-        const templates = await db.select().from(quoteTemplates).orderBy(desc3(quoteTemplates.createdAt));
-        res.json(templates);
-      } catch (err) {
-        res.status(500).json({ error: "Failed to list templates" });
-      }
-    });
-    templateSchema = z9.object({
-      name: z9.string().min(1),
-      description: z9.string().optional(),
-      sport: z9.string().optional(),
-      category: z9.string().optional(),
-      items: z9.array(z9.object({
-        name: z9.string(),
-        description: z9.string().optional(),
-        unitPrice: z9.number(),
-        minQty: z9.number().optional(),
-        sizes: z9.string().optional(),
-        brandingMethod: z9.string().optional()
-      })),
-      validUntilDays: z9.number().optional()
-    });
-    templateRouter.post("/", async (req, res) => {
-      try {
-        const data = templateSchema.parse(req.body);
-        const [template] = await db.insert(quoteTemplates).values({
-          name: data.name,
-          description: data.description || null,
-          sport: data.sport || null,
-          category: data.category || "custom",
-          items: data.items,
-          validUntilDays: data.validUntilDays || 30,
-          createdBy: req.user?.id || null
-        }).returning();
-        res.json(template);
-      } catch (err) {
-        if (err.name === "ZodError") return res.status(400).json({ error: "Validation error", details: err.errors });
-        res.status(500).json({ error: "Failed to create template" });
-      }
-    });
-    templateRouter.patch("/:id", async (req, res) => {
-      try {
-        const data = templateSchema.partial().parse(req.body);
-        const updates = { updatedAt: /* @__PURE__ */ new Date() };
-        if (data.name) updates.name = data.name;
-        if (data.description !== void 0) updates.description = data.description;
-        if (data.sport !== void 0) updates.sport = data.sport;
-        if (data.category) updates.category = data.category;
-        if (data.items) updates.items = data.items;
-        if (data.validUntilDays) updates.validUntilDays = data.validUntilDays;
-        const [updated] = await db.update(quoteTemplates).set(updates).where(eq8(quoteTemplates.id, req.params.id)).returning();
-        res.json(updated);
-      } catch (err) {
-        res.status(500).json({ error: "Failed to update template" });
-      }
-    });
-    templateRouter.delete("/:id", async (req, res) => {
-      try {
-        await db.delete(quoteTemplates).where(eq8(quoteTemplates.id, req.params.id));
-        res.json({ deleted: true });
-      } catch (err) {
-        res.status(500).json({ error: "Failed to delete template" });
-      }
-    });
-    publicQuoteRouter = Router10();
-    publicQuoteRouter.get("/:token", async (req, res) => {
-      try {
-        const [quote] = await db.select().from(quotes).where(eq8(quotes.accessToken, req.params.token));
-        if (!quote) return res.status(404).json({ error: "Quote not found" });
-        if (quote.status === "sent") {
-          await db.update(quotes).set({ status: "viewed", viewedAt: /* @__PURE__ */ new Date() }).where(eq8(quotes.id, quote.id));
-          syncGhlTag(quote.customerEmail, "Quote Viewed").catch(() => {
-          });
-        }
-        const items = await db.select().from(quoteItems).where(eq8(quoteItems.quoteId, quote.id)).orderBy(quoteItems.sortOrder);
-        const { accessToken, adminNotes, createdBy, ...publicQuote } = quote;
-        res.json({ quote: publicQuote, items });
-      } catch (err) {
-        res.status(500).json({ error: "Failed to load quote" });
-      }
-    });
-    publicQuoteRouter.post("/:token/accept", async (req, res) => {
-      try {
-        const [quote] = await db.select().from(quotes).where(eq8(quotes.accessToken, req.params.token));
-        if (!quote) return res.status(404).json({ error: "Quote not found" });
-        if (quote.status === "accepted") return res.json({ already: true });
-        if (quote.status === "expired" || quote.status === "rejected") {
-          return res.status(400).json({ error: `Quote is ${quote.status}` });
-        }
-        await db.update(quotes).set({ status: "accepted", acceptedAt: /* @__PURE__ */ new Date() }).where(eq8(quotes.id, quote.id));
-        syncGhlTag(quote.customerEmail, "Quote Accepted").catch(() => {
-        });
-        res.json({ accepted: true });
-      } catch (err) {
-        res.status(500).json({ error: "Failed to accept quote" });
-      }
-    });
-    publicQuoteRouter.post("/:token/reject", async (req, res) => {
-      try {
-        const [quote] = await db.select().from(quotes).where(eq8(quotes.accessToken, req.params.token));
-        if (!quote) return res.status(404).json({ error: "Quote not found" });
-        await db.update(quotes).set({ status: "rejected", rejectedAt: /* @__PURE__ */ new Date(), rejectionReason: req.body.reason || null }).where(eq8(quotes.id, quote.id));
-        syncGhlTag(quote.customerEmail, "Quote Rejected").catch(() => {
-        });
-        res.json({ rejected: true });
-      } catch (err) {
-        res.status(500).json({ error: "Failed to reject quote" });
-      }
-    });
+    res.json({ rejected: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to reject quote" });
   }
 });
 
 // server/routes/club-portal.ts
+init_storage();
 import { Router as Router11 } from "express";
 import jwt2 from "jsonwebtoken";
 import { z as z10 } from "zod";
+init_email();
+var router8 = Router11();
+var JWT_SECRET2 = process.env.JWT_SECRET || "dev-secret-change-in-production";
+var COOKIE_NAME2 = "snz_token";
 function signClubToken(payload) {
   return jwt2.sign(payload, JWT_SECRET2, { expiresIn: "7d" });
 }
@@ -96496,345 +96277,331 @@ function requireClubAuth(req, res, next) {
     return res.status(401).json({ error: "Invalid token" });
   }
 }
-var router8, JWT_SECRET2, COOKIE_NAME2, clubLoginSchema, revisionSchema, club_portal_default;
-var init_club_portal = __esm({
-  "server/routes/club-portal.ts"() {
-    "use strict";
-    init_storage();
-    init_auth();
-    init_email();
-    router8 = Router11();
-    JWT_SECRET2 = process.env.JWT_SECRET || "dev-secret-change-in-production";
-    COOKIE_NAME2 = "snz_token";
-    clubLoginSchema = z10.object({
-      email: z10.string().email(),
-      password: z10.string().min(1)
+var clubLoginSchema = z10.object({
+  email: z10.string().email(),
+  password: z10.string().min(1)
+});
+router8.post("/login", async (req, res) => {
+  try {
+    const parsed = clubLoginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid email or password" });
+    }
+    const { email, password } = parsed.data;
+    const account = await storage.getClubAccountByEmail(email);
+    if (!account) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+    const isValid = await verifyPassword(password, account.passwordHash);
+    if (!isValid) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+    const token = signClubToken({ clubId: account.id, email: account.email });
+    setAuthCookie(res, token);
+    res.json({
+      id: account.id,
+      clubName: account.clubName,
+      email: account.email
     });
-    router8.post("/login", async (req, res) => {
-      try {
-        const parsed = clubLoginSchema.safeParse(req.body);
-        if (!parsed.success) {
-          return res.status(400).json({ error: "Invalid email or password" });
-        }
-        const { email, password } = parsed.data;
-        const account = await storage.getClubAccountByEmail(email);
-        if (!account) {
-          return res.status(401).json({ error: "Invalid email or password" });
-        }
-        const isValid = await verifyPassword(password, account.passwordHash);
-        if (!isValid) {
-          return res.status(401).json({ error: "Invalid email or password" });
-        }
-        const token = signClubToken({ clubId: account.id, email: account.email });
-        setAuthCookie(res, token);
-        res.json({
-          id: account.id,
-          clubName: account.clubName,
-          email: account.email
-        });
-      } catch (e) {
-        console.error("Club login error:", e);
-        res.status(500).json({ error: "Login failed" });
-      }
+  } catch (e) {
+    console.error("Club login error:", e);
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+router8.get("/me", requireClubAuth, async (req, res) => {
+  try {
+    const clubId = req.clubId;
+    const account = await storage.getClubAccount(clubId);
+    if (!account) {
+      return res.status(401).json({ error: "Account not found" });
+    }
+    const order = await storage.getClubOrder(clubId);
+    res.json({
+      id: account.id,
+      clubName: account.clubName,
+      email: account.email,
+      shopifyStoreUrl: account.shopifyStoreUrl,
+      currentOrderStatus: order?.clubPortalStatus || null,
+      currentOrderId: order?.id || null,
+      contactId: account.contactId
     });
-    router8.get("/me", requireClubAuth, async (req, res) => {
-      try {
-        const clubId = req.clubId;
-        const account = await storage.getClubAccount(clubId);
-        if (!account) {
-          return res.status(401).json({ error: "Account not found" });
-        }
-        const order = await storage.getClubOrder(clubId);
-        res.json({
-          id: account.id,
-          clubName: account.clubName,
-          email: account.email,
-          shopifyStoreUrl: account.shopifyStoreUrl,
-          currentOrderStatus: order?.clubPortalStatus || null,
-          currentOrderId: order?.id || null,
-          contactId: account.contactId
-        });
-      } catch (e) {
-        console.error("Get me error:", e);
-        res.status(500).json({ error: "Failed to fetch account" });
-      }
+  } catch (e) {
+    console.error("Get me error:", e);
+    res.status(500).json({ error: "Failed to fetch account" });
+  }
+});
+router8.get("/order", requireClubAuth, async (req, res) => {
+  try {
+    const clubId = req.clubId;
+    const order = await storage.getClubOrder(clubId);
+    if (!order) {
+      return res.status(404).json({ error: "No order found" });
+    }
+    const items = await storage.getOrderItems(order.id);
+    res.json({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      status: order.clubPortalStatus,
+      kitItems: items.map((i) => i.productName).join(", "),
+      quantity: items.reduce((sum, i) => sum + i.quantity, 0),
+      mockupUrl: order.mockupUrl,
+      trackingNumber: order.trackingNumber,
+      trackingUrl: order.trackingUrl,
+      estimatedDeliveryDate: order.estimatedDeliveryDate,
+      revisionNotes: order.revisionNotes,
+      mockupApprovedAt: order.mockupApprovedAt,
+      createdAt: order.createdAt
     });
-    router8.get("/order", requireClubAuth, async (req, res) => {
-      try {
-        const clubId = req.clubId;
-        const order = await storage.getClubOrder(clubId);
-        if (!order) {
-          return res.status(404).json({ error: "No order found" });
-        }
-        const items = await storage.getOrderItems(order.id);
-        res.json({
-          id: order.id,
-          orderNumber: order.orderNumber,
-          status: order.clubPortalStatus,
-          kitItems: items.map((i) => i.productName).join(", "),
-          quantity: items.reduce((sum, i) => sum + i.quantity, 0),
-          mockupUrl: order.mockupUrl,
-          trackingNumber: order.trackingNumber,
-          trackingUrl: order.trackingUrl,
-          estimatedDeliveryDate: order.estimatedDeliveryDate,
-          revisionNotes: order.revisionNotes,
-          mockupApprovedAt: order.mockupApprovedAt,
-          createdAt: order.createdAt
-        });
-      } catch (e) {
-        console.error("Get order error:", e);
-        res.status(500).json({ error: "Failed to fetch order" });
-      }
+  } catch (e) {
+    console.error("Get order error:", e);
+    res.status(500).json({ error: "Failed to fetch order" });
+  }
+});
+router8.post("/approve-mockup", requireClubAuth, async (req, res) => {
+  try {
+    const clubId = req.clubId;
+    const order = await storage.getClubOrder(clubId);
+    if (!order) {
+      return res.status(404).json({ error: "No order found" });
+    }
+    const updated = await storage.updateOrder(order.id, {
+      clubPortalStatus: "design_approved",
+      mockupApprovedAt: /* @__PURE__ */ new Date()
     });
-    router8.post("/approve-mockup", requireClubAuth, async (req, res) => {
-      try {
-        const clubId = req.clubId;
-        const order = await storage.getClubOrder(clubId);
-        if (!order) {
-          return res.status(404).json({ error: "No order found" });
-        }
-        const updated = await storage.updateOrder(order.id, {
-          clubPortalStatus: "design_approved",
-          mockupApprovedAt: /* @__PURE__ */ new Date()
-        });
-        await emailService.send({
-          to: "info@sidelinenz.com",
-          subject: `Mockup Approved: ${order.orderNumber}`,
-          text: `Club has approved mockup for order ${order.orderNumber}`,
-          html: `
+    await emailService.send({
+      to: "info@sidelinenz.com",
+      subject: `Mockup Approved: ${order.orderNumber}`,
+      text: `Club has approved mockup for order ${order.orderNumber}`,
+      html: `
         <p>Club has approved their mockup for order <strong>${order.orderNumber}</strong>.</p>
         <p>Order is now ready for production.</p>
         <p><strong>Club:</strong> ${order.customerName}</p>
         <p><strong>Email:</strong> ${order.customerEmail}</p>
       `
-        });
-        res.json({ success: true, status: "design_approved" });
-      } catch (e) {
-        console.error("Approve mockup error:", e);
-        res.status(500).json({ error: "Failed to approve mockup" });
-      }
     });
-    revisionSchema = z10.object({
-      notes: z10.string().min(1).max(500)
+    res.json({ success: true, status: "design_approved" });
+  } catch (e) {
+    console.error("Approve mockup error:", e);
+    res.status(500).json({ error: "Failed to approve mockup" });
+  }
+});
+var revisionSchema = z10.object({
+  notes: z10.string().min(1).max(500)
+});
+router8.post("/request-revision", requireClubAuth, async (req, res) => {
+  try {
+    const clubId = req.clubId;
+    const parsed = revisionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid revision notes" });
+    }
+    const { notes } = parsed.data;
+    const order = await storage.getClubOrder(clubId);
+    if (!order) {
+      return res.status(404).json({ error: "No order found" });
+    }
+    const updated = await storage.updateOrder(order.id, {
+      clubPortalStatus: "revision_in_progress",
+      revisionNotes: notes
     });
-    router8.post("/request-revision", requireClubAuth, async (req, res) => {
-      try {
-        const clubId = req.clubId;
-        const parsed = revisionSchema.safeParse(req.body);
-        if (!parsed.success) {
-          return res.status(400).json({ error: "Invalid revision notes" });
-        }
-        const { notes } = parsed.data;
-        const order = await storage.getClubOrder(clubId);
-        if (!order) {
-          return res.status(404).json({ error: "No order found" });
-        }
-        const updated = await storage.updateOrder(order.id, {
-          clubPortalStatus: "revision_in_progress",
-          revisionNotes: notes
-        });
-        const account = await storage.getClubAccount(clubId);
-        await emailService.send({
-          to: "info@sidelinenz.com",
-          subject: `Revision Request: ${order.orderNumber}`,
-          text: `${account?.clubName} has requested a revision for order ${order.orderNumber}`,
-          html: `
+    const account = await storage.getClubAccount(clubId);
+    await emailService.send({
+      to: "info@sidelinenz.com",
+      subject: `Revision Request: ${order.orderNumber}`,
+      text: `${account?.clubName} has requested a revision for order ${order.orderNumber}`,
+      html: `
         <p><strong>${account?.clubName}</strong> has requested a revision for order <strong>${order.orderNumber}</strong>.</p>
         <p><strong>Revision notes:</strong></p>
         <blockquote>${notes}</blockquote>
         <p><strong>Club Email:</strong> ${order.customerEmail}</p>
       `
-        });
-        res.json({ success: true, status: "revision_in_progress" });
-      } catch (e) {
-        console.error("Request revision error:", e);
-        res.status(500).json({ error: "Failed to request revision" });
-      }
     });
-    router8.post("/logout", (req, res) => {
-      clearAuthCookie(res);
-      res.json({ success: true });
-    });
-    club_portal_default = router8;
+    res.json({ success: true, status: "revision_in_progress" });
+  } catch (e) {
+    console.error("Request revision error:", e);
+    res.status(500).json({ error: "Failed to request revision" });
   }
 });
+router8.post("/logout", (req, res) => {
+  clearAuthCookie(res);
+  res.json({ success: true });
+});
+var club_portal_default = router8;
 
 // server/routes/supplier.ts
+init_storage();
 import { Router as Router12 } from "express";
 import { z as z11 } from "zod";
+init_db();
+init_schema();
+var router9 = Router12();
+router9.use(requireSupplier);
 async function getSupplierOrder(orderId, supplierId) {
   const order = await storage.getOrder(orderId);
   if (!order || order.assignedSupplierId !== supplierId) return void 0;
   return order;
 }
-var router9, dispatchedSchema, supplier_default;
-var init_supplier = __esm({
-  "server/routes/supplier.ts"() {
-    "use strict";
-    init_storage();
-    init_auth();
-    init_db();
-    init_schema();
-    router9 = Router12();
-    router9.use(requireSupplier);
-    router9.get("/me", async (req, res) => {
-      try {
-        const { userId } = req.user;
-        const user = await storage.getUser(userId);
-        if (!user) return res.status(404).json({ error: "User not found" });
-        res.json({
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          supplierName: user.teamName
-          // users.teamName holds the supplier org name for suppliers
-        });
-      } catch (e) {
-        console.error("Supplier me error:", e);
-        res.status(500).json({ error: "Failed to load supplier profile" });
-      }
+router9.get("/me", async (req, res) => {
+  try {
+    const { userId } = req.user;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.json({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      supplierName: user.teamName
+      // users.teamName holds the supplier org name for suppliers
     });
-    router9.get("/orders", async (req, res) => {
-      try {
-        const { userId } = req.user;
-        const orders2 = await storage.getOrdersByAssignedSupplier(userId);
-        const safe = orders2.map((o) => ({
-          id: o.id,
-          orderNumber: o.orderNumber,
-          poReference: o.poReference,
-          accountName: o.accountName,
-          customerName: o.customerName,
-          pipelineStage: o.pipelineStage,
-          deliveryAddress: o.deliveryAddress,
-          deliveryAttention: o.deliveryAttention,
-          createdAt: o.createdAt,
-          updatedAt: o.updatedAt
-        }));
-        res.json({ orders: safe });
-      } catch (e) {
-        console.error("Supplier orders list error:", e);
-        res.status(500).json({ error: "Failed to load orders" });
-      }
-    });
-    router9.get("/orders/:id", async (req, res) => {
-      try {
-        const { userId } = req.user;
-        const order = await getSupplierOrder(req.params.id, userId);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        const allFiles = await storage.getDesignFilesByOrder(order.id);
-        const techPackFiles = allFiles.filter((f) => f.folder === "tech-pack").map((f) => ({
-          id: f.id,
-          fileName: f.fileName,
-          fileUrl: f.fileUrl,
-          fileSize: f.fileSize,
-          mimeType: f.mimeType,
-          label: f.label,
-          createdAt: f.createdAt
-        }));
-        const items = order.id ? await storage.getOrderItems(order.id) : [];
-        const safeItems = items.map((i) => ({
-          id: i.id,
-          productName: i.productName,
-          productType: i.productType,
-          material: i.material,
-          quantity: i.quantity,
-          size: i.size,
-          productColors: i.productColors,
-          brandingMethod: i.brandingMethod,
-          designNotes: i.designNotes,
-          designBrief: i.designBrief,
-          sizeChartType: i.sizeChartType,
-          frontDesignUrl: i.frontDesignUrl,
-          backDesignUrl: i.backDesignUrl,
-          elementUrls: i.elementUrls
-          // NO unitAmount — supplier never sees pricing
-        }));
-        res.json({
-          order: {
-            id: order.id,
-            orderNumber: order.orderNumber,
-            poReference: order.poReference,
-            accountName: order.accountName,
-            customerName: order.customerName,
-            customerFirstName: order.customerFirstName,
-            customerLastName: order.customerLastName,
-            pipelineStage: order.pipelineStage,
-            dueDate: order.dueDate,
-            driveFolderUrl: order.driveFolderUrl,
-            deliveryAddress: order.deliveryAddress,
-            deliveryAttention: order.deliveryAttention,
-            deliveryPhone: order.deliveryPhone,
-            poComments: order.poComments,
-            createdAt: order.createdAt,
-            updatedAt: order.updatedAt
-            // NO pricing (total, subtotal) — supplier never sees cost
-          },
-          items: safeItems,
-          files: techPackFiles
-        });
-      } catch (e) {
-        console.error("Supplier order detail error:", e);
-        res.status(500).json({ error: "Failed to load order" });
-      }
-    });
-    router9.post("/orders/:id/files-received", async (req, res) => {
-      try {
-        const { userId } = req.user;
-        const order = await getSupplierOrder(req.params.id, userId);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        await db.insert(orderActivity).values({
-          orderId: order.id,
-          userId,
-          action: "supplier_files_received",
-          details: {
-            source: "supplier_portal",
-            supplierId: userId
-          }
-        });
-        res.json({ ok: true });
-      } catch (e) {
-        console.error("Supplier files-received error:", e);
-        res.status(500).json({ error: "Failed to record action" });
-      }
-    });
-    dispatchedSchema = z11.object({
-      trackingNumber: z11.string().optional(),
-      trackingUrl: z11.string().url().optional(),
-      notes: z11.string().optional()
-    });
-    router9.post("/orders/:id/dispatched", async (req, res) => {
-      try {
-        const { userId } = req.user;
-        const order = await getSupplierOrder(req.params.id, userId);
-        if (!order) return res.status(404).json({ error: "Order not found" });
-        const parsed = dispatchedSchema.safeParse(req.body);
-        if (!parsed.success) {
-          return res.status(400).json({ error: parsed.error.errors[0]?.message || "Invalid payload" });
-        }
-        await db.insert(orderActivity).values({
-          orderId: order.id,
-          userId,
-          action: "supplier_dispatched",
-          details: {
-            source: "supplier_portal",
-            supplierId: userId,
-            trackingNumber: parsed.data.trackingNumber,
-            trackingUrl: parsed.data.trackingUrl,
-            notes: parsed.data.notes
-          }
-        });
-        res.json({ ok: true });
-      } catch (e) {
-        console.error("Supplier dispatched error:", e);
-        res.status(500).json({ error: "Failed to record action" });
-      }
-    });
-    supplier_default = router9;
+  } catch (e) {
+    console.error("Supplier me error:", e);
+    res.status(500).json({ error: "Failed to load supplier profile" });
   }
 });
+router9.get("/orders", async (req, res) => {
+  try {
+    const { userId } = req.user;
+    const orders2 = await storage.getOrdersByAssignedSupplier(userId);
+    const safe = orders2.map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      poReference: o.poReference,
+      accountName: o.accountName,
+      customerName: o.customerName,
+      pipelineStage: o.pipelineStage,
+      deliveryAddress: o.deliveryAddress,
+      deliveryAttention: o.deliveryAttention,
+      createdAt: o.createdAt,
+      updatedAt: o.updatedAt
+    }));
+    res.json({ orders: safe });
+  } catch (e) {
+    console.error("Supplier orders list error:", e);
+    res.status(500).json({ error: "Failed to load orders" });
+  }
+});
+router9.get("/orders/:id", async (req, res) => {
+  try {
+    const { userId } = req.user;
+    const order = await getSupplierOrder(req.params.id, userId);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const allFiles = await storage.getDesignFilesByOrder(order.id);
+    const techPackFiles = allFiles.filter((f) => f.folder === "tech-pack").map((f) => ({
+      id: f.id,
+      fileName: f.fileName,
+      fileUrl: f.fileUrl,
+      fileSize: f.fileSize,
+      mimeType: f.mimeType,
+      label: f.label,
+      createdAt: f.createdAt
+    }));
+    const items = order.id ? await storage.getOrderItems(order.id) : [];
+    const safeItems = items.map((i) => ({
+      id: i.id,
+      productName: i.productName,
+      productType: i.productType,
+      material: i.material,
+      quantity: i.quantity,
+      size: i.size,
+      productColors: i.productColors,
+      brandingMethod: i.brandingMethod,
+      designNotes: i.designNotes,
+      designBrief: i.designBrief,
+      sizeChartType: i.sizeChartType,
+      frontDesignUrl: i.frontDesignUrl,
+      backDesignUrl: i.backDesignUrl,
+      elementUrls: i.elementUrls
+      // NO unitAmount — supplier never sees pricing
+    }));
+    res.json({
+      order: {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        poReference: order.poReference,
+        accountName: order.accountName,
+        customerName: order.customerName,
+        customerFirstName: order.customerFirstName,
+        customerLastName: order.customerLastName,
+        pipelineStage: order.pipelineStage,
+        dueDate: order.dueDate,
+        driveFolderUrl: order.driveFolderUrl,
+        deliveryAddress: order.deliveryAddress,
+        deliveryAttention: order.deliveryAttention,
+        deliveryPhone: order.deliveryPhone,
+        poComments: order.poComments,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt
+        // NO pricing (total, subtotal) — supplier never sees cost
+      },
+      items: safeItems,
+      files: techPackFiles
+    });
+  } catch (e) {
+    console.error("Supplier order detail error:", e);
+    res.status(500).json({ error: "Failed to load order" });
+  }
+});
+router9.post("/orders/:id/files-received", async (req, res) => {
+  try {
+    const { userId } = req.user;
+    const order = await getSupplierOrder(req.params.id, userId);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId,
+      action: "supplier_files_received",
+      details: {
+        source: "supplier_portal",
+        supplierId: userId
+      }
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("Supplier files-received error:", e);
+    res.status(500).json({ error: "Failed to record action" });
+  }
+});
+var dispatchedSchema = z11.object({
+  trackingNumber: z11.string().optional(),
+  trackingUrl: z11.string().url().optional(),
+  notes: z11.string().optional()
+});
+router9.post("/orders/:id/dispatched", async (req, res) => {
+  try {
+    const { userId } = req.user;
+    const order = await getSupplierOrder(req.params.id, userId);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const parsed = dispatchedSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0]?.message || "Invalid payload" });
+    }
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId,
+      action: "supplier_dispatched",
+      details: {
+        source: "supplier_portal",
+        supplierId: userId,
+        trackingNumber: parsed.data.trackingNumber,
+        trackingUrl: parsed.data.trackingUrl,
+        notes: parsed.data.notes
+      }
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("Supplier dispatched error:", e);
+    res.status(500).json({ error: "Failed to record action" });
+  }
+});
+var supplier_default = router9;
 
 // server/routes/chatbot.ts
 import { Router as Router13 } from "express";
+var router10 = Router13();
+var SHOPIFY_STORE_URL2 = process.env.SHOPIFY_STORE_URL || "sideline-nz-2.myshopify.com";
+var SHOPIFY_TOKEN2 = process.env.SHOPIFY_TOKEN || "53a3ae5ea0eeacac29d10e09646a7cac";
+var shopifyEndpoint2 = `https://${SHOPIFY_STORE_URL2}/api/2025-01/graphql.json`;
+var STORE_URL = "https://teamstore.sidelinenz.com";
 async function shopifyFetch2(query, variables) {
   const res = await fetch(shopifyEndpoint2, {
     method: "POST",
@@ -96849,6 +96616,16 @@ async function shopifyFetch2(query, variables) {
   if (json.errors) throw new Error(json.errors.map((e) => e.message).join("; "));
   return json.data;
 }
+var PRODUCT_FIELDS = `
+  id handle title description tags
+  featuredImage { url altText }
+  priceRange { minVariantPrice { amount currencyCode } }
+  variants(first: 20) {
+    edges {
+      node { id title availableForSale price { amount currencyCode } }
+    }
+  }
+`;
 function formatProduct(p) {
   const variants = (p.variants?.edges || []).map((e) => e.node);
   const inStock = variants.filter((v) => v.availableForSale);
@@ -96873,35 +96650,16 @@ function formatCollection(c) {
     products: products.map(formatProduct)
   };
 }
-var router10, SHOPIFY_STORE_URL2, SHOPIFY_TOKEN2, shopifyEndpoint2, STORE_URL, PRODUCT_FIELDS, chatbot_default;
-var init_chatbot = __esm({
-  "server/routes/chatbot.ts"() {
-    "use strict";
-    router10 = Router13();
-    SHOPIFY_STORE_URL2 = process.env.SHOPIFY_STORE_URL || "sideline-nz-2.myshopify.com";
-    SHOPIFY_TOKEN2 = process.env.SHOPIFY_TOKEN || "53a3ae5ea0eeacac29d10e09646a7cac";
-    shopifyEndpoint2 = `https://${SHOPIFY_STORE_URL2}/api/2025-01/graphql.json`;
-    STORE_URL = "https://teamstore.sidelinenz.com";
-    PRODUCT_FIELDS = `
-  id handle title description tags
-  featuredImage { url altText }
-  priceRange { minVariantPrice { amount currencyCode } }
-  variants(first: 20) {
-    edges {
-      node { id title availableForSale price { amount currencyCode } }
+router10.post("/search", async (req, res) => {
+  try {
+    const { query, type = "all" } = req.body;
+    if (!query || typeof query !== "string") {
+      return res.status(400).json({ error: "query is required" });
     }
-  }
-`;
-    router10.post("/search", async (req, res) => {
-      try {
-        const { query, type = "all" } = req.body;
-        if (!query || typeof query !== "string") {
-          return res.status(400).json({ error: "query is required" });
-        }
-        const q = query.toLowerCase().trim();
-        const results = {};
-        if (type === "all" || type === "products") {
-          const data = await shopifyFetch2(`
+    const q = query.toLowerCase().trim();
+    const results = {};
+    if (type === "all" || type === "products") {
+      const data = await shopifyFetch2(`
         query SearchProducts($query: String!) {
           search(first: 10, query: $query, types: PRODUCT) {
             edges {
@@ -96912,11 +96670,11 @@ var init_chatbot = __esm({
           }
         }
       `, { query: q });
-          const products = (data?.search?.edges || []).map((e) => e.node).filter((n) => n?.title);
-          results.products = products.map(formatProduct);
-        }
-        if (type === "all" || type === "collections") {
-          const data = await shopifyFetch2(`
+      const products = (data?.search?.edges || []).map((e) => e.node).filter((n) => n?.title);
+      results.products = products.map(formatProduct);
+    }
+    if (type === "all" || type === "collections") {
+      const data = await shopifyFetch2(`
         query {
           collections(first: 50) {
             edges {
@@ -96931,29 +96689,29 @@ var init_chatbot = __esm({
           }
         }
       `);
-          const all = (data?.collections?.edges || []).map((e) => e.node);
-          results.collections = all.filter((c) => {
-            const title = (c.title || "").toLowerCase();
-            const desc4 = (c.description || "").toLowerCase();
-            return title.includes(q) || desc4.includes(q) || q.includes(title.split(" ")[0]);
-          }).map(formatCollection);
-        }
-        const total = (results.products?.length || 0) + (results.collections?.length || 0);
-        res.json({
-          found: total,
-          message: total > 0 ? `Found ${total} result(s) for "${query}".` : `No results found for "${query}". Try searching for a team name, product type (e.g. polo, cap, hoodie), or sport.`,
-          store_url: STORE_URL,
-          ...results
-        });
-      } catch (e) {
-        res.status(500).json({ error: e.message?.substring(0, 300) });
-      }
+      const all = (data?.collections?.edges || []).map((e) => e.node);
+      results.collections = all.filter((c) => {
+        const title = (c.title || "").toLowerCase();
+        const desc4 = (c.description || "").toLowerCase();
+        return title.includes(q) || desc4.includes(q) || q.includes(title.split(" ")[0]);
+      }).map(formatCollection);
+    }
+    const total = (results.products?.length || 0) + (results.collections?.length || 0);
+    res.json({
+      found: total,
+      message: total > 0 ? `Found ${total} result(s) for "${query}".` : `No results found for "${query}". Try searching for a team name, product type (e.g. polo, cap, hoodie), or sport.`,
+      store_url: STORE_URL,
+      ...results
     });
-    router10.post("/collection", async (req, res) => {
-      try {
-        const { handle } = req.body;
-        if (!handle) return res.status(400).json({ error: "handle is required" });
-        const data = await shopifyFetch2(`
+  } catch (e) {
+    res.status(500).json({ error: e.message?.substring(0, 300) });
+  }
+});
+router10.post("/collection", async (req, res) => {
+  try {
+    const { handle } = req.body;
+    if (!handle) return res.status(400).json({ error: "handle is required" });
+    const data = await shopifyFetch2(`
       query CollectionByHandle($handle: String!) {
         collection(handle: $handle) {
           handle title description
@@ -96964,16 +96722,16 @@ var init_chatbot = __esm({
         }
       }
     `, { handle });
-        const coll = data?.collection;
-        if (!coll) return res.status(404).json({ error: "Collection not found" });
-        res.json(formatCollection(coll));
-      } catch (e) {
-        res.status(500).json({ error: e.message?.substring(0, 300) });
-      }
-    });
-    router10.get("/collections", async (_req, res) => {
-      try {
-        const data = await shopifyFetch2(`
+    const coll = data?.collection;
+    if (!coll) return res.status(404).json({ error: "Collection not found" });
+    res.json(formatCollection(coll));
+  } catch (e) {
+    res.status(500).json({ error: e.message?.substring(0, 300) });
+  }
+});
+router10.get("/collections", async (_req, res) => {
+  try {
+    const data = await shopifyFetch2(`
       query {
         collections(first: 50) {
           edges {
@@ -96986,147 +96744,141 @@ var init_chatbot = __esm({
         }
       }
     `);
-        const collections = (data?.collections?.edges || []).map((e) => e.node).filter((c) => (c.products?.edges?.length || 0) > 0).map((c) => ({
-          name: c.title,
-          handle: c.handle,
-          description: c.description || "",
-          url: `${STORE_URL}/collections/${c.handle}`,
-          image: c.image?.url || null
-        }));
-        res.json({
-          count: collections.length,
-          message: `We have ${collections.length} active team stores.`,
-          collections
-        });
-      } catch (e) {
-        res.status(500).json({ error: e.message?.substring(0, 300) });
-      }
+    const collections = (data?.collections?.edges || []).map((e) => e.node).filter((c) => (c.products?.edges?.length || 0) > 0).map((c) => ({
+      name: c.title,
+      handle: c.handle,
+      description: c.description || "",
+      url: `${STORE_URL}/collections/${c.handle}`,
+      image: c.image?.url || null
+    }));
+    res.json({
+      count: collections.length,
+      message: `We have ${collections.length} active team stores.`,
+      collections
     });
-    router10.get("/info", (_req, res) => {
-      res.json({
-        business: "Kingdom Investment Group (KIG)",
-        brands: [
-          {
-            name: "Sideline Custom Goods",
-            description: "Custom team uniforms, sportswear, and merch for NZ clubs, schools, and organisations.",
-            website: "https://sidelinenz.com",
-            team_store: STORE_URL,
-            services: ["Custom uniforms", "Team stores", "Supporter ranges", "Sponsorship placement"]
-          },
-          {
-            name: "RTS (Ready to Scale)",
-            description: "Funding and finance consulting for NZ businesses. Government grants, R&D tax credits, and growth capital.",
-            website: "https://kig.co.nz",
-            services: ["Government grant applications", "R&D tax incentives", "Business funding strategy"]
-          },
-          {
-            name: "Pop Up Play",
-            description: "Community activation events \u2014 bouncy castles, games, and entertainment for families and organisations.",
-            services: ["Community events", "Corporate activations", "School galas", "Birthday parties"]
-          },
-          {
-            name: "KIG AI Systems",
-            description: "AI-powered business automation \u2014 chatbots, CRM integration, and workflow systems.",
-            services: ["AI agent setup", "CRM automation", "Business process automation"]
-          }
-        ],
-        contact: {
-          email: "admin@kig.co.nz",
-          phone: "+64 22 412 7205",
-          location: "Unit 2, 66 Cavendish Drive, Manukau, Auckland 2104, NZ"
-        }
-      });
-    });
-    router10.post("/lead", async (req, res) => {
-      try {
-        const { createGhlContact: createGhlContact2 } = await Promise.resolve().then(() => (init_ghl(), ghl_exports));
-        const data = req.body;
-        if (!data.email && !data.phone) {
-          return res.status(400).json({ error: "email or phone is required" });
-        }
-        const tags = ["Website Lead", "Jarvesi Chat"];
-        if (data.user_type === "club") tags.push("Club");
-        if (data.user_type === "school") tags.push("School");
-        if (data.team_store_interest === "yes") tags.push("Team Store Interest");
-        if (data.mockup_interest === "yes") tags.push("Free Mockup Request");
-        if (data.enquiry_type) tags.push(data.enquiry_type);
-        const result = await createGhlContact2(
-          { ...data, source: "Jarvesi Web Chat" },
-          tags
-        );
-        res.json({
-          success: true,
-          message: "Thanks! We've got your details. Someone from the team will be in touch shortly.",
-          ghl: result
-        });
-      } catch (e) {
-        console.error("[Chatbot] Lead capture error:", e.message);
-        res.status(500).json({ error: e.message?.substring(0, 300) });
-      }
-    });
-    router10.get("/form-fields", (_req, res) => {
-      res.json({
-        description: "Sideline NZ enquiry form fields \u2014 Jarvesi should collect these conversationally",
-        steps: [
-          {
-            step: 1,
-            name: "Contact basics",
-            fields: [
-              { key: "name", label: "Full name", type: "text", required: true },
-              { key: "email", label: "Email address", type: "email", required: true },
-              { key: "phone", label: "Phone number", type: "phone", required: false }
-            ]
-          },
-          {
-            step: 2,
-            name: "Organisation",
-            fields: [
-              { key: "user_type", label: "Are you a club, school, or other?", type: "select", options: ["club", "school", "other"], required: true },
-              { key: "organization", label: "Organisation name", type: "text", required: true },
-              { key: "role", label: "Your role", type: "text", required: false },
-              { key: "member_count", label: "How many members?", type: "select", options: ["Under 20", "20\u201350", "51\u2013100", "100\u2013200", "200+"] }
-            ]
-          },
-          {
-            step: 3,
-            name: "What they need",
-            fields: [
-              { key: "sports", label: "What sport(s)?", type: "multi_select", options: ["Rugby", "League", "Football", "Netball", "Basketball", "Hockey", "Cricket", "Touch", "Other"] },
-              { key: "needs", label: "What do you need?", type: "multi_select", options: ["Full Playing Kit", "Training Gear", "Supporter Gear", "Off-Field Apparel", "Not Sure Yet"] },
-              { key: "estimated_quantity", label: "Roughly how many items?", type: "select", options: ["Under 20", "20\u201350", "50\u2013100", "100+"] }
-            ]
-          },
-          {
-            step: 4,
-            name: "Timeline & design",
-            fields: [
-              { key: "timing", label: "When do you need it?", type: "select", options: ["ASAP (Rush)", "1\u20132 Months", "3\u20134 Months", "Next Season", "Just Exploring"] },
-              { key: "design_stage", label: "Design status?", type: "select", options: ["No design yet", "Have ideas", "Updating existing kit", "Design ready"] },
-              { key: "budget_range", label: "Budget range?", type: "select", options: ["Under $2K", "$2K\u2013$5K", "$5K\u2013$10K", "$10K\u2013$20K", "$20K+", "Not sure"] }
-            ]
-          },
-          {
-            step: 5,
-            name: "Extras",
-            fields: [
-              { key: "team_store_interest", label: "Interested in a team store?", type: "select", options: ["yes", "no", "maybe"] },
-              { key: "mockup_interest", label: "Want a free mockup?", type: "select", options: ["yes", "no"] },
-              { key: "notes", label: "Anything else?", type: "text", required: false }
-            ]
-          }
-        ],
-        submit_to: "/api/chatbot/lead"
-      });
-    });
-    chatbot_default = router10;
+  } catch (e) {
+    res.status(500).json({ error: e.message?.substring(0, 300) });
   }
 });
+router10.get("/info", (_req, res) => {
+  res.json({
+    business: "Kingdom Investment Group (KIG)",
+    brands: [
+      {
+        name: "Sideline Custom Goods",
+        description: "Custom team uniforms, sportswear, and merch for NZ clubs, schools, and organisations.",
+        website: "https://sidelinenz.com",
+        team_store: STORE_URL,
+        services: ["Custom uniforms", "Team stores", "Supporter ranges", "Sponsorship placement"]
+      },
+      {
+        name: "RTS (Ready to Scale)",
+        description: "Funding and finance consulting for NZ businesses. Government grants, R&D tax credits, and growth capital.",
+        website: "https://kig.co.nz",
+        services: ["Government grant applications", "R&D tax incentives", "Business funding strategy"]
+      },
+      {
+        name: "Pop Up Play",
+        description: "Community activation events \u2014 bouncy castles, games, and entertainment for families and organisations.",
+        services: ["Community events", "Corporate activations", "School galas", "Birthday parties"]
+      },
+      {
+        name: "KIG AI Systems",
+        description: "AI-powered business automation \u2014 chatbots, CRM integration, and workflow systems.",
+        services: ["AI agent setup", "CRM automation", "Business process automation"]
+      }
+    ],
+    contact: {
+      email: "admin@kig.co.nz",
+      phone: "+64 22 412 7205",
+      location: "Unit 2, 66 Cavendish Drive, Manukau, Auckland 2104, NZ"
+    }
+  });
+});
+router10.post("/lead", async (req, res) => {
+  try {
+    const { createGhlContact: createGhlContact2 } = await Promise.resolve().then(() => (init_ghl(), ghl_exports));
+    const data = req.body;
+    if (!data.email && !data.phone) {
+      return res.status(400).json({ error: "email or phone is required" });
+    }
+    const tags = ["Website Lead", "Jarvesi Chat"];
+    if (data.user_type === "club") tags.push("Club");
+    if (data.user_type === "school") tags.push("School");
+    if (data.team_store_interest === "yes") tags.push("Team Store Interest");
+    if (data.mockup_interest === "yes") tags.push("Free Mockup Request");
+    if (data.enquiry_type) tags.push(data.enquiry_type);
+    const result = await createGhlContact2(
+      { ...data, source: "Jarvesi Web Chat" },
+      tags
+    );
+    res.json({
+      success: true,
+      message: "Thanks! We've got your details. Someone from the team will be in touch shortly.",
+      ghl: result
+    });
+  } catch (e) {
+    console.error("[Chatbot] Lead capture error:", e.message);
+    res.status(500).json({ error: e.message?.substring(0, 300) });
+  }
+});
+router10.get("/form-fields", (_req, res) => {
+  res.json({
+    description: "Sideline NZ enquiry form fields \u2014 Jarvesi should collect these conversationally",
+    steps: [
+      {
+        step: 1,
+        name: "Contact basics",
+        fields: [
+          { key: "name", label: "Full name", type: "text", required: true },
+          { key: "email", label: "Email address", type: "email", required: true },
+          { key: "phone", label: "Phone number", type: "phone", required: false }
+        ]
+      },
+      {
+        step: 2,
+        name: "Organisation",
+        fields: [
+          { key: "user_type", label: "Are you a club, school, or other?", type: "select", options: ["club", "school", "other"], required: true },
+          { key: "organization", label: "Organisation name", type: "text", required: true },
+          { key: "role", label: "Your role", type: "text", required: false },
+          { key: "member_count", label: "How many members?", type: "select", options: ["Under 20", "20\u201350", "51\u2013100", "100\u2013200", "200+"] }
+        ]
+      },
+      {
+        step: 3,
+        name: "What they need",
+        fields: [
+          { key: "sports", label: "What sport(s)?", type: "multi_select", options: ["Rugby", "League", "Football", "Netball", "Basketball", "Hockey", "Cricket", "Touch", "Other"] },
+          { key: "needs", label: "What do you need?", type: "multi_select", options: ["Full Playing Kit", "Training Gear", "Supporter Gear", "Off-Field Apparel", "Not Sure Yet"] },
+          { key: "estimated_quantity", label: "Roughly how many items?", type: "select", options: ["Under 20", "20\u201350", "50\u2013100", "100+"] }
+        ]
+      },
+      {
+        step: 4,
+        name: "Timeline & design",
+        fields: [
+          { key: "timing", label: "When do you need it?", type: "select", options: ["ASAP (Rush)", "1\u20132 Months", "3\u20134 Months", "Next Season", "Just Exploring"] },
+          { key: "design_stage", label: "Design status?", type: "select", options: ["No design yet", "Have ideas", "Updating existing kit", "Design ready"] },
+          { key: "budget_range", label: "Budget range?", type: "select", options: ["Under $2K", "$2K\u2013$5K", "$5K\u2013$10K", "$10K\u2013$20K", "$20K+", "Not sure"] }
+        ]
+      },
+      {
+        step: 5,
+        name: "Extras",
+        fields: [
+          { key: "team_store_interest", label: "Interested in a team store?", type: "select", options: ["yes", "no", "maybe"] },
+          { key: "mockup_interest", label: "Want a free mockup?", type: "select", options: ["yes", "no"] },
+          { key: "notes", label: "Anything else?", type: "text", required: false }
+        ]
+      }
+    ],
+    submit_to: "/api/chatbot/lead"
+  });
+});
+var chatbot_default = router10;
 
 // server/routes/index.ts
-var routes_exports = {};
-__export(routes_exports, {
-  registerRoutes: () => registerRoutes
-});
 async function registerRoutes(httpServer2, app2) {
   app2.get("/api/health", (_req, res) => {
     res.json({ status: "ok", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
@@ -97149,29 +96901,13 @@ async function registerRoutes(httpServer2, app2) {
   app2.use("/api/chatbot", chatbot_default);
   return httpServer2;
 }
-var init_routes = __esm({
-  "server/routes/index.ts"() {
-    "use strict";
-    init_ghl();
-    init_store();
-    init_shopify();
-    init_auth2();
-    init_admin();
-    init_customer();
-    init_uploads();
-    init_mockups();
-    init_quotes();
-    init_club_portal();
-    init_supplier();
-    init_approvals();
-    init_chatbot();
-  }
-});
 
-// server/api-entry.ts
-import express from "express";
-import cookieParser from "cookie-parser";
-import { createServer } from "http";
+// api/index.ts
+var WebhookHandlers2 = null;
+try {
+  WebhookHandlers2 = (init_webhookHandlers(), __toCommonJS(webhookHandlers_exports)).WebhookHandlers;
+} catch (_) {
+}
 var app = express();
 var httpServer = createServer(app);
 app.get("/api/health", (_req, res) => {
@@ -97190,53 +96926,35 @@ app.get("/api/health", (_req, res) => {
     }
   });
 });
+if (WebhookHandlers2) {
+  app.post(
+    "/api/stripe/webhook",
+    express.raw({ type: "application/json" }),
+    async (req, res) => {
+      try {
+        const signature = req.headers["stripe-signature"];
+        if (!signature) return res.status(400).json({ error: "Missing stripe-signature" });
+        const sig = Array.isArray(signature) ? signature[0] : signature;
+        if (!Buffer.isBuffer(req.body)) return res.status(500).json({ error: "Webhook processing error" });
+        await WebhookHandlers2.processWebhook(req.body, sig);
+        res.status(200).json({ received: true });
+      } catch (error) {
+        console.error("Webhook error:", error.message);
+        res.status(400).json({ error: "Webhook processing error" });
+      }
+    }
+  );
+}
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
-app.use((err, _req, res, _next) => {
-  const status = err.status || err.statusCode || 500;
-  const message = err.message || "Internal Server Error";
-  console.error("[Vercel] Express error:", message);
-  res.status(status).json({ message });
-});
 var routesRegistered = false;
 var registrationError = null;
 async function ensureRoutes() {
-  if (registrationError) {
-    throw new Error(registrationError);
-  }
+  if (registrationError) throw new Error(registrationError);
   if (routesRegistered) return;
   try {
-    try {
-      const { WebhookHandlers: WebhookHandlers2 } = await Promise.resolve().then(() => (init_webhookHandlers(), webhookHandlers_exports));
-      const webhookApp = express();
-      webhookApp.post(
-        "/api/stripe/webhook",
-        express.raw({ type: "application/json" }),
-        async (req, res) => {
-          try {
-            const signature = req.headers["stripe-signature"];
-            if (!signature) {
-              return res.status(400).json({ error: "Missing stripe-signature" });
-            }
-            const sig = Array.isArray(signature) ? signature[0] : signature;
-            if (!Buffer.isBuffer(req.body)) {
-              return res.status(500).json({ error: "Webhook processing error" });
-            }
-            await WebhookHandlers2.processWebhook(req.body, sig);
-            res.status(200).json({ received: true });
-          } catch (error) {
-            console.error("Webhook error:", error.message);
-            res.status(400).json({ error: "Webhook processing error" });
-          }
-        }
-      );
-      app.use(webhookApp);
-    } catch (whErr) {
-      console.error("[Vercel] Stripe webhooks unavailable:", whErr.message);
-    }
-    const { registerRoutes: registerRoutes2 } = await Promise.resolve().then(() => (init_routes(), routes_exports));
-    await registerRoutes2(httpServer, app);
+    await registerRoutes(httpServer, app);
     routesRegistered = true;
   } catch (e) {
     registrationError = `${e.message}
@@ -97245,6 +96963,12 @@ Stack: ${e.stack}`;
     throw e;
   }
 }
+app.use((err, _req, res, _next) => {
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || "Internal Server Error";
+  console.error("[Vercel] Express error:", message);
+  res.status(status).json({ message });
+});
 async function handler(req, res) {
   if (req.url === "/api/health" || req.url === "/api/health/") {
     return app(req, res);
@@ -97253,11 +96977,7 @@ async function handler(req, res) {
     await ensureRoutes();
   } catch (e) {
     console.error("[Vercel] Route registration failed:", e.message, e.stack);
-    return res.status(500).json({
-      error: "Route registration failed",
-      detail: e.message,
-      stack: e.stack
-    });
+    return res.status(500).json({ error: "Route registration failed", detail: e.message });
   }
   return app(req, res);
 }
