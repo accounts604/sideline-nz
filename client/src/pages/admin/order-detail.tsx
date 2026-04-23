@@ -15,9 +15,10 @@ import { productsGroupedByCategory, getProductById } from "@shared/product-catal
 import { BRANDING_METHODS } from "@shared/branding-methods";
 import { SIZE_CHART_LABELS, suggestSizeChart, getSizeChartTables, type SizeChartType } from "@shared/size-charts";
 import { LOGO_POSITIONS, type LogoElement, type LogoPosition } from "@shared/schema";
+import { getDesignPrints, getMockups, type DesignAsset } from "@shared/design-assets";
 import {
   ArrowLeft, FileText, ExternalLink, Upload, Download,
-  Check, X, MessageSquare, Printer, Plus, Trash2, Sparkles, Ruler, ChevronDown, ChevronRight,
+  Check, X, MessageSquare, Printer, Plus, Trash2, Sparkles, Ruler, ChevronDown, ChevronRight, Copy,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -37,6 +38,8 @@ interface OrderItem {
   frontDesignUrl: string | null;
   backDesignUrl: string | null;
   elementUrls: LogoElement[] | null;
+  designPrints: DesignAsset[] | null;
+  mockupImages: DesignAsset[] | null;
   gradeGroup: string | null; // deprecated — no longer shown
   designNotes: string | null;
   designBrief: string | null;
@@ -928,69 +931,75 @@ export default function AdminOrderDetail() {
                 </Field>
               </div>
 
-              {/* Design images — front, back, elements side by side */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginBottom: "16px" }}>
-                <div>
-                  <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Front Design</p>
-                  <ImageUploadSlot
-                    label="Upload front"
-                    url={item.frontDesignUrl}
-                    onUpload={(url) => {
-                      updateItem.mutate({ itemId: item.id, frontDesignUrl: url });
-                      // Auto-extract colours + generate design brief on first front
-                      // upload. Skipped if already set — we don't overwrite work.
-                      if (!item.productColors?.length) {
-                        extractColors.mutate({ itemId: item.id, imageUrl: url, side: "front" });
-                      }
-                      if (!item.designBrief) {
-                        // Small delay so the item PATCH lands first (brief reads
-                        // from the saved frontDesignUrl on the server)
-                        setTimeout(() => generateBrief.mutate({ itemId: item.id }), 1500);
-                      }
+              {/* Row 1: 2D Design Prints + 3D Mockups (both multi-image managers) */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+                <DesignAssetManager
+                  title="2D Design Prints — factory artwork (true colours)"
+                  assets={getDesignPrints(item as any)}
+                  vaultImages={designs.filter((d) => d.folder === "mockups" && d.mimeType?.startsWith("image/")).map((d) => ({ id: d.id, fileUrl: d.fileUrl, fileName: d.fileName }))}
+                  onSave={(next) => updateItem.mutate({ itemId: item.id, designPrints: next })}
+                  defaultLabels={["Front", "Back", "Sleeve", "Detail"]}
+                  onFirstUpload={(url) => {
+                    // Auto-extract colours + brief on first 2D print upload (true
+                    // colours beat mockup colours). Skipped if already set.
+                    if (!item.productColors?.length) {
+                      extractColors.mutate({ itemId: item.id, imageUrl: url, side: "front" });
+                    }
+                    if (!item.designBrief) {
+                      setTimeout(() => generateBrief.mutate({ itemId: item.id }), 1500);
+                    }
+                  }}
+                />
+                <DesignAssetManager
+                  title="3D Mockups — vendor renders"
+                  assets={getMockups(item as any)}
+                  vaultImages={designs.filter((d) => d.folder === "mockups" && d.mimeType?.startsWith("image/")).map((d) => ({ id: d.id, fileUrl: d.fileUrl, fileName: d.fileName }))}
+                  onSave={(next) => updateItem.mutate({ itemId: item.id, mockupImages: next, frontDesignUrl: null, backDesignUrl: null })}
+                  defaultLabels={["Front", "Back", "Side", "3/4 View"]}
+                />
+              </div>
+
+              {/* Row 2: Logo Elements (full-width, with copy-from dropdown) */}
+              <div style={{ marginBottom: "16px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px", flexWrap: "wrap", gap: "8px" }}>
+                  <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", margin: 0 }}>Logo Elements ({(item.elementUrls ?? []).length})</p>
+                  <CopyLogosFrom
+                    currentItemId={item.id}
+                    items={items}
+                    onCopy={(sourceElements) => {
+                      const cloned = sourceElements.map((el) => ({ ...el })) as LogoElement[];
+                      updateItem.mutate({ itemId: item.id, elementUrls: cloned });
                     }}
-                    vaultImages={designs.filter((d) => d.folder === "mockups" && d.mimeType?.startsWith("image/")).map((d) => ({ id: d.id, fileUrl: d.fileUrl, fileName: d.fileName }))}
                   />
                 </div>
-                <div>
-                  <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Back Design</p>
-                  <ImageUploadSlot
-                    label="Upload back"
-                    url={item.backDesignUrl}
-                    onUpload={(url) => updateItem.mutate({ itemId: item.id, backDesignUrl: url })}
-                    vaultImages={designs.filter((d) => d.folder === "mockups" && d.mimeType?.startsWith("image/")).map((d) => ({ id: d.id, fileUrl: d.fileUrl, fileName: d.fileName }))}
-                  />
-                </div>
-                <div>
-                  <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Logo Elements ({(item.elementUrls ?? []).length})</p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    {(item.elementUrls ?? []).map((el, i) => (
-                      <LogoElementEditor
-                        key={i}
-                        element={el}
-                        onChange={(next) => {
-                          const list = [...(item.elementUrls ?? [])];
-                          list[i] = next;
-                          updateItem.mutate({ itemId: item.id, elementUrls: list });
-                        }}
-                        onRemove={() => {
-                          const list = [...(item.elementUrls ?? [])];
-                          list.splice(i, 1);
-                          updateItem.mutate({ itemId: item.id, elementUrls: list });
-                        }}
-                      />
-                    ))}
-                    <ImageUploadSlot
-                      label="+ Add element"
-                      url={null}
-                      small
-                      onUpload={(url) => {
-                        const name = prompt("Element name (e.g. sponsor logo):") || "Logo";
-                        const existing = (item.elementUrls ?? []) as LogoElement[];
-                        updateItem.mutate({ itemId: item.id, elementUrls: [...existing, { name, url }] });
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "8px" }}>
+                  {(item.elementUrls ?? []).map((el, i) => (
+                    <LogoElementEditor
+                      key={i}
+                      element={el}
+                      onChange={(next) => {
+                        const list = [...(item.elementUrls ?? [])];
+                        list[i] = next;
+                        updateItem.mutate({ itemId: item.id, elementUrls: list });
                       }}
-                      vaultImages={designs.filter((d) => d.folder === "logos" && d.mimeType?.startsWith("image/")).map((d) => ({ id: d.id, fileUrl: d.fileUrl, fileName: d.fileName }))}
+                      onRemove={() => {
+                        const list = [...(item.elementUrls ?? [])];
+                        list.splice(i, 1);
+                        updateItem.mutate({ itemId: item.id, elementUrls: list });
+                      }}
                     />
-                  </div>
+                  ))}
+                  <ImageUploadSlot
+                    label="+ Add element"
+                    url={null}
+                    small
+                    onUpload={(url) => {
+                      const name = prompt("Element name (e.g. sponsor logo):") || "Logo";
+                      const existing = (item.elementUrls ?? []) as LogoElement[];
+                      updateItem.mutate({ itemId: item.id, elementUrls: [...existing, { name, url }] });
+                    }}
+                    vaultImages={designs.filter((d) => d.folder === "logos" && d.mimeType?.startsWith("image/")).map((d) => ({ id: d.id, fileUrl: d.fileUrl, fileName: d.fileName }))}
+                  />
                 </div>
               </div>
 
@@ -1269,6 +1278,125 @@ export default function AdminOrderDetail() {
         )}
       </Section>
     </AdminLayout>
+  );
+}
+
+// ─── Multi-image manager (Design Prints / Mockups) ────────────────
+//
+// Renders a list of DesignAsset thumbnails with inline label editing + a
+// remove button, plus a "+ Add" slot at the end. Writes the full updated
+// array back through `onSave` on every change so the parent mutation
+// debounces naturally.
+
+function DesignAssetManager({ title, assets, vaultImages, onSave, defaultLabels = [], onFirstUpload }: {
+  title: string;
+  assets: DesignAsset[];
+  vaultImages: { id: string; fileUrl: string; fileName: string }[];
+  onSave: (next: DesignAsset[]) => void;
+  defaultLabels?: string[];
+  onFirstUpload?: (url: string) => void;
+}) {
+  const labelInputStyle: React.CSSProperties = {
+    width: "100%", padding: "3px 6px", fontSize: "10px",
+    background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: "3px", color: "rgba(255,255,255,0.9)", outline: "none",
+    textTransform: "uppercase", letterSpacing: "0.3px",
+  };
+
+  return (
+    <div>
+      <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>{title}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: "8px" }}>
+        {assets.map((a, i) => (
+          <div key={i} style={{ padding: "6px", background: "rgba(255,255,255,0.02)", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.05)" }}>
+            <div style={{ aspectRatio: "1", background: "rgba(255,255,255,0.03)", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "5px", overflow: "hidden" }}>
+              <img src={a.url} alt={a.label} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+            </div>
+            <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+              <input
+                style={labelInputStyle}
+                value={a.label}
+                placeholder="Label"
+                onChange={(e) => {
+                  const next = [...assets];
+                  next[i] = { ...next[i], label: e.target.value };
+                  onSave(next);
+                }}
+              />
+              <button
+                onClick={() => onSave(assets.filter((_, j) => j !== i))}
+                title="Remove"
+                style={{ background: "transparent", border: "none", color: "rgba(239,68,68,0.7)", cursor: "pointer", padding: "2px" }}
+              >
+                <Trash2 size={11} />
+              </button>
+            </div>
+          </div>
+        ))}
+        <ImageUploadSlot
+          label="+ Add"
+          url={null}
+          small
+          onUpload={(url) => {
+            const nextLabel = defaultLabels[assets.length] || `View ${assets.length + 1}`;
+            const next = [...assets, { label: nextLabel, url }];
+            onSave(next);
+            if (assets.length === 0 && onFirstUpload) onFirstUpload(url);
+          }}
+          vaultImages={vaultImages}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Copy logos from another garment on this order ─────────────────
+//
+// Saves a lot of keystrokes on a club order where the jersey, shorts, jacket,
+// and hoodie all share the same club + sponsor logos. Pick the source
+// garment → clones its elementUrls (with positions, sizes, thread codes,
+// file refs) onto the current item. User can then tweak per-item.
+
+function CopyLogosFrom({ currentItemId, items, onCopy }: {
+  currentItemId: string;
+  items: OrderItem[];
+  onCopy: (elements: LogoElement[]) => void;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const sources = items.filter((it) => it.id !== currentItemId && (it.elementUrls ?? []).length > 0);
+  if (sources.length === 0) return null;
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setPickerOpen((v) => !v)}
+        style={{ padding: "4px 10px", fontSize: "10px", fontWeight: 600, background: "rgba(59,130,246,0.1)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.3)", borderRadius: "4px", cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.3px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+        title="Copy all logo elements (with placement data) from another garment on this order"
+      >
+        <Copy size={10} /> Copy logos from…
+      </button>
+      {pickerOpen && (
+        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: "#111", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "6px", padding: "4px", zIndex: 10, minWidth: "220px", boxShadow: "0 4px 16px rgba(0,0,0,0.4)" }}>
+          {sources.map((src) => (
+            <button
+              key={src.id}
+              onClick={() => {
+                const msg = `Copy ${(src.elementUrls ?? []).length} logo(s) from "${src.productName}"?\n\nExisting logos on this garment will be replaced.`;
+                if (!window.confirm(msg)) return;
+                onCopy(src.elementUrls ?? []);
+                setPickerOpen(false);
+              }}
+              style={{ display: "block", width: "100%", padding: "7px 10px", background: "transparent", border: "none", color: "rgba(255,255,255,0.85)", textAlign: "left", fontSize: "12px", cursor: "pointer", borderRadius: "4px" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              {src.productName}
+              <span style={{ marginLeft: "6px", color: "rgba(255,255,255,0.4)", fontSize: "10px" }}>({(src.elementUrls ?? []).length})</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

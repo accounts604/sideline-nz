@@ -718,9 +718,19 @@ const updateItemSchema = z.object({
   productType: z.string().optional(),
   material: z.string().optional(),
   productName: z.string().optional(),
-  frontDesignUrl: z.string().optional(),
-  backDesignUrl: z.string().optional(),
-  elementUrls: z.array(z.object({ name: z.string(), url: z.string() })).optional(),
+  frontDesignUrl: z.union([z.string(), z.null()]).optional(),
+  backDesignUrl: z.union([z.string(), z.null()]).optional(),
+  elementUrls: z.array(z.object({
+    name: z.string(),
+    url: z.string(),
+    position: z.string().optional(),
+    application: z.string().optional(),
+    sizeMm: z.string().optional(),
+    threadColours: z.array(z.string()).optional(),
+    artworkFile: z.string().optional(),
+  })).optional(),
+  designPrints: z.array(z.object({ label: z.string(), url: z.string() })).optional(),
+  mockupImages: z.array(z.object({ label: z.string(), url: z.string() })).optional(),
   gradeGroup: z.string().optional(),
   designNotes: z.string().optional(),
   designBrief: z.string().optional(),
@@ -741,6 +751,12 @@ router.patch("/orders/:id/items/:itemId", async (req, res) => {
     const mirrorJobs: Array<{ url: string; slot: "mockups" | "logos" }> = [];
     if (data.frontDesignUrl) mirrorJobs.push({ url: data.frontDesignUrl, slot: "mockups" });
     if (data.backDesignUrl)  mirrorJobs.push({ url: data.backDesignUrl,  slot: "mockups" });
+    if (data.mockupImages?.length) {
+      for (const m of data.mockupImages) mirrorJobs.push({ url: m.url, slot: "mockups" });
+    }
+    if (data.designPrints?.length) {
+      for (const p of data.designPrints) mirrorJobs.push({ url: p.url, slot: "mockups" });
+    }
     if (data.elementUrls?.length) {
       for (const el of data.elementUrls) mirrorJobs.push({ url: el.url, slot: "logos" });
     }

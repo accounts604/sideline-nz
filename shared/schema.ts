@@ -153,9 +153,11 @@ export const orderItems = pgTable("order_items", {
   brandingMethod: text("branding_method"), // See shared/branding-methods.ts
   productType: text("product_type"), // Canonical product id from shared/product-catalog.ts
   material: text("material"), // Garment material / fabric spec (e.g. "180gsm Interlock Polyester")
-  frontDesignUrl: text("front_design_url"), // Front design proof image
-  backDesignUrl: text("back_design_url"), // Back design proof image
-  elementUrls: jsonb("element_urls"), // LogoElement[] — { name, url, position?, application?, sizeMm?, threadColours?: string[], artworkFile? }
+  frontDesignUrl: text("front_design_url"), // LEGACY — read via getMockups() in shared/design-assets.ts. New writes go to mockupImages.
+  backDesignUrl: text("back_design_url"),   // LEGACY — same as frontDesignUrl.
+  designPrints: jsonb("design_prints"),     // DesignAsset[] — 2D vector flats (factory production files). Pure new data (2026-04-24), no legacy.
+  mockupImages: jsonb("mockup_images"),     // DesignAsset[] — 3D vendor renders. New writes go here; falls back to frontDesignUrl/backDesignUrl via getMockups() if empty.
+  elementUrls: jsonb("element_urls"),       // LogoElement[] — { name, url, position?, application?, sizeMm?, threadColours?: string[], artworkFile? }
   gradeGroup: text("grade_group"), // DEPRECATED — kept for back-compat; no longer shown in UI (2026-04-16)
   designNotes: text("design_notes"), // Any notes about this product line
   designBrief: text("design_brief"), // AI-generated description of design layout, positions, elements (Gemini)

@@ -4,6 +4,7 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { computeMilestones } from "@shared/po-milestones";
 import { suggestSizeChart, getSizeChartTables, SIZE_CHART_LABELS, SIZE_CHART_DIAGRAMS, type SizeChartType, type SizeTable } from "@shared/size-charts";
 import { LOGO_POSITIONS, type LogoElement, type LogoPosition } from "@shared/schema";
+import { getDesignPrints, getMockups, type DesignAsset } from "@shared/design-assets";
 
 interface OrderItem {
   id: string;
@@ -21,6 +22,8 @@ interface OrderItem {
   frontDesignUrl: string | null;
   backDesignUrl: string | null;
   elementUrls: LogoElement[] | null;
+  designPrints: DesignAsset[] | null;
+  mockupImages: DesignAsset[] | null;
   gradeGroup: string | null;
   designNotes: string | null;
 }
@@ -96,6 +99,30 @@ function PdfSizeChart({ table }: { table: SizeTable }) {
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9px", color: "#666", padding: "3px 16px" }}>
         <span>Measurements in cm</span>
         <span>Tolerance {table.tolerance}</span>
+      </div>
+    </div>
+  );
+}
+
+// Labelled strip of design assets (2D prints or 3D mockups). Mirrors
+// renderAssetStrip() in server/po-pdf.ts. Returns null if empty — tightens
+// the PO when a product has no mockups or no design prints yet.
+function AssetStrip({ title, assets }: { title: string; assets: DesignAsset[] }) {
+  if (!assets.length) return null;
+  return (
+    <div style={{ pageBreakInside: "avoid" }}>
+      <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center", letterSpacing: "0.3px" }}>
+        {title}
+      </div>
+      <div style={{ display: "flex", border: "1px solid #eee", borderTop: "none", minHeight: "240px" }}>
+        {assets.map((a, i) => (
+          <div key={i} style={{ flex: 1, padding: "14px 10px", textAlign: "center", display: "flex", flexDirection: "column", borderRight: i < assets.length - 1 ? "1px solid #eee" : undefined }}>
+            <div style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "8px", color: "#555" }}>{a.label || "—"}</div>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0 }}>
+              <img src={a.url} alt={a.label} style={{ maxWidth: "100%", maxHeight: "260px", objectFit: "contain" }} />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -192,6 +219,8 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
   const totalQty = Array.from(sizeSummary.values()).reduce((a, b) => a + b, 0) || item.quantity;
 
   const elements = (item.elementUrls as LogoElement[] | null) ?? [];
+  const designPrints = getDesignPrints(item as any);
+  const mockups = getMockups(item as any);
 
   return (
     <div style={{ pageBreakInside: "avoid", marginBottom: "20px" }}>
@@ -202,10 +231,9 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
           : (item.gradeGroup || item.productName)}
       </div>
 
-      {/* Product info row — LEFT: details | CENTER: mockups together | RIGHT: size/count */}
+      {/* Product info row — LEFT: specs (wider) | RIGHT: size/count. Mockups moved to dedicated sections below. */}
       <div style={{ display: "flex" }}>
-        {/* Left: product specs */}
-        <div style={{ width: "240px", padding: "14px 16px", fontSize: "12px", color: "#000" }}>
+        <div style={{ flex: 1, padding: "14px 18px", fontSize: "12px", color: "#000" }}>
           <div style={{ marginBottom: "10px" }}>
             <div style={{ fontWeight: 700, marginBottom: "2px" }}>Product</div>
             <div>{item.productName}</div>
@@ -225,7 +253,7 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
           {item.productColors && item.productColors.length > 0 && (
             <div style={{ marginBottom: "10px" }}>
               <div style={{ fontWeight: 700, marginBottom: "4px" }}>Colour Palette</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
                 {(item.productColors as { hex: string; name?: string }[]).map((c, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <span style={{ width: "28px", height: "16px", background: c.hex, border: "1px solid #bbb", borderRadius: "2px", display: "inline-block" }} />
@@ -246,18 +274,7 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
           )}
         </div>
 
-        {/* Center: mockup designs together — front + back side by side, filling the space */}
-        <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", gap: "20px", padding: "16px 12px", minHeight: "260px" }}>
-          {item.frontDesignUrl && (
-            <img src={item.frontDesignUrl} alt="Front mockup" style={{ maxHeight: "280px", flex: 1, minWidth: 0, objectFit: "contain" }} />
-          )}
-          {item.backDesignUrl && (
-            <img src={item.backDesignUrl} alt="Back mockup" style={{ maxHeight: "280px", flex: 1, minWidth: 0, objectFit: "contain" }} />
-          )}
-        </div>
-
-        {/* Right: size/count breakdown */}
-        <div style={{ width: "200px", padding: "14px 16px", borderLeft: "1px solid #eee" }}>
+        <div style={{ width: "220px", padding: "14px 16px", borderLeft: "1px solid #eee" }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 700, marginBottom: "6px" }}>
             <span>Size</span>
             <span>Count</span>
@@ -274,6 +291,12 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
           </div>
         </div>
       </div>
+
+      {/* 2D Design Print — factory artwork, true colours */}
+      <AssetStrip title="2D Design Print — Factory Artwork (true colours)" assets={designPrints} />
+
+      {/* 3D Mockups — vendor render */}
+      <AssetStrip title="3D Mockup — Vendor Render" assets={mockups} />
 
       {/* Logo Placement Grid — 9 positions × rows for logo / application / size / thread / artwork file */}
       <LogoPlacementGrid elements={elements} />

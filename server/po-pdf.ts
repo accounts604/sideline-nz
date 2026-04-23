@@ -12,6 +12,7 @@ import { storage } from "./storage";
 import { computeMilestones } from "@shared/po-milestones";
 import { getSizeChartTables, suggestSizeChart, SIZE_CHART_LABELS, SIZE_CHART_DIAGRAMS, type SizeChartType } from "@shared/size-charts";
 import { LOGO_POSITIONS, type LogoElement, type LogoPosition } from "@shared/schema";
+import { getDesignPrints, getMockups, type DesignAsset } from "@shared/design-assets";
 
 const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
@@ -33,6 +34,30 @@ async function getAccessToken(): Promise<string | null> {
 
 function esc(s: string | null | undefined): string {
   return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// ─── Design asset strip ─────────────────────────────────────────
+//
+// Renders a labelled section with N images side-by-side, scaled to fit the
+// page width. Used for both 2D Design Prints and 3D Mockups. If there are
+// no assets the whole section is omitted (keeps the PO tight).
+
+function renderAssetStrip(title: string, assets: DesignAsset[], headerBg = "#000"): string {
+  if (!assets.length) return "";
+  const col = `${100 / assets.length}%`;
+  return `
+  <div style="page-break-inside:avoid">
+    <div style="background:${headerBg};color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center;letter-spacing:0.3px">${esc(title)}</div>
+    <div style="display:flex;border:1px solid #eee;border-top:none;min-height:240px">
+      ${assets.map((a) => `
+        <div style="width:${col};padding:14px 10px;text-align:center;display:flex;flex-direction:column;border-right:1px solid #eee">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px;color:#555">${esc(a.label || "—")}</div>
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;min-height:0">
+            <img src="${a.url}" style="max-width:100%;max-height:260px;object-fit:contain" />
+          </div>
+        </div>`).join("")}
+    </div>
+  </div>`;
 }
 
 // ─── Logo Placement Grid (job-sheet-style) ──────────────────────
@@ -131,6 +156,8 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
   const itemsHtml = items.map((item: any) => {
     const colors = (item.productColors || []) as Array<{ hex: string; name?: string }>;
     const elements = (item.elementUrls || []) as LogoElement[];
+    const designPrints = getDesignPrints(item);
+    const mockups = getMockups(item);
     const bds = bdByItem.get(item.id) || [];
     const totalQty = bds.length ? bds.reduce((s: number, b: any) => s + b.quantity, 0) : item.quantity;
     const chartType = (item.sizeChartType || suggestSizeChart(item.productType)) as SizeChartType;
@@ -144,7 +171,7 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
       </div>
 
       <div style="display:flex;border:1px solid #eee;border-top:none">
-        <div style="width:240px;padding:14px 16px;font-size:12px;color:#000">
+        <div style="flex:1;padding:14px 18px;font-size:12px;color:#000">
           <div style="margin-bottom:10px"><div style="font-weight:700;margin-bottom:2px">Product</div><div>${esc(item.productName)}</div></div>
           ${item.material ? `<div style="margin-bottom:10px"><div style="font-weight:700;margin-bottom:2px">Material / Spec</div><div>${esc(item.material)}</div></div>` : ""}
           ${item.brandingMethod ? `<div style="margin-bottom:10px"><div style="font-weight:700;margin-bottom:2px">Branding Application</div><div style="color:#0ea5e9">${esc(item.brandingMethod)}</div></div>` : ""}
@@ -160,18 +187,15 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
           ${item.designNotes ? `<div><div style="font-weight:700;margin-bottom:2px">Notes</div><div style="font-size:11px;color:#555">${esc(item.designNotes)}</div></div>` : ""}
         </div>
 
-        <div style="flex:1;display:flex;justify-content:center;align-items:center;gap:20px;padding:16px 12px;min-height:260px">
-          ${item.frontDesignUrl ? `<img src="${item.frontDesignUrl}" style="max-height:280px;flex:1;min-width:0;object-fit:contain" />` : ""}
-          ${item.backDesignUrl ? `<img src="${item.backDesignUrl}" style="max-height:280px;flex:1;min-width:0;object-fit:contain" />` : ""}
-        </div>
-
-        <div style="width:200px;padding:14px 16px;border-left:1px solid #eee">
+        <div style="width:220px;padding:14px 16px;border-left:1px solid #eee">
           <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:6px"><span>Size</span><span>Count</span></div>
           ${bds.map((b: any) => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">${esc(b.size)}<span>${b.quantity}</span></div>`).join("")}
           ${bds.length ? `<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-top:10px"><span>Total</span><span>${totalQty}</span></div>` : `<div style="font-size:12px;color:#999">Qty: ${totalQty}</div>`}
         </div>
       </div>
 
+      ${renderAssetStrip("2D Design Print — Factory Artwork (true colours)", designPrints, "#0a0a0a")}
+      ${renderAssetStrip("3D Mockup — Vendor Render", mockups, "#0a0a0a")}
       ${renderLogoGrid(elements)}
 
       <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">
