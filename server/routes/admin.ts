@@ -104,6 +104,60 @@ const updateOrderSchema = z.object({
   deliveryPhone: z.string().optional(),
   dueDate: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.null()]).optional(),
   orderType: z.enum(["team-store", "bulk-order", "sample-run"]).optional(),
+  artworkApproved: z.boolean().optional(),
+  artworkApprovedBy: z.union([z.string(), z.null()]).optional(),
+  artworkApprovedAt: z.union([z.string().transform(v => v ? new Date(v) : null), z.null()]).optional(),
+});
+
+// DELETE /orders/:id — cascades through items, breakdowns, designs, stages,
+// qc, messages, activity. Drive folder is intentionally left behind as an
+// audit trail; clean that up manually if needed.
+router.delete("/orders/:id", async (req, res) => {
+  try {
+    const ok = await storage.deleteOrder(req.params.id);
+    if (!ok) return res.status(404).json({ error: "Order not found" });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Admin delete order error:", err);
+    res.status(500).json({ error: "Failed to delete order" });
+  }
+});
+
+// POST /orders/:id/duplicate — clone order + items (not size breakdowns, not
+// designs, not activity — those are order-specific history). New order gets
+// a fresh orderNumber, no poReference, status=pending, pipelineStage=null.
+// Useful for repeat runs where the same club re-orders the same product mix.
+router.post("/orders/:id/duplicate", async (req, res) => {
+  try {
+    const source = await storage.getOrderWithDetails(req.params.id);
+    if (!source) return res.status(404).json({ error: "Order not found" });
+    const { order: src, items: srcItems } = source;
+
+    const { id: _id, orderNumber: _n, createdAt: _c, updatedAt: _u, paidAt: _p, poReference: _po,
+            driveFolderId: _df, driveFolderUrl: _du, driveFolderName: _dn,
+            ghlOpportunityId: _gh, pipelineStage: _ps, assignedSupplierId: _as,
+            artworkApproved: _aa, artworkApprovedBy: _ab, artworkApprovedAt: _at,
+            ...orderCopy } = src as any;
+
+    const newOrderNumber = `SNZ-DUP-${Date.now().toString(36).toUpperCase()}`;
+    const newOrder = await storage.createOrder({
+      ...orderCopy,
+      orderNumber: newOrderNumber,
+      status: "pending",
+      designStatus: null,
+      isRepeatOrder: true,
+    } as any);
+
+    for (const it of srcItems) {
+      const { id: _iid, orderId: _oid, ...itemCopy } = it as any;
+      await storage.createOrderItem({ ...itemCopy, orderId: newOrder.id } as any);
+    }
+
+    res.json({ ok: true, order: newOrder });
+  } catch (err) {
+    console.error("Admin duplicate order error:", err);
+    res.status(500).json({ error: "Failed to duplicate order" });
+  }
 });
 
 router.patch("/orders/:id", async (req, res) => {
@@ -1764,6 +1818,113 @@ router.post("/orders/:id/send-for-approval", async (req, res) => {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin send-for-approval error:", err);
     res.status(500).json({ error: "Failed to send approval link" });
+  }
+});
+
+// ====== CLUB MANAGERS (supporter-campaign portal) ======
+//
+// Romero creates a manager record per club. The returned password is shown
+// once — share it with the club via WhatsApp/Telegram, then it's hashed-only.
+// Tag is the Shopify order tag the club's supporter orders carry, e.g.
+// "club:onewhero-rfc". Tier is in basis points (800 = 8%).
+
+const createClubManagerSchema = z.object({
+  email: z.string().email(),
+  clubName: z.string().min(1).max(100),
+  shopifyOrderTag: z.string().min(1).max(80).regex(/^[a-zA-Z0-9:_-]+$/, "Invalid tag — alphanumerics, colon, dash, underscore only"),
+  shopifyStoreUrl: z.string().url().optional(),
+  contactId: z.string().optional(),
+  profitShareTierBps: z.number().int().min(0).max(10000).optional(),
+  password: z.string().min(8).optional(), // optional — auto-generated if absent
+});
+
+function generatePassword(): string {
+  // 12 chars, no ambiguous lookalikes (0/O/1/l/I).
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  let out = "";
+  for (let i = 0; i < bytes.length; i++) out += alphabet[bytes[i] % alphabet.length];
+  return out;
+}
+
+router.post("/club-managers", async (req, res) => {
+  try {
+    const parsed = createClubManagerSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.errors });
+
+    const { email, clubName, shopifyOrderTag, shopifyStoreUrl, contactId, profitShareTierBps, password } = parsed.data;
+
+    const existing = await storage.getClubAccountByEmail(email);
+    if (existing) return res.status(409).json({ error: "A club account already exists with that email" });
+
+    const initialPassword = password || generatePassword();
+    const passwordHash = await hashPassword(initialPassword);
+
+    const account = await storage.createClubAccount({
+      email,
+      clubName,
+      passwordHash,
+      shopifyOrderTag,
+      shopifyStoreUrl,
+      contactId,
+      profitShareTierBps: profitShareTierBps ?? 800,
+    } as any);
+
+    res.json({
+      id: account.id,
+      email: account.email,
+      clubName: account.clubName,
+      shopifyOrderTag: account.shopifyOrderTag,
+      profitShareTierBps: account.profitShareTierBps,
+      // Returned ONCE — share via WhatsApp/Telegram then forget.
+      initialPassword,
+    });
+  } catch (err) {
+    console.error("Create club manager error:", err);
+    res.status(500).json({ error: "Failed to create club manager" });
+  }
+});
+
+router.get("/club-managers", async (_req, res) => {
+  try {
+    const accounts = await storage.getAllClubAccounts();
+    // Strip passwordHash before returning.
+    res.json(accounts.map((a) => ({
+      id: a.id,
+      email: a.email,
+      clubName: a.clubName,
+      shopifyOrderTag: a.shopifyOrderTag,
+      shopifyStoreUrl: a.shopifyStoreUrl,
+      profitShareTierBps: a.profitShareTierBps,
+      contactId: a.contactId,
+      createdAt: a.createdAt,
+    })));
+  } catch (err) {
+    console.error("List club managers error:", err);
+    res.status(500).json({ error: "Failed to list club managers" });
+  }
+});
+
+const reportRequestSchema = z.object({
+  clubAccountId: z.string().min(1),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  previewOnly: z.boolean().optional(),
+});
+
+router.post("/reports/club-drop-summary", async (req, res) => {
+  try {
+    const parsed = reportRequestSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.errors });
+
+    const { generateDropSummary } = await import("../reports/drop-summary");
+    const result = await generateDropSummary(parsed.data);
+
+    if (!result.ok) return res.status(400).json(result);
+    res.json(result);
+  } catch (err: any) {
+    console.error("Drop summary error:", err);
+    res.status(500).json({ error: "Failed to generate drop summary", message: String(err?.message || err) });
   }
 });
 

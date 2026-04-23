@@ -1,56 +1,97 @@
-// Server-side PO PDF — generates HTML matching purchase-order.tsx, then
-// renders it via Puppeteer's page.setContent() + page.pdf(). No URL
-// navigation, no auth cookies, no SPA bootstrap — just raw HTML → Chrome
-// → PDF buffer → Drive upload.
+// Preview the new PO template (v2) against an existing order — MOCKUP ONLY.
+// Does NOT touch the prod renderer at server/po-pdf.ts. Writes a PDF to /tmp
+// and opens it.
 //
-// @sparticuz/chromium provides the Chromium binary for Railway/serverless.
-// Falls back to system chromium if available.
+// Run:
+//   npx tsx scripts/preview-po-v2.ts PO-2026-0001
+//
+// The v2 additions over the current PO:
+//  - QR code in header linking to the portal order page
+//  - Artwork approval band (status / approved by / date / file ref)
+//  - Per-product "Logo Placement Grid" matching the job-sheet layout
+//    (9 positions × rows for logo image, application, size, thread/PMS codes)
+//  - Merged Job Sheet + PO into a single production sheet
+//
+// Logo placement data is SYNTHESIZED from existing elementUrls for this mock
+// (first element → Left Chest, second → Right Chest). In production we'd
+// extend the elementUrls schema with optional position/application/sizeMm/
+// threadColours fields and the admin UI would collect these.
 
+import "dotenv/config";
 import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
-import { storage } from "./storage";
-import { computeMilestones } from "@shared/po-milestones";
-import { getSizeChartTables, suggestSizeChart, SIZE_CHART_LABELS, SIZE_CHART_DIAGRAMS, type SizeChartType } from "@shared/size-charts";
-import { LOGO_POSITIONS, type LogoElement, type LogoPosition } from "@shared/schema";
-
-const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
-const DRIVE_API = "https://www.googleapis.com/drive/v3";
-const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
-
-async function getAccessToken(): Promise<string | null> {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
-  if (!clientId || !clientSecret || !refreshToken) return null;
-  const res = await fetch(OAUTH_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }).toString(),
-  });
-  if (!res.ok) return null;
-  return (await res.json()).access_token;
-}
+import { execSync } from "child_process";
+import { writeFileSync } from "fs";
+import { db } from "../server/db";
+import { orders, orderItems, orderSizeBreakdowns } from "../shared/schema";
+import { eq, or } from "drizzle-orm";
+import { computeMilestones } from "../shared/po-milestones";
+import { getSizeChartTables, suggestSizeChart, SIZE_CHART_LABELS, SIZE_CHART_DIAGRAMS, type SizeChartType } from "../shared/size-charts";
 
 function esc(s: string | null | undefined): string {
-  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// ─── Logo Placement Grid (job-sheet-style) ──────────────────────
-//
-// Renders a 9-position grid per product (Left Chest → Bottom) with rows for
-// logo image, application method, size (mm), thread/PMS codes, artwork file.
-// Positions with no assigned logo render as em-dashes.
+// ─── 9 canonical logo positions (matches job-sheet layout) ───────────
+const POSITIONS = [
+  "Left Chest",
+  "Right Chest",
+  "Center Chest",
+  "Front Pocket",
+  "Left Sleeve",
+  "Right Sleeve",
+  "Center Back",
+  "Top Back",
+  "Bottom",
+] as const;
+type Position = typeof POSITIONS[number];
 
-function renderLogoGrid(elements: LogoElement[]): string {
-  const byPosition = new Map<LogoPosition, LogoElement>();
-  for (const el of elements) if (el.position) byPosition.set(el.position, el);
+type LogoSpec = {
+  name: string;
+  url: string;
+  position?: Position;
+  application?: string;      // "Embroidery" | "Screen Print" | "Sublimation" | "Heat Transfer"
+  sizeMm?: string;           // "85 × 60 mm"
+  threadColours?: string[];  // ["PMS 123 C", "Madeira 1822", "White"]
+  artworkFile?: string;      // "NWF-LOGO-v2.ai"
+};
+
+// For the mockup: synthesize placement data from raw elementUrls
+function synthesizePlacements(elements: any[]): LogoSpec[] {
+  if (!elements?.length) return [];
+  return elements.map((el, i) => {
+    const base: LogoSpec = { name: el.name || `Logo ${i + 1}`, url: el.url };
+    // Preserve any real data already on the element
+    Object.assign(base, {
+      position: el.position,
+      application: el.application,
+      sizeMm: el.sizeMm,
+      threadColours: el.threadColours,
+      artworkFile: el.artworkFile,
+    });
+    // Fill blanks with sensible demo defaults so the grid reads well
+    if (!base.position) base.position = (["Left Chest", "Right Chest", "Center Back", "Left Sleeve"] as Position[])[i] || "Left Sleeve";
+    if (!base.application) base.application = "Embroidery";
+    if (!base.sizeMm) base.sizeMm = i === 0 ? "85 × 60 mm" : i === 1 ? "50 × 50 mm" : "70 × 40 mm";
+    if (!base.threadColours) base.threadColours = i === 0 ? ["PMS Black", "PMS 130 (Gold)", "White"] : ["White"];
+    if (!base.artworkFile) base.artworkFile = `${(base.name || "logo").toUpperCase().replace(/\s+/g, "-")}-v1.ai`;
+    return base;
+  });
+}
+
+function renderLogoGrid(placements: LogoSpec[]): string {
+  const byPosition = new Map<Position, LogoSpec>();
+  for (const p of placements) if (p.position) byPosition.set(p.position, p);
 
   const th = (label: string, isFirst = false) => `<th style="padding:6px 4px;background:#000;color:#fff;font-size:8.5px;font-weight:700;text-align:${isFirst ? "left" : "center"};letter-spacing:0.2px;border:1px solid #000;line-height:1.2">${label}</th>`;
-  const td = (content: string) => `<td style="padding:6px 4px;font-size:9.5px;text-align:center;border:1px solid #ccc;vertical-align:middle">${content}</td>`;
+  const td = (content: string, extraStyle = "") => `<td style="padding:6px 4px;font-size:9.5px;text-align:center;border:1px solid #ccc;vertical-align:middle;${extraStyle}">${content}</td>`;
   const lblCell = (label: string) => `<td style="padding:6px 8px;font-size:9px;font-weight:700;background:#f3f3f3;text-align:left;letter-spacing:0.2px;border:1px solid #ccc">${label}</td>`;
 
-  const colgroup = `<colgroup><col style="width:13%" />${LOGO_POSITIONS.map(() => `<col style="width:9.67%" />`).join("")}</colgroup>`;
-  const empty = `<span style="color:#ccc;font-size:16px">—</span>`;
+  // 10 cols total: 1 label + 9 positions. Label ~13%, positions ~9.67% each.
+  const colgroup = `<colgroup>
+      <col style="width:13%" />
+      ${POSITIONS.map(() => `<col style="width:9.67%" />`).join("")}
+    </colgroup>`;
 
   return `
   <div style="margin-top:0">
@@ -60,41 +101,41 @@ function renderLogoGrid(elements: LogoElement[]): string {
       <thead>
         <tr>
           ${th("POSITION", true)}
-          ${LOGO_POSITIONS.map(p => th(p.toUpperCase())).join("")}
+          ${POSITIONS.map(p => th(p.toUpperCase())).join("")}
         </tr>
       </thead>
       <tbody>
         <tr style="height:90px">
           ${lblCell("LOGO")}
-          ${LOGO_POSITIONS.map(p => {
+          ${POSITIONS.map(p => {
             const spec = byPosition.get(p);
-            return td(spec ? `<img src="${spec.url}" style="max-width:88%;max-height:76px;object-fit:contain" />` : empty);
+            return td(spec ? `<img src="${spec.url}" style="max-width:88%;max-height:76px;object-fit:contain" />` : `<span style="color:#ccc;font-size:16px">—</span>`);
           }).join("")}
         </tr>
         <tr>
           ${lblCell("APPLICATION")}
-          ${LOGO_POSITIONS.map(p => {
+          ${POSITIONS.map(p => {
             const spec = byPosition.get(p);
             return td(spec?.application ? `<strong>${esc(spec.application).toUpperCase()}</strong>` : "");
           }).join("")}
         </tr>
         <tr>
           ${lblCell("SIZE")}
-          ${LOGO_POSITIONS.map(p => {
+          ${POSITIONS.map(p => {
             const spec = byPosition.get(p);
             return td(spec?.sizeMm ? esc(spec.sizeMm) : "");
           }).join("")}
         </tr>
         <tr>
           ${lblCell("THREAD / PMS")}
-          ${LOGO_POSITIONS.map(p => {
+          ${POSITIONS.map(p => {
             const spec = byPosition.get(p);
             return td(spec?.threadColours?.length ? spec.threadColours.map(c => `<div style="font-size:9px;line-height:1.4">${esc(c)}</div>`).join("") : "");
           }).join("")}
         </tr>
         <tr>
           ${lblCell("ARTWORK FILE")}
-          ${LOGO_POSITIONS.map(p => {
+          ${POSITIONS.map(p => {
             const spec = byPosition.get(p);
             return td(spec?.artworkFile ? `<span style="font-family:monospace;font-size:9px">${esc(spec.artworkFile)}</span>` : "");
           }).join("")}
@@ -104,19 +145,17 @@ function renderLogoGrid(elements: LogoElement[]): string {
   </div>`;
 }
 
-// ─── Generate HTML (Production Sheet v2) ─────────────────────────
-// Exported so smoke-test scripts can render the prod HTML into a PDF without
-// going through the Drive upload path. Not part of the public HTTP surface.
+async function generateHtml(orderId: string): Promise<string | null> {
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) return null;
+  const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+  const sizeBreakdowns = await db.select().from(orderSizeBreakdowns).where(eq(orderSizeBreakdowns.orderId, orderId));
 
-export async function generatePoHtml(orderId: string): Promise<string | null> {
-  const data = await storage.getOrderWithDetails(orderId);
-  if (!data) return null;
-  const { order, items, sizeBreakdowns } = data as any;
   const siteUrl = process.env.VITE_SITE_URL || process.env.BASE_URL || "https://sidelinenz.com";
   const portalUrl = `${siteUrl}/admin/orders/${order.id}`;
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&margin=2&data=${encodeURIComponent(portalUrl)}`;
 
-  const date = new Date(order.createdAt);
+  const date = new Date(order.createdAt!);
   const dateStr = `${date.getDate().toString().padStart(2, "0")}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getFullYear().toString().slice(2)}`;
   const contact = [order.customerFirstName, order.customerLastName].filter(Boolean).join(" ") || order.customerName || "";
   const milestones = order.dueDate ? computeMilestones(order.dueDate) : null;
@@ -130,7 +169,8 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
 
   const itemsHtml = items.map((item: any) => {
     const colors = (item.productColors || []) as Array<{ hex: string; name?: string }>;
-    const elements = (item.elementUrls || []) as LogoElement[];
+    const rawElements = (item.elementUrls || []) as any[];
+    const placements = synthesizePlacements(rawElements);
     const bds = bdByItem.get(item.id) || [];
     const totalQty = bds.length ? bds.reduce((s: number, b: any) => s + b.quantity, 0) : item.quantity;
     const chartType = (item.sizeChartType || suggestSizeChart(item.productType)) as SizeChartType;
@@ -172,7 +212,7 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
         </div>
       </div>
 
-      ${renderLogoGrid(elements)}
+      ${renderLogoGrid(placements)}
 
       <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">
         Sizing Guide — ${esc(SIZE_CHART_LABELS[chartType] || String(chartType))}
@@ -194,36 +234,28 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
   }).join("\n");
 
   const milestonesHtml = milestones ? `
-    <div style="margin-bottom:18px">
+    <div style="margin-bottom:20px">
       <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">Production Schedule — 35-Day Build</div>
       <div style="display:flex;border:1px solid #eee;border-top:none">
         ${milestones.map((m: any) => `<div style="flex:1;text-align:center;padding:10px 6px;border-right:1px solid #eee;font-size:10px"><div style="font-weight:700">Day ${m.dayNumber}</div><div style="font-weight:600;font-size:9px;margin:2px 0">${esc(m.label)}</div><div style="font-family:monospace;color:#555">${m.date}</div></div>`).join("")}
       </div>
     </div>` : "";
 
-  // Artwork Approval band — STATUS / APPROVED BY / DATE / REFERENCE. Status
-  // derives from order.artworkApproved flag if present, else falls back to a
-  // "pending" state so the slot still renders.
-  const approved = (order as any).artworkApproved === true;
-  const approvedBy = (order as any).artworkApprovedBy || contact;
-  const approvedDate = (order as any).artworkApprovedAt
-    ? new Date((order as any).artworkApprovedAt).toISOString().slice(0, 10)
-    : dateStr;
   const approvalBand = `
     <div style="margin-bottom:18px">
       <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center;letter-spacing:0.3px">Artwork Approval</div>
       <div style="display:flex;border:1px solid #eee;border-top:none;font-size:11px">
         <div style="flex:1;padding:10px 14px;border-right:1px solid #eee">
           <div style="font-weight:700;font-size:10px;color:#555;letter-spacing:0.4px;margin-bottom:3px">STATUS</div>
-          <div><span style="display:inline-block;padding:3px 10px;background:${approved ? "#16a34a" : "#f59e0b"};color:#fff;border-radius:3px;font-weight:700;font-size:10px;letter-spacing:0.3px">${approved ? "APPROVED" : "PENDING"}</span></div>
+          <div><span style="display:inline-block;padding:3px 10px;background:#16a34a;color:#fff;border-radius:3px;font-weight:700;font-size:10px;letter-spacing:0.3px">APPROVED</span></div>
         </div>
         <div style="flex:1;padding:10px 14px;border-right:1px solid #eee">
           <div style="font-weight:700;font-size:10px;color:#555;letter-spacing:0.4px;margin-bottom:3px">APPROVED BY</div>
-          <div>${esc(approved ? approvedBy : "—")}</div>
+          <div>${esc(contact)}</div>
         </div>
         <div style="flex:1;padding:10px 14px;border-right:1px solid #eee">
           <div style="font-weight:700;font-size:10px;color:#555;letter-spacing:0.4px;margin-bottom:3px">DATE</div>
-          <div style="font-family:monospace">${approved ? approvedDate : "—"}</div>
+          <div style="font-family:monospace">${dateStr}</div>
         </div>
         <div style="flex:1.3;padding:10px 14px">
           <div style="font-weight:700;font-size:10px;color:#555;letter-spacing:0.4px;margin-bottom:3px">REFERENCE</div>
@@ -233,7 +265,7 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
     </div>`;
 
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Production Sheet ${esc(order.poReference || order.orderNumber)}</title>
+<html><head><meta charset="utf-8"><title>PO ${esc(order.poReference || order.orderNumber)}</title>
 <style>
   body { font-family: 'Segoe UI', Arial, sans-serif; color: #000; margin: 0; padding: 28px 36px; max-width: 900px; margin: 0 auto; }
   img { max-width: 100%; }
@@ -258,7 +290,6 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
         <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">ACCOUNT</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.accountName || "")}</td></tr>
         <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">TYPE</td><td style="background:#f2f2f2;padding:4px 10px">${order.isRepeatOrder ? "Repeat" : "New"}</td></tr>
         ${order.dueDate ? `<tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">DUE</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.dueDate)}</td></tr>` : ""}
-        ${order.poComments ? `<tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">COMMENTS</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.poComments)}</td></tr>` : ""}
       </table>
     </div>
     <div style="text-align:center">
@@ -306,110 +337,62 @@ ${itemsHtml}
 </body></html>`;
 }
 
-// ─── Render HTML → PDF via Puppeteer ────────────────────────────
-
-async function renderPoPdf(orderId: string): Promise<Buffer | null> {
-  const html = await generatePoHtml(orderId);
-  if (!html) {
-    console.error("[po-pdf] Failed to generate HTML for", orderId);
-    return null;
-  }
-
-  let executablePath: string;
-  try {
-    const { execSync } = await import("child_process");
-    const found = execSync("which chromium 2>/dev/null || which chromium-browser 2>/dev/null || which google-chrome-stable 2>/dev/null", { encoding: "utf-8" }).trim();
-    executablePath = found || await chromium.executablePath();
-  } catch {
-    executablePath = await chromium.executablePath();
-  }
-
-  console.log(`[po-pdf] Chromium at: ${executablePath}`);
+async function render(html: string): Promise<Buffer | null> {
+  const candidates = [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+  ];
+  let executablePath = candidates.find((p) => {
+    try { execSync(`test -x "${p}"`); return true; } catch { return false; }
+  }) || "";
   if (!executablePath) {
-    console.error("[po-pdf] No Chromium binary found");
-    return null;
+    try {
+      executablePath = execSync("which chromium-browser 2>/dev/null || which google-chrome-stable 2>/dev/null", { encoding: "utf-8" }).trim();
+    } catch {}
   }
+  if (!executablePath) executablePath = await chromium.executablePath();
+  console.log(`[preview] Chromium at: ${executablePath}`);
 
-  let browser;
+  const browser = await puppeteer.launch({
+    executablePath,
+    headless: true,
+    args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+  });
   try {
-    browser = await puppeteer.launch({
-      executablePath,
-      headless: true,
-      args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-    });
-
     const page = await browser.newPage();
     await page.setViewport({ width: 900, height: 1200 });
-
-    // Load HTML directly — no URL navigation, no auth, no SPA bootstrap
-    await page.setContent(html, { waitUntil: "networkidle0", timeout: 30000 });
-
-    // Extra wait for external images (Vercel Blob URLs)
-    await page.evaluate(() => {
-      return Promise.all(
-        Array.from(document.images)
-          .filter((img) => !img.complete)
-          .map((img) => new Promise((r) => { img.onload = r; img.onerror = r; }))
-      );
-    });
-    await page.evaluate(() => new Promise((r) => setTimeout(r, 1000)));
-
-    const pdfBuffer = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "10mm", right: "10mm", bottom: "10mm", left: "10mm" },
-    });
-
-    console.log(`[po-pdf] PDF rendered: ${pdfBuffer.length} bytes`);
-    return Buffer.from(pdfBuffer);
-  } catch (err) {
-    console.error("[po-pdf] Puppeteer error:", err);
-    return null;
+    await page.setContent(html, { waitUntil: "networkidle0", timeout: 45000 });
+    await page.evaluate(() => Promise.all(
+      Array.from(document.images).filter(i => !i.complete).map(i => new Promise(r => { i.onload = r; i.onerror = r; }))
+    ));
+    await new Promise(r => setTimeout(r, 1200));
+    const pdf = await page.pdf({ format: "A4", printBackground: true, margin: { top: "8mm", right: "8mm", bottom: "8mm", left: "8mm" } });
+    return Buffer.from(pdf);
   } finally {
-    if (browser) await browser.close().catch(() => {});
+    await browser.close().catch(() => {});
   }
 }
 
-// ─── Upload PDF to Drive ─────────────────────────────────────────
+async function main() {
+  const ref = process.argv[2] || "PO-2026-0001";
+  const [o] = await db.select().from(orders).where(or(eq(orders.poReference, ref), eq(orders.orderNumber, ref))).limit(1);
+  if (!o) { console.error("Order not found:", ref); process.exit(1); }
 
-export async function uploadPoPdfToDrive(
-  orderId: string,
-  poFolderId: string,
-): Promise<{ pdfId: string; pdfUrl: string } | null> {
-  const token = await getAccessToken();
-  if (!token) { console.log("[po-pdf] Google creds missing"); return null; }
+  console.log("[preview] Rendering", o.poReference || o.orderNumber, "→ /tmp/sideline-po-v2-preview.pdf");
+  const html = await generateHtml(o.id);
+  if (!html) { console.error("HTML generation failed"); process.exit(1); }
+  writeFileSync("/tmp/sideline-po-v2-preview.html", html);
+  console.log("[preview] HTML dumped to /tmp/sideline-po-v2-preview.html");
 
-  const pdfBuf = await renderPoPdf(orderId);
-  if (!pdfBuf) { console.error("[po-pdf] Render failed for", orderId); return null; }
+  const pdf = await render(html);
+  if (!pdf) { console.error("PDF render failed"); process.exit(1); }
 
-  const order = await storage.getOrder(orderId);
-  const fileName = `PO ${order?.poReference || order?.orderNumber || orderId}.pdf`;
+  const out = "/tmp/sideline-po-v2-preview.pdf";
+  writeFileSync(out, pdf);
+  console.log(`[preview] PDF written: ${out} (${pdf.length} bytes)`);
 
-  try {
-    let targetFolder = poFolderId;
-    const foldersQ = `'${poFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
-    const fRes = await fetch(`${DRIVE_API}/files?q=${encodeURIComponent(foldersQ)}&fields=files(id,name)&pageSize=50&supportsAllDrives=true&includeItemsFromAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
-    if (fRes.ok) {
-      const brief = ((await fRes.json()).files || []).find((f: any) => /brief/i.test(f.name));
-      if (brief) targetFolder = brief.id;
-    }
-
-    const boundary = `--po-pdf-${Date.now().toString(36)}`;
-    const meta = JSON.stringify({ name: fileName, parents: [targetFolder] });
-    const body = Buffer.concat([
-      Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`, "utf-8"),
-      pdfBuf,
-      Buffer.from(`\r\n--${boundary}--`, "utf-8"),
-    ]);
-
-    const upRes = await fetch(`${UPLOAD_API}/files?uploadType=multipart&fields=id,webViewLink&supportsAllDrives=true`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}`, "Content-Length": String(body.length) },
-      body,
-    });
-    if (!upRes.ok) { console.error("[po-pdf] Upload failed:", upRes.status); return null; }
-    const f = await upRes.json();
-    console.log(`[po-pdf] Uploaded: ${f.id}`);
-    return { pdfId: f.id, pdfUrl: f.webViewLink || `https://drive.google.com/file/d/${f.id}/view` };
-  } catch (err) { console.error("[po-pdf] error:", err); return null; }
+  try { execSync(`open "${out}"`); } catch {}
 }
+
+main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });

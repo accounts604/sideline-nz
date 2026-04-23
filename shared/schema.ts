@@ -123,6 +123,10 @@ export const orders = pgTable("orders", {
   driveFolderId: text("drive_folder_id"),
   driveFolderUrl: text("drive_folder_url"),
   driveFolderName: text("drive_folder_name"),
+  // Artwork approval — drives the Approval band on the Production Sheet PDF
+  artworkApproved: boolean("artwork_approved").default(false),
+  artworkApprovedBy: text("artwork_approved_by"),
+  artworkApprovedAt: timestamp("artwork_approved_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   paidAt: timestamp("paid_at"),
@@ -151,7 +155,7 @@ export const orderItems = pgTable("order_items", {
   material: text("material"), // Garment material / fabric spec (e.g. "180gsm Interlock Polyester")
   frontDesignUrl: text("front_design_url"), // Front design proof image
   backDesignUrl: text("back_design_url"), // Back design proof image
-  elementUrls: jsonb("element_urls"), // [{ name: "Onewhero RFC", url: "..." }, { name: "Summit Homes", url: "..." }]
+  elementUrls: jsonb("element_urls"), // LogoElement[] — { name, url, position?, application?, sizeMm?, threadColours?: string[], artworkFile? }
   gradeGroup: text("grade_group"), // DEPRECATED — kept for back-compat; no longer shown in UI (2026-04-16)
   designNotes: text("design_notes"), // Any notes about this product line
   designBrief: text("design_brief"), // AI-generated description of design layout, positions, elements (Gemini)
@@ -161,6 +165,31 @@ export const orderItems = pgTable("order_items", {
 export const insertOrderItemSchema = createInsertSchema(orderItems).omit({ id: true });
 export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 export type OrderItem = typeof orderItems.$inferSelect;
+
+// Logo Placement — shape of each entry in orderItems.elementUrls.
+// Only { name, url } were originally captured; the placement fields were
+// added 2026-04-24 and are optional so historical orders still render.
+export const LOGO_POSITIONS = [
+  "Left Chest",
+  "Right Chest",
+  "Center Chest",
+  "Front Pocket",
+  "Left Sleeve",
+  "Right Sleeve",
+  "Center Back",
+  "Top Back",
+  "Bottom",
+] as const;
+export type LogoPosition = typeof LOGO_POSITIONS[number];
+export type LogoElement = {
+  name: string;
+  url: string;
+  position?: LogoPosition;
+  application?: string;       // "Embroidery" | "Screen Print" | "Sublimation" | "Heat Transfer"
+  sizeMm?: string;            // e.g. "85 × 60 mm"
+  threadColours?: string[];   // e.g. ["PMS Black", "PMS 130", "White"]
+  artworkFile?: string;       // e.g. "NWF-LOGO-v2.ai"
+};
 
 // GHL Product Mapping - maps GHL products to Stripe products
 export const ghlProducts = pgTable("ghl_products", {
@@ -311,6 +340,11 @@ export const clubAccounts = pgTable("club_accounts", {
   clubName: text("club_name").notNull(),
   contactId: text("contact_id"), // GHL contact ID
   shopifyStoreUrl: text("shopify_store_url"), // Their Shopify store URL
+  // Supporter campaign — Shopify order tag this club's orders carry (e.g. "club:onewhero-rfc").
+  // Set via Shopify Flow on order creation; used server-side to filter Admin API queries.
+  shopifyOrderTag: text("shopify_order_tag").unique(),
+  // Profit share in basis points (800 = 8%). Avoids pg numeric quirks.
+  profitShareTierBps: integer("profit_share_tier_bps").notNull().default(800),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

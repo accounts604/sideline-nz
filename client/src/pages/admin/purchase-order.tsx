@@ -3,6 +3,7 @@ import { useParams, Link } from "wouter";
 import { ArrowLeft, Printer } from "lucide-react";
 import { computeMilestones } from "@shared/po-milestones";
 import { suggestSizeChart, getSizeChartTables, SIZE_CHART_LABELS, SIZE_CHART_DIAGRAMS, type SizeChartType, type SizeTable } from "@shared/size-charts";
+import { LOGO_POSITIONS, type LogoElement, type LogoPosition } from "@shared/schema";
 
 interface OrderItem {
   id: string;
@@ -19,7 +20,7 @@ interface OrderItem {
   designBrief: string | null;
   frontDesignUrl: string | null;
   backDesignUrl: string | null;
-  elementUrls: { name: string; url: string }[] | null;
+  elementUrls: LogoElement[] | null;
   gradeGroup: string | null;
   designNotes: string | null;
 }
@@ -100,6 +101,88 @@ function PdfSizeChart({ table }: { table: SizeTable }) {
   );
 }
 
+// Logo Placement Grid — mirrors the PDF renderer (server/po-pdf.ts).
+// 9 position columns × 5 data rows. Positions with no assigned logo render as em-dashes.
+function LogoPlacementGrid({ elements }: { elements: LogoElement[] }) {
+  const byPosition = new Map<LogoPosition, LogoElement>();
+  for (const el of elements) if (el.position) byPosition.set(el.position, el);
+
+  const th = (isFirst = false): React.CSSProperties => ({
+    padding: "6px 4px", background: "#000", color: "#fff",
+    fontSize: "8.5px", fontWeight: 700, textAlign: isFirst ? "left" : "center",
+    letterSpacing: "0.2px", border: "1px solid #000", lineHeight: 1.2,
+  });
+  const tdStyle: React.CSSProperties = {
+    padding: "6px 4px", fontSize: "9.5px", textAlign: "center",
+    border: "1px solid #ccc", verticalAlign: "middle",
+  };
+  const lblStyle: React.CSSProperties = {
+    padding: "6px 8px", fontSize: "9px", fontWeight: 700, background: "#f3f3f3",
+    textAlign: "left", letterSpacing: "0.2px", border: "1px solid #ccc",
+  };
+
+  return (
+    <div>
+      <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center", letterSpacing: "0.3px" }}>
+        Logo Placement Grid
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+        <colgroup>
+          <col style={{ width: "13%" }} />
+          {LOGO_POSITIONS.map((p) => <col key={p} style={{ width: "9.67%" }} />)}
+        </colgroup>
+        <thead>
+          <tr>
+            <th style={th(true)}>POSITION</th>
+            {LOGO_POSITIONS.map((p) => <th key={p} style={th()}>{p.toUpperCase()}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          <tr style={{ height: "90px" }}>
+            <td style={lblStyle}>LOGO</td>
+            {LOGO_POSITIONS.map((p) => {
+              const spec = byPosition.get(p);
+              return <td key={p} style={tdStyle}>
+                {spec ? <img src={spec.url} alt={spec.name} style={{ maxWidth: "88%", maxHeight: "76px", objectFit: "contain" }} /> : <span style={{ color: "#ccc", fontSize: "16px" }}>—</span>}
+              </td>;
+            })}
+          </tr>
+          <tr>
+            <td style={lblStyle}>APPLICATION</td>
+            {LOGO_POSITIONS.map((p) => {
+              const spec = byPosition.get(p);
+              return <td key={p} style={tdStyle}>{spec?.application ? <strong>{spec.application.toUpperCase()}</strong> : ""}</td>;
+            })}
+          </tr>
+          <tr>
+            <td style={lblStyle}>SIZE</td>
+            {LOGO_POSITIONS.map((p) => {
+              const spec = byPosition.get(p);
+              return <td key={p} style={tdStyle}>{spec?.sizeMm || ""}</td>;
+            })}
+          </tr>
+          <tr>
+            <td style={lblStyle}>THREAD / PMS</td>
+            {LOGO_POSITIONS.map((p) => {
+              const spec = byPosition.get(p);
+              return <td key={p} style={tdStyle}>
+                {spec?.threadColours?.length ? spec.threadColours.map((c, i) => <div key={i} style={{ fontSize: "9px", lineHeight: 1.4 }}>{c}</div>) : ""}
+              </td>;
+            })}
+          </tr>
+          <tr>
+            <td style={lblStyle}>ARTWORK FILE</td>
+            {LOGO_POSITIONS.map((p) => {
+              const spec = byPosition.get(p);
+              return <td key={p} style={tdStyle}>{spec?.artworkFile ? <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: "9px" }}>{spec.artworkFile}</span> : ""}</td>;
+            })}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns: OrderSizeBreakdown[] }) {
   // Group breakdowns by size for summary
   const sizeSummary = new Map<string, number>();
@@ -108,8 +191,7 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
   }
   const totalQty = Array.from(sizeSummary.values()).reduce((a, b) => a + b, 0) || item.quantity;
 
-  const elements = (item.elementUrls as { name: string; url: string }[] | null) ?? [];
-  const hasDesignSpecs = !!(item.frontDesignUrl || item.backDesignUrl || elements.length > 0);
+  const elements = (item.elementUrls as LogoElement[] | null) ?? [];
 
   return (
     <div style={{ pageBreakInside: "avoid", marginBottom: "20px" }}>
@@ -193,48 +275,8 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
         </div>
       </div>
 
-      {/* Design Specifications — big mockups + elements column, sits flush below */}
-      {hasDesignSpecs && (
-        <>
-          <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center", letterSpacing: "0.3px" }}>
-            Design Specifications
-          </div>
-          <div style={{ display: "flex", minHeight: "300px", alignItems: "stretch" }}>
-            <div style={{ flex: 1, padding: "16px 12px", textAlign: "center", display: "flex", flexDirection: "column" }}>
-              <p style={{ fontSize: "11px", fontWeight: 700, marginBottom: "8px" }}>Front Design</p>
-              {item.frontDesignUrl && (
-                <img src={item.frontDesignUrl} alt="Front Design" style={{ flex: 1, minHeight: 0, objectFit: "contain", width: "100%" }} />
-              )}
-            </div>
-            <div style={{ flex: 1, padding: "16px 12px", textAlign: "center", display: "flex", flexDirection: "column" }}>
-              <p style={{ fontSize: "11px", fontWeight: 700, marginBottom: "8px" }}>Back Design</p>
-              {item.backDesignUrl && (
-                <img src={item.backDesignUrl} alt="Back Design" style={{ flex: 1, minHeight: 0, objectFit: "contain", width: "100%" }} />
-              )}
-            </div>
-            <div style={{ width: "200px", padding: "12px 8px", textAlign: "center", borderLeft: "1px solid #eee" }}>
-              <p style={{ fontSize: "11px", fontWeight: 700, marginBottom: "8px" }}>Elements</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px", alignItems: "center" }}>
-                {elements.map((el, i) => (
-                  <img key={i} src={el.url} alt={el.name} title={el.name} style={{ maxHeight: "55px", maxWidth: "170px", objectFit: "contain" }} />
-                ))}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* AI Design Brief — powered by Gemini */}
-      {item.designBrief && (
-        <div style={{ pageBreakInside: "avoid" }}>
-          <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center" }}>
-            Design Brief <span style={{ fontWeight: 400, fontSize: "9px", opacity: 0.6 }}>powered by AI</span>
-          </div>
-          <div style={{ padding: "12px 16px", fontSize: "11px", lineHeight: "1.6", color: "#333", whiteSpace: "pre-wrap" }}>
-            {item.designBrief}
-          </div>
-        </div>
-      )}
+      {/* Logo Placement Grid — 9 positions × rows for logo / application / size / thread / artwork file */}
+      <LogoPlacementGrid elements={elements} />
 
       {/* Sizing Guide — diagram + measurement tables */}
       {(() => {
@@ -332,35 +374,53 @@ export default function PurchaseOrderView() {
               <span style={{ color: "#0ea5e9" }}>www.sidelinenz.com</span>
             </div>
           </div>
-          <div style={{ textAlign: "right", minWidth: "360px" }}>
-            <h2 style={{ fontSize: "15px", fontWeight: 800, margin: "0 0 16px 0", letterSpacing: "0.5px" }}>PURCHASE ORDER</h2>
-            <table style={{ fontSize: "12px", marginLeft: "auto", borderCollapse: "collapse" }}>
-              <tbody>
-                <tr>
-                  <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>DATE</td>
-                  <td style={{ background: "#f2f2f2", padding: "4px 10px", minWidth: "200px", textAlign: "left" }}>{dateStr}</td>
-                </tr>
-                <tr>
-                  <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>PO/Order Reference:</td>
-                  <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>{order.poReference || order.orderNumber}</td>
-                </tr>
-                <tr>
-                  <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>Account</td>
-                  <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>{order.accountName || ""}</td>
-                </tr>
-                <tr>
-                  <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>Order Type:</td>
-                  <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>
-                    {order.orderType === "team-store" ? "Team Store" : order.orderType === "sample-run" ? "Sample Run" : "Bulk Order"}
-                    {order.isRepeatOrder ? " (Repeat)" : ""}
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>Comments:</td>
-                  <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>{order.poComments || ""}</td>
-                </tr>
-              </tbody>
-            </table>
+          <div style={{ textAlign: "right", minWidth: "420px", display: "flex", gap: "14px", alignItems: "flex-start", justifyContent: "flex-end" }}>
+            <div>
+              <h2 style={{ fontSize: "15px", fontWeight: 800, margin: "0 0 12px 0", letterSpacing: "0.5px" }}>PRODUCTION SHEET</h2>
+              <table style={{ fontSize: "12px", marginLeft: "auto", borderCollapse: "collapse" }}>
+                <tbody>
+                  <tr>
+                    <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>DATE</td>
+                    <td style={{ background: "#f2f2f2", padding: "4px 10px", minWidth: "180px", textAlign: "left" }}>{dateStr}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>ORDER REF</td>
+                    <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>{order.poReference || order.orderNumber}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>ACCOUNT</td>
+                    <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>{order.accountName || ""}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>TYPE</td>
+                    <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>
+                      {order.orderType === "team-store" ? "Team Store" : order.orderType === "sample-run" ? "Sample Run" : "Bulk Order"}
+                      {order.isRepeatOrder ? " (Repeat)" : ""}
+                    </td>
+                  </tr>
+                  {order.dueDate && (
+                    <tr>
+                      <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>DUE</td>
+                      <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>{order.dueDate}</td>
+                    </tr>
+                  )}
+                  {order.poComments && (
+                    <tr>
+                      <td style={{ fontWeight: 700, padding: "4px 12px 4px 0", textAlign: "right" }}>COMMENTS</td>
+                      <td style={{ background: "#f2f2f2", padding: "4px 10px", textAlign: "left" }}>{order.poComments}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&margin=2&data=${encodeURIComponent((typeof window !== "undefined" ? window.location.origin : "https://sidelinenz.com") + `/admin/orders/${order.id}`)}`}
+                alt="Scan for live order"
+                style={{ width: "88px", height: "88px", border: "1px solid #ddd", padding: "4px", background: "#fff" }}
+              />
+              <div style={{ fontSize: "8px", color: "#888", marginTop: "4px", letterSpacing: "0.3px" }}>SCAN FOR LIVE ORDER</div>
+            </div>
           </div>
         </div>
 
@@ -396,6 +456,44 @@ export default function PurchaseOrderView() {
             </div>
           </div>
         </div>
+
+        {/* Artwork Approval band — STATUS / APPROVED BY / DATE / REFERENCE */}
+        {(() => {
+          const approved = (order as any).artworkApproved === true;
+          const approvedBy = (order as any).artworkApprovedBy || order.customerName || "";
+          const approvedDate = (order as any).artworkApprovedAt
+            ? new Date((order as any).artworkApprovedAt).toISOString().slice(0, 10)
+            : dateStr;
+          return (
+            <div style={{ marginBottom: "18px" }}>
+              <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center", letterSpacing: "0.3px" }}>
+                Artwork Approval
+              </div>
+              <div style={{ display: "flex", border: "1px solid #eee", borderTop: "none", fontSize: "11px" }}>
+                <div style={{ flex: 1, padding: "10px 14px", borderRight: "1px solid #eee" }}>
+                  <div style={{ fontWeight: 700, fontSize: "10px", color: "#555", letterSpacing: "0.4px", marginBottom: "3px" }}>STATUS</div>
+                  <div>
+                    <span style={{ display: "inline-block", padding: "3px 10px", background: approved ? "#16a34a" : "#f59e0b", color: "#fff", borderRadius: "3px", fontWeight: 700, fontSize: "10px", letterSpacing: "0.3px" }}>
+                      {approved ? "APPROVED" : "PENDING"}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ flex: 1, padding: "10px 14px", borderRight: "1px solid #eee" }}>
+                  <div style={{ fontWeight: 700, fontSize: "10px", color: "#555", letterSpacing: "0.4px", marginBottom: "3px" }}>APPROVED BY</div>
+                  <div>{approved ? approvedBy : "—"}</div>
+                </div>
+                <div style={{ flex: 1, padding: "10px 14px", borderRight: "1px solid #eee" }}>
+                  <div style={{ fontWeight: 700, fontSize: "10px", color: "#555", letterSpacing: "0.4px", marginBottom: "3px" }}>DATE</div>
+                  <div style={{ fontFamily: "ui-monospace, Menlo, monospace" }}>{approved ? approvedDate : "—"}</div>
+                </div>
+                <div style={{ flex: 1.3, padding: "10px 14px" }}>
+                  <div style={{ fontWeight: 700, fontSize: "10px", color: "#555", letterSpacing: "0.4px", marginBottom: "3px" }}>REFERENCE</div>
+                  <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: "10px" }}>{order.poReference || order.orderNumber || ""}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* 35-day milestone schedule — shown when a due date is set */}
         {order.dueDate && (() => {

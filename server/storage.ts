@@ -37,6 +37,7 @@ export interface IStorage {
   // Club Accounts (Club Portal)
   getClubAccount(id: string): Promise<ClubAccount | undefined>;
   getClubAccountByEmail(email: string): Promise<ClubAccount | undefined>;
+  getAllClubAccounts(): Promise<ClubAccount[]>;
   createClubAccount(account: InsertClubAccount): Promise<ClubAccount>;
   updateClubAccount(id: string, data: Partial<InsertClubAccount>): Promise<ClubAccount | undefined>;
   getClubOrder(clubAccountId: string): Promise<Order | undefined>;
@@ -87,6 +88,7 @@ export interface IStorage {
     qcChecks: QualityCheck[]; messages: OrderMessage[]; activity: OrderActivity[];
   } | null>;
   updateOrder(orderId: string, data: Partial<Record<string, any>>): Promise<Order | undefined>;
+  deleteOrder(orderId: string): Promise<boolean>;
   getAllCustomers(opts: { search?: string; limit?: number; offset?: number }): Promise<{ customers: User[]; total: number }>;
   getCustomerWithOrders(userId: string): Promise<{ customer: User; orders: Order[] } | null>;
   updateCustomer(userId: string, data: { teamName?: string; contactPhone?: string; ghlContactId?: string }): Promise<User | undefined>;
@@ -207,6 +209,10 @@ export class DatabaseStorage implements IStorage {
   async getClubAccountByEmail(email: string): Promise<ClubAccount | undefined> {
     const [account] = await db.select().from(clubAccounts).where(eq(clubAccounts.email, email));
     return account;
+  }
+
+  async getAllClubAccounts(): Promise<ClubAccount[]> {
+    return db.select().from(clubAccounts).orderBy(desc(clubAccounts.createdAt));
   }
 
   async createClubAccount(account: InsertClubAccount): Promise<ClubAccount> {
@@ -525,6 +531,33 @@ export class DatabaseStorage implements IStorage {
       .where(eq(orders.id, orderId))
       .returning();
     return order;
+  }
+
+  // Hard-delete an order + every row that references it. We cascade manually
+  // rather than ON DELETE CASCADE so the scope is explicit and reviewable.
+  // Returns false if the order didn't exist.
+  async deleteOrder(orderId: string): Promise<boolean> {
+    const existing = await this.getOrder(orderId);
+    if (!existing) return false;
+
+    // Fetch design file ids first — design_comments references them.
+    const designRows = await db.select({ id: designFiles.id }).from(designFiles).where(eq(designFiles.orderId, orderId));
+    const designIds = designRows.map(d => d.id);
+    if (designIds.length > 0) {
+      await db.delete(designComments).where(
+        sql`${designComments.designFileId} IN (${sql.join(designIds.map(id => sql`${id}`), sql`, `)})`
+      );
+    }
+
+    await db.delete(designFiles).where(eq(designFiles.orderId, orderId));
+    await db.delete(orderSizeBreakdowns).where(eq(orderSizeBreakdowns.orderId, orderId));
+    await db.delete(productionStages).where(eq(productionStages.orderId, orderId));
+    await db.delete(qualityChecks).where(eq(qualityChecks.orderId, orderId));
+    await db.delete(orderMessages).where(eq(orderMessages.orderId, orderId));
+    await db.delete(orderActivity).where(eq(orderActivity.orderId, orderId));
+    await db.delete(orderItems).where(eq(orderItems.orderId, orderId));
+    await db.delete(orders).where(eq(orders.id, orderId));
+    return true;
   }
 
   async getAllCustomers(opts: { search?: string; limit?: number; offset?: number }): Promise<{ customers: User[]; total: number }> {

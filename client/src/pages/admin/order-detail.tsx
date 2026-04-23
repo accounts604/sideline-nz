@@ -6,7 +6,7 @@
 import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { upload } from "@vercel/blob/client";
 import { getQueryFn } from "@/lib/queryClient";
@@ -14,9 +14,10 @@ import { computeMilestones } from "@shared/po-milestones";
 import { productsGroupedByCategory, getProductById } from "@shared/product-catalog";
 import { BRANDING_METHODS } from "@shared/branding-methods";
 import { SIZE_CHART_LABELS, suggestSizeChart, getSizeChartTables, type SizeChartType } from "@shared/size-charts";
+import { LOGO_POSITIONS, type LogoElement, type LogoPosition } from "@shared/schema";
 import {
   ArrowLeft, FileText, ExternalLink, Upload, Download,
-  Check, X, MessageSquare, Printer, Plus, Trash2, Sparkles, Ruler,
+  Check, X, MessageSquare, Printer, Plus, Trash2, Sparkles, Ruler, ChevronDown, ChevronRight,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -35,7 +36,7 @@ interface OrderItem {
   material: string | null;
   frontDesignUrl: string | null;
   backDesignUrl: string | null;
-  elementUrls: { name: string; url: string }[] | null;
+  elementUrls: LogoElement[] | null;
   gradeGroup: string | null; // deprecated — no longer shown
   designNotes: string | null;
   designBrief: string | null;
@@ -112,6 +113,9 @@ interface Order {
   driveFolderUrl: string | null;
   driveFolderName: string | null;
   orderType: string | null;
+  artworkApproved: boolean | null;
+  artworkApprovedBy: string | null;
+  artworkApprovedAt: string | null;
 }
 
 interface SupplierOption {
@@ -436,6 +440,18 @@ export default function AdminOrderDetail() {
     onError: (e: any) => setPortalMsg({ ok: false, text: e?.message || "Failed" }),
   });
 
+  const [, navigate] = useLocation();
+  const deleteOrderMut = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("DELETE", `/api/admin/orders/${params.id}`);
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/orders"] });
+      navigate("/admin/orders");
+    },
+  });
+
   // Drag-and-drop handler for file vault folders
   const handleFolderDrop = useCallback(async (folder: typeof FOLDERS[number], files: FileList) => {
     for (const file of Array.from(files)) {
@@ -573,6 +589,18 @@ export default function AdminOrderDetail() {
                 <Printer size={12} /> Preview
               </button>
             </Link>
+            <button
+              onClick={() => {
+                const confirmLabel = order.poReference || order.orderNumber;
+                if (!window.confirm(`Delete ${confirmLabel}?\n\nThis permanently removes the order, line items, size breakdowns, uploaded designs, production stages, QC checks, messages, and activity. The Drive folder will remain as an audit trail. This cannot be undone.`)) return;
+                deleteOrderMut.mutate();
+              }}
+              disabled={deleteOrderMut.isPending}
+              title="Delete this order and all associated data"
+              style={{ padding: "7px 12px", fontSize: "11px", fontWeight: 600, background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "6px", cursor: deleteOrderMut.isPending ? "not-allowed" : "pointer", display: "inline-flex", alignItems: "center", gap: "4px" }}
+            >
+              <Trash2 size={12} /> {deleteOrderMut.isPending ? "Deleting…" : "Delete"}
+            </button>
           </div>
         </div>
 
@@ -633,6 +661,34 @@ export default function AdminOrderDetail() {
               onChange={(e) => updateOrder.mutate({ dueDate: e.target.value || null })}
               style={{ ...inputStyle, width: "auto" }}
             />
+          </Field>
+          <Field label="Artwork Approval">
+            {order.artworkApproved ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <span style={{ padding: "4px 10px", background: "#16a34a", color: "#fff", borderRadius: "4px", fontSize: "10px", fontWeight: 700, letterSpacing: "0.3px" }}>APPROVED</span>
+                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)" }}>
+                  {order.artworkApprovedBy || "—"}
+                  {order.artworkApprovedAt ? ` · ${new Date(order.artworkApprovedAt).toISOString().slice(0, 10)}` : ""}
+                </span>
+                <button
+                  onClick={() => updateOrder.mutate({ artworkApproved: false, artworkApprovedBy: null, artworkApprovedAt: null })}
+                  style={{ padding: "3px 8px", fontSize: "11px", background: "transparent", color: "rgba(239,68,68,0.8)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "4px", cursor: "pointer" }}
+                  title="Revert to pending"
+                >Revert</button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ padding: "4px 10px", background: "#f59e0b", color: "#fff", borderRadius: "4px", fontSize: "10px", fontWeight: 700, letterSpacing: "0.3px" }}>PENDING</span>
+                <button
+                  onClick={() => {
+                    const who = prompt("Approved by (name):", order.customerName || "") || "";
+                    if (!who) return;
+                    updateOrder.mutate({ artworkApproved: true, artworkApprovedBy: who, artworkApprovedAt: new Date().toISOString() });
+                  }}
+                  style={{ padding: "4px 10px", fontSize: "11px", fontWeight: 600, background: "#16a34a", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                >Mark Approved</button>
+              </div>
+            )}
           </Field>
         </div>
 
@@ -905,13 +961,23 @@ export default function AdminOrderDetail() {
                   />
                 </div>
                 <div>
-                  <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Elements ({(item.elementUrls ?? []).length})</p>
+                  <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Logo Elements ({(item.elementUrls ?? []).length})</p>
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                     {(item.elementUrls ?? []).map((el, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px", background: "rgba(255,255,255,0.02)", borderRadius: "6px" }}>
-                        <img src={el.url} alt={el.name} style={{ maxHeight: "55px", maxWidth: "120px", objectFit: "contain" }} />
-                        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)" }}>{el.name}</span>
-                      </div>
+                      <LogoElementEditor
+                        key={i}
+                        element={el}
+                        onChange={(next) => {
+                          const list = [...(item.elementUrls ?? [])];
+                          list[i] = next;
+                          updateItem.mutate({ itemId: item.id, elementUrls: list });
+                        }}
+                        onRemove={() => {
+                          const list = [...(item.elementUrls ?? [])];
+                          list.splice(i, 1);
+                          updateItem.mutate({ itemId: item.id, elementUrls: list });
+                        }}
+                      />
                     ))}
                     <ImageUploadSlot
                       label="+ Add element"
@@ -919,7 +985,7 @@ export default function AdminOrderDetail() {
                       small
                       onUpload={(url) => {
                         const name = prompt("Element name (e.g. sponsor logo):") || "Logo";
-                        const existing = (item.elementUrls ?? []) as { name: string; url: string }[];
+                        const existing = (item.elementUrls ?? []) as LogoElement[];
                         updateItem.mutate({ itemId: item.id, elementUrls: [...existing, { name, url }] });
                       }}
                       vaultImages={designs.filter((d) => d.folder === "logos" && d.mimeType?.startsWith("image/")).map((d) => ({ id: d.id, fileUrl: d.fileUrl, fileName: d.fileName }))}
@@ -1203,6 +1269,120 @@ export default function AdminOrderDetail() {
         )}
       </Section>
     </AdminLayout>
+  );
+}
+
+// ─── Logo placement editor (per element) ───────────────────────────
+//
+// Collapsed row: thumbnail + name + position pill + expand chevron + delete.
+// Expanded: inputs for position, application, size (mm), thread/PMS codes,
+// artwork file. Writes through `onChange` on blur/commit so the parent
+// mutation batches.
+
+const APPLICATION_METHODS = ["Embroidery", "Screen Print", "Sublimation", "Heat Transfer", "DTF", "Vinyl"];
+
+function LogoElementEditor({ element, onChange, onRemove }: {
+  element: LogoElement;
+  onChange: (next: LogoElement) => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [local, setLocal] = useState<LogoElement>(element);
+
+  const commit = (patch: Partial<LogoElement>) => {
+    const next = { ...local, ...patch };
+    setLocal(next);
+    onChange(next);
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%", padding: "5px 8px", fontSize: "11px",
+    background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: "4px", color: "#fff", outline: "none",
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.6px",
+    color: "rgba(255,255,255,0.4)", marginBottom: "3px",
+  };
+
+  return (
+    <div style={{ padding: "6px", background: "rgba(255,255,255,0.02)", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.05)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <img src={local.url} alt={local.name} style={{ maxHeight: "44px", maxWidth: "70px", objectFit: "contain" }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: "11px", color: "#fff", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{local.name}</div>
+          <div style={{ fontSize: "10px", color: local.position ? "#4ade80" : "rgba(255,255,255,0.35)" }}>
+            {local.position || "No position set"}
+            {local.application ? ` · ${local.application}` : ""}
+            {local.sizeMm ? ` · ${local.sizeMm}` : ""}
+          </div>
+        </div>
+        <button onClick={() => setOpen((v) => !v)} title={open ? "Collapse" : "Edit placement"} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.6)", cursor: "pointer", padding: "4px" }}>
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+        <button onClick={onRemove} title="Remove element" style={{ background: "transparent", border: "none", color: "rgba(239,68,68,0.7)", cursor: "pointer", padding: "4px" }}>
+          <Trash2 size={14} />
+        </button>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px solid rgba(255,255,255,0.05)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+          <div>
+            <div style={labelStyle}>Name</div>
+            <input
+              style={inputStyle}
+              value={local.name}
+              onChange={(e) => setLocal({ ...local, name: e.target.value })}
+              onBlur={() => commit({ name: local.name })}
+            />
+          </div>
+          <div>
+            <div style={labelStyle}>Position</div>
+            <select style={inputStyle} value={local.position || ""} onChange={(e) => commit({ position: (e.target.value || undefined) as LogoPosition | undefined })}>
+              <option value="">— unassigned —</option>
+              {LOGO_POSITIONS.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={labelStyle}>Application</div>
+            <select style={inputStyle} value={local.application || ""} onChange={(e) => commit({ application: e.target.value || undefined })}>
+              <option value="">—</option>
+              {APPLICATION_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={labelStyle}>Size (mm)</div>
+            <input
+              style={inputStyle}
+              placeholder="e.g. 85 × 60 mm"
+              value={local.sizeMm || ""}
+              onChange={(e) => setLocal({ ...local, sizeMm: e.target.value })}
+              onBlur={() => commit({ sizeMm: local.sizeMm || undefined })}
+            />
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <div style={labelStyle}>Thread / PMS codes (comma-separated)</div>
+            <input
+              style={inputStyle}
+              placeholder="e.g. PMS Black, PMS 130 C, White"
+              value={(local.threadColours || []).join(", ")}
+              onChange={(e) => setLocal({ ...local, threadColours: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })}
+              onBlur={() => commit({ threadColours: local.threadColours?.length ? local.threadColours : undefined })}
+            />
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <div style={labelStyle}>Artwork file reference</div>
+            <input
+              style={inputStyle}
+              placeholder="e.g. NWF-LOGO-v2.ai"
+              value={local.artworkFile || ""}
+              onChange={(e) => setLocal({ ...local, artworkFile: e.target.value })}
+              onBlur={() => commit({ artworkFile: local.artworkFile || undefined })}
+            />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

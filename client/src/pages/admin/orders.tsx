@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
-import { Link } from "wouter";
-import { Search } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { Search, Trash2, Copy, FileText } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
 
 interface Order {
   id: string;
@@ -16,6 +17,17 @@ interface Order {
   total: number;
   createdAt: string;
 }
+
+const iconBtnStyle: React.CSSProperties = {
+  padding: "5px 8px",
+  background: "rgba(255,255,255,0.04)",
+  color: "rgba(255,255,255,0.6)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: "5px",
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+};
 
 const STATUS_TABS = [
   { label: "All", value: "" },
@@ -54,6 +66,8 @@ export default function AdminOrders() {
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
+  const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
 
   const queryParams = new URLSearchParams();
   if (statusFilter) queryParams.set("status", statusFilter);
@@ -62,6 +76,25 @@ export default function AdminOrders() {
 
   const { data, isLoading } = useQuery<{ orders: Order[]; total: number }>({
     queryKey: [`/api/admin/orders${queryString ? `?${queryString}` : ""}`],
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: async (orderId: string) => {
+      const r = await apiRequest("DELETE", `/api/admin/orders/${orderId}`);
+      return r.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/orders"] }),
+  });
+
+  const duplicateMut = useMutation({
+    mutationFn: async (orderId: string) => {
+      const r = await apiRequest("POST", `/api/admin/orders/${orderId}/duplicate`);
+      return r.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/orders"] });
+      if (data?.order?.id) navigate(`/admin/orders/${data.order.id}`);
+    },
   });
 
   return (
@@ -141,7 +174,7 @@ export default function AdminOrders() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                  {["Order", "Type", "Customer", "Status", "Design", "Total", "Date"].map((h) => (
+                  {["Order", "Type", "Customer", "Status", "Design", "Total", "Date", ""].map((h) => (
                     <th key={h} style={{ padding: "12px 20px", textAlign: "left", fontSize: "11px", fontWeight: 600, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</th>
                   ))}
                 </tr>
@@ -183,6 +216,31 @@ export default function AdminOrders() {
                     </td>
                     <td style={{ padding: "14px 20px", fontSize: "13px", color: "rgba(255,255,255,0.4)" }}>
                       {new Date(order.createdAt).toLocaleDateString()}
+                    </td>
+                    <td style={{ padding: "14px 20px", textAlign: "right", whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
+                      <div style={{ display: "inline-flex", gap: "4px" }}>
+                        <Link href={`/admin/orders/${order.id}/po`}>
+                          <button title="Open PO preview" style={iconBtnStyle}>
+                            <FileText size={13} />
+                          </button>
+                        </Link>
+                        <button
+                          title="Duplicate as new order"
+                          onClick={() => { if (window.confirm(`Duplicate ${order.orderNumber}? A new draft will be created with the same product lines.`)) duplicateMut.mutate(order.id); }}
+                          disabled={duplicateMut.isPending}
+                          style={iconBtnStyle}
+                        >
+                          <Copy size={13} />
+                        </button>
+                        <button
+                          title="Delete order"
+                          onClick={() => { if (window.confirm(`Delete ${order.orderNumber}?\n\nThis removes the order and all associated items, designs, and history. The Drive folder will remain.`)) deleteMut.mutate(order.id); }}
+                          disabled={deleteMut.isPending}
+                          style={{ ...iconBtnStyle, color: "#ef4444", borderColor: "rgba(239,68,68,0.2)" }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
