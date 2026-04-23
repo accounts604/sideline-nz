@@ -337,6 +337,14 @@ export default function AdminOrderDetail() {
     onSuccess: invalidate,
   });
 
+  const deleteItem = useMutation({
+    mutationFn: async (itemId: string) => {
+      const r = await apiRequest("DELETE", `/api/admin/orders/${params.id}/items/${itemId}`);
+      return r.json();
+    },
+    onSuccess: invalidate,
+  });
+
   // AI colour extraction — Gemini reads the design image and writes the
   // dominant hex+name set to item.productColors.
   const extractColors = useMutation({
@@ -802,7 +810,19 @@ export default function AdminOrderDetail() {
           const totalQty = sizeSummary.size > 0 ? Array.from(sizeSummary.values()).reduce((a, b) => a + b, 0) : item.quantity;
 
           return (
-            <div key={item.id} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "10px", padding: "20px", marginBottom: "16px" }}>
+            <div key={item.id} style={{ position: "relative", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "10px", padding: "20px", marginBottom: "16px" }}>
+              <button
+                onClick={() => {
+                  const label = item.productName || "this garment";
+                  if (!window.confirm(`Remove ${label} from this order?\n\nThe line item + its size breakdowns will be deleted. Other garments on this order are not affected.`)) return;
+                  deleteItem.mutate(item.id);
+                }}
+                disabled={deleteItem.isPending}
+                title="Remove this garment line"
+                style={{ position: "absolute", top: "12px", right: "12px", padding: "5px 8px", fontSize: "10px", fontWeight: 600, background: "rgba(239,68,68,0.08)", color: "rgba(239,68,68,0.85)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "5px", cursor: deleteItem.isPending ? "not-allowed" : "pointer", display: "inline-flex", alignItems: "center", gap: "4px", textTransform: "uppercase", letterSpacing: "0.3px", zIndex: 2 }}
+              >
+                <Trash2 size={11} /> Remove line
+              </button>
               {/* Item header */}
               <div style={{ display: "flex", gap: "12px", marginBottom: "12px", flexWrap: "wrap" }}>
                 <Field label="Product" style={{ flex: 2 }}>

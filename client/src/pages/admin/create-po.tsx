@@ -315,7 +315,7 @@ export default function AdminCreatePO() {
           </span>
         </Link>
         <h1 style={{ fontSize: "24px", fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: "12px" }}>
-          <FileText size={24} /> Create Purchase Order
+          <FileText size={24} /> Create Production Sheet
         </h1>
       </div>
 
@@ -639,7 +639,7 @@ export default function AdminCreatePO() {
             cursor: !hasEnoughDetail ? "not-allowed" : "pointer",
           }}
         >
-          {createMutation.isPending ? "Creating..." : "Create Purchase Order"}
+          {createMutation.isPending ? "Creating..." : "Create Production Sheet"}
         </button>
       </div>
 

@@ -132,7 +132,11 @@ function AssetStrip({ title, assets }: { title: string; assets: DesignAsset[] })
 // 9 position columns × 5 data rows. Positions with no assigned logo render as em-dashes.
 function LogoPlacementGrid({ elements }: { elements: LogoElement[] }) {
   const byPosition = new Map<LogoPosition, LogoElement>();
-  for (const el of elements) if (el.position) byPosition.set(el.position, el);
+  const unassigned: LogoElement[] = [];
+  for (const el of elements) {
+    if (el.position) byPosition.set(el.position, el);
+    else if (el.url) unassigned.push(el);
+  }
 
   const th = (isFirst = false): React.CSSProperties => ({
     padding: "6px 4px", background: "#000", color: "#fff",
@@ -153,6 +157,19 @@ function LogoPlacementGrid({ elements }: { elements: LogoElement[] }) {
       <div style={{ background: "#000", color: "#fff", padding: "6px 16px", fontSize: "12px", fontWeight: 700, textAlign: "center", letterSpacing: "0.3px" }}>
         Logo Placement Grid
       </div>
+      {unassigned.length > 0 && (
+        <div style={{ background: "#fff7ed", borderLeft: "1px solid #fed7aa", borderRight: "1px solid #fed7aa", padding: "8px 12px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "9px", fontWeight: 700, color: "#c2410c", textTransform: "uppercase", letterSpacing: "0.4px", marginRight: "4px" }}>
+            Unassigned ({unassigned.length}) — set position in admin
+          </span>
+          {unassigned.map((el, i) => (
+            <div key={i} style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "3px 8px 3px 3px", background: "#fff", border: "1px solid #fdba74", borderRadius: "4px" }}>
+              <img src={el.url} alt={el.name} style={{ height: "22px", maxWidth: "40px", objectFit: "contain" }} />
+              <span style={{ fontSize: "10px", color: "#555" }}>{el.name || "Logo"}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
         <colgroup>
           <col style={{ width: "13%" }} />
@@ -298,13 +315,14 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
       {/* 3D Mockups — vendor render */}
       <AssetStrip title="3D Mockup — Vendor Render" assets={mockups} />
 
-      {/* Logo Placement Grid — 9 positions × rows for logo / application / size / thread / artwork file */}
-      <LogoPlacementGrid elements={elements} />
+      {/* Logo Placement Grid — hidden when there are no logos */}
+      {elements.length > 0 && <LogoPlacementGrid elements={elements} />}
 
-      {/* Sizing Guide — diagram + measurement tables */}
+      {/* Sizing Guide — hidden when chart is "none" (unknown/unverified) */}
       {(() => {
         const chartType = ((item as any).sizeChartType || suggestSizeChart(item.productType)) as SizeChartType;
         const tables = getSizeChartTables(chartType);
+        if (tables.length === 0) return null;
         const diagramSrc = SIZE_CHART_DIAGRAMS[chartType];
         return (
           <>
@@ -312,14 +330,12 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
               Sizing Guide — {SIZE_CHART_LABELS[chartType] || chartType}
             </div>
             <div style={{ display: "flex", alignItems: "flex-start", gap: "16px", padding: "12px 16px" }}>
-              {/* Left: measurement diagram */}
               {diagramSrc && (
                 <div style={{ width: "220px", flexShrink: 0, textAlign: "center" }}>
                   <img src={diagramSrc} alt={`${SIZE_CHART_LABELS[chartType]} measurement diagram`} style={{ width: "100%", maxHeight: "280px", objectFit: "contain" }} />
                   <p style={{ fontSize: "9px", color: "#888", marginTop: "4px" }}>Measurement reference</p>
                 </div>
               )}
-              {/* Right: measurement tables */}
               <div style={{ flex: 1, overflowX: "auto" }}>
                 {tables.map((t, i) => <PdfSizeChart key={i} table={t} />)}
               </div>

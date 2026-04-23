@@ -89,6 +89,7 @@ export interface IStorage {
   } | null>;
   updateOrder(orderId: string, data: Partial<Record<string, any>>): Promise<Order | undefined>;
   deleteOrder(orderId: string): Promise<boolean>;
+  deleteOrderItem(itemId: string): Promise<boolean>;
   getAllCustomers(opts: { search?: string; limit?: number; offset?: number }): Promise<{ customers: User[]; total: number }>;
   getCustomerWithOrders(userId: string): Promise<{ customer: User; orders: Order[] } | null>;
   updateCustomer(userId: string, data: { teamName?: string; contactPhone?: string; ghlContactId?: string }): Promise<User | undefined>;
@@ -531,6 +532,15 @@ export class DatabaseStorage implements IStorage {
       .where(eq(orders.id, orderId))
       .returning();
     return order;
+  }
+
+  // Delete a single order line item + its size breakdowns.
+  async deleteOrderItem(itemId: string): Promise<boolean> {
+    const [existing] = await db.select({ id: orderItems.id }).from(orderItems).where(eq(orderItems.id, itemId));
+    if (!existing) return false;
+    await db.delete(orderSizeBreakdowns).where(eq(orderSizeBreakdowns.orderItemId, itemId));
+    await db.delete(orderItems).where(eq(orderItems.id, itemId));
+    return true;
   }
 
   // Hard-delete an order + every row that references it. We cascade manually

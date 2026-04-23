@@ -68,7 +68,11 @@ function renderAssetStrip(title: string, assets: DesignAsset[], headerBg = "#000
 
 function renderLogoGrid(elements: LogoElement[]): string {
   const byPosition = new Map<LogoPosition, LogoElement>();
-  for (const el of elements) if (el.position) byPosition.set(el.position, el);
+  const unassigned: LogoElement[] = [];
+  for (const el of elements) {
+    if (el.position) byPosition.set(el.position, el);
+    else if (el.url) unassigned.push(el);
+  }
 
   const th = (label: string, isFirst = false) => `<th style="padding:6px 4px;background:#000;color:#fff;font-size:8.5px;font-weight:700;text-align:${isFirst ? "left" : "center"};letter-spacing:0.2px;border:1px solid #000;line-height:1.2">${label}</th>`;
   const td = (content: string) => `<td style="padding:6px 4px;font-size:9.5px;text-align:center;border:1px solid #ccc;vertical-align:middle">${content}</td>`;
@@ -77,9 +81,22 @@ function renderLogoGrid(elements: LogoElement[]): string {
   const colgroup = `<colgroup><col style="width:13%" />${LOGO_POSITIONS.map(() => `<col style="width:9.67%" />`).join("")}</colgroup>`;
   const empty = `<span style="color:#ccc;font-size:16px">—</span>`;
 
+  // Unassigned strip — logos that have been uploaded but don't have a
+  // position picked yet. Shown above the grid so they're never invisible.
+  const unassignedStrip = unassigned.length ? `
+    <div style="background:#fff7ed;border:1px solid #fed7aa;border-bottom:none;padding:8px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:9px;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:0.4px;margin-right:4px">Unassigned (${unassigned.length}) — set position in admin</span>
+      ${unassigned.map(el => `
+        <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px 3px 3px;background:#fff;border:1px solid #fdba74;border-radius:4px">
+          <img src="${el.url}" style="height:22px;max-width:40px;object-fit:contain" />
+          <span style="font-size:10px;color:#555">${esc(el.name || "Logo")}</span>
+        </div>`).join("")}
+    </div>` : "";
+
   return `
   <div style="margin-top:0">
     <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center;letter-spacing:0.3px">Logo Placement Grid</div>
+    ${unassignedStrip}
     <table style="width:100%;border-collapse:collapse;table-layout:fixed">
       ${colgroup}
       <thead>
@@ -196,24 +213,25 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
 
       ${renderAssetStrip("2D Design Print — Factory Artwork (true colours)", designPrints, "#0a0a0a")}
       ${renderAssetStrip("3D Mockup — Vendor Render", mockups, "#0a0a0a")}
-      ${renderLogoGrid(elements)}
+      ${elements.length ? renderLogoGrid(elements) : ""}
 
-      <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">
-        Sizing Guide — ${esc(SIZE_CHART_LABELS[chartType] || String(chartType))}
-      </div>
-      <div style="display:flex;align-items:flex-start;gap:16px;padding:12px 16px;border:1px solid #eee;border-top:none">
-        ${diagramSrc ? `<div style="width:220px;flex-shrink:0;text-align:center"><img src="${siteUrl}${diagramSrc}" style="width:100%;max-height:280px;object-fit:contain" /><p style="font-size:9px;color:#888;margin-top:4px">Measurement reference</p></div>` : ""}
-        <div style="flex:1;overflow-x:auto">
-          ${sizeTables.map((t) => `
-            <p style="font-size:12px;font-weight:800;margin:6px 0 3px">${esc(t.title)}</p>
-            <table style="width:100%;border-collapse:collapse;font-size:10px">
-              <thead><tr>${t.headers.map((h, i) => `<th style="padding:4px;background:${i === 0 ? "#fff" : "#c9d9ea"};text-align:${i === 0 ? "left" : "center"};font-weight:700;border:1px solid #ddd">${esc(h)}</th>`).join("")}</tr></thead>
-              <tbody>${t.rows.map((row) => `<tr><td style="padding:3px 8px;font-weight:600;white-space:nowrap;border:1px solid #ddd">${esc(row.label)}</td>${row.values.map((v) => `<td style="padding:3px 4px;text-align:center;border:1px solid #ddd">${v}</td>`).join("")}</tr>`).join("")}</tbody>
-            </table>
-            <div style="display:flex;justify-content:space-between;font-size:9px;color:#666;padding:3px 0"><span>Measurements in cm</span><span>Tolerance ${esc(t.tolerance)}</span></div>
-          `).join("")}
+      ${sizeTables.length ? `
+        <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">
+          Sizing Guide — ${esc(SIZE_CHART_LABELS[chartType] || String(chartType))}
         </div>
-      </div>
+        <div style="display:flex;align-items:flex-start;gap:16px;padding:12px 16px;border:1px solid #eee;border-top:none">
+          ${diagramSrc ? `<div style="width:220px;flex-shrink:0;text-align:center"><img src="${siteUrl}${diagramSrc}" style="width:100%;max-height:280px;object-fit:contain" /><p style="font-size:9px;color:#888;margin-top:4px">Measurement reference</p></div>` : ""}
+          <div style="flex:1;overflow-x:auto">
+            ${sizeTables.map((t) => `
+              <p style="font-size:12px;font-weight:800;margin:6px 0 3px">${esc(t.title)}</p>
+              <table style="width:100%;border-collapse:collapse;font-size:10px">
+                <thead><tr>${t.headers.map((h, i) => `<th style="padding:4px;background:${i === 0 ? "#fff" : "#c9d9ea"};text-align:${i === 0 ? "left" : "center"};font-weight:700;border:1px solid #ddd">${esc(h)}</th>`).join("")}</tr></thead>
+                <tbody>${t.rows.map((row) => `<tr><td style="padding:3px 8px;font-weight:600;white-space:nowrap;border:1px solid #ddd">${esc(row.label)}</td>${row.values.map((v) => `<td style="padding:3px 4px;text-align:center;border:1px solid #ddd">${v}</td>`).join("")}</tr>`).join("")}</tbody>
+              </table>
+              <div style="display:flex;justify-content:space-between;font-size:9px;color:#666;padding:3px 0"><span>Measurements in cm</span><span>Tolerance ${esc(t.tolerance)}</span></div>
+            `).join("")}
+          </div>
+        </div>` : ""}
     </div>`;
   }).join("\n");
 

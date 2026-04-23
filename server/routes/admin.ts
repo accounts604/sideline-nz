@@ -737,6 +737,20 @@ const updateItemSchema = z.object({
   sizeChartType: z.string().optional(),
 });
 
+// DELETE /orders/:id/items/:itemId — remove a single garment line +
+// its size breakdowns. Other order state (approval, designs on siblings,
+// activity) is untouched.
+router.delete("/orders/:id/items/:itemId", async (req, res) => {
+  try {
+    const ok = await storage.deleteOrderItem(req.params.itemId);
+    if (!ok) return res.status(404).json({ error: "Item not found" });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Admin delete order item error:", err);
+    res.status(500).json({ error: "Failed to delete item" });
+  }
+});
+
 router.patch("/orders/:id/items/:itemId", async (req, res) => {
   try {
     const data = updateItemSchema.parse(req.body);

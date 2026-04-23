@@ -30,7 +30,8 @@ export type SizeChartType =
   | "baseball-jersey"
   | "rugby-jersey"
   | "socks"
-  | "beanie";
+  | "beanie"
+  | "none"; // "none" → skip the Sizing Guide section entirely on the PO
 
 export const SIZE_CHART_LABELS: Record<SizeChartType, string> = {
   tshirt: "T-Shirts / Polos",
@@ -44,6 +45,7 @@ export const SIZE_CHART_LABELS: Record<SizeChartType, string> = {
   "rugby-jersey": "Rugby Jersey + Shorts",
   socks: "Socks",
   beanie: "Beanie (Pom-Pom)",
+  none: "",
 };
 
 export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
@@ -280,10 +282,12 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       tolerance: "± 2.0cm",
     },
   ],
+  none: [],
 };
 
 // Suggest the best-fit size chart for a product type from shared/product-catalog.ts.
-// Falls back to tshirt if no match found.
+// Returns "none" if we don't have a verified chart — the PO renderer will
+// omit the Sizing Guide section entirely rather than guess wrong.
 const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "rugby-match-jersey": "rugby-jersey",
   "rugby-long-sleeve": "tshirt",
@@ -295,10 +299,10 @@ const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "netball-singlet": "singlet",
   "netball-skirt": "shorts",
   "netball-bike-shorts": "shorts",
-  "netball-spanks": "shorts",
-  "tag-reversible-singlet": "singlet",
-  "tag-dri-fit-tee": "tshirt",
-  "tag-shorts": "shorts",
+  "netball-spanks": "none",          // no verified chart — Sizing Guide omitted on PO until one is added
+  "tag-reversible-singlet": "none",  // no verified chart
+  "tag-dri-fit-tee": "none",         // no verified chart
+  "tag-shorts": "none",              // no verified chart
   "football-jersey": "tshirt",
   "football-shorts": "shorts",
   "football-socks": "socks",
@@ -359,13 +363,19 @@ export const SIZE_CHART_DIAGRAMS: Record<SizeChartType, string> = {
   "rugby-jersey": "/size-charts/rugby-jersey-diagram.png",
   socks: "/size-charts/socks-diagram.png",
   beanie: "/size-charts/beanie-diagram.png",
+  none: "",
 };
 
+// "none" means "we don't have a verified chart for this garment — omit the
+// Sizing Guide section from the PO instead of guessing wrong". Unknown
+// productTypes also fall through to "none" so a typo or a new product ID
+// never silently shows a t-shirt chart for a pair of shorts.
 export function suggestSizeChart(productType: string | null | undefined): SizeChartType {
-  if (!productType) return "tshirt";
-  return PRODUCT_TO_CHART[productType] || "tshirt";
+  if (!productType) return "none";
+  return PRODUCT_TO_CHART[productType] || "none";
 }
 
 export function getSizeChartTables(chartType: SizeChartType): SizeTable[] {
-  return SIZE_CHART_DATA[chartType] || SIZE_CHART_DATA.tshirt;
+  if (chartType === "none") return [];
+  return SIZE_CHART_DATA[chartType] || [];
 }
