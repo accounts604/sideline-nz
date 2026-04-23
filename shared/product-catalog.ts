@@ -65,6 +65,12 @@ export const SIDELINE_PRODUCTS: SidelineProduct[] = [
   { id: "netball-singlet",       name: "Netball Singlet",            category: "Netball", sizes: WOMENS_DRESS,  defaultMaterial: "Performance Spandex / Polyester" },
   { id: "netball-skirt",         name: "Netball Skirt",              category: "Netball", sizes: WOMENS_DRESS,  defaultMaterial: "Performance Spandex / Polyester" },
   { id: "netball-bike-shorts",   name: "Netball Bike Shorts",        category: "Netball", sizes: WOMENS_DRESS,  defaultMaterial: "Performance Spandex" },
+  { id: "netball-spanks",        name: "Netball Spanks (Briefs)",    category: "Netball", sizes: WOMENS_DRESS,  defaultMaterial: "Performance Spandex (modesty brief)" },
+
+  // ─── Tag Rugby ───
+  { id: "tag-reversible-singlet", name: "Tag Reversible Singlet",    category: "Tag",     sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Interlock Polyester (double-layer reversible)" },
+  { id: "tag-dri-fit-tee",       name: "Tag Dri-Fit Tee",            category: "Tag",     sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Performance Polyester" },
+  { id: "tag-shorts",            name: "Tag Shorts",                 category: "Tag",     sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Polyester Tricot" },
 
   // ─── Football / Soccer ───
   { id: "football-jersey",       name: "Football Jersey",            category: "Football",sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Micro-Mesh Polyester", minOrder: 11 },
