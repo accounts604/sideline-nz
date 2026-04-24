@@ -8,6 +8,7 @@ import { orders, orderActivity } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { SIDELINE_PIPELINE_ID, SIDELINE_STAGE_IDS, SIDELINE_STAGE_NAMES } from "../ghl-config";
 import { isSidelinePipelineStage, type SidelinePipelineStage } from "@shared/pipeline";
+import { tracked, logIntegrationEvent } from "../integration-events";
 
 const router = Router();
 
@@ -689,6 +690,12 @@ router.post("/shopify-team-store-ready", async (req, res) => {
 
     console.log(`[GHL Webhook] Creating Shopify collection: ${clubName} (${clubHandle})`);
 
+    // APIEase collection creation is the single highest-risk fire-and-forget
+    // we ship — the webhook must return 200 to GHL (or GHL will retry + dedupe),
+    // but if the collection fails the club portal never goes live. Tracked
+    // explicitly (not via tracked()) because we want the inner HTTP status
+    // in the log, not just a thrown-or-not boolean.
+    const apieaseStart = Date.now();
     const collectionResponse = await fetch(collectionEndpoint, {
       method: "POST",
       headers: {
@@ -705,9 +712,24 @@ router.post("/shopify-team-store-ready", async (req, res) => {
 
     if (!collectionResponse.ok) {
       console.error(`[GHL Webhook] Collection creation failed:`, collectionData);
+      void logIntegrationEvent({
+        system: "apiease",
+        action: "createCollection",
+        status: "failed",
+        durationMs: Date.now() - apieaseStart,
+        error: `HTTP ${collectionResponse.status}: ${JSON.stringify(collectionData).slice(0, 500)}`,
+        meta: { clubName, clubHandle, contactId: payload.contactId },
+      });
       // Log error but don't fail the webhook — continue with normal flow
     } else {
       console.log(`[GHL Webhook] Collection created successfully:`, collectionData);
+      void logIntegrationEvent({
+        system: "apiease",
+        action: "createCollection",
+        status: "success",
+        durationMs: Date.now() - apieaseStart,
+        meta: { clubName, clubHandle, contactId: payload.contactId, collectionId: (collectionData as any)?.id },
+      });
     }
 
     // Return 200 immediately — webhook is processed

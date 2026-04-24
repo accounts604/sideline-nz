@@ -22,6 +22,7 @@ import {
 import { extractColorsFromImage } from "../mockup/color-extract";
 import { generateDesignBrief } from "../mockup/design-brief";
 import { uploadPoPdfToDrive } from "../po-pdf";
+import { tracked } from "../integration-events";
 import {
   searchGhlContacts,
   findGhlContactByEmail,
@@ -39,6 +40,33 @@ const router = Router();
 router.use(requireAdmin);
 
 // GET /dashboard — stats
+// GET /integration-events — recent external-API audit trail. Filter by
+// system, status, orderId. Used to answer "did the GHL opportunity for
+// order X actually get created?" and "what failed this week?".
+router.get("/integration-events", async (req, res) => {
+  try {
+    const { system, status, orderId } = req.query as Record<string, string | undefined>;
+    const limit = Math.min(parseInt((req.query.limit as string) || "100", 10) || 100, 500);
+
+    const { integrationEvents } = await import("@shared/schema");
+    const { eq: eqOp, and, desc } = await import("drizzle-orm");
+    const conds: any[] = [];
+    if (system) conds.push(eqOp(integrationEvents.system, system));
+    if (status) conds.push(eqOp(integrationEvents.status, status));
+    if (orderId) conds.push(eqOp(integrationEvents.orderId, orderId));
+
+    const rows = await db.select().from(integrationEvents)
+      .where(conds.length ? and(...conds) : undefined)
+      .orderBy(desc(integrationEvents.createdAt))
+      .limit(limit);
+
+    res.json({ events: rows, total: rows.length });
+  } catch (err) {
+    console.error("Admin integration-events error:", err);
+    res.status(500).json({ error: "Failed to fetch integration events" });
+  }
+});
+
 router.get("/dashboard", async (_req, res) => {
   try {
     const stats = await storage.getDashboardStats();
@@ -560,19 +588,24 @@ router.patch("/customers/:id", async (req, res) => {
     const customer = await storage.updateCustomer(req.params.id, data);
     if (!customer) return res.status(404).json({ error: "Customer not found" });
 
-    // Mirror edit to GHL (fire-and-forget — local write is authoritative for the response)
+    // Mirror edit to GHL (fire-and-forget — local write is authoritative for
+    // the response). Wrapped in tracked() so a failure lands in integration_events
+    // instead of just Railway stderr.
     if (customer.email) {
-      upsertGhlContact({
-        email: customer.email,
-        phone: data.contactPhone ?? customer.contactPhone ?? undefined,
-        companyName: data.teamName ?? customer.teamName ?? undefined,
-      })
-        .then(async (result) => {
+      void tracked(
+        { system: "ghl", action: "upsertContact", userId: customer.id, context: { email: customer.email } },
+        async () => {
+          const result = await upsertGhlContact({
+            email: customer.email!,
+            phone: data.contactPhone ?? customer.contactPhone ?? undefined,
+            companyName: data.teamName ?? customer.teamName ?? undefined,
+          });
           if (result.contactId && !customer.ghlContactId) {
             await storage.updateCustomer(customer.id, { ghlContactId: result.contactId });
           }
-        })
-        .catch((err) => console.error("[admin PATCH customer] GHL sync failed:", err));
+          return result;
+        },
+      );
     }
 
     res.json(customer);

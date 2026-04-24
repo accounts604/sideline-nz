@@ -341,6 +341,30 @@ export const insertOrderActivitySchema = createInsertSchema(orderActivity).omit(
 export type InsertOrderActivity = z.infer<typeof insertOrderActivitySchema>;
 export type OrderActivity = typeof orderActivity.$inferSelect;
 
+// Integration Events — audit trail for every external API call the app
+// makes (GHL, Drive, Gmail, Resend, APIEase, Stripe, Shopify, Xero, ...).
+// Writes both success and failure rows so we can answer:
+//   - "did the GHL opportunity actually get created for order X?"
+//   - "which outbound emails failed this week?"
+//   - "how slow has Drive been lately?"
+// Added 2026-04-24 as the foundation for the ongoing integration-health audit.
+export const integrationEvents = pgTable("integration_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  createdAt: timestamp("created_at").defaultNow(),
+  system: text("system").notNull(),          // "ghl" | "drive" | "gmail" | "resend" | "apiease" | "stripe" | "shopify" | "xero" | "vercel-blob"
+  action: text("action").notNull(),          // "upsertContact" | "createFolder" | "sendSupplierPo" | "mirrorBlob" | ...
+  status: text("status").notNull(),          // "success" | "failed"
+  orderId: varchar("order_id"),              // loose FK — NOT enforced; log survives order delete
+  userId: varchar("user_id"),                // who triggered it, if applicable
+  durationMs: integer("duration_ms"),        // wall time of the call
+  error: text("error"),                      // null on success; error.message on failure
+  meta: jsonb("meta"),                       // arbitrary structured context (HTTP status, response snippet, params)
+});
+
+export const insertIntegrationEventSchema = createInsertSchema(integrationEvents).omit({ id: true, createdAt: true });
+export type InsertIntegrationEvent = z.infer<typeof insertIntegrationEventSchema>;
+export type IntegrationEvent = typeof integrationEvents.$inferSelect;
+
 // Club Portal Accounts — separate login system for clubs who paid $297
 export const clubAccounts = pgTable("club_accounts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

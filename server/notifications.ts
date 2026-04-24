@@ -1,9 +1,12 @@
 // Centralized notification dispatch
-// Creates DB notification + sends email + syncs GHL tags
+// Creates DB notification + sends email + syncs GHL tags. Every external
+// call is wrapped in tracked() so silent failures surface in the
+// integration_events table instead of disappearing into stderr.
 
 import { storage } from "./storage";
 import { sendDesignApprovedEmail, sendDesignRejectedEmail, sendOrderShippedEmail } from "./email";
 import { syncGhlTag } from "./ghl-sync";
+import { tracked } from "./integration-events";
 
 export async function notifyDesignApproved(opts: {
   userId: string;
@@ -25,15 +28,17 @@ export async function notifyDesignApproved(opts: {
 
   // Email
   if (opts.customerEmail) {
-    await sendDesignApprovedEmail(opts.customerEmail, opts.orderNumber, opts.label).catch(err =>
-      console.error("Failed to send design approved email:", err)
+    await tracked(
+      { system: "resend", action: "sendDesignApprovedEmail", orderId: opts.orderId, userId: opts.userId, context: { label: opts.label } },
+      () => sendDesignApprovedEmail(opts.customerEmail!, opts.orderNumber, opts.label),
     );
   }
 
   // GHL tag
   if (opts.customerEmail) {
-    await syncGhlTag(opts.customerEmail, "Design Approved").catch(err =>
-      console.error("Failed to sync GHL tag:", err)
+    await tracked(
+      { system: "ghl", action: "syncTag:DesignApproved", orderId: opts.orderId, userId: opts.userId },
+      () => syncGhlTag(opts.customerEmail!, "Design Approved"),
     );
   }
 }
@@ -59,8 +64,9 @@ export async function notifyDesignRejected(opts: {
 
   // Email
   if (opts.customerEmail) {
-    await sendDesignRejectedEmail(opts.customerEmail, opts.orderNumber, opts.label, opts.comment).catch(err =>
-      console.error("Failed to send design rejected email:", err)
+    await tracked(
+      { system: "resend", action: "sendDesignRejectedEmail", orderId: opts.orderId, userId: opts.userId, context: { label: opts.label } },
+      () => sendDesignRejectedEmail(opts.customerEmail!, opts.orderNumber, opts.label, opts.comment),
     );
   }
 }
@@ -82,15 +88,17 @@ export async function notifyOrderShipped(opts: {
 
   // Email
   if (opts.customerEmail) {
-    await sendOrderShippedEmail(opts.customerEmail, opts.orderNumber).catch(err =>
-      console.error("Failed to send order shipped email:", err)
+    await tracked(
+      { system: "resend", action: "sendOrderShippedEmail", orderId: opts.orderId, userId: opts.userId },
+      () => sendOrderShippedEmail(opts.customerEmail!, opts.orderNumber),
     );
   }
 
   // GHL tag
   if (opts.customerEmail) {
-    await syncGhlTag(opts.customerEmail, "Order Shipped").catch(err =>
-      console.error("Failed to sync GHL tag:", err)
+    await tracked(
+      { system: "ghl", action: "syncTag:OrderShipped", orderId: opts.orderId, userId: opts.userId },
+      () => syncGhlTag(opts.customerEmail!, "Order Shipped"),
     );
   }
 }

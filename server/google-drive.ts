@@ -313,15 +313,35 @@ export async function mirrorBlobToPoFolder({
   subFolderName,
   blobUrl,
   fileName,
+  orderId,
 }: {
   poFolderId: string;
   slot?: "mockups" | "logos" | "artwork" | "approvals";
   subFolderName?: string; // explicit name override (takes priority over slot)
   blobUrl: string;
   fileName?: string;
+  orderId?: string; // passed through to integration_events for correlation
 }): Promise<string | null> {
+  // Lazy-load to avoid a circular import between google-drive ↔ integration-events.
+  const { logIntegrationEvent } = await import("./integration-events");
+  const start = Date.now();
+  const logFail = (error: string, meta?: Record<string, any>) => {
+    void logIntegrationEvent({
+      system: "drive", action: "mirrorBlob", status: "failed",
+      orderId: orderId ?? null, durationMs: Date.now() - start, error,
+      meta: { poFolderId, slot, fileName: fileName ?? null, ...meta },
+    });
+  };
+  const logOk = (fileId: string, meta?: Record<string, any>) => {
+    void logIntegrationEvent({
+      system: "drive", action: "mirrorBlob", status: "success",
+      orderId: orderId ?? null, durationMs: Date.now() - start,
+      meta: { poFolderId, slot, fileName: fileName ?? null, fileId, ...meta },
+    });
+  };
+
   const token = await getAccessToken();
-  if (!token) return null;
+  if (!token) { logFail("no-access-token"); return null; }
 
   // Resolve target folder: explicit name > slot resolver > PO root fallback.
   let targetFolderId = poFolderId;
@@ -336,6 +356,7 @@ export async function mirrorBlobToPoFolder({
     const blobRes = await fetch(blobUrl);
     if (!blobRes.ok) {
       console.error("[Drive] mirror: blob fetch failed:", blobRes.status);
+      logFail(`blob-fetch-${blobRes.status}`);
       return null;
     }
     const contentType = blobRes.headers.get("content-type") || "application/octet-stream";
@@ -353,7 +374,7 @@ export async function mirrorBlobToPoFolder({
     const existingRes = await driveFetch(`/files?q=${encodeURIComponent(existingQ)}&fields=files(id)&pageSize=1`);
     if (existingRes?.ok) {
       const existingData = await existingRes.json();
-      if (existingData.files?.[0]?.id) return existingData.files[0].id;
+      if (existingData.files?.[0]?.id) { logOk(existingData.files[0].id, { deduped: true }); return existingData.files[0].id; }
     }
 
     // Multipart upload: metadata part + media part
@@ -384,13 +405,17 @@ export async function mirrorBlobToPoFolder({
     );
 
     if (!uploadRes.ok) {
-      console.error("[Drive] multipart upload failed:", uploadRes.status, await uploadRes.text());
+      const body = await uploadRes.text();
+      console.error("[Drive] multipart upload failed:", uploadRes.status, body);
+      logFail(`multipart-upload-${uploadRes.status}`, { bodySnippet: body.slice(0, 300) });
       return null;
     }
     const out = await uploadRes.json();
+    if (out.id) logOk(out.id);
     return out.id || null;
-  } catch (err) {
+  } catch (err: any) {
     console.error("[Drive] mirror error:", err);
+    logFail(err?.message || String(err));
     return null;
   }
 }
