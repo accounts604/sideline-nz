@@ -8,6 +8,7 @@ import {
   Wand2,
   FileText,
   FolderOpen,
+  Activity,
   LogOut,
   Menu,
   X,
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { href: "/admin/designs", label: "Design Review", icon: Palette },
   { href: "/admin/quotes", label: "Smart Quotes", icon: FileText },
   { href: "/admin/mockups", label: "Mockup Engine", icon: Wand2 },
+  { href: "/admin/integrations", label: "Integrations", icon: Activity },
 ];
 
 function NavLink({ href, label, icon: Icon, active, onClick }: {
