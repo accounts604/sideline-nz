@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { poBaseName } from "@shared/po-filename";
 import { useParams, Link } from "wouter";
 import { ArrowLeft, Printer } from "lucide-react";
 import { computeMilestones } from "@shared/po-milestones";
@@ -403,6 +405,21 @@ export default function PurchaseOrderView() {
     queryKey: [`/api/admin/orders/${params.id}`],
     enabled: !!params.id,
   });
+
+  // Set document.title to the proper naming convention so Chrome's
+  // "Save as PDF" dialog pre-fills the filename. Restored on unmount.
+  useEffect(() => {
+    if (!data?.order) return;
+    const previous = document.title;
+    document.title = poBaseName({
+      poReference: data.order.poReference,
+      orderNumber: data.order.orderNumber,
+      accountName: data.order.accountName,
+      customerName: data.order.customerName,
+      createdAt: data.order.createdAt,
+    });
+    return () => { document.title = previous; };
+  }, [data?.order?.id, data?.order?.poReference, data?.order?.accountName, data?.order?.createdAt]);
 
   if (isLoading) return <div style={{ padding: "40px", textAlign: "center", color: "#666" }}>Loading...</div>;
   if (!data) return <div style={{ padding: "40px", textAlign: "center", color: "#666" }}>Order not found</div>;

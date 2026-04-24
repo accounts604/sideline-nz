@@ -13,6 +13,7 @@ import { computeMilestones } from "@shared/po-milestones";
 import { getSizeChartTables, suggestSizeChart, SIZE_CHART_LABELS, SIZE_CHART_DIAGRAMS, type SizeChartType } from "@shared/size-charts";
 import { LOGO_POSITIONS, type LogoElement, type LogoPosition } from "@shared/schema";
 import { getDesignPrints, getMockups, type DesignAsset } from "@shared/design-assets";
+import { poBaseName, poFilename } from "@shared/po-filename";
 
 const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
@@ -319,8 +320,16 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
       </div>
     </div>`;
 
+  const docTitle = poBaseName({
+    poReference: order.poReference,
+    orderNumber: order.orderNumber,
+    accountName: order.accountName,
+    customerName: order.customerName,
+    createdAt: order.createdAt,
+  });
+
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Production Sheet ${esc(order.poReference || order.orderNumber)}</title>
+<html><head><meta charset="utf-8"><title>${esc(docTitle)}</title>
 <style>
   body { font-family: 'Segoe UI', Arial, sans-serif; color: #000; margin: 0; padding: 28px 36px; max-width: 900px; margin: 0 auto; }
   img { max-width: 100%; }
@@ -470,7 +479,13 @@ export async function uploadPoPdfToDrive(
   if (!pdfBuf) { console.error("[po-pdf] Render failed for", orderId); return null; }
 
   const order = await storage.getOrder(orderId);
-  const fileName = `PO ${order?.poReference || order?.orderNumber || orderId}.pdf`;
+  const fileName = poFilename({
+    poReference: order?.poReference,
+    orderNumber: order?.orderNumber,
+    accountName: order?.accountName,
+    customerName: order?.customerName,
+    createdAt: order?.createdAt,
+  });
 
   try {
     let targetFolder = poFolderId;
