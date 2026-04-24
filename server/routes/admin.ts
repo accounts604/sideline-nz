@@ -907,7 +907,7 @@ router.get("/orders/next-po-reference", async (_req, res) => {
   }
 });
 
-// POST /orders/create-po — create a new purchase order from scratch (admin-initiated)
+// POST /orders/create-po — create a new production sheet from scratch (admin-initiated)
 const createPoSchema = z.object({
   storeSlug: z.string(),
   orderType: z.enum(["team-store", "bulk-order", "sample-run"]).optional().default("bulk-order"),
@@ -1101,7 +1101,7 @@ router.post("/orders/create-po", async (req, res) => {
   } catch (err: any) {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin create PO error:", err);
-    res.status(500).json({ error: "Failed to create purchase order" });
+    res.status(500).json({ error: "Failed to create production sheet" });
   }
 });
 

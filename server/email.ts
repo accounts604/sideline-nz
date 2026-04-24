@@ -6,11 +6,19 @@
 import { sendGmail, isGmailConfigured } from "./gmail";
 import { computeMilestones } from "@shared/po-milestones";
 
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer | string; // Buffer or base64 string
+  contentType?: string;
+}
+
 export interface EmailPayload {
   to: string;
   subject: string;
   text: string;
   html?: string;
+  attachments?: EmailAttachment[];
+  replyTo?: string;
 }
 
 export interface EmailService {
@@ -29,17 +37,57 @@ class ConsoleEmailService implements EmailService {
   }
 }
 
-// Factory — reads EMAIL_PROVIDER env var (future: "resend", "sendgrid")
+// Resend HTTP API — keeps us SDK-free.
+class ResendEmailService implements EmailService {
+  constructor(private apiKey: string, private from: string) {}
+
+  async send(payload: EmailPayload) {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: this.from,
+        to: [payload.to],
+        reply_to: payload.replyTo,
+        subject: payload.subject,
+        text: payload.text,
+        html: payload.html,
+        attachments: payload.attachments?.map((a) => ({
+          filename: a.filename,
+          content: Buffer.isBuffer(a.content) ? a.content.toString("base64") : a.content,
+          content_type: a.contentType,
+        })),
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[EMAIL] Resend ${res.status}: ${body.slice(0, 300)}`);
+      return { success: false };
+    }
+    const json = (await res.json().catch(() => ({}))) as { id?: string };
+    return { success: true, messageId: json.id };
+  }
+}
+
+// Factory — explicit EMAIL_PROVIDER wins; otherwise auto-pick Resend if its key is set.
 function createEmailService(): EmailService {
   const provider = process.env.EMAIL_PROVIDER;
+  const resendKey = process.env.RESEND_API_KEY;
+  const resendFrom = process.env.RESEND_FROM || "Sideline NZ <hello@sidelinenz.com>";
 
-  switch (provider) {
-    // Future providers go here:
-    // case "resend": return new ResendEmailService();
-    // case "sendgrid": return new SendGridEmailService();
-    default:
+  if (provider === "resend" || (!provider && resendKey)) {
+    if (!resendKey) {
+      console.warn("[EMAIL] EMAIL_PROVIDER=resend but RESEND_API_KEY missing — falling back to console");
       return new ConsoleEmailService();
+    }
+    return new ResendEmailService(resendKey, resendFrom);
   }
+
+  // Future: case "sendgrid" etc.
+  return new ConsoleEmailService();
 }
 
 export const emailService = createEmailService();
@@ -208,7 +256,7 @@ export async function sendSupplierPoDispatchGmail(input: DispatchSupplierInput):
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#111;max-width:640px">
       <p>${hi}</p>
-      <p>A new purchase order has been raised. ${poLine}.</p>
+      <p>A new production sheet has been raised. ${poLine}.</p>
       ${itemsHtml}
       ${input.deliveryAddress ? `<p><strong>Delivery:</strong><br/>${input.deliveryAddress.replace(/\n/g, "<br/>")}</p>` : ""}
       ${milestonesHtml}
@@ -248,10 +296,10 @@ export async function sendSupplierPoRaisedEmail(
   const addrLine = deliveryAddress ? `\nDelivery: ${deliveryAddress}` : "";
   return emailService.send({
     to,
-    subject: `New PO — ${orderNumber}`,
-    text: `A new purchase order has been raised to you.\n\nPO: ${orderNumber}${refLine}${addrLine}\n\nLog in to your supplier portal to download tech-pack files and mark progress: ${link}`,
-    html: `<p>A new purchase order has been raised to you.</p>
-<p><strong>PO:</strong> ${orderNumber}${poReference ? `<br/><strong>Ref:</strong> ${poReference}` : ""}${deliveryAddress ? `<br/><strong>Delivery:</strong> ${deliveryAddress}` : ""}</p>
+    subject: `New Production Sheet — ${orderNumber}`,
+    text: `A new production sheet has been raised to you.\n\nRef: ${orderNumber}${refLine}${addrLine}\n\nLog in to your supplier portal to download tech-pack files and mark progress: ${link}`,
+    html: `<p>A new production sheet has been raised to you.</p>
+<p><strong>Ref:</strong> ${orderNumber}${poReference ? `<br/><strong>PO:</strong> ${poReference}` : ""}${deliveryAddress ? `<br/><strong>Delivery:</strong> ${deliveryAddress}` : ""}</p>
 <p><a href="${link}">Log in to your supplier portal</a> to download tech-pack files and mark progress.</p>`,
   });
 }
