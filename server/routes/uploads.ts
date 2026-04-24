@@ -69,4 +69,57 @@ router.post("/token", async (req, res) => {
   }
 });
 
+// POST /from-url — server-side fetch of a remote image → Vercel Blob. Used
+// by the admin paste-from-clipboard flow when the clipboard contained a URL
+// instead of a bitmap (Telegram on macOS often does this when the user hits
+// "Copy" on a message instead of "Copy Image").
+//
+// Keeps the 50MB cap and the same image-only content-type allowlist as the
+// client-upload path so we don't accidentally start accepting PDFs/zips by a
+// different door.
+router.post("/from-url", async (req, res) => {
+  try {
+    const { url } = req.body as { url?: string };
+    if (!url || typeof url !== "string") return res.status(400).json({ error: "url required" });
+
+    let parsed: URL;
+    try { parsed = new URL(url); } catch { return res.status(400).json({ error: "Not a valid URL" }); }
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return res.status(400).json({ error: "Only http(s) URLs are supported" });
+    }
+
+    const fetchRes = await fetch(url, { redirect: "follow" });
+    if (!fetchRes.ok) return res.status(400).json({ error: `Source fetch failed: ${fetchRes.status}` });
+
+    const contentType = (fetchRes.headers.get("content-type") || "").split(";")[0].trim();
+    const allowed = ["image/png", "image/jpeg", "image/svg+xml", "image/webp", "image/gif"];
+    if (!allowed.includes(contentType)) {
+      return res.status(400).json({ error: `Not a supported image type: ${contentType || "unknown"}` });
+    }
+
+    const arrayBuf = await fetchRes.arrayBuffer();
+    if (arrayBuf.byteLength > 50 * 1024 * 1024) return res.status(400).json({ error: "Image > 50MB" });
+    const buffer = Buffer.from(arrayBuf);
+
+    const ext = contentType.split("/")[1] === "svg+xml" ? "svg" : contentType.split("/")[1];
+    const filename = `pasted-url-${Date.now()}.${ext}`;
+
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!blobToken) return res.status(500).json({ error: "BLOB_READ_WRITE_TOKEN missing" });
+
+    const { put } = await import("@vercel/blob");
+    const blob = await put(filename, buffer, {
+      access: "public",
+      contentType,
+      token: blobToken,
+      addRandomSuffix: true,
+    });
+
+    res.json({ url: blob.url });
+  } catch (err: any) {
+    console.error("Upload from URL error:", err);
+    res.status(500).json({ error: err.message || "Upload from URL failed" });
+  }
+});
+
 export default router;

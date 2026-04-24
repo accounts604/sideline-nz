@@ -247,7 +247,9 @@ function ImageUploadSlot({
     }
     try {
       const items = await navigator.clipboard.read();
+      const allTypes: string[] = [];
       for (const item of items) {
+        allTypes.push(...item.types);
         const type = item.types.find((t) => t.startsWith("image/"));
         if (type) {
           const blob = await item.getType(type);
@@ -257,7 +259,28 @@ function ImageUploadSlot({
           return true;
         }
       }
-      setError("No image on clipboard");
+
+      // Fallback — no direct bitmap. Some apps (Telegram on macOS with "Copy"
+      // vs "Copy Image") put a URL on the clipboard instead of the image.
+      // Try text/plain: if it's a http(s) URL, have the server fetch + upload.
+      try {
+        const text = await navigator.clipboard.readText();
+        const trimmed = text?.trim();
+        if (trimmed && /^https?:\/\//i.test(trimmed)) {
+          setUploading(true);
+          setError("");
+          const r = await apiRequest("POST", "/api/uploads/from-url", { url: trimmed });
+          const j = await r.json();
+          setUploading(false);
+          if (j?.url) { onUpload(j.url); return true; }
+          setError(j?.error || "Upload from URL failed");
+          return false;
+        }
+      } catch { /* readText may be denied — fall through */ }
+
+      // Give Romero something diagnostic if the clipboard truly had nothing useful.
+      const typesHint = allTypes.length ? ` (found: ${allTypes.join(", ")})` : "";
+      setError(`No image on clipboard${typesHint}. On Telegram: right-click → Copy Image (not "Copy"). Or drag the file in.`);
     } catch (e: any) {
       setError(e?.message || "Clipboard read failed");
     }
