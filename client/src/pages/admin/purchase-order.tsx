@@ -131,11 +131,22 @@ function AssetStrip({ title, assets }: { title: string; assets: DesignAsset[] })
 // Logo Placement Grid — mirrors the PDF renderer (server/po-pdf.ts).
 // 9 position columns × 5 data rows. Positions with no assigned logo render as em-dashes.
 function LogoPlacementGrid({ elements }: { elements: LogoElement[] }) {
-  const byPosition = new Map<LogoPosition, LogoElement>();
+  // Multi-logo-per-position + custom placements supported. See server/po-pdf.ts.
+  const presetSet = new Set<string>(LOGO_POSITIONS);
+  const byPosition = new Map<LogoPosition, LogoElement[]>();
+  const custom: LogoElement[] = [];
   const unassigned: LogoElement[] = [];
   for (const el of elements) {
-    if (el.position) byPosition.set(el.position, el);
-    else if (el.url) unassigned.push(el);
+    if (!el.position) {
+      if (el.url) unassigned.push(el);
+    } else if (presetSet.has(el.position)) {
+      const key = el.position as LogoPosition;
+      const list = byPosition.get(key) || [];
+      list.push(el);
+      byPosition.set(key, list);
+    } else {
+      custom.push(el);
+    }
   }
 
   const th = (isFirst = false): React.CSSProperties => ({
@@ -185,44 +196,82 @@ function LogoPlacementGrid({ elements }: { elements: LogoElement[] }) {
           <tr style={{ height: "90px" }}>
             <td style={lblStyle}>LOGO</td>
             {LOGO_POSITIONS.map((p) => {
-              const spec = byPosition.get(p);
+              const specs = byPosition.get(p) || [];
+              if (!specs.length) return <td key={p} style={tdStyle}><span style={{ color: "#ccc", fontSize: "16px" }}>—</span></td>;
+              const maxH = specs.length === 1 ? 76 : 36;
               return <td key={p} style={tdStyle}>
-                {spec ? <img src={spec.url} alt={spec.name} style={{ maxWidth: "88%", maxHeight: "76px", objectFit: "contain" }} /> : <span style={{ color: "#ccc", fontSize: "16px" }}>—</span>}
+                {specs.map((s, i) => <div key={i} style={{ margin: "1px 0" }}><img src={s.url} alt={s.name} style={{ maxWidth: "88%", maxHeight: `${maxH}px`, objectFit: "contain" }} /></div>)}
               </td>;
             })}
           </tr>
           <tr>
             <td style={lblStyle}>APPLICATION</td>
             {LOGO_POSITIONS.map((p) => {
-              const spec = byPosition.get(p);
-              return <td key={p} style={tdStyle}>{spec?.application ? <strong>{spec.application.toUpperCase()}</strong> : ""}</td>;
+              const specs = byPosition.get(p) || [];
+              if (!specs.length) return <td key={p} style={tdStyle}></td>;
+              return <td key={p} style={tdStyle}>{specs.map((s, i) => <div key={i}>{s.application ? <strong>{s.application.toUpperCase()}</strong> : "—"}</div>)}</td>;
             })}
           </tr>
           <tr>
             <td style={lblStyle}>SIZE</td>
             {LOGO_POSITIONS.map((p) => {
-              const spec = byPosition.get(p);
-              return <td key={p} style={tdStyle}>{spec?.sizeMm || ""}</td>;
+              const specs = byPosition.get(p) || [];
+              if (!specs.length) return <td key={p} style={tdStyle}></td>;
+              return <td key={p} style={tdStyle}>{specs.map((s, i) => <div key={i}>{s.sizeMm || "—"}</div>)}</td>;
             })}
           </tr>
           <tr>
             <td style={lblStyle}>THREAD / PMS</td>
             {LOGO_POSITIONS.map((p) => {
-              const spec = byPosition.get(p);
+              const specs = byPosition.get(p) || [];
+              if (!specs.length) return <td key={p} style={tdStyle}></td>;
               return <td key={p} style={tdStyle}>
-                {spec?.threadColours?.length ? spec.threadColours.map((c, i) => <div key={i} style={{ fontSize: "9px", lineHeight: 1.4 }}>{c}</div>) : ""}
+                {specs.map((s, si) => (
+                  <div key={si} style={{ marginBottom: si < specs.length - 1 ? "4px" : 0 }}>
+                    {s.threadColours?.length ? s.threadColours.map((c, i) => <div key={i} style={{ fontSize: "9px", lineHeight: 1.4 }}>{c}</div>) : "—"}
+                  </div>
+                ))}
               </td>;
             })}
           </tr>
           <tr>
             <td style={lblStyle}>ARTWORK FILE</td>
             {LOGO_POSITIONS.map((p) => {
-              const spec = byPosition.get(p);
-              return <td key={p} style={tdStyle}>{spec?.artworkFile ? <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: "9px" }}>{spec.artworkFile}</span> : ""}</td>;
+              const specs = byPosition.get(p) || [];
+              if (!specs.length) return <td key={p} style={tdStyle}></td>;
+              return <td key={p} style={tdStyle}>{specs.map((s, i) => <div key={i}>{s.artworkFile ? <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: "9px" }}>{s.artworkFile}</span> : "—"}</div>)}</td>;
             })}
           </tr>
         </tbody>
       </table>
+      {custom.length > 0 && (
+        <div style={{ background: "#eff6ff", borderLeft: "1px solid #bfdbfe", borderRight: "1px solid #bfdbfe", borderBottom: "1px solid #bfdbfe", padding: "10px 12px" }}>
+          <div style={{ fontSize: "9px", fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "6px" }}>Custom Placements ({custom.length})</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "9.5px" }}>
+            <thead>
+              <tr>
+                {["POSITION", "LOGO", "APPLICATION", "SIZE", "THREAD / PMS", "ARTWORK"].map((h, i) => (
+                  <th key={h} style={{ padding: "4px 6px", background: "#dbeafe", textAlign: i < 2 ? "left" : "center", fontSize: "8.5px", fontWeight: 700, letterSpacing: "0.3px", border: "1px solid #bfdbfe" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {custom.map((s, i) => (
+                <tr key={i}>
+                  <td style={{ padding: "5px 6px", fontWeight: 700, color: "#1d4ed8", border: "1px solid #bfdbfe" }}>{s.position || ""}</td>
+                  <td style={{ padding: "5px 6px", border: "1px solid #bfdbfe" }}>
+                    {s.url && <img src={s.url} alt={s.name} style={{ maxHeight: "32px", maxWidth: "56px", objectFit: "contain" }} />}
+                  </td>
+                  <td style={{ padding: "5px 6px", textAlign: "center", border: "1px solid #bfdbfe" }}><strong>{(s.application || "—").toUpperCase()}</strong></td>
+                  <td style={{ padding: "5px 6px", textAlign: "center", border: "1px solid #bfdbfe" }}>{s.sizeMm || "—"}</td>
+                  <td style={{ padding: "5px 6px", textAlign: "center", border: "1px solid #bfdbfe" }}>{s.threadColours?.length ? s.threadColours.join(", ") : "—"}</td>
+                  <td style={{ padding: "5px 6px", textAlign: "center", border: "1px solid #bfdbfe", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.artworkFile || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

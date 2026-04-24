@@ -67,11 +67,24 @@ function renderAssetStrip(title: string, assets: DesignAsset[], headerBg = "#000
 // Positions with no assigned logo render as em-dashes.
 
 function renderLogoGrid(elements: LogoElement[]): string {
-  const byPosition = new Map<LogoPosition, LogoElement>();
+  // Multiple logos can share a position (e.g. two sponsors on Center Back).
+  // A position that doesn't match one of the 9 presets is a "custom
+  // placement" — rendered in its own strip under the grid.
+  const presetSet = new Set<string>(LOGO_POSITIONS);
+  const byPosition = new Map<LogoPosition, LogoElement[]>();
+  const custom: LogoElement[] = [];
   const unassigned: LogoElement[] = [];
   for (const el of elements) {
-    if (el.position) byPosition.set(el.position, el);
-    else if (el.url) unassigned.push(el);
+    if (!el.position) {
+      if (el.url) unassigned.push(el);
+    } else if (presetSet.has(el.position)) {
+      const key = el.position as LogoPosition;
+      const list = byPosition.get(key) || [];
+      list.push(el);
+      byPosition.set(key, list);
+    } else {
+      custom.push(el);
+    }
   }
 
   const th = (label: string, isFirst = false) => `<th style="padding:6px 4px;background:#000;color:#fff;font-size:8.5px;font-weight:700;text-align:${isFirst ? "left" : "center"};letter-spacing:0.2px;border:1px solid #000;line-height:1.2">${label}</th>`;
@@ -109,40 +122,72 @@ function renderLogoGrid(elements: LogoElement[]): string {
         <tr style="height:90px">
           ${lblCell("LOGO")}
           ${LOGO_POSITIONS.map(p => {
-            const spec = byPosition.get(p);
-            return td(spec ? `<img src="${spec.url}" style="max-width:88%;max-height:76px;object-fit:contain" />` : empty);
+            const specs = byPosition.get(p) || [];
+            if (!specs.length) return td(empty);
+            // Stack multiple logos in the same cell — slightly smaller when > 1.
+            const maxH = specs.length === 1 ? 76 : 36;
+            const stacked = specs.map(s => `<img src="${s.url}" style="max-width:88%;max-height:${maxH}px;object-fit:contain;margin:1px 0" />`).join("<br/>");
+            return td(stacked);
           }).join("")}
         </tr>
         <tr>
           ${lblCell("APPLICATION")}
           ${LOGO_POSITIONS.map(p => {
-            const spec = byPosition.get(p);
-            return td(spec?.application ? `<strong>${esc(spec.application).toUpperCase()}</strong>` : "");
+            const specs = byPosition.get(p) || [];
+            if (!specs.length) return td("");
+            return td(specs.map(s => s.application ? `<strong>${esc(s.application).toUpperCase()}</strong>` : "—").join("<br/>"));
           }).join("")}
         </tr>
         <tr>
           ${lblCell("SIZE")}
           ${LOGO_POSITIONS.map(p => {
-            const spec = byPosition.get(p);
-            return td(spec?.sizeMm ? esc(spec.sizeMm) : "");
+            const specs = byPosition.get(p) || [];
+            if (!specs.length) return td("");
+            return td(specs.map(s => esc(s.sizeMm || "—")).join("<br/>"));
           }).join("")}
         </tr>
         <tr>
           ${lblCell("THREAD / PMS")}
           ${LOGO_POSITIONS.map(p => {
-            const spec = byPosition.get(p);
-            return td(spec?.threadColours?.length ? spec.threadColours.map(c => `<div style="font-size:9px;line-height:1.4">${esc(c)}</div>`).join("") : "");
+            const specs = byPosition.get(p) || [];
+            if (!specs.length) return td("");
+            return td(specs.map(s => s.threadColours?.length
+              ? s.threadColours.map(c => `<div style="font-size:9px;line-height:1.4">${esc(c)}</div>`).join("")
+              : "—").join('<div style="height:4px"></div>'));
           }).join("")}
         </tr>
         <tr>
           ${lblCell("ARTWORK FILE")}
           ${LOGO_POSITIONS.map(p => {
-            const spec = byPosition.get(p);
-            return td(spec?.artworkFile ? `<span style="font-family:monospace;font-size:9px">${esc(spec.artworkFile)}</span>` : "");
+            const specs = byPosition.get(p) || [];
+            if (!specs.length) return td("");
+            return td(specs.map(s => s.artworkFile ? `<span style="font-family:monospace;font-size:9px">${esc(s.artworkFile)}</span>` : "—").join("<br/>"));
           }).join("")}
         </tr>
       </tbody>
     </table>
+    ${custom.length ? `
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-top:none;padding:10px 12px">
+        <div style="font-size:9px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Custom Placements (${custom.length})</div>
+        <table style="width:100%;border-collapse:collapse;font-size:9.5px">
+          <thead>
+            <tr>
+              ${["POSITION","LOGO","APPLICATION","SIZE","THREAD / PMS","ARTWORK"].map((h,i) => `<th style="padding:4px 6px;background:#dbeafe;text-align:${i<2?"left":"center"};font-size:8.5px;font-weight:700;letter-spacing:0.3px;border:1px solid #bfdbfe">${h}</th>`).join("")}
+            </tr>
+          </thead>
+          <tbody>
+            ${custom.map(s => `
+              <tr>
+                <td style="padding:5px 6px;font-weight:700;color:#1d4ed8;border:1px solid #bfdbfe">${esc(s.position || "")}</td>
+                <td style="padding:5px 6px;border:1px solid #bfdbfe">${s.url ? `<img src="${s.url}" style="max-height:32px;max-width:56px;object-fit:contain" />` : ""}</td>
+                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe"><strong>${esc((s.application || "—").toUpperCase())}</strong></td>
+                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe">${esc(s.sizeMm || "—")}</td>
+                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe">${s.threadColours?.length ? s.threadColours.map(c => esc(c)).join(", ") : "—"}</td>
+                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe;font-family:monospace">${esc(s.artworkFile || "—")}</td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>` : ""}
   </div>`;
 }
 

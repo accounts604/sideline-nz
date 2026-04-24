@@ -1486,10 +1486,17 @@ function LogoElementEditor({ element, onChange, onRemove }: {
           </div>
           <div>
             <div style={labelStyle}>Position</div>
-            <select style={inputStyle} value={local.position || ""} onChange={(e) => commit({ position: (e.target.value || undefined) as LogoPosition | undefined })}>
-              <option value="">— unassigned —</option>
-              {LOGO_POSITIONS.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
+            <input
+              style={inputStyle}
+              list={`positions-${local.url}`}
+              placeholder="Pick or type custom…"
+              value={local.position || ""}
+              onChange={(e) => setLocal({ ...local, position: e.target.value })}
+              onBlur={() => commit({ position: (local.position?.trim() || undefined) })}
+            />
+            <datalist id={`positions-${local.url}`}>
+              {LOGO_POSITIONS.map((p) => <option key={p} value={p} />)}
+            </datalist>
           </div>
           <div>
             <div style={labelStyle}>Application</div>

@@ -171,6 +171,13 @@ export type OrderItem = typeof orderItems.$inferSelect;
 // Logo Placement — shape of each entry in orderItems.elementUrls.
 // Only { name, url } were originally captured; the placement fields were
 // added 2026-04-24 and are optional so historical orders still render.
+//
+// LOGO_POSITIONS is the suggested set shown as autocomplete options in the
+// admin UI + gets dedicated columns in the PO grid. Position is stored as a
+// free-form string so custom placements ("Left Hip", "Back Neck Tape", etc.)
+// can be entered — these render in a "Custom Placements" strip below the
+// preset grid. Multiple logos can share the same position (e.g. two sponsor
+// logos on Center Back); the grid stacks them in the same cell.
 export const LOGO_POSITIONS = [
   "Left Chest",
   "Right Chest",
@@ -186,7 +193,7 @@ export type LogoPosition = typeof LOGO_POSITIONS[number];
 export type LogoElement = {
   name: string;
   url: string;
-  position?: LogoPosition;
+  position?: string;          // Free-form. Matches a LOGO_POSITIONS entry → renders in the grid column; else → "Custom Placements" strip.
   application?: string;       // "Embroidery" | "Screen Print" | "Sublimation" | "Heat Transfer"
   sizeMm?: string;            // e.g. "85 × 60 mm"
   threadColours?: string[];   // e.g. ["PMS Black", "PMS 130", "White"]
