@@ -211,6 +211,7 @@ function ImageUploadSlot({
   const ref = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [focused, setFocused] = useState(false);
 
   async function handleFile(file: File) {
     setUploading(true);
@@ -226,19 +227,74 @@ function ImageUploadSlot({
     }
   }
 
+  // Grab the first image in a clipboard-like source (DataTransferItemList or
+  // ClipboardItems from navigator.clipboard.read()). Synthesises a File so
+  // the same Vercel-Blob upload path handles it as if the user had picked it.
+  async function handleClipboardDataTransfer(items: DataTransferItemList): Promise<boolean> {
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        const f = item.getAsFile();
+        if (f) { await handleFile(f); return true; }
+      }
+    }
+    return false;
+  }
+
+  async function handleClipboardReadAsync(): Promise<boolean> {
+    if (!navigator.clipboard?.read) {
+      setError("Clipboard access not available in this browser");
+      return false;
+    }
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const type = item.types.find((t) => t.startsWith("image/"));
+        if (type) {
+          const blob = await item.getType(type);
+          const ext = type.split("/")[1] || "png";
+          const file = new File([blob], `pasted-${Date.now()}.${ext}`, { type });
+          await handleFile(file);
+          return true;
+        }
+      }
+      setError("No image on clipboard");
+    } catch (e: any) {
+      setError(e?.message || "Clipboard read failed");
+    }
+    return false;
+  }
+
   return (
     <div>
       <div
+        tabIndex={0}
         style={{
           textAlign: "center", cursor: "pointer",
-          border: `1px dashed ${error ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.15)"}`, borderRadius: "8px",
+          border: `1px dashed ${error ? "rgba(239,68,68,0.4)" : focused ? "rgba(201,168,76,0.4)" : "rgba(255,255,255,0.15)"}`,
+          borderRadius: "8px",
           padding: small ? "8px" : "16px", minHeight: small ? "60px" : "200px",
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          background: uploading ? "rgba(201,168,76,0.08)" : error ? "rgba(239,68,68,0.04)" : "rgba(255,255,255,0.02)",
+          background: uploading ? "rgba(201,168,76,0.08)" : error ? "rgba(239,68,68,0.04)" : focused ? "rgba(201,168,76,0.04)" : "rgba(255,255,255,0.02)",
+          outline: "none",
         }}
         onClick={() => ref.current?.click()}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
         onDragOver={(e) => e.preventDefault()}
+        onPaste={(e) => {
+          if (!e.clipboardData) return;
+          // Prefer the items API (works for screenshots/snippets); fall back
+          // to .files (works when the user copied a file from Finder).
+          const handledViaItems = Array.from(e.clipboardData.items).some((it) => it.type.startsWith("image/"));
+          if (handledViaItems) {
+            e.preventDefault();
+            void handleClipboardDataTransfer(e.clipboardData.items);
+            return;
+          }
+          const f = e.clipboardData.files[0];
+          if (f && f.type.startsWith("image/")) { e.preventDefault(); void handleFile(f); }
+        }}
       >
         <input ref={ref} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
         {uploading ? (
@@ -247,10 +303,21 @@ function ImageUploadSlot({
           <img src={url} alt={label} style={{ maxHeight: small ? "50px" : "220px", maxWidth: "100%", objectFit: "contain" }} />
         ) : (
           <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}>
-            <Upload size={18} style={{ marginBottom: "6px" }} /><br />{label}<br /><span style={{ fontSize: "10px" }}>Click or drag image</span>
+            <Upload size={18} style={{ marginBottom: "6px" }} /><br />{label}<br />
+            <span style={{ fontSize: "10px" }}>Click · drag · {focused ? <strong style={{ color: "#C9A84C" }}>paste (⌘V)</strong> : "focus + ⌘V"}</span>
           </span>
         )}
       </div>
+      {!url && !uploading && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); void handleClipboardReadAsync(); }}
+          title="Paste an image from clipboard"
+          style={{ marginTop: "4px", width: "100%", padding: "4px 8px", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.4px", background: "rgba(201,168,76,0.08)", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.25)", borderRadius: "4px", cursor: "pointer" }}
+        >
+          📋 Paste from clipboard
+        </button>
+      )}
       {error && <p style={{ fontSize: "10px", color: "#ef4444", marginTop: "4px" }}>{error}</p>}
       {/* Pick from file vault */}
       {!url && vaultImages && vaultImages.length > 0 && (
