@@ -18,7 +18,10 @@ import {
   isDriveConfigured,
   buildClientFolderName,
   mirrorBlobToPoFolder,
+  shareFolderWithUser,
+  createDocInFolder,
 } from "../google-drive";
+import { computeMilestones } from "@shared/po-milestones";
 import { extractColorsFromImage } from "../mockup/color-extract";
 import { generateDesignBrief } from "../mockup/design-brief";
 import { uploadPoPdfToDrive } from "../po-pdf";
@@ -33,6 +36,13 @@ import {
 } from "../ghl-contacts";
 import { SIDELINE_PIPELINE_ID, SIDELINE_STAGE_IDS } from "../ghl-config";
 import { isSidelinePipelineStage, type SidelinePipelineStage } from "@shared/pipeline";
+import {
+  ALL_ORDER_STAGES,
+  isOrderStage,
+  isPushableToGhl,
+  legacyStatusForStage,
+  type OrderStage,
+} from "@shared/order-stages";
 
 const router = Router();
 
@@ -80,11 +90,24 @@ router.get("/dashboard", async (_req, res) => {
 // GET /orders — all orders, filterable/paginated
 router.get("/orders", async (req, res) => {
   try {
-    const { status, designStatus, search, limit, offset } = req.query;
+    const {
+      status, stage, designStatus, search,
+      createdFrom, createdTo, dueFrom, dueTo, overdue,
+      sortBy, sortDir,
+      limit, offset,
+    } = req.query;
     const result = await storage.getAllOrders({
       status: status as string | undefined,
+      stage: stage as string | undefined,
       designStatus: designStatus as string | undefined,
       search: search as string | undefined,
+      createdFrom: createdFrom as string | undefined,
+      createdTo: createdTo as string | undefined,
+      dueFrom: dueFrom as string | undefined,
+      dueTo: dueTo as string | undefined,
+      overdue: overdue === "true" || overdue === "1",
+      sortBy: sortBy === "dueDate" ? "dueDate" : sortBy === "createdAt" ? "createdAt" : undefined,
+      sortDir: sortDir === "asc" ? "asc" : sortDir === "desc" ? "desc" : undefined,
       limit: limit ? parseInt(limit as string) : undefined,
       offset: offset ? parseInt(offset as string) : undefined,
     });
@@ -135,6 +158,10 @@ const updateOrderSchema = z.object({
   artworkApproved: z.boolean().optional(),
   artworkApprovedBy: z.union([z.string(), z.null()]).optional(),
   artworkApprovedAt: z.union([z.string().transform(v => v ? new Date(v) : null), z.null()]).optional(),
+  // Unified Stage picker — accepts any of the 9 GHL pipeline stages plus
+  // Completed / Cancelled. PATCH derives legacy `status` from this and
+  // pushes the GHL stage when applicable. See shared/order-stages.ts.
+  pipelineStage: z.string().refine(isOrderStage, { message: "Invalid stage" }).optional(),
 });
 
 // DELETE /orders/:id — cascades through items, breakdowns, designs, stages,
@@ -192,16 +219,47 @@ router.patch("/orders/:id", async (req, res) => {
   try {
     const data = updateOrderSchema.parse(req.body);
     const oldOrder = await storage.getOrder(req.params.id);
-    const order = await storage.updateOrder(req.params.id, data);
+
+    // Stage picker → derive legacy status when caller didn't set one explicitly,
+    // so badges, notification triggers, and any code reading `status` keep working.
+    const updates: Record<string, any> = { ...data };
+    if (data.pipelineStage && data.status === undefined) {
+      updates.status = legacyStatusForStage(data.pipelineStage as OrderStage);
+    }
+
+    const order = await storage.updateOrder(req.params.id, updates);
     if (!order) return res.status(404).json({ error: "Order not found" });
 
+    // Push to GHL when the stage is one of the real pipeline stages (skip for
+    // Completed/Cancelled which don't exist in GHL). Best-effort — never fail
+    // the request just because GHL is down.
+    if (
+      data.pipelineStage &&
+      data.pipelineStage !== oldOrder?.pipelineStage &&
+      order.ghlOpportunityId &&
+      isPushableToGhl(data.pipelineStage as OrderStage)
+    ) {
+      updateGhlOpportunityStage(order.ghlOpportunityId, data.pipelineStage as SidelinePipelineStage)
+        .catch((err) => console.error("[patch order] GHL stage push failed:", err));
+    }
+
+    // Activity log for stage changes — independent of the status notification.
+    if (data.pipelineStage && data.pipelineStage !== oldOrder?.pipelineStage) {
+      db.insert(orderActivity).values({
+        orderId: order.id,
+        userId: (req as any).user?.userId,
+        action: "stage_changed",
+        details: { from: oldOrder?.pipelineStage || null, to: data.pipelineStage },
+      }).catch((err: any) => console.error("[patch order] activity log failed:", err));
+    }
+
     // Notify customer on status change
-    if (data.status && data.status !== oldOrder?.status && order.userId) {
+    if (updates.status && updates.status !== oldOrder?.status && order.userId) {
       notifyOrderStatusChange({
         userId: order.userId,
         orderId: order.id,
         orderNumber: order.orderNumber,
-        newStatus: data.status,
+        newStatus: updates.status,
         customerEmail: order.customerEmail,
       }).catch(err => console.error("Notify order status error:", err));
     }
@@ -1621,6 +1679,63 @@ router.post("/orders/:id/generate-pdf", async (req, res) => {
 // If GHL push fails (creds missing, network, etc), the order is still marked
 // PO-raised internally via orderActivity — GHL sync will catch up on the next
 // manual stage move. Don't fail the whole request just because GHL is down.
+// Plain-text supplier instructions doc body. Uploaded to the PO Drive folder
+// as a Google Doc on raise-po so the supplier sees due dates + checklist
+// alongside the artwork. Mirrors the dates in the Gmail dispatch but persists
+// inside the folder for handoff between supplier staff.
+function buildSupplierInstructions(input: {
+  orderNumber: string;
+  poReference?: string | null;
+  accountName?: string | null;
+  supplierName?: string | null;
+  dueDate?: string | null;
+  deliveryAddress?: string | null;
+  deliveryAttention?: string | null;
+}): string {
+  const milestones = input.dueDate ? computeMilestones(input.dueDate) : null;
+  const ref = input.poReference || input.orderNumber;
+  const lines: string[] = [];
+  lines.push(`SIDELINE NZ — SUPPLIER INSTRUCTIONS`);
+  lines.push(``);
+  lines.push(`PO: ${ref}${input.accountName ? `  ·  ${input.accountName}` : ""}`);
+  if (input.supplierName) lines.push(`Supplier: ${input.supplierName}`);
+  lines.push(``);
+  lines.push(`WHAT'S IN THIS FOLDER`);
+  lines.push(`  • Production sheet (PDF) — every spec, size, and quantity`);
+  lines.push(`  • Mockups — 3D vendor renders for visual reference`);
+  lines.push(`  • Artwork — 2D vector flats (production-ready files)`);
+  lines.push(`  • Logos — sponsor + club marks with placement notes`);
+  lines.push(``);
+  if (milestones) {
+    lines.push(`SCHEDULE (35-day cycle, working back from customer delivery)`);
+    for (const m of milestones) {
+      const flag = m.key === "ship_production" ? "  ← YOUR DEADLINE" : "";
+      lines.push(`  Day ${String(m.dayNumber).padStart(2, " ")}  ${m.date}  ${m.label}${flag}`);
+    }
+    lines.push(``);
+  } else {
+    lines.push(`SCHEDULE`);
+    lines.push(`  Customer due date not yet set — we'll send revised dates once locked.`);
+    lines.push(``);
+  }
+  if (input.deliveryAddress) {
+    lines.push(`DELIVERY`);
+    if (input.deliveryAttention) lines.push(`  Attn: ${input.deliveryAttention}`);
+    for (const ln of input.deliveryAddress.split("\n")) lines.push(`  ${ln}`);
+    lines.push(``);
+  }
+  lines.push(`CHECKLIST — REPLY TO orders@sidelinenz.com`);
+  lines.push(`  [ ] Confirm receipt of this pack within 2 business days`);
+  lines.push(`  [ ] Confirm production timeline + flag any blockers`);
+  lines.push(`  [ ] Send a sample photo before bulk run starts`);
+  lines.push(`  [ ] Provide tracking once shipped from production`);
+  lines.push(``);
+  lines.push(`Anything unclear in spec or dates — reply to the dispatch email and we'll sort it before production starts.`);
+  lines.push(``);
+  lines.push(`— Sideline NZ`);
+  return lines.join("\n");
+}
+
 const raisePoSchema = z.object({
   supplierId: z.string().optional(), // optional if already assigned
 });
@@ -1655,7 +1770,53 @@ router.post("/orders/:id/raise-po", async (req, res) => {
       ghlPushResult = await updateGhlOpportunityStage(order.ghlOpportunityId, "PO Raised");
     }
 
-    // 3. Email the supplier via Gmail API from orders@sidelinenz.com.
+    // 3. Drop an Instructions doc into the Drive folder so the supplier sees
+    // dates + checklist alongside the artwork. Best-effort — Gmail still goes
+    // out even if Drive is down or the folder is missing.
+    let instructionsDocId: string | null = null;
+    if (order.driveFolderId) {
+      const instructionsBody = buildSupplierInstructions({
+        orderNumber: order.orderNumber,
+        poReference: order.poReference,
+        accountName: order.accountName,
+        supplierName: supplier.teamName,
+        dueDate: order.dueDate,
+        deliveryAddress: order.deliveryAddress,
+        deliveryAttention: order.deliveryAttention,
+      });
+      const doc = await createDocInFolder({
+        parentFolderId: order.driveFolderId,
+        name: `${order.poReference || order.orderNumber} — Supplier Instructions`,
+        body: instructionsBody,
+      }).catch((err) => {
+        console.error("[raise-po] instructions doc create failed:", err);
+        return null;
+      });
+      if (doc) instructionsDocId = doc.id;
+    }
+
+    // 4. Share the Drive folder with the supplier (and ccEmail) so the link in
+    // the email actually opens for them. Idempotent — re-dispatching doesn't
+    // re-spam. We disable Drive's notification email since our Gmail covers it.
+    const driveShareResults: Array<{ email: string; permissionId: string | null }> = [];
+    if (order.driveFolderId && supplier.email) {
+      const targets = [supplier.email];
+      if (supplier.ccEmail) targets.push(supplier.ccEmail);
+      for (const email of targets) {
+        const permissionId = await shareFolderWithUser({
+          fileOrFolderId: order.driveFolderId,
+          emailAddress: email,
+          role: "reader",
+          notify: false,
+        }).catch((err) => {
+          console.error(`[raise-po] Drive share failed for ${email}:`, err);
+          return null;
+        });
+        driveShareResults.push({ email, permissionId });
+      }
+    }
+
+    // 5. Email the supplier via Gmail API from orders@sidelinenz.com.
     // CC's the supplier's ccEmail (secondary contact) + self-cc orders@ so
     // the thread lives in the shared orders inbox.
     let gmailMessageId: string | null = null;
@@ -1685,7 +1846,7 @@ router.post("/orders/:id/raise-po", async (req, res) => {
       }
     }
 
-    // 4. Generate PO PDF and upload to Drive folder (01. Brief)
+    // 6. Generate PO PDF and upload to Drive folder (01. Brief)
     let poPdfResult: { pdfId: string; pdfUrl: string } | null = null;
     if (order.driveFolderId) {
       poPdfResult = await uploadPoPdfToDrive(order.id, order.driveFolderId).catch((err) => {
@@ -1694,7 +1855,7 @@ router.post("/orders/:id/raise-po", async (req, res) => {
       });
     }
 
-    // 5. Log the action
+    // 7. Log the action
     await db.insert(orderActivity).values({
       orderId: order.id,
       userId: (req as any).user?.userId,
@@ -1706,6 +1867,8 @@ router.post("/orders/:id/raise-po", async (req, res) => {
         supplierCcEmail: supplier.ccEmail || null,
         gmailMessageId,
         poPdfId: poPdfResult?.pdfId || null,
+        instructionsDocId,
+        driveShares: driveShareResults,
         ghlPushed: ghlPushResult.success,
         ghlPushReason: ghlPushResult.reason,
       },
@@ -1720,6 +1883,8 @@ router.post("/orders/:id/raise-po", async (req, res) => {
       gmailMessageId,
       poPdfUploaded: !!poPdfResult,
       poPdfUrl: poPdfResult?.pdfUrl || null,
+      instructionsDocId,
+      driveSharedWith: driveShareResults.filter((r) => r.permissionId).map((r) => r.email),
       ghlPushed: ghlPushResult.success,
       ghlPushReason: ghlPushResult.reason,
     });

@@ -2,19 +2,24 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
 import { Link, useLocation } from "wouter";
-import { Search, Trash2, Copy, FileText } from "lucide-react";
+import { Search, Trash2, Copy, FileText, ArrowDown, ArrowUp } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { ALL_ORDER_STAGES } from "@shared/order-stages";
 
 interface Order {
   id: string;
   orderNumber: string;
+  poReference: string | null;
+  accountName: string | null;
   customerEmail: string | null;
   customerName: string | null;
   storeSlug: string;
   status: string;
+  pipelineStage: string | null;
   designStatus: string | null;
   orderType: string | null;
   total: number;
+  dueDate: string | null;
   createdAt: string;
 }
 
@@ -29,14 +34,31 @@ const iconBtnStyle: React.CSSProperties = {
   alignItems: "center",
 };
 
-const STATUS_TABS = [
-  { label: "All", value: "" },
-  { label: "Pending", value: "pending" },
-  { label: "Paid", value: "paid" },
-  { label: "Processing", value: "processing" },
-  { label: "Shipped", value: "shipped" },
-  { label: "Delivered", value: "delivered" },
-];
+// Stage colour map — applied to the table badge AND the dropdown swatches.
+// Mirrors the cockpit StageBadge palette used on the order detail page.
+const STAGE_COLORS: Record<string, { bg: string; text: string }> = {
+  "Lead Received":        { bg: "rgba(148,163,184,0.15)", text: "#94a3b8" },
+  "Brief Sent":           { bg: "rgba(59,130,246,0.15)",  text: "#3b82f6" },
+  "Mockup In Progress":   { bg: "rgba(234,179,8,0.15)",   text: "#eab308" },
+  "Mockup Sent":          { bg: "rgba(168,85,247,0.15)",  text: "#a855f7" },
+  "Deposit Paid":         { bg: "rgba(34,197,94,0.15)",   text: "#22c55e" },
+  "PO Raised":            { bg: "rgba(249,115,22,0.15)",  text: "#f97316" },
+  "Delivered":            { bg: "rgba(20,184,166,0.15)",  text: "#14b8a6" },
+  "Invoice Sent":         { bg: "rgba(99,102,241,0.15)",  text: "#6366f1" },
+  "Paid":                 { bg: "rgba(34,197,94,0.18)",   text: "#22c55e" },
+  "Completed":            { bg: "rgba(16,185,129,0.18)",  text: "#10b981" },
+  "Cancelled":            { bg: "rgba(239,68,68,0.15)",   text: "#ef4444" },
+};
+
+function StageBadge({ stage }: { stage: string | null | undefined }) {
+  if (!stage) return <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>—</span>;
+  const c = STAGE_COLORS[stage] || { bg: "rgba(255,255,255,0.06)", text: "rgba(255,255,255,0.5)" };
+  return (
+    <span style={{ fontSize: "11px", fontWeight: 600, padding: "3px 8px", borderRadius: "4px", background: c.bg, color: c.text, textTransform: "uppercase", letterSpacing: "0.5px", whiteSpace: "nowrap" }}>
+      {stage}
+    </span>
+  );
+}
 
 function StatusBadge({ status, type = "order" }: { status: string; type?: "order" | "design" }) {
   const orderColors: Record<string, { bg: string; text: string }> = {
@@ -63,20 +85,57 @@ function StatusBadge({ status, type = "order" }: { status: string; type?: "order
 }
 
 export default function AdminOrders() {
-  const [statusFilter, setStatusFilter] = useState("");
+  const [stageFilter, setStageFilter] = useState("");
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
+  const [createdFrom, setCreatedFrom] = useState("");
+  const [createdTo, setCreatedTo] = useState("");
+  const [dueFrom, setDueFrom] = useState("");
+  const [dueTo, setDueTo] = useState("");
+  const [overdue, setOverdue] = useState(false);
+  const [sortBy, setSortBy] = useState<"createdAt" | "dueDate">("createdAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
 
   const queryParams = new URLSearchParams();
-  if (statusFilter) queryParams.set("status", statusFilter);
+  if (stageFilter) queryParams.set("stage", stageFilter);
   if (search) queryParams.set("search", search);
+  if (createdFrom) queryParams.set("createdFrom", createdFrom);
+  if (createdTo) queryParams.set("createdTo", createdTo);
+  if (dueFrom) queryParams.set("dueFrom", dueFrom);
+  if (dueTo) queryParams.set("dueTo", dueTo);
+  if (overdue) queryParams.set("overdue", "true");
+  if (sortBy !== "createdAt" || sortDir !== "desc") {
+    queryParams.set("sortBy", sortBy);
+    queryParams.set("sortDir", sortDir);
+  }
   const queryString = queryParams.toString();
 
   const { data, isLoading } = useQuery<{ orders: Order[]; total: number }>({
     queryKey: [`/api/admin/orders${queryString ? `?${queryString}` : ""}`],
   });
+
+  const filtersActive = !!(stageFilter || createdFrom || createdTo || dueFrom || dueTo || overdue);
+  const clearFilters = () => {
+    setStageFilter(""); setCreatedFrom(""); setCreatedTo("");
+    setDueFrom(""); setDueTo(""); setOverdue(false);
+  };
+
+  const toggleSort = (col: "createdAt" | "dueDate") => {
+    if (sortBy === col) setSortDir(sortDir === "asc" ? "desc" : "asc");
+    else { setSortBy(col); setSortDir("desc"); }
+  };
+
+  const filterInputStyle: React.CSSProperties = {
+    padding: "8px 10px",
+    fontSize: "12px",
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: "6px",
+    color: "#fff",
+    outline: "none",
+  };
 
   const deleteMut = useMutation({
     mutationFn: async (orderId: string) => {
@@ -139,28 +198,56 @@ export default function AdminOrders() {
         </div>
       </div>
 
-      {/* Status tabs */}
-      <div style={{ display: "flex", gap: "4px", marginBottom: "24px", overflowX: "auto", paddingBottom: "4px" }}>
-        {STATUS_TABS.map((tab) => (
+      {/* Filter bar */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", marginBottom: "16px" }}>
+        <select
+          value={stageFilter}
+          onChange={(e) => setStageFilter(e.target.value)}
+          style={{ ...filterInputStyle, minWidth: "160px" }}
+          title="Filter by pipeline stage"
+        >
+          <option value="" style={{ background: "#111" }}>All stages</option>
+          {ALL_ORDER_STAGES.map((s) => (
+            <option key={s} value={s} style={{ background: "#111" }}>{s}</option>
+          ))}
+        </select>
+        <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+          Created
+          <input type="date" value={createdFrom} onChange={(e) => setCreatedFrom(e.target.value)} style={filterInputStyle} />
+          <span style={{ color: "rgba(255,255,255,0.3)" }}>→</span>
+          <input type="date" value={createdTo} onChange={(e) => setCreatedTo(e.target.value)} style={filterInputStyle} />
+        </label>
+        <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+          Due
+          <input type="date" value={dueFrom} onChange={(e) => setDueFrom(e.target.value)} style={filterInputStyle} />
+          <span style={{ color: "rgba(255,255,255,0.3)" }}>→</span>
+          <input type="date" value={dueTo} onChange={(e) => setDueTo(e.target.value)} style={filterInputStyle} />
+        </label>
+        <button
+          onClick={() => setOverdue(!overdue)}
+          style={{
+            padding: "8px 14px",
+            fontSize: "12px",
+            fontWeight: 600,
+            background: overdue ? "rgba(239,68,68,0.18)" : "rgba(255,255,255,0.04)",
+            color: overdue ? "#ef4444" : "rgba(255,255,255,0.5)",
+            border: `1px solid ${overdue ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.1)"}`,
+            borderRadius: "6px",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+          title="Open orders past their due date"
+        >
+          Overdue only
+        </button>
+        {filtersActive && (
           <button
-            key={tab.value}
-            onClick={() => setStatusFilter(tab.value)}
-            style={{
-              padding: "8px 16px",
-              fontSize: "13px",
-              fontWeight: statusFilter === tab.value ? 600 : 400,
-              color: statusFilter === tab.value ? "#fff" : "rgba(255,255,255,0.5)",
-              background: statusFilter === tab.value ? "rgba(255,255,255,0.1)" : "transparent",
-              border: "1px solid",
-              borderColor: statusFilter === tab.value ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.06)",
-              borderRadius: "6px",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
+            onClick={clearFilters}
+            style={{ padding: "8px 14px", fontSize: "12px", background: "transparent", color: "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", cursor: "pointer" }}
           >
-            {tab.label}
+            Clear filters
           </button>
-        ))}
+        )}
       </div>
 
       {/* Orders table */}
@@ -174,9 +261,42 @@ export default function AdminOrders() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                  {["Order", "Type", "Customer", "Status", "Design", "Total", "Date", ""].map((h) => (
-                    <th key={h} style={{ padding: "12px 20px", textAlign: "left", fontSize: "11px", fontWeight: 600, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</th>
-                  ))}
+                  {[
+                    { label: "Order" },
+                    { label: "Type" },
+                    { label: "Customer" },
+                    { label: "Stage" },
+                    { label: "Design" },
+                    { label: "Total" },
+                    { label: "Due", sortKey: "dueDate" as const },
+                    { label: "Created", sortKey: "createdAt" as const },
+                    { label: "" },
+                  ].map((h) => {
+                    const isSorted = h.sortKey && sortBy === h.sortKey;
+                    return (
+                      <th
+                        key={h.label || "actions"}
+                        onClick={() => h.sortKey && toggleSort(h.sortKey)}
+                        style={{
+                          padding: "12px 20px",
+                          textAlign: "left",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: isSorted ? "#fff" : "rgba(255,255,255,0.35)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                          cursor: h.sortKey ? "pointer" : "default",
+                          userSelect: "none",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {h.label}
+                        {isSorted && (sortDir === "asc"
+                          ? <ArrowUp size={11} style={{ marginLeft: 4, verticalAlign: "middle" }} />
+                          : <ArrowDown size={11} style={{ marginLeft: 4, verticalAlign: "middle" }} />)}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -189,8 +309,11 @@ export default function AdminOrders() {
                   >
                     <td style={{ padding: "14px 20px" }}>
                       <Link href={`/admin/orders/${order.id}`}>
-                        <span style={{ fontSize: "14px", color: "#fff", fontWeight: 500, cursor: "pointer" }}>{order.orderNumber}</span>
+                        <span style={{ fontSize: "14px", color: "#fff", fontWeight: 500, cursor: "pointer" }}>{order.poReference || order.orderNumber}</span>
                       </Link>
+                      {order.accountName && (
+                        <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", marginTop: "2px" }}>{order.accountName}</div>
+                      )}
                     </td>
                     <td style={{ padding: "14px 20px" }}>
                       <span style={{
@@ -206,7 +329,7 @@ export default function AdminOrders() {
                       {order.customerName || order.customerEmail || "—"}
                     </td>
                     <td style={{ padding: "14px 20px" }}>
-                      <StatusBadge status={order.status} />
+                      <StageBadge stage={order.pipelineStage} />
                     </td>
                     <td style={{ padding: "14px 20px" }}>
                       <StatusBadge status={order.designStatus || "not_started"} type="design" />
@@ -214,7 +337,17 @@ export default function AdminOrders() {
                     <td style={{ padding: "14px 20px", fontSize: "14px", color: "#fff", fontWeight: 500 }}>
                       ${(order.total / 100).toFixed(2)}
                     </td>
-                    <td style={{ padding: "14px 20px", fontSize: "13px", color: "rgba(255,255,255,0.4)" }}>
+                    <td style={{ padding: "14px 20px", fontSize: "13px", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                      {order.dueDate
+                        ? (() => {
+                            const today = new Date().toISOString().slice(0, 10);
+                            const isOverdue = order.dueDate < today &&
+                              !["Delivered", "Invoice Sent", "Paid", "Completed", "Cancelled"].includes(order.pipelineStage || "");
+                            return <span style={{ color: isOverdue ? "#ef4444" : "rgba(255,255,255,0.7)" }}>{order.dueDate}</span>;
+                          })()
+                        : "—"}
+                    </td>
+                    <td style={{ padding: "14px 20px", fontSize: "13px", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>
                       {new Date(order.createdAt).toLocaleDateString()}
                     </td>
                     <td style={{ padding: "14px 20px", textAlign: "right", whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>

@@ -9,7 +9,10 @@
 // that forwards into the admin account.
 
 const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
-const GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
+const GMAIL_SEND_URL = `${GMAIL_API_BASE}/messages/send`;
+const GMAIL_DRAFTS_URL = `${GMAIL_API_BASE}/drafts`;
+const GMAIL_THREADS_URL = `${GMAIL_API_BASE}/threads`;
 
 let cachedAccessToken: { token: string; expiresAt: number } | null = null;
 
@@ -121,6 +124,155 @@ function base64UrlEncode(raw: string): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
+}
+
+/**
+ * Create a Gmail draft (does NOT send). Used by the supplier follow-up cron
+ * so Romero can review + click Send in the orders@ inbox before anything
+ * goes out — matches the memory rule that supplier follow-ups go through
+ * Romero's approval, not auto-send.
+ *
+ * If `threadId` is provided, the draft attaches to that thread (i.e. it
+ * shows up as a reply in the existing PO conversation). Otherwise it's a
+ * fresh thread.
+ */
+export async function createGmailDraft(
+  input: GmailSendInput,
+  threadId?: string,
+): Promise<string | null> {
+  const token = await getAccessToken();
+  if (!token) {
+    console.log("[Gmail] not configured — skipping draft to", input.to);
+    return null;
+  }
+
+  const raw = base64UrlEncode(buildRfc2822(input));
+  try {
+    const res = await fetch(GMAIL_DRAFTS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: {
+          raw,
+          ...(threadId ? { threadId } : {}),
+        },
+      }),
+    });
+    if (!res.ok) {
+      console.error("[Gmail] draft create failed:", res.status, await res.text());
+      return null;
+    }
+    const data = await res.json();
+    return data.id || null;
+  } catch (err) {
+    console.error("[Gmail] draft request error:", err);
+    return null;
+  }
+}
+
+export interface GmailMessage {
+  id: string;
+  threadId: string;
+  internalDate: number; // ms
+  fromEmail: string;
+  fromName: string;
+  to: string;
+  subject: string;
+  snippet: string;
+  body: string;            // text/plain decoded; falls back to a stripped HTML
+  labelIds: string[];
+}
+
+function decodeBase64Url(s: string): string {
+  // Gmail returns body data url-safe, no padding
+  const norm = s.replace(/-/g, "+").replace(/_/g, "/").padEnd(s.length + (4 - s.length % 4) % 4, "=");
+  return Buffer.from(norm, "base64").toString("utf-8");
+}
+
+function extractTextFromPayload(payload: any): string {
+  if (!payload) return "";
+  if (payload.body?.data) {
+    if (payload.mimeType?.startsWith("text/plain")) return decodeBase64Url(payload.body.data);
+    if (payload.mimeType?.startsWith("text/html")) {
+      // crude HTML→text — fine for keyword classification
+      return decodeBase64Url(payload.body.data).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    }
+  }
+  // Multipart — prefer text/plain part, fall back to first text/* part
+  if (Array.isArray(payload.parts)) {
+    const plain = payload.parts.find((p: any) => p.mimeType?.startsWith("text/plain"));
+    if (plain) return extractTextFromPayload(plain);
+    const html = payload.parts.find((p: any) => p.mimeType?.startsWith("text/html"));
+    if (html) return extractTextFromPayload(html);
+    // recurse into nested multipart
+    for (const p of payload.parts) {
+      const t = extractTextFromPayload(p);
+      if (t) return t;
+    }
+  }
+  return "";
+}
+
+function parseFromHeader(from: string): { name: string; email: string } {
+  const m = from.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  if (m) return { name: m[1].replace(/^"|"$/g, ""), email: m[2] };
+  return { name: "", email: from.trim() };
+}
+
+/**
+ * Search Gmail messages with the standard Gmail query syntax.
+ * Returns lightweight refs (id + threadId); call `getGmailThread` to load bodies.
+ */
+export async function searchGmailMessages(query: string, maxResults = 25): Promise<Array<{ id: string; threadId: string }>> {
+  const token = await getAccessToken();
+  if (!token) return [];
+  const url = `${GMAIL_API_BASE}/messages?q=${encodeURIComponent(query)}&maxResults=${maxResults}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) {
+    console.error("[Gmail] search failed:", res.status, await res.text());
+    return [];
+  }
+  const data = await res.json();
+  return (data.messages || []).map((m: any) => ({ id: m.id, threadId: m.threadId }));
+}
+
+/**
+ * Load a full Gmail thread — every message, parsed.
+ * Used by the supplier follow-up cron to see whether the supplier has replied
+ * since the original PO dispatch and what they said.
+ */
+export async function getGmailThread(threadId: string): Promise<GmailMessage[]> {
+  const token = await getAccessToken();
+  if (!token) return [];
+  const res = await fetch(`${GMAIL_THREADS_URL}/${threadId}?format=full`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    console.error("[Gmail] thread fetch failed:", res.status, await res.text());
+    return [];
+  }
+  const data = await res.json();
+  return (data.messages || []).map((m: any): GmailMessage => {
+    const headers = (m.payload?.headers || []) as Array<{ name: string; value: string }>;
+    const get = (n: string) => headers.find((h) => h.name.toLowerCase() === n.toLowerCase())?.value || "";
+    const fromRaw = get("From");
+    const { name, email } = parseFromHeader(fromRaw);
+    return {
+      id: m.id,
+      threadId: m.threadId,
+      internalDate: parseInt(m.internalDate || "0", 10),
+      fromEmail: email,
+      fromName: name,
+      to: get("To"),
+      subject: get("Subject"),
+      snippet: m.snippet || "",
+      body: extractTextFromPayload(m.payload),
+      labelIds: m.labelIds || [],
+    };
+  });
 }
 
 /**

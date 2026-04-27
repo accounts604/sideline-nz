@@ -470,6 +470,127 @@ export async function listFilesRecursive(rootFolderId: string): Promise<(DriveFi
   });
 }
 
+/**
+ * Grant a user reader (default) or writer access to a Drive folder/file.
+ * Used at PO dispatch so the supplier can open the folder we email them.
+ *
+ * Idempotent: if the user already has the requested role, we skip and return
+ * the existing permission id. Sends an email notification by default so the
+ * supplier sees "Sideline NZ shared a folder with you" on top of our PO email.
+ *
+ * Returns the permission id, or null if Drive isn't configured / the call
+ * failed (e.g. invalid email, no access). Callers log + continue.
+ */
+export async function shareFolderWithUser({
+  fileOrFolderId,
+  emailAddress,
+  role = "reader",
+  notify = true,
+  notifyMessage,
+}: {
+  fileOrFolderId: string;
+  emailAddress: string;
+  role?: "reader" | "writer" | "commenter";
+  notify?: boolean;
+  notifyMessage?: string;
+}): Promise<string | null> {
+  if (!emailAddress) return null;
+  const token = await getAccessToken();
+  if (!token) return null;
+
+  // Check existing permission so the same supplier doesn't get spammed every
+  // time we re-dispatch a PO. Drive's GET /permissions returns all entries.
+  const listUrl = driveUrl(`/files/${fileOrFolderId}/permissions`, {
+    fields: "permissions(id,emailAddress,role,type)",
+  });
+  const listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${token}` } });
+  if (listRes.ok) {
+    const data = await listRes.json();
+    const existing = (data.permissions || []).find(
+      (p: any) => (p.emailAddress || "").toLowerCase() === emailAddress.toLowerCase()
+    );
+    if (existing && existing.role === role) return existing.id || null;
+  }
+
+  const url = driveUrl(`/files/${fileOrFolderId}/permissions`, {
+    sendNotificationEmail: notify ? "true" : "false",
+    ...(notify && notifyMessage ? { emailMessage: notifyMessage } : {}),
+    fields: "id",
+  });
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ role, type: "user", emailAddress }),
+  });
+  if (!res.ok) {
+    console.error("[Drive] shareFolderWithUser failed:", res.status, await res.text());
+    return null;
+  }
+  const body = await res.json();
+  return body.id || null;
+}
+
+/**
+ * Create a Google Doc inside a Drive folder with the given plain-text body.
+ * Used to drop a one-page Instructions doc next to artwork in the PO folder
+ * so the supplier sees due dates + checklist alongside the files.
+ *
+ * Implementation: create the empty Doc, then PATCH its content via the Drive
+ * media upload endpoint with mimeType=application/vnd.google-apps.document
+ * (Drive auto-converts text/plain). Returns the file id + webViewLink.
+ */
+export async function createDocInFolder({
+  parentFolderId,
+  name,
+  body,
+}: {
+  parentFolderId: string;
+  name: string;
+  body: string;
+}): Promise<{ id: string; webViewLink: string } | null> {
+  const token = await getAccessToken();
+  if (!token) return null;
+
+  const boundary = `--sideline-doc-${Date.now().toString(36)}`;
+  const metadata = {
+    name,
+    parents: [parentFolderId],
+    mimeType: "application/vnd.google-apps.document",
+  };
+  const metadataPart = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`;
+  const mediaHeader = `--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n`;
+  const closing = `\r\n--${boundary}--`;
+
+  const payload = Buffer.concat([
+    Buffer.from(metadataPart, "utf-8"),
+    Buffer.from(mediaHeader, "utf-8"),
+    Buffer.from(body, "utf-8"),
+    Buffer.from(closing, "utf-8"),
+  ]);
+
+  const res = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink&supportsAllDrives=true",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body: payload,
+    },
+  );
+
+  if (!res.ok) {
+    console.error("[Drive] createDocInFolder failed:", res.status, await res.text());
+    return null;
+  }
+  const data = await res.json();
+  return { id: data.id, webViewLink: data.webViewLink };
+}
+
 export async function listFilesInFolder(folderId: string): Promise<DriveFile[]> {
   const q = [
     `'${folderId}' in parents`,

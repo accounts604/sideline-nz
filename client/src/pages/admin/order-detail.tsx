@@ -15,6 +15,7 @@ import { productsGroupedByCategory, getProductById } from "@shared/product-catal
 import { BRANDING_METHODS } from "@shared/branding-methods";
 import { SIZE_CHART_LABELS, suggestSizeChart, getSizeChartTables, type SizeChartType } from "@shared/size-charts";
 import { LOGO_POSITIONS, type LogoElement, type LogoPosition } from "@shared/schema";
+import { ALL_ORDER_STAGES } from "@shared/order-stages";
 import { getDesignPrints, getMockups, type DesignAsset } from "@shared/design-assets";
 import {
   ArrowLeft, FileText, ExternalLink, Upload, Download,
@@ -385,9 +386,6 @@ export default function AdminOrderDetail() {
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [portalMsg, setPortalMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // Status edit
-  const [statusEdit, setStatusEdit] = useState("");
-
   // Add item form
   const [showAddItem, setShowAddItem] = useState(false);
   const [newItemName, setNewItemName] = useState("Sublimated Rugby Jersey");
@@ -743,9 +741,15 @@ export default function AdminOrderDetail() {
               <option value="sample-run" style={{ background: "#111" }}>Sample Run</option>
             </select>
           </Field>
-          <Field label="Status">
-            <select value={statusEdit || order.status} onChange={(e) => { setStatusEdit(e.target.value); updateOrder.mutate({ status: e.target.value }); }} style={{ ...inputStyle, width: "auto" }}>
-              {["pending", "paid", "processing", "shipped", "delivered", "cancelled"].map((s) => <option key={s} value={s} style={{ background: "#111" }}>{s}</option>)}
+          <Field label="Stage">
+            <select
+              value={order.pipelineStage || ""}
+              onChange={(e) => updateOrder.mutate({ pipelineStage: e.target.value })}
+              style={{ ...inputStyle, width: "auto" }}
+              title="Pipeline stage. Mirrors to GHL for the 9 real stages; Completed/Cancelled stay internal."
+            >
+              <option value="" style={{ background: "#111" }}>— not set —</option>
+              {ALL_ORDER_STAGES.map((s) => <option key={s} value={s} style={{ background: "#111" }}>{s}</option>)}
             </select>
           </Field>
           <Field label="New / Repeat">

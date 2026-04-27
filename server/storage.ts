@@ -81,7 +81,21 @@ export interface IStorage {
   deactivateGhlProduct(ghlProductId: string): Promise<void>;
 
   // Admin queries
-  getAllOrders(opts: { status?: string; designStatus?: string; search?: string; limit?: number; offset?: number }): Promise<{ orders: Order[]; total: number }>;
+  getAllOrders(opts: {
+    status?: string;
+    stage?: string;
+    designStatus?: string;
+    search?: string;
+    createdFrom?: string;
+    createdTo?: string;
+    dueFrom?: string;
+    dueTo?: string;
+    overdue?: boolean;
+    sortBy?: "createdAt" | "dueDate";
+    sortDir?: "asc" | "desc";
+    limit?: number;
+    offset?: number;
+  }): Promise<{ orders: Order[]; total: number }>;
   getOrderWithDetails(orderId: string): Promise<{
     order: Order; items: OrderItem[]; designs: DesignFile[]; comments: DesignComment[];
     sizeBreakdowns: OrderSizeBreakdown[]; stages: ProductionStage[];
@@ -477,21 +491,56 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Admin queries
-  async getAllOrders(opts: { status?: string; designStatus?: string; search?: string; limit?: number; offset?: number }): Promise<{ orders: Order[]; total: number }> {
+  async getAllOrders(opts: {
+    status?: string;
+    stage?: string;
+    designStatus?: string;
+    search?: string;
+    createdFrom?: string;
+    createdTo?: string;
+    dueFrom?: string;
+    dueTo?: string;
+    overdue?: boolean;
+    sortBy?: "createdAt" | "dueDate";
+    sortDir?: "asc" | "desc";
+    limit?: number;
+    offset?: number;
+  }): Promise<{ orders: Order[]; total: number }> {
     const conditions = [];
     if (opts.status) conditions.push(eq(orders.status, opts.status));
+    if (opts.stage) conditions.push(eq(orders.pipelineStage, opts.stage));
     if (opts.designStatus) conditions.push(eq(orders.designStatus, opts.designStatus));
     if (opts.search) {
       conditions.push(
-        sql`(${orders.orderNumber} ILIKE ${'%' + opts.search + '%'} OR ${orders.customerEmail} ILIKE ${'%' + opts.search + '%'} OR ${orders.customerName} ILIKE ${'%' + opts.search + '%'})`
+        sql`(${orders.orderNumber} ILIKE ${'%' + opts.search + '%'} OR ${orders.customerEmail} ILIKE ${'%' + opts.search + '%'} OR ${orders.customerName} ILIKE ${'%' + opts.search + '%'} OR ${orders.poReference} ILIKE ${'%' + opts.search + '%'} OR ${orders.accountName} ILIKE ${'%' + opts.search + '%'})`
       );
     }
+    if (opts.createdFrom) {
+      conditions.push(sql`${orders.createdAt} >= ${new Date(opts.createdFrom).toISOString()}`);
+    }
+    if (opts.createdTo) {
+      // Inclusive end of day so a YYYY-MM-DD picker covers the whole day
+      const end = new Date(opts.createdTo);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(sql`${orders.createdAt} <= ${end.toISOString()}`);
+    }
+    if (opts.dueFrom) conditions.push(sql`${orders.dueDate} >= ${opts.dueFrom}`);
+    if (opts.dueTo) conditions.push(sql`${orders.dueDate} <= ${opts.dueTo}`);
+    if (opts.overdue) {
+      // dueDate is YYYY-MM-DD text — direct string compare with today works.
+      const today = new Date().toISOString().slice(0, 10);
+      conditions.push(sql`${orders.dueDate} IS NOT NULL AND ${orders.dueDate} < ${today} AND ${orders.pipelineStage} NOT IN ('Delivered','Invoice Sent','Paid','Completed','Cancelled')`);
+    }
     const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const sortDir = opts.sortDir === "asc" ? "asc" : "desc";
+    const sortColumn = opts.sortBy === "dueDate" ? orders.dueDate : orders.createdAt;
+    const orderClause = sortDir === "asc" ? sql`${sortColumn} ASC NULLS LAST` : sql`${sortColumn} DESC NULLS LAST`;
 
     const [totalResult] = await db.select({ count: count() }).from(orders).where(where);
     const result = await db.select().from(orders)
       .where(where)
-      .orderBy(desc(orders.createdAt))
+      .orderBy(orderClause)
       .limit(opts.limit || 50)
       .offset(opts.offset || 0);
 
