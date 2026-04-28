@@ -512,19 +512,33 @@ export async function shareFolderWithUser({
     if (existing && existing.role === role) return existing.id || null;
   }
 
-  const url = driveUrl(`/files/${fileOrFolderId}/permissions`, {
-    sendNotificationEmail: notify ? "true" : "false",
-    ...(notify && notifyMessage ? { emailMessage: notifyMessage } : {}),
+  const buildShareUrl = (sendNotify: boolean) => driveUrl(`/files/${fileOrFolderId}/permissions`, {
+    sendNotificationEmail: sendNotify ? "true" : "false",
+    ...(sendNotify && notifyMessage ? { emailMessage: notifyMessage } : {}),
     fields: "id",
   });
-  const res = await fetch(url, {
+  const doShare = (sendNotify: boolean) => fetch(buildShareUrl(sendNotify), {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ role, type: "user", emailAddress }),
   });
+
+  let res = await doShare(notify);
+
+  // Drive rejects sharing with notify=false when the recipient has no Google
+  // account (HTTP 400 / "must check the Notify people box"). Retry once with
+  // notification enabled so non-Workspace supplier addresses still get access.
+  if (!res.ok && res.status === 400 && !notify) {
+    const errBody = await res.text();
+    if (/no Google account|Notify people/i.test(errBody)) {
+      console.warn(`[Drive] ${emailAddress} has no Google account — retrying share with notification enabled`);
+      res = await doShare(true);
+    } else {
+      console.error("[Drive] shareFolderWithUser failed:", res.status, errBody);
+      return null;
+    }
+  }
+
   if (!res.ok) {
     console.error("[Drive] shareFolderWithUser failed:", res.status, await res.text());
     return null;
