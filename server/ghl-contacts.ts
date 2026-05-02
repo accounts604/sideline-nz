@@ -219,3 +219,90 @@ export async function createGhlOpportunity(
     return { opportunityId: null, error: err.message || "unknown" };
   }
 }
+
+/**
+ * Find the contact's existing open opportunity in the given pipeline.
+ * Returns the most-recently-updated open opp, or null if none exist.
+ *
+ * Used by admin PO flow to AVOID creating a duplicate card when a customer
+ * already has an active deal — instead the admin should advance the existing
+ * one (set PO reference, monetary value, stage).
+ */
+export async function findOpenOpportunityForContact(
+  contactId: string,
+  pipelineId: string,
+): Promise<{ id: string; name: string; pipelineStageId: string } | null> {
+  const c = creds();
+  if (!c) return null;
+  try {
+    const url = `${GHL_API_BASE}/opportunities/search?location_id=${c.locationId}&pipeline_id=${pipelineId}&contact_id=${contactId}&limit=20`;
+    const res = await fetch(url, { headers: authHeaders(c.apiKey) });
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    const open = (data.opportunities || []).filter(
+      (o: any) => !["won", "lost", "abandoned"].includes((o.status || "").toLowerCase()),
+    );
+    if (!open.length) return null;
+    open.sort((a: any, b: any) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+    return { id: open[0].id, name: open[0].name, pipelineStageId: open[0].pipelineStageId };
+  } catch (err: any) {
+    console.error("[GHL contacts] find open opportunity error:", err);
+    return null;
+  }
+}
+
+/**
+ * Advance an existing opportunity: update stage, name (if currently a placeholder),
+ * monetary value, and PO reference custom field. Used by admin PO flow.
+ */
+export async function advanceGhlOpportunity(
+  opportunityId: string,
+  updates: {
+    pipelineStageId?: string;
+    name?: string;
+    monetaryValue?: number;
+    poReference?: string;
+    customerName?: string;
+    projectDescription?: string;
+  },
+): Promise<{ success: boolean; error?: string }> {
+  const c = creds();
+  if (!c) return { success: false, error: "ghl_not_configured" };
+
+  // Opp custom field IDs (created in KIG GHL location 2026-05-02)
+  const FIELD_IDS = {
+    po_reference: "OJ7LXbQTrA4jX5hGEEZ3",
+    customer_name: "qwmFWayjtm9HRTzVI3fi",
+    order_total: "JraLLVKiFZ7OWkZNUgiS",
+    project_description: "Y570dpLa3S77UZmdn2qQ",
+  };
+
+  const body: any = {};
+  if (updates.pipelineStageId) body.pipelineStageId = updates.pipelineStageId;
+  if (updates.name) body.name = updates.name;
+  if (typeof updates.monetaryValue === "number") body.monetaryValue = updates.monetaryValue;
+
+  const customFields: any[] = [];
+  if (updates.poReference) customFields.push({ id: FIELD_IDS.po_reference, key: "po_reference", field_value: updates.poReference });
+  if (updates.customerName) customFields.push({ id: FIELD_IDS.customer_name, key: "customer_name", field_value: updates.customerName });
+  if (updates.projectDescription) customFields.push({ id: FIELD_IDS.project_description, key: "project_description", field_value: updates.projectDescription });
+  if (typeof updates.monetaryValue === "number") customFields.push({ id: FIELD_IDS.order_total, key: "order_total", field_value: `$${updates.monetaryValue.toFixed(2)}` });
+  if (customFields.length) body.customFields = customFields;
+
+  try {
+    const res = await fetch(`${GHL_API_BASE}/opportunities/${opportunityId}`, {
+      method: "PUT",
+      headers: authHeaders(c.apiKey),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("[GHL contacts] advance opportunity failed:", res.status, text);
+      return { success: false, error: text };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error("[GHL contacts] advance opportunity error:", err);
+    return { success: false, error: err.message || "unknown" };
+  }
+}

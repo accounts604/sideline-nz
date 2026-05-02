@@ -32,6 +32,8 @@ import {
   getGhlContact,
   upsertGhlContact,
   createGhlOpportunity,
+  findOpenOpportunityForContact,
+  advanceGhlOpportunity,
   type GhlContact,
 } from "../ghl-contacts";
 import { SIDELINE_PIPELINE_ID, SIDELINE_STAGE_IDS } from "../ghl-config";
@@ -1159,22 +1161,56 @@ router.post("/orders/create-po", async (req, res) => {
       }
     }
 
-    // Create the opportunity at "Lead Received" (first stage); stage can be
-    // advanced via /admin/orders/:id/stage or the GHL webhook once work begins.
+    // GHL opportunity: prefer to advance the customer's existing open opp
+    // (so the lead-from-website card is the SAME card as the PO card).
+    // Only create a fresh opp when the customer has no open deal yet.
     if (ghlContactId) {
-      const opp = await createGhlOpportunity({
-        contactId: ghlContactId,
-        pipelineId: SIDELINE_PIPELINE_ID,
-        stageId: SIDELINE_STAGE_IDS["Lead Received"],
-        name: poReference || data.accountName || order.orderNumber || "Sideline Order",
-        monetaryValue: Math.round(subtotal / 100),
-        status: "open",
-      });
-      if (opp.opportunityId) {
+      const projectDescription = data.items?.length
+        ? data.items.length === 1
+          ? `${data.items[0].quantity}× ${data.items[0].productName}`
+          : `${data.items.reduce((s, i) => s + (i.quantity || 1), 0)} units across ${data.items.length} lines`
+        : undefined;
+      const properName = `${data.accountName || data.customerName || "Sideline Order"}${projectDescription ? ` — ${projectDescription}` : ""}`;
+
+      const existing = await findOpenOpportunityForContact(ghlContactId, SIDELINE_PIPELINE_ID);
+      if (existing) {
+        // Advance the existing opp — set PO ref, money, project. Only rename
+        // if the current name still looks like a placeholder.
+        const isPlaceholder = /Initial Enquiry$|^Website Lead|^Free Mockup|^Contact Enquiry|^PO-\d/.test(existing.name);
+        await advanceGhlOpportunity(existing.id, {
+          pipelineStageId: SIDELINE_STAGE_IDS["Lead Received"],
+          name: isPlaceholder ? properName : undefined,
+          monetaryValue: Math.round(subtotal / 100),
+          poReference,
+          customerName: data.customerName,
+          projectDescription,
+        });
         await storage.updateOrder(order.id, {
-          ghlOpportunityId: opp.opportunityId,
+          ghlOpportunityId: existing.id,
           pipelineStage: "Lead Received",
         });
+      } else {
+        const opp = await createGhlOpportunity({
+          contactId: ghlContactId,
+          pipelineId: SIDELINE_PIPELINE_ID,
+          stageId: SIDELINE_STAGE_IDS["Lead Received"],
+          name: properName,
+          monetaryValue: Math.round(subtotal / 100),
+          status: "open",
+        });
+        if (opp.opportunityId) {
+          await storage.updateOrder(order.id, {
+            ghlOpportunityId: opp.opportunityId,
+            pipelineStage: "Lead Received",
+          });
+          // Backfill custom fields on the new opp via advance helper
+          await advanceGhlOpportunity(opp.opportunityId, {
+            poReference,
+            customerName: data.customerName,
+            projectDescription,
+            monetaryValue: Math.round(subtotal / 100),
+          });
+        }
       }
     }
 
