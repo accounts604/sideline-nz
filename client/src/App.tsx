@@ -54,6 +54,7 @@ import ClubPortalLogin from "@/pages/club-portal/login";
 import ClubPortalDashboard from "@/pages/club-portal/dashboard";
 import MockupReviewPage from "@/pages/club-portal/mockup-review";
 import OrderTrackingPage from "@/pages/club-portal/order-tracking";
+import ClubSupporterDashboard from "@/pages/club-portal/supporter-dashboard";
 import SupplierLoginPage from "@/pages/supplier/login";
 import SupplierDashboard from "@/pages/supplier/dashboard";
 import SupplierOrderDetail from "@/pages/supplier/order-detail";
@@ -69,15 +70,22 @@ function ScrollToTop() {
   return null;
 }
 
-/** Hide GHL chat widget on internal portal / admin routes */
+/** Hide GHL chat widget on internal portal / admin routes,
+ *  and suppress it when the page was loaded by a known scraper
+ *  (e.g. Shopify admin link previewer) — those page loads
+ *  otherwise create "guest visitor" contacts in GHL with no
+ *  identifying info. */
 function GhlChatVisibility() {
   const [location] = useLocation();
 
   useEffect(() => {
     const widget = document.querySelector("chat-widget") as HTMLElement | null;
     if (!widget) return;
-    const hide = /^\/(admin|portal|club-portal|supplier)/.test(location);
-    widget.style.display = hide ? "none" : "";
+    const internal = /^\/(admin|portal|club-portal|supplier)/.test(location);
+    const scraperReferrer = /admin\.shopify\.com|googleusercontent\.com|linkedin\.com\/preview/i.test(
+      document.referrer || "",
+    );
+    widget.style.display = internal || scraperReferrer ? "none" : "";
   }, [location]);
 
   return null;
@@ -203,6 +211,9 @@ function Router() {
         </Route>
         <Route path="/club-portal/dashboard">
           {() => <ClubPortalRoute><ClubPortalDashboard /></ClubPortalRoute>}
+        </Route>
+        <Route path="/club-portal/supporter-dashboard">
+          {() => <ClubPortalRoute><ClubSupporterDashboard /></ClubPortalRoute>}
         </Route>
         <Route path="/club-portal">
           {() => <ClubPortalRoute><ClubPortalIndex /></ClubPortalRoute>}
