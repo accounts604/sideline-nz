@@ -40,6 +40,7 @@ export async function createGhlContact(contactData: any, tags: string[] = []) {
 
   // Form key → canonical GHL custom field key. Only fields that EXIST in GHL.
   // Synonyms (e.g. sports→sport) normalize before send.
+  // Verified against GHL location pDSz4XY8gwQEWCmiAkzW custom field list 2026-05-04.
   const customFieldMappings: Record<string, string> = {
     role: "role",
     contact_name: "contact_name",
@@ -64,17 +65,34 @@ export async function createGhlContact(contactData: any, tags: string[] = []) {
     quote_items: "quote_items",
     quote_valid_until: "quote_valid_until",
     quote_url: "quote_url",
+    // Form keys mapped to existing GHL fields with different names (added 2026-05-04
+    // — these were silently falling into additional_notes blob before).
+    user_type: "organisation_type",
+    organisation_type: "organisation_type",
+    estimated_quantity: "expected_numbers",
+    expected_numbers: "expected_numbers",
+    budget_range: "budget_signal",
+    budget_signal: "budget_signal",
+    approval_process: "decision_maker",
+    decision_maker: "decision_maker",
+    main_concern: "pain_point_summary",
+    pain_point_summary: "pain_point_summary",
+    enquiry_type: "package_interest", // contact-form enquiry type → package_interest field
+    // NOTE: preferred_date/backup_date/follow_up_date/proposal_date in GHL are
+    // typed date fields — they reject free-form strings like "March 2026".
+    // season_start / school_event_date stay in additional_notes overflow.
   };
 
-  // Pour fields that don't have a dedicated custom field into "Pain Point Summary"
-  // / additional_notes so they aren't lost. These survive as raw context for Ezra.
+  // Pour fields that don't have a dedicated custom field into additional_notes
+  // so they aren't lost. These survive as raw context for Ezra.
+  // Trimmed 2026-05-04 — fields now in customFieldMappings removed.
   const additionalNotesFields = [
-    "user_type", "member_count", "mockup_interest", "needs", "estimated_quantity",
+    "member_count", "mockup_interest", "needs",
     "kit_quantity", "supporter_quantity", "teams_involved", "personalisation",
     "supporter_audience", "style_preference", "fundraising_interest", "sponsorship_interest",
-    "season_start", "design_stage", "budget_range", "approval_process", "main_concern",
-    "school_event_date", "slt_friendly", "team_store_interest", "team_store_audience",
-    "team_store_goal", "enquiry_type", "message", "logo_file_url", "submitted_at",
+    "design_stage", "slt_friendly", "team_store_interest", "team_store_audience",
+    "team_store_goal", "message", "logo_file_url", "submitted_at",
+    "season_start", "school_event_date", // typed date GHL fields reject free-form strings
   ];
 
   for (const [formKey, ghlKey] of Object.entries(customFieldMappings)) {
