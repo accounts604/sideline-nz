@@ -1854,13 +1854,27 @@ router.post("/orders/:id/raise-po", async (req, res) => {
 
     // 5. Email the supplier via Gmail API from orders@sidelinenz.com.
     // CC's the supplier's ccEmail (secondary contact) + self-cc orders@ so
-    // the thread lives in the shared orders inbox.
+    // the thread lives in the shared orders inbox. Wrapped in tracked() so
+    // dispatches land in integration_events — the supplier follow-up cron
+    // reads from there.
     let gmailMessageId: string | null = null;
     if (supplier.email) {
-      try {
-        const items = await storage.getOrderItems(order.id);
-        gmailMessageId = await sendSupplierPoDispatchGmail({
-          to: supplier.email,
+      const items = await storage.getOrderItems(order.id);
+      gmailMessageId = await tracked(
+        {
+          system: "gmail",
+          action: "sendSupplierPo",
+          orderId: order.id,
+          userId: (req as any).user?.userId,
+          context: {
+            poReference: order.poReference,
+            supplierId,
+            supplierEmail: supplier.email,
+            itemCount: items.length,
+          },
+        },
+        () => sendSupplierPoDispatchGmail({
+          to: supplier.email!,
           cc: supplier.ccEmail || undefined,
           supplierName: supplier.teamName,
           orderNumber: order.orderNumber,
@@ -1876,10 +1890,8 @@ router.post("/orders/:id/raise-po", async (req, res) => {
             quantity: it.quantity,
             productColors: it.productColors,
           })),
-        });
-      } catch (err) {
-        console.error("Failed to send supplier PO email:", err);
-      }
+        }),
+      );
     }
 
     // 6. Generate PO PDF and upload to Drive folder (01. Brief)
