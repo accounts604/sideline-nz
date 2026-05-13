@@ -244,7 +244,10 @@ router.post("/checkout", async (req, res) => {
     const stripe = await getUncachableStripeClient();
 
     const subtotal = items.reduce((sum, item) => sum + item.unitAmount * item.quantity, 0);
-    const shipping = 850; // $8.50 flat rate
+    // AU collections (e.g. narre-warren-fc) get free shipping — bulk shipped to club delegate
+    const auCollections = ["narre-warren-fc"];
+    const isAuStore = auCollections.includes(storeSlug);
+    const shipping = isAuStore ? 0 : 1000; // Free for AU, $10 flat for NZ
     const total = subtotal + shipping;
 
     const orderNumber = generateOrderNumber();
@@ -257,7 +260,7 @@ router.post("/checkout", async (req, res) => {
       shipping,
       tax: 0,
       total,
-      currency: "nzd",
+      currency: isAuStore ? "aud" : "nzd",
     });
 
     for (const item of items) {
@@ -294,17 +297,17 @@ router.post("/checkout", async (req, res) => {
         {
           shipping_rate_data: {
             type: "fixed_amount",
-            fixed_amount: { amount: shipping, currency: "nzd" },
-            display_name: "Standard Shipping",
+            fixed_amount: { amount: shipping, currency: isAuStore ? "aud" : "nzd" },
+            display_name: isAuStore ? "Free Shipping (Club Pickup)" : "Standard Shipping",
             delivery_estimate: {
-              minimum: { unit: "business_day", value: 5 },
-              maximum: { unit: "business_day", value: 10 },
+              minimum: { unit: "business_day", value: isAuStore ? 10 : 5 },
+              maximum: { unit: "business_day", value: isAuStore ? 14 : 10 },
             },
           },
         },
       ],
       shipping_address_collection: {
-        allowed_countries: ["NZ"],
+        allowed_countries: isAuStore ? ["AU"] : ["NZ"],
       },
       success_url: `${baseUrl}/team-stores/${storeSlug}/order-confirmation?order=${order.orderNumber}`,
       cancel_url: `${baseUrl}/team-stores/${storeSlug}/cart`,

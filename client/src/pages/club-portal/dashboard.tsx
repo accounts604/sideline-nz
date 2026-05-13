@@ -21,6 +21,7 @@ interface Order {
   quantity: number;
   mockupUrl: string | null;
   trackingNumber: string | null;
+  trackingUrl: string | null;
   estimatedDeliveryDate: string | null;
 }
 
@@ -76,13 +77,13 @@ export default function ClubPortalDashboard() {
 
   const { data: me, isLoading: meLoading } = useQuery<ClubMe>({
     queryKey: ["/api/club-portal/me"],
-    queryFn: getQueryFn(),
+    queryFn: getQueryFn({ on401: "throw" }),
     retry: 1,
   });
 
   const { data: order, isLoading: orderLoading } = useQuery<Order>({
     queryKey: ["/api/club-portal/order"],
-    queryFn: getQueryFn(),
+    queryFn: getQueryFn({ on401: "throw" }),
     enabled: !!me?.currentOrderId,
     retry: 1,
   });

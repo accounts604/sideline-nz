@@ -67,6 +67,21 @@ function renderAssetStrip(title: string, assets: DesignAsset[], headerBg = "#000
 // logo image, application method, size (mm), thread/PMS codes, artwork file.
 // Positions with no assigned logo render as em-dashes.
 
+// Pull a sensible filename out of a Vercel-Blob URL (matches the React
+// renderer's helper). Empty string if URL malformed.
+function filenameFromBlobUrl(url: string | undefined): string {
+  if (!url) return "";
+  try {
+    const u = new URL(url);
+    const seg = decodeURIComponent(u.pathname.split("/").filter(Boolean).pop() || "");
+    if (!seg) return "";
+    const m = seg.match(/^(.+)-[A-Za-z0-9]{10,}(\.[a-zA-Z0-9]+)$/);
+    return m ? `${m[1]}${m[2]}` : seg;
+  } catch {
+    return "";
+  }
+}
+
 function renderLogoGrid(elements: LogoElement[]): string {
   // Multiple logos can share a position (e.g. two sponsors on Center Back).
   // A position that doesn't match one of the 9 presets is a "custom
@@ -95,6 +110,14 @@ function renderLogoGrid(elements: LogoElement[]): string {
   const colgroup = `<colgroup><col style="width:13%" />${LOGO_POSITIONS.map(() => `<col style="width:9.67%" />`).join("")}</colgroup>`;
   const empty = `<span style="color:#ccc;font-size:16px">—</span>`;
 
+  // Checkerboard background — keeps white/light logos visible against the
+  // white paper. Same pattern as the React renderer.
+  const checkerStyle =
+    "display:inline-flex;align-items:center;justify-content:center;padding:2px 3px;border-radius:3px;" +
+    "background-color:#e5e5e5;" +
+    "background-image:linear-gradient(45deg,#d4d4d4 25%,transparent 25%),linear-gradient(-45deg,#d4d4d4 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d4d4d4 75%),linear-gradient(-45deg,transparent 75%,#d4d4d4 75%);" +
+    "background-size:8px 8px;background-position:0 0,0 4px,4px -4px,-4px 0px";
+
   // Unassigned strip — logos that have been uploaded but don't have a
   // position picked yet. Shown above the grid so they're never invisible.
   const unassignedStrip = unassigned.length ? `
@@ -102,7 +125,7 @@ function renderLogoGrid(elements: LogoElement[]): string {
       <span style="font-size:9px;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:0.4px;margin-right:4px">Unassigned (${unassigned.length}) — set position in admin</span>
       ${unassigned.map(el => `
         <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px 3px 3px;background:#fff;border:1px solid #fdba74;border-radius:4px">
-          <img src="${el.url}" style="height:22px;max-width:40px;object-fit:contain" />
+          <span style="${checkerStyle}"><img src="${el.url}" style="height:22px;max-width:40px;object-fit:contain;display:block" /></span>
           <span style="font-size:10px;color:#555">${esc(el.name || "Logo")}</span>
         </div>`).join("")}
     </div>` : "";
@@ -126,8 +149,12 @@ function renderLogoGrid(elements: LogoElement[]): string {
             const specs = byPosition.get(p) || [];
             if (!specs.length) return td(empty);
             // Stack multiple logos in the same cell — slightly smaller when > 1.
-            const maxH = specs.length === 1 ? 76 : 36;
-            const stacked = specs.map(s => `<img src="${s.url}" style="max-width:88%;max-height:${maxH}px;object-fit:contain;margin:1px 0" />`).join("<br/>");
+            const maxH = specs.length === 1 ? 70 : 32;
+            const stacked = specs.map(s => `
+              <div style="display:flex;flex-direction:column;align-items:center;gap:2px;margin:1px 0">
+                <span style="${checkerStyle};padding:3px 4px"><img src="${s.url}" style="max-width:88%;max-height:${maxH}px;object-fit:contain;display:block" /></span>
+                ${s.name ? `<span style="font-size:8px;color:#555;text-align:center;line-height:1.2;font-weight:600">${esc(s.name)}</span>` : ""}
+              </div>`).join("");
             return td(stacked);
           }).join("")}
         </tr>
@@ -153,7 +180,7 @@ function renderLogoGrid(elements: LogoElement[]): string {
             const specs = byPosition.get(p) || [];
             if (!specs.length) return td("");
             return td(specs.map(s => s.threadColours?.length
-              ? s.threadColours.map(c => `<div style="font-size:9px;line-height:1.4">${esc(c)}</div>`).join("")
+              ? s.threadColours.map(c => `<span style="display:inline-block;font-size:8.5px;font-weight:700;color:#b8932f;background:#fdf6e3;border:1px solid #e6d59a;border-radius:2px;padding:0 4px;margin:1px 1px;line-height:1.4">${esc(c)}</span>`).join("")
               : "—").join('<div style="height:4px"></div>'));
           }).join("")}
         </tr>
@@ -162,7 +189,13 @@ function renderLogoGrid(elements: LogoElement[]): string {
           ${LOGO_POSITIONS.map(p => {
             const specs = byPosition.get(p) || [];
             if (!specs.length) return td("");
-            return td(specs.map(s => s.artworkFile ? `<span style="font-family:monospace;font-size:9px">${esc(s.artworkFile)}</span>` : "—").join("<br/>"));
+            return td(specs.map(s => {
+              const label = s.artworkFile || filenameFromBlobUrl(s.url) || "";
+              if (!label && !s.url) return "—";
+              return s.url
+                ? `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="font-family:monospace;font-size:9px;color:#0ea5e9;text-decoration:underline;word-break:break-all">${esc(label || "View file ↗")}</a>`
+                : `<span style="font-family:monospace;font-size:9px">${esc(label)}</span>`;
+            }).join("<br/>"));
           }).join("")}
         </tr>
       </tbody>
@@ -183,8 +216,16 @@ function renderLogoGrid(elements: LogoElement[]): string {
                 <td style="padding:5px 6px;border:1px solid #bfdbfe">${s.url ? `<img src="${s.url}" style="max-height:32px;max-width:56px;object-fit:contain" />` : ""}</td>
                 <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe"><strong>${esc((s.application || "—").toUpperCase())}</strong></td>
                 <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe">${esc(s.sizeMm || "—")}</td>
-                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe">${s.threadColours?.length ? s.threadColours.map(c => esc(c)).join(", ") : "—"}</td>
-                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe;font-family:monospace">${esc(s.artworkFile || "—")}</td>
+                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe">${s.threadColours?.length
+                  ? s.threadColours.map(c => `<span style="display:inline-block;font-size:8.5px;font-weight:700;color:#b8932f;background:#fdf6e3;border:1px solid #e6d59a;border-radius:2px;padding:0 4px;margin:1px 2px">${esc(c)}</span>`).join("")
+                  : "—"}</td>
+                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe">${(() => {
+                  const label = s.artworkFile || filenameFromBlobUrl(s.url) || "";
+                  if (!label && !s.url) return "—";
+                  return s.url
+                    ? `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="font-family:monospace;font-size:9px;color:#0ea5e9;text-decoration:underline;word-break:break-all">${esc(label || "View file ↗")}</a>`
+                    : `<span style="font-family:monospace;font-size:9px">${esc(label)}</span>`;
+                })()}</td>
               </tr>`).join("")}
           </tbody>
         </table>
@@ -209,10 +250,16 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
   const contact = [order.customerFirstName, order.customerLastName].filter(Boolean).join(" ") || order.customerName || "";
   const milestones = order.dueDate ? computeMilestones(order.dueDate) : null;
 
-  const bdByItem = new Map<string, Array<{ size: string; quantity: number }>>();
+  const bdByItem = new Map<string, Array<{ size: string; quantity: number; playerName: string | null; playerNumber: string | null; namePlacement: string | null }>>();
   for (const b of sizeBreakdowns ?? []) {
     const list = bdByItem.get(b.orderItemId) || [];
-    list.push({ size: b.size, quantity: b.quantity });
+    list.push({
+      size: b.size,
+      quantity: b.quantity,
+      playerName: b.playerName ?? null,
+      playerNumber: b.playerNumber ?? null,
+      namePlacement: b.namePlacement ?? null,
+    });
     bdByItem.set(b.orderItemId, list);
   }
 
@@ -247,12 +294,22 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
                   <span style="font-size:11px"><strong>${esc(c.name || "")}</strong> <span style="color:#888">${c.hex}</span></span>
                 </div>`).join("")}
             </div>` : ""}
+          ${item.designBrief ? `<div style="margin-bottom:8px"><div style="font-weight:700;margin-bottom:2px">Design Brief</div><div style="font-size:10px;color:#666;line-height:1.4">${esc(item.designBrief)}</div></div>` : ""}
           ${item.designNotes ? `<div><div style="font-weight:700;margin-bottom:2px">Notes</div><div style="font-size:11px;color:#555">${esc(item.designNotes)}</div></div>` : ""}
         </div>
 
         <div style="width:220px;padding:14px 16px;border-left:1px solid #eee">
           <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:6px"><span>Size</span><span>Count</span></div>
-          ${bds.map((b: any) => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">${esc(b.size)}<span>${b.quantity}</span></div>`).join("")}
+          ${bds.map((b: any) => {
+            const sub = [
+              b.playerName ? `${esc(b.playerName)}${b.playerNumber ? " #" + esc(b.playerNumber) : ""}` : (b.playerNumber ? "#" + esc(b.playerNumber) : ""),
+              b.namePlacement ? esc(b.namePlacement) : "",
+            ].filter(Boolean).join(" · ");
+            return `<div style="padding:3px 0">
+              <div style="display:flex;justify-content:space-between;font-size:12px">${esc(b.size)}<span>${b.quantity}</span></div>
+              ${sub ? `<div style="font-size:10px;color:#666;padding-left:8px;margin-top:1px">${sub}</div>` : ""}
+            </div>`;
+          }).join("")}
           ${bds.length ? `<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-top:10px"><span>Total</span><span>${totalQty}</span></div>` : `<div style="font-size:12px;color:#999">Qty: ${totalQty}</div>`}
         </div>
       </div>
@@ -288,6 +345,7 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
         ${milestones.map((m: any) => `<div style="flex:1;text-align:center;padding:10px 6px;border-right:1px solid #eee;font-size:10px"><div style="font-weight:700">Day ${m.dayNumber}</div><div style="font-weight:600;font-size:9px;margin:2px 0">${esc(m.label)}</div><div style="font-family:monospace;color:#555">${m.date}</div></div>`).join("")}
       </div>
     </div>` : "";
+
 
   // Artwork Approval band — STATUS / APPROVED BY / DATE / REFERENCE. Status
   // derives from order.artworkApproved flag if present, else falls back to a

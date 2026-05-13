@@ -2,13 +2,19 @@ import { Router } from "express";
 
 const router = Router();
 
-const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL || "sideline-nz-2.myshopify.com";
-const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN || "53a3ae5ea0eeacac29d10e09646a7cac";
-const shopifyEndpoint = `https://${SHOPIFY_STORE_URL}/api/2025-01/graphql.json`;
+// Storefront API config — never hard-code tokens. Set SHOPIFY_STORE_URL and
+// SHOPIFY_TOKEN in env. Routes return 503 when missing rather than silently
+// falling back to a leaked dev token.
+const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL || process.env.VITE_SHOPIFY_STORE_URL || "";
+const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN || process.env.VITE_SHOPIFY_TOKEN || "";
+const shopifyEndpoint = SHOPIFY_STORE_URL ? `https://${SHOPIFY_STORE_URL}/api/2025-01/graphql.json` : "";
 
 async function shopifyFetch(query: string, variables?: Record<string, unknown>) {
+  if (!SHOPIFY_STORE_URL || !SHOPIFY_TOKEN) {
+    throw new Error("Shopify Storefront API not configured. Set SHOPIFY_STORE_URL and SHOPIFY_TOKEN.");
+  }
   const queryPreview = query.replace(/\s+/g, " ").substring(0, 60) + "...";
-  
+
   try {
     const res = await fetch(shopifyEndpoint, {
       method: "POST",

@@ -5,7 +5,7 @@ import { useLocation, Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { ArrowLeft, Plus, Trash2, FileText, Sparkles, Building2, User as UserIcon, CalendarClock, Ruler } from "lucide-react";
 import { computeMilestones } from "@shared/po-milestones";
-import { SIDELINE_PRODUCTS, productsGroupedByCategory, getProductById } from "@shared/product-catalog";
+import { SIDELINE_PRODUCTS, productsGroupedByCategory, getProductById, getShopifyCost } from "@shared/product-catalog";
 import { BRANDING_METHODS } from "@shared/branding-methods";
 
 interface POItem {
@@ -206,12 +206,17 @@ export default function AdminCreatePO() {
       updateItem(idx, "productType", productTypeId);
       return;
     }
+    // Auto-fill unitAmount from Puffin Tier-1 USD × FX + overhead. This is
+    // the supplier cost (everything but Romero's margin). User can override
+    // by typing a different value after.
+    const puffinNzd = getShopifyCost(p);
     const updated = [...items];
     updated[idx] = {
       ...updated[idx],
       productType: p.id,
       productName: p.name,
       material: updated[idx].material || p.defaultMaterial,
+      ...(puffinNzd != null ? { unitAmount: Math.round(puffinNzd * 100) } : {}),
     };
     setItems(updated);
   };

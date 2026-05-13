@@ -89,36 +89,49 @@ const DESIGN_DIRECTIONS = [
   },
 ];
 
+// Flat-lay tech-pack prompt. Romero's canonical 2026-05-12 template — zero
+// branding on the render (logos are composited in post via elementUrls), strict
+// flat-lay framing, and explicit hex callouts so the model honours the exact
+// colourway.
 function buildPrompt(opts: GeminiGenerateOptions): string {
   const sport = opts.sport.toLowerCase();
   const template = SPORT_TEMPLATES[sport] || SPORT_TEMPLATES.rugby;
   const direction = DESIGN_DIRECTIONS[opts.designNumber - 1] || DESIGN_DIRECTIONS[0];
 
-  const colorDesc = [
-    `primary color ${opts.primaryColor}`,
-    opts.secondaryColor ? `secondary color ${opts.secondaryColor}` : null,
-    opts.accentColor ? `accent color ${opts.accentColor}` : null,
-  ]
-    .filter(Boolean)
-    .join(", ");
+  const colorBody = opts.primaryColor;
+  const colorPanels = opts.secondaryColor || opts.primaryColor;
+  const colorTrim = opts.accentColor || opts.secondaryColor || opts.primaryColor;
 
-  return `Create a professional product mockup photograph of a custom ${template.garments} for "${opts.teamName}".
+  // Fabric finish varies by sport — netball/basketball use sheen performance
+  // spandex; cricket runs micro-pique; rugby/league/football default to matte
+  // performance interlock.
+  const fabricFinish =
+    sport === "netball" || sport === "basketball" || sport === "volleyball"
+      ? "performance gloss with subtle sheen"
+      : sport === "cricket"
+      ? "matte micro-pique"
+      : "matte performance interlock";
 
-Design style: ${direction.style}.
-Sport aesthetic: ${template.style}.
-Design details: ${template.details}.
-Team colors: ${colorDesc}.
-${opts.logoUrl ? "Include a placeholder area on the chest for the team logo/crest." : ""}
+  return `Generate a high-resolution photorealistic 3D product mockup of a ${template.garments} rendered as a flat lay photorealistic render on a pure white background.
 
-The mockup should be:
-- Photographed on a clean white/light grey studio background
-- Laid flat or on an invisible mannequin, showing front view
-- Professional product photography quality, sharp focus
-- The uniform should look like a real manufactured garment, not a drawing
-- High contrast, vivid colors matching the exact hex values provided
-- No human models, no faces, just the garment mockup
+The garment should be:
+- Laid horizontally on a flat surface (flat lay photography)
+- Studio photography quality with real fabric texture and material weight visible
+- Fully unfolded and symmetrical, showing the complete front panel
+- All seams, panels, and construction lines clearly visible
+- Zero logos, zero text, zero branding
+- Zero wrinkles or distortion — clean and press-ready
 
-Style: ${direction.name} — ${direction.style}`;
+Colourway: ${colorBody} body / ${colorPanels} panels / ${colorTrim} trim only
+
+Panel layout: ${direction.style}
+
+Fabric finish: ${fabricFinish}
+Style: ${template.style} — ${template.details}
+Fit: athletic
+
+Lighting: even studio lighting, minimal shadow, no gradients
+Render quality: ultra high resolution, tech pack ready`;
 }
 
 export async function generateMockupImage(opts: GeminiGenerateOptions): Promise<GeminiResult> {

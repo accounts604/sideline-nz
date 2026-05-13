@@ -3,7 +3,7 @@
 // File Vault (drag-and-drop), Portal Actions, Admin Notes, Activity Log.
 // No tabs. No chat. No production stages.
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
 import { useParams, Link, useLocation } from "wouter";
@@ -11,10 +11,11 @@ import { apiRequest } from "@/lib/queryClient";
 import { upload } from "@vercel/blob/client";
 import { getQueryFn } from "@/lib/queryClient";
 import { computeMilestones } from "@shared/po-milestones";
-import { productsGroupedByCategory, getProductById } from "@shared/product-catalog";
+import { productsGroupedByCategory, getProductById, getShopifyCost } from "@shared/product-catalog";
 import { BRANDING_METHODS } from "@shared/branding-methods";
 import { SIZE_CHART_LABELS, suggestSizeChart, getSizeChartTables, type SizeChartType } from "@shared/size-charts";
-import { LOGO_POSITIONS, type LogoElement, type LogoPosition } from "@shared/schema";
+import { LOGO_POSITIONS, NAME_PLACEMENT_OPTIONS, type LogoElement, type LogoPosition } from "@shared/schema";
+import { suggestLogoSizes, ALL_LOGO_SIZES } from "@shared/logo-size-suggestions";
 import { ALL_ORDER_STAGES } from "@shared/order-stages";
 import { getDesignPrints, getMockups, type DesignAsset } from "@shared/design-assets";
 import {
@@ -32,7 +33,7 @@ interface OrderItem {
   quantity: number;
   unitAmount: number;
   currency: string;
-  productColors: { hex: string; name?: string }[] | null;
+  productColors: { hex: string; name?: string; pms?: string }[] | null;
   brandingMethod: string | null;
   productType: string | null;
   material: string | null;
@@ -75,6 +76,7 @@ interface SizeBreakdown {
   quantity: number;
   playerName: string | null;
   playerNumber: string | null;
+  namePlacement: string | null;
 }
 
 interface Order {
@@ -148,6 +150,146 @@ const inputStyle: React.CSSProperties = {
 };
 
 // ─── Inline-editable text field ──────────────────────────────────────
+
+// ─── GHL Contact Picker (typeahead) ──────────────────────────────────
+//
+// Lets the admin pull a contact straight from GHL into an existing PO. The
+// create-PO page has its own typeahead spread across First Name / Last Name
+// / Email / Company inputs; this is the thinner version for the edit-detail
+// page — one search field + dropdown, "Pick" action fills every customer
+// field via the parent's onPick callback (which PATCHes the order).
+//
+// Why on the order-detail page: closed-drop POs (built from Shopify supporter
+// campaigns by import-club-bulk-po.ts) land without GHL contact details
+// because the import path doesn't go through the create-PO flow. Admin needs
+// a way to attach a GHL contact retroactively without retyping fields.
+
+interface GhlPickerSuggestion {
+  contactId?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  companyName?: string | null;
+}
+
+function GhlContactPicker({
+  accountName,
+  onPick,
+}: {
+  accountName: string | null | undefined;
+  onPick: (c: GhlPickerSuggestion) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState(accountName || "");
+  const [results, setResults] = useState<GhlPickerSuggestion[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Debounced search
+  const lastQuery = useRef("");
+  const search = useCallback(async (term: string) => {
+    if (term.trim().length < 2) { setResults([]); return; }
+    lastQuery.current = term;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/admin/ghl/search?q=${encodeURIComponent(term)}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`GHL search ${res.status}`);
+      const data = await res.json();
+      // Only apply if this is still the latest query (avoid race).
+      if (lastQuery.current === term) setResults(data.contacts || []);
+    } catch (e: any) {
+      setErr(e?.message || "GHL lookup failed");
+      setResults([]);
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  function handleQueryChange(v: string) {
+    setQ(v);
+    const t = setTimeout(() => search(v), 250);
+    return () => clearTimeout(t);
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => { setOpen(true); if (q.length >= 2) search(q); }}
+        style={{
+          marginBottom: "12px",
+          padding: "6px 12px",
+          background: "rgba(201,168,76,0.1)",
+          border: "1px solid rgba(201,168,76,0.3)",
+          color: "#C9A84C",
+          borderRadius: "6px",
+          fontSize: "12px",
+          fontWeight: 600,
+          cursor: "pointer",
+          letterSpacing: "0.3px",
+          textTransform: "uppercase",
+        }}
+        data-testid="button-pull-from-ghl"
+      >
+        Pull from GHL
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: "12px", padding: "12px", background: "rgba(201,168,76,0.06)", border: "1px solid rgba(201,168,76,0.2)", borderRadius: "8px" }}>
+      <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" }}>
+        <input
+          autoFocus
+          value={q}
+          onChange={(e) => handleQueryChange(e.target.value)}
+          placeholder="Search GHL by name, email, or company…"
+          style={{ ...inputStyle, flex: 1 }}
+          data-testid="input-ghl-search"
+        />
+        <button
+          onClick={() => { setOpen(false); setResults([]); }}
+          style={{ padding: "6px 12px", background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)", borderRadius: "6px", fontSize: "11px", cursor: "pointer" }}
+        >
+          Cancel
+        </button>
+      </div>
+      {busy && <div style={{ padding: "8px", fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>Searching GHL…</div>}
+      {err && <div style={{ padding: "8px", fontSize: "12px", color: "#ef4444" }}>{err}</div>}
+      {!busy && !err && q.trim().length >= 2 && results.length === 0 && (
+        <div style={{ padding: "8px", fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>No matches in GHL.</div>
+      )}
+      {results.map((s, i) => (
+        <button
+          key={s.contactId || i}
+          onClick={() => { onPick(s); setOpen(false); setResults([]); }}
+          style={{
+            display: "block",
+            width: "100%",
+            textAlign: "left",
+            padding: "8px 10px",
+            background: "rgba(255,255,255,0.02)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            color: "#fff",
+            borderRadius: "6px",
+            fontSize: "12px",
+            cursor: "pointer",
+            marginBottom: "4px",
+          }}
+          data-testid={`button-ghl-pick-${i}`}
+        >
+          <div style={{ fontWeight: 600 }}>
+            {[s.firstName, s.lastName].filter(Boolean).join(" ") || s.email || s.companyName || "Unnamed contact"}
+          </div>
+          <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)" }}>
+            {[s.email, s.phone, s.companyName].filter(Boolean).join("  ·  ")}
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function EditableField({
   value, onSave, placeholder, multiline, style,
@@ -365,6 +507,245 @@ function ImageUploadSlot({
   );
 }
 
+// ─── Size breakdown chip ─────────────────────────────────────────────
+//
+// Compact by default — Size badge + qty input + delete button, same look as
+// the previous chips. Click the pencil to reveal player name + number +
+// placement inputs underneath. Auto-expands when ANY customisation field
+// already has a value so existing data is always visible. Saves on blur.
+
+function SizeBreakdownChip({ breakdown: b, onUpdate, onDelete, onApplyPlacementToAll }: {
+  breakdown: { id: string; size: string; quantity: number; playerName: string | null; playerNumber: string | null; namePlacement: string | null };
+  onUpdate: (patch: { quantity?: number; playerName?: string | null; playerNumber?: string | null; namePlacement?: string | null }) => void;
+  onDelete: () => void;
+  onApplyPlacementToAll: (placement: string) => void;
+}) {
+  const hasCustomisation = Boolean(b.playerName || b.playerNumber || b.namePlacement);
+  const [manualExpand, setManualExpand] = useState(false);
+  const expanded = hasCustomisation || manualExpand;
+
+  // Local state so typing doesn't lag behind every keystroke's PATCH round-trip.
+  const [name, setName] = useState(b.playerName || "");
+  const [num, setNum] = useState(b.playerNumber || "");
+  const [placement, setPlacement] = useState(b.namePlacement || "");
+  const [placementOther, setPlacementOther] = useState(
+    b.namePlacement && !NAME_PLACEMENT_OPTIONS.includes(b.namePlacement as any) ? b.namePlacement : "",
+  );
+  const isOtherPlacement = placement === "__other__" || (placementOther && placement === placementOther);
+
+  return (
+    <span style={{
+      display: "inline-flex", flexDirection: "column", gap: "4px",
+      fontSize: "12px", padding: "4px 6px 4px 10px",
+      background: expanded ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.06)",
+      borderRadius: "6px", color: "#fff", border: "1px solid rgba(255,255,255,0.08)",
+      maxWidth: expanded ? "440px" : "auto",
+    }}>
+      {/* Top row: size + qty + expand + delete */}
+      <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+        <span style={{ fontWeight: 600, marginRight: "2px" }}>{b.size}</span>
+        <input
+          type="number"
+          min={1}
+          value={b.quantity}
+          onChange={(e) => {
+            const v = parseInt(e.target.value);
+            if (v > 0) onUpdate({ quantity: v });
+          }}
+          style={{
+            width: "38px", padding: "2px 4px", fontSize: "12px", textAlign: "center",
+            background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: "3px", color: "#fff", outline: "none",
+          }}
+        />
+        <button
+          onClick={() => setManualExpand((v) => !v)}
+          title={expanded ? "Hide player customisation" : "Add player name + placement"}
+          style={{ background: "none", border: "none", color: expanded ? "#C9A84C" : "rgba(255,255,255,0.35)", cursor: "pointer", fontSize: "11px", padding: "0 2px", lineHeight: 1 }}
+        >✎</button>
+        <button
+          onClick={onDelete}
+          title="Remove size"
+          style={{ background: "none", border: "none", color: "rgba(239,68,68,0.5)", cursor: "pointer", fontSize: "12px", padding: "0 2px", lineHeight: 1 }}
+        >✕</button>
+      </span>
+
+      {/* Expanded row: name + number + placement */}
+      {expanded && (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", flexWrap: "wrap" }}>
+          <input
+            type="text"
+            placeholder="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => { if (name !== (b.playerName || "")) onUpdate({ playerName: name || null }); }}
+            style={chipInputStyle(110)}
+          />
+          <input
+            type="text"
+            placeholder="#"
+            value={num}
+            onChange={(e) => setNum(e.target.value)}
+            onBlur={() => { if (num !== (b.playerNumber || "")) onUpdate({ playerNumber: num || null }); }}
+            style={chipInputStyle(38)}
+          />
+          <select
+            value={isOtherPlacement ? "__other__" : placement}
+            onChange={(e) => {
+              const v = e.target.value;
+              setPlacement(v);
+              if (v === "__other__") return; // wait for the free-text below
+              onUpdate({ namePlacement: v || null });
+            }}
+            style={chipInputStyle(126)}
+            title="Where on the garment the name goes"
+          >
+            <option value="">Placement…</option>
+            {NAME_PLACEMENT_OPTIONS.map((opt) => (
+              <option key={opt} value={opt} style={{ background: "#111" }}>{opt}</option>
+            ))}
+            <option value="__other__" style={{ background: "#111" }}>+ Other (type)</option>
+          </select>
+          {isOtherPlacement && (
+            <input
+              type="text"
+              placeholder="Custom placement"
+              value={placementOther}
+              onChange={(e) => setPlacementOther(e.target.value)}
+              onBlur={() => {
+                const v = placementOther.trim();
+                if (v && v !== (b.namePlacement || "")) {
+                  setPlacement(v);
+                  onUpdate({ namePlacement: v });
+                }
+              }}
+              style={chipInputStyle(120)}
+            />
+          )}
+          {b.namePlacement && (
+            <button
+              type="button"
+              onClick={() => onApplyPlacementToAll(b.namePlacement || "")}
+              title="Apply this placement to every size in this item"
+              style={{ background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.25)", color: "#C9A84C", borderRadius: "3px", padding: "1px 6px", fontSize: "9px", fontWeight: 600, cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.3px" }}
+            >
+              Apply to all
+            </button>
+          )}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function chipInputStyle(width: number): React.CSSProperties {
+  return {
+    width: `${width}px`, padding: "2px 6px", fontSize: "11px",
+    background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: "3px", color: "#fff", outline: "none",
+  };
+}
+
+// ─── Colour palette chip ─────────────────────────────────────────────
+//
+// Same shape language as SizeBreakdownChip but for productColors. Compact
+// pill by default: swatch + name + PMS pill + edit + delete. Expand to
+// reveal hex / name / PMS inputs and save on blur. Add new colours via
+// the "+ Add" inline button. All edits round-trip through updateItem
+// mutating productColors as a whole array.
+
+function ColorPaletteChip({ color, onUpdate, onRemove, defaultExpanded }: {
+  color: { hex: string; name?: string; pms?: string };
+  onUpdate: (patch: { hex?: string; name?: string; pms?: string }) => void;
+  onRemove: () => void;
+  defaultExpanded?: boolean;
+}) {
+  const [expanded, setExpanded] = useState<boolean>(Boolean(defaultExpanded));
+  const [hex, setHex] = useState(color.hex);
+  const [name, setName] = useState(color.name || "");
+  const [pms, setPms] = useState(color.pms || "");
+
+  // Keep local state in sync if parent updates (e.g. external save).
+  useEffect(() => { setHex(color.hex); }, [color.hex]);
+  useEffect(() => { setName(color.name || ""); }, [color.name]);
+  useEffect(() => { setPms(color.pms || ""); }, [color.pms]);
+
+  const validHex = /^#[0-9A-Fa-f]{6}$/.test(hex);
+  const display = name || color.name || color.hex;
+
+  return (
+    <span style={{
+      display: "inline-flex", flexDirection: "column", gap: "4px",
+      padding: "3px 6px 3px 4px",
+      border: `1px solid ${expanded ? "rgba(201,168,76,0.4)" : "rgba(255,255,255,0.12)"}`,
+      borderRadius: expanded ? "8px" : "999px",
+      background: expanded ? "rgba(201,168,76,0.04)" : "rgba(255,255,255,0.04)",
+      fontSize: "11px", color: "rgba(255,255,255,0.8)",
+      maxWidth: expanded ? "340px" : "auto",
+      transition: "all 0.12s",
+    }}>
+      {/* Compact top row — clicking ANY part of it (other than ✕) toggles expand */}
+      <span
+        onClick={() => setExpanded((v) => !v)}
+        title={expanded ? "Click to collapse" : "Click to edit hex / name / PMS"}
+        style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer", userSelect: "none" }}
+      >
+        <span style={{ width: "16px", height: "16px", background: validHex ? hex : color.hex, borderRadius: "999px", border: "1px solid rgba(255,255,255,0.25)", flexShrink: 0 }} />
+        <span style={{ padding: "0 2px" }}>{display}</span>
+        {color.pms && !expanded && (
+          <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: "0.3px", color: "#C9A84C", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.25)", borderRadius: "3px", padding: "1px 4px" }}>
+            {color.pms.replace(/^PMS\s+/i, "")}
+          </span>
+        )}
+        <span style={{ color: expanded ? "#C9A84C" : "rgba(255,255,255,0.45)", fontSize: "11px", padding: "0 3px", fontWeight: 700 }}>
+          {expanded ? "▾" : "✎"}
+        </span>
+        <button
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          title="Remove colour"
+          style={{ background: "none", border: "none", color: "rgba(239,68,68,0.5)", cursor: "pointer", fontSize: "12px", padding: "0 4px", lineHeight: 1 }}
+        >✕</button>
+      </span>
+
+      {/* Expanded edit row */}
+      {expanded && (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", flexWrap: "wrap", paddingTop: "2px" }}>
+          <input
+            autoFocus={defaultExpanded}
+            type="text"
+            value={hex}
+            onChange={(e) => setHex(e.target.value.toUpperCase())}
+            onBlur={() => {
+              if (validHex && hex !== color.hex) onUpdate({ hex });
+              else if (!validHex) setHex(color.hex);
+            }}
+            placeholder="#RRGGBB"
+            style={{ ...chipInputStyle(82), fontFamily: "monospace" }}
+          />
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => { if (name !== (color.name || "")) onUpdate({ name: name || undefined }); }}
+            placeholder="Name"
+            style={chipInputStyle(100)}
+          />
+          <input
+            type="text"
+            value={pms}
+            onChange={(e) => setPms(e.target.value)}
+            onBlur={() => { if (pms !== (color.pms || "")) onUpdate({ pms: pms || undefined }); }}
+            placeholder="PMS code"
+            style={chipInputStyle(94)}
+          />
+        </span>
+      )}
+    </span>
+  );
+}
+
+
+
 // ─── Main Component ──────────────────────────────────────────────────
 
 export default function AdminOrderDetail() {
@@ -504,7 +885,7 @@ export default function AdminOrderDetail() {
   });
 
   const updateSizeMut = useMutation({
-    mutationFn: async ({ bid, ...d }: { bid: string; size?: string; quantity?: number }) => {
+    mutationFn: async ({ bid, ...d }: { bid: string; size?: string; quantity?: number; playerName?: string | null; playerNumber?: string | null; namePlacement?: string | null }) => {
       const r = await apiRequest("PATCH", `/api/admin/orders/${params.id}/size-breakdowns/${bid}`, d);
       return r.json();
     },
@@ -797,6 +1178,50 @@ export default function AdminOrderDetail() {
           </Field>
         </div>
 
+        {/* ──── Colour palette summary ─ aggregated hex + PMS across all items ──── */}
+        {(() => {
+          const all: Array<{ hex: string; name?: string; pms?: string }> = [];
+          for (const it of items) {
+            for (const c of (it.productColors ?? [])) {
+              all.push(c);
+            }
+          }
+          // Dedupe by hex (case-insensitive)
+          const seen = new Set<string>();
+          const unique = all.filter((c) => {
+            const k = c.hex.toUpperCase();
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+          if (unique.length === 0) return null;
+          return (
+            <div style={{ marginTop: "18px", padding: "14px 18px", background: "rgba(201,168,76,0.04)", border: "1px solid rgba(201,168,76,0.15)", borderRadius: "8px" }}>
+              <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.8px", color: "rgba(201,168,76,0.9)", marginBottom: "10px", fontWeight: 600 }}>
+                Colour palette · hex + PMS · across all items
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                {unique.map((c, i) => (
+                  <div key={i} style={{ display: "inline-flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "6px" }}>
+                    <span style={{ width: "22px", height: "22px", background: c.hex, borderRadius: "4px", border: "1px solid rgba(255,255,255,0.2)", flexShrink: 0 }} />
+                    <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+                      <span style={{ fontSize: "11px", color: "#fff", fontWeight: 600 }}>{c.name || c.hex}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "10px" }}>
+                        <span style={{ color: "rgba(255,255,255,0.5)", fontFamily: "monospace" }}>{c.hex}</span>
+                        {c.pms && (
+                          <span style={{ fontWeight: 700, color: "#C9A84C", background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.25)", borderRadius: "3px", padding: "1px 4px", letterSpacing: "0.3px" }}>
+                            {c.pms.replace(/^PMS\s+/i, "")}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ──── Guard-rail milestone timeline ──── */}
         {order.dueDate && (() => {
           const ms = computeMilestones(order.dueDate);
@@ -838,6 +1263,16 @@ export default function AdminOrderDetail() {
 
       {/* ──── Customer / Delivery ──── */}
       <Section title="Customer" defaultOpen={false}>
+        <GhlContactPicker
+          accountName={order.accountName}
+          onPick={(c) => updateOrder.mutate({
+            customerFirstName: c.firstName ?? undefined,
+            customerLastName: c.lastName ?? undefined,
+            customerEmail: c.email ?? undefined,
+            customerPhone: c.phone ?? undefined,
+            accountName: c.companyName ?? undefined,
+          })}
+        />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
           <Field label="First Name"><EditableField value={order.customerFirstName} onSave={(v) => updateOrder.mutate({ customerFirstName: v })} placeholder="First name" /></Field>
           <Field label="Last Name"><EditableField value={order.customerLastName} onSave={(v) => updateOrder.mutate({ customerLastName: v })} placeholder="Last name" /></Field>
@@ -924,10 +1359,18 @@ export default function AdminOrderDetail() {
                     value={item.productType || ""}
                     onChange={(e) => {
                       const p = getProductById(e.target.value);
+                      const puffinNzd = p ? getShopifyCost(p) : null;
                       updateItem.mutate({
                         itemId: item.id,
                         productType: e.target.value,
-                        ...(p ? { productName: p.name, material: item.material || p.defaultMaterial } : {}),
+                        ...(p ? {
+                          productName: p.name,
+                          material: item.material || p.defaultMaterial,
+                          // Auto-fill cost from Puffin Tier-1 USD × FX + overhead.
+                          // Always overwrites — changing product means a different
+                          // unit; manual edits still work after.
+                          ...(puffinNzd != null ? { unitAmount: Math.round(puffinNzd * 100) } : {}),
+                        } : {}),
                       });
                     }}
                     style={{ ...inputStyle, width: "100%" }}
@@ -963,6 +1406,59 @@ export default function AdminOrderDetail() {
                     ))}
                   </select>
                 </Field>
+                {/* Unit Cost — NZD, mirrors Shopify variant inventoryItem.unitCost.
+                    Stored as cents in DB; entered as dollars here. Auto-filled
+                    from Puffin price list on product change; editable to
+                    override (manual override stays sticky until product changes
+                    again). */}
+                <Field label="Unit Cost (NZD)" style={{ flex: 0.9 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                    <EditableField
+                      value={item.unitAmount > 0 ? (item.unitAmount / 100).toFixed(2) : ""}
+                      onSave={(v) => {
+                        const dollars = parseFloat(v);
+                        if (Number.isNaN(dollars) || dollars < 0) return;
+                        updateItem.mutate({ itemId: item.id, unitAmount: Math.round(dollars * 100) });
+                      }}
+                      placeholder="0.00"
+                    />
+                    {(() => {
+                      const p = getProductById(item.productType);
+                      const puffinNzd = p ? getShopifyCost(p) : null;
+                      if (puffinNzd == null) return null;
+                      const current = item.unitAmount / 100;
+                      const matches = Math.abs(current - puffinNzd) < 0.005;
+                      return (
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "9px" }}>
+                          <span style={{ color: matches ? "rgba(34,197,94,0.7)" : "rgba(255,255,255,0.4)" }}>
+                            Puffin: ${puffinNzd.toFixed(2)}
+                          </span>
+                          {!matches && (
+                            <button
+                              type="button"
+                              onClick={() => updateItem.mutate({ itemId: item.id, unitAmount: Math.round(puffinNzd * 100) })}
+                              title="Use Puffin Tier-1 NZD cost (USD × 1.72 FX + $2 overhead)"
+                              style={{ background: "rgba(201,168,76,0.1)", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.25)", borderRadius: "3px", padding: "1px 5px", fontSize: "9px", fontWeight: 700, cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.3px" }}
+                            >
+                              Use
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </Field>
+                <Field label="Qty" style={{ flex: 0.5 }}>
+                  <EditableField
+                    value={String(item.quantity)}
+                    onSave={(v) => {
+                      const n = parseInt(v, 10);
+                      if (!Number.isFinite(n) || n < 1) return;
+                      updateItem.mutate({ itemId: item.id, quantity: n });
+                    }}
+                    placeholder="1"
+                  />
+                </Field>
               </div>
 
               {/* Sideline NZ size chart — selectable per garment line */}
@@ -996,50 +1492,70 @@ export default function AdminOrderDetail() {
                 <Field label="Colours" style={{ flex: 1 }}>
                   <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                     {(item.productColors ?? []).map((c, i) => (
-                      <span
+                      <ColorPaletteChip
                         key={i}
-                        title={`${c.hex}${c.name ? " · " + c.name : ""}`}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "2px 8px 2px 3px",
-                          border: "1px solid rgba(255,255,255,0.12)",
-                          borderRadius: "999px",
-                          background: "rgba(255,255,255,0.04)",
-                          fontSize: "11px",
-                          color: "rgba(255,255,255,0.75)",
+                        color={c}
+                        onUpdate={(patch) => {
+                          const next = [...(item.productColors ?? [])];
+                          next[i] = { ...next[i], ...patch };
+                          updateItem.mutate({ itemId: item.id, productColors: next });
                         }}
-                      >
-                        <span style={{ width: "14px", height: "14px", background: c.hex, borderRadius: "999px", border: "1px solid rgba(255,255,255,0.25)" }} />
-                        {c.name || c.hex}
-                      </span>
+                        onRemove={() => {
+                          const next = (item.productColors ?? []).filter((_, idx) => idx !== i);
+                          updateItem.mutate({ itemId: item.id, productColors: next });
+                        }}
+                      />
                     ))}
                     {!(item.productColors?.length) && <span style={{ color: "rgba(255,255,255,0.3)", fontSize: "12px" }}>—</span>}
                     <button
                       type="button"
-                      onClick={() => extractColors.mutate({ itemId: item.id })}
-                      disabled={extractColors.isPending || (!item.frontDesignUrl && !item.backDesignUrl)}
-                      title={item.frontDesignUrl || item.backDesignUrl ? "Extract dominant colours from the design with AI" : "Upload a design first"}
+                      onClick={() => {
+                        const next = [...(item.productColors ?? []), { hex: "#000000", name: "", pms: "" }];
+                        updateItem.mutate({ itemId: item.id, productColors: next });
+                      }}
+                      title="Add a colour manually"
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
                         gap: "4px",
-                        padding: "3px 8px",
+                        padding: "3px 10px",
                         fontSize: "10px",
                         fontWeight: 600,
                         textTransform: "uppercase",
                         letterSpacing: "0.5px",
-                        background: "rgba(249,115,22,0.08)",
-                        color: "#f97316",
-                        border: "1px solid rgba(249,115,22,0.25)",
+                        background: "rgba(255,255,255,0.04)",
+                        color: "rgba(255,255,255,0.6)",
+                        border: "1px dashed rgba(255,255,255,0.15)",
                         borderRadius: "999px",
-                        cursor: (item.frontDesignUrl || item.backDesignUrl) ? "pointer" : "not-allowed",
-                        opacity: (item.frontDesignUrl || item.backDesignUrl) ? 1 : 0.4,
+                        cursor: "pointer",
                       }}
                     >
-                      <Sparkles size={10} />
-                      {extractColors.isPending && extractColors.variables?.itemId === item.id ? "Reading…" : "AI extract"}
+                      + Add
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => extractColors.mutate({ itemId: item.id })}
+                      disabled={extractColors.isPending}
+                      title="Scan the design or mockup and propose hex + PMS codes"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        padding: "4px 12px",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px",
+                        background: "#C9A84C",
+                        color: "#0a0a0a",
+                        border: "1px solid #b8932f",
+                        borderRadius: "999px",
+                        cursor: "pointer",
+                        opacity: extractColors.isPending ? 0.5 : 1,
+                      }}
+                    >
+                      <Sparkles size={11} />
+                      {extractColors.isPending && extractColors.variables?.itemId === item.id ? "Scanning…" : "Scan colours"}
                     </button>
                   </div>
                 </Field>
@@ -1091,6 +1607,7 @@ export default function AdminOrderDetail() {
                     <LogoElementEditor
                       key={i}
                       element={el}
+                      paletteColors={item.productColors ?? null}
                       onChange={(next) => {
                         const list = [...(item.elementUrls ?? [])];
                         list[i] = next;
@@ -1123,28 +1640,19 @@ export default function AdminOrderDetail() {
                   <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Size Run</p>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px", alignItems: "center" }}>
                     {bds.map((b) => (
-                      <span key={b.id} style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", padding: "3px 4px 3px 10px", background: "rgba(255,255,255,0.06)", borderRadius: "6px", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }}>
-                        <span style={{ fontWeight: 600, marginRight: "2px" }}>{b.size}</span>
-                        <input
-                          type="number"
-                          min={1}
-                          value={b.quantity}
-                          onChange={(e) => {
-                            const v = parseInt(e.target.value);
-                            if (v > 0) updateSizeMut.mutate({ bid: b.id, quantity: v });
-                          }}
-                          style={{
-                            width: "38px", padding: "2px 4px", fontSize: "12px", textAlign: "center",
-                            background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
-                            borderRadius: "3px", color: "#fff", outline: "none",
-                          }}
-                        />
-                        <button
-                          onClick={() => deleteSizeMut.mutate(b.id)}
-                          title="Remove size"
-                          style={{ background: "none", border: "none", color: "rgba(239,68,68,0.5)", cursor: "pointer", fontSize: "12px", padding: "0 2px", lineHeight: 1 }}
-                        >✕</button>
-                      </span>
+                      <SizeBreakdownChip
+                        key={b.id}
+                        breakdown={b}
+                        onUpdate={(patch) => updateSizeMut.mutate({ bid: b.id, ...patch })}
+                        onDelete={() => deleteSizeMut.mutate(b.id)}
+                        onApplyPlacementToAll={(placement) => {
+                          for (const other of bds) {
+                            if (other.id !== b.id && (other.namePlacement || "") !== placement) {
+                              updateSizeMut.mutate({ bid: other.id, namePlacement: placement || null });
+                            }
+                          }
+                        }}
+                      />
                     ))}
                     {bds.length > 0 && (
                       <span style={{ fontSize: "12px", padding: "4px 10px", background: "rgba(201,168,76,0.15)", borderRadius: "4px", color: "#C9A84C", fontWeight: 600 }}>
@@ -1193,7 +1701,7 @@ export default function AdminOrderDetail() {
                   <button
                     type="button"
                     onClick={() => generateBrief.mutate({ itemId: item.id })}
-                    disabled={generateBrief.isPending || (!item.frontDesignUrl && !item.backDesignUrl)}
+                    disabled={generateBrief.isPending || (!item.frontDesignUrl && !item.backDesignUrl && !((item as any).mockupImages?.length))}
                     title={item.frontDesignUrl || item.backDesignUrl ? "Generate AI design brief from mockup images" : "Upload a design first"}
                     style={{
                       padding: "4px 10px", fontSize: "10px", fontWeight: 600,
@@ -1206,11 +1714,15 @@ export default function AdminOrderDetail() {
                     {generateBrief.isPending && generateBrief.variables?.itemId === item.id ? "Analysing…" : item.designBrief ? "Regenerate" : "Generate"}
                   </button>
                 </div>
-                {item.designBrief && (
-                  <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", lineHeight: "1.7", whiteSpace: "pre-wrap" }}>
-                    {item.designBrief}
-                  </div>
-                )}
+                {/* Editable design brief — initial draft from Gemini via the
+                    Generate button above, but admin can tweak anything before
+                    the supplier sees it. EditableField saves on blur. */}
+                <EditableField
+                  value={item.designBrief}
+                  onSave={(v) => updateItem.mutate({ itemId: item.id, designBrief: v || null })}
+                  placeholder={item.designBrief == null ? "Hit Generate to draft a brief from the mockups, or click here to write one yourself." : ""}
+                  multiline
+                />
               </div>
             </div>
           );
@@ -1523,8 +2035,9 @@ function CopyLogosFrom({ currentItemId, items, onCopy }: {
 
 const APPLICATION_METHODS = ["Embroidery", "Screen Print", "Sublimation", "Heat Transfer", "DTF", "Vinyl"];
 
-function LogoElementEditor({ element, onChange, onRemove }: {
+function LogoElementEditor({ element, paletteColors, onChange, onRemove }: {
   element: LogoElement;
+  paletteColors?: { hex: string; name?: string; pms?: string }[] | null;
   onChange: (next: LogoElement) => void;
   onRemove: () => void;
 }) {
@@ -1601,16 +2114,118 @@ function LogoElementEditor({ element, onChange, onRemove }: {
           </div>
           <div>
             <div style={labelStyle}>Size (mm)</div>
-            <input
-              style={inputStyle}
-              placeholder="e.g. 85 × 60 mm"
-              value={local.sizeMm || ""}
-              onChange={(e) => setLocal({ ...local, sizeMm: e.target.value })}
-              onBlur={() => commit({ sizeMm: local.sizeMm || undefined })}
-            />
+            {(() => {
+              const suggestions = suggestLogoSizes(local.application, local.position);
+              // Is the current value one of the canonical preset options?
+              const allCanon = ALL_LOGO_SIZES.flatMap((g) => g.options);
+              const isCanonValue = local.sizeMm ? allCanon.includes(local.sizeMm) : false;
+              const selectValue = !local.sizeMm
+                ? ""
+                : isCanonValue
+                ? local.sizeMm
+                : "__custom__";
+              return (
+                <>
+                  <select
+                    style={inputStyle}
+                    value={selectValue}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "__custom__") return; // keep current free-text value
+                      const next = v || undefined;
+                      setLocal({ ...local, sizeMm: next });
+                      commit({ sizeMm: next });
+                    }}
+                  >
+                    <option value="" style={{ background: "#111" }}>— Pick a canonical size —</option>
+                    {ALL_LOGO_SIZES.map((group) => (
+                      <optgroup key={group.label} label={group.label} style={{ background: "#0a0a0a" }}>
+                        {group.options.map((opt) => (
+                          <option key={opt} value={opt} style={{ background: "#111" }}>{opt}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    {local.sizeMm && !isCanonValue && (
+                      <option value="__custom__" style={{ background: "#111" }}>Custom: {local.sizeMm}</option>
+                    )}
+                  </select>
+                  {/* Free-text override, in case the supplier needs something off-list */}
+                  <input
+                    style={{ ...inputStyle, marginTop: "4px", fontSize: "10px" }}
+                    placeholder="Or type a custom size…"
+                    value={local.sizeMm && !isCanonValue ? local.sizeMm : ""}
+                    onChange={(e) => setLocal({ ...local, sizeMm: e.target.value })}
+                    onBlur={() => commit({ sizeMm: local.sizeMm || undefined })}
+                  />
+                  {suggestions.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "3px", marginTop: "4px" }}>
+                      <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.4px", marginRight: "2px", alignSelf: "center" }}>
+                        Recommended:
+                      </span>
+                      {suggestions.slice(0, 4).map((s) => {
+                        // Find a matching canonical option (suggestions are
+                        // short strings; canonical options have descriptive
+                        // suffixes) — fall back to the raw suggestion.
+                        const canon = allCanon.find((c) => c.startsWith(s) || c.startsWith(s.replace(" mm", "")));
+                        const final = canon || s;
+                        const active = local.sizeMm === final;
+                        return (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => { setLocal({ ...local, sizeMm: final }); commit({ sizeMm: final }); }}
+                            title={`Use ${final}`}
+                            style={{
+                              padding: "2px 6px",
+                              fontSize: "9px",
+                              fontWeight: 600,
+                              background: active ? "rgba(201,168,76,0.2)" : "rgba(255,255,255,0.04)",
+                              color: active ? "#C9A84C" : "rgba(255,255,255,0.55)",
+                              border: `1px solid ${active ? "rgba(201,168,76,0.35)" : "rgba(255,255,255,0.1)"}`,
+                              borderRadius: "3px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            {s}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
-            <div style={labelStyle}>Thread / PMS codes (comma-separated)</div>
+            <div style={{ ...labelStyle, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span>Thread / PMS codes (comma-separated)</span>
+              {(() => {
+                const paletteCodes = (paletteColors || []).map((c) => c.pms || c.name).filter((s): s is string => Boolean(s && s.trim()));
+                if (!paletteCodes.length) return null;
+                const already = new Set((local.threadColours || []).map((s) => s.toLowerCase()));
+                const next = Array.from(new Set([...(local.threadColours || []), ...paletteCodes.filter((c) => !already.has(c.toLowerCase()))]));
+                const same = next.length === (local.threadColours || []).length;
+                return (
+                  <button
+                    type="button"
+                    disabled={same}
+                    onClick={() => { setLocal({ ...local, threadColours: next }); commit({ threadColours: next }); }}
+                    title={`Pull ${paletteCodes.length} code(s) from this item's colour palette`}
+                    style={{
+                      padding: "2px 7px", fontSize: "9px", fontWeight: 700, letterSpacing: "0.3px",
+                      background: same ? "rgba(201,168,76,0.06)" : "rgba(201,168,76,0.15)",
+                      color: same ? "rgba(255,255,255,0.3)" : "#C9A84C",
+                      border: `1px solid ${same ? "rgba(201,168,76,0.2)" : "rgba(201,168,76,0.35)"}`,
+                      borderRadius: "3px",
+                      cursor: same ? "not-allowed" : "pointer",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {same ? "✓ Synced" : "+ Pull from palette"}
+                  </button>
+                );
+              })()}
+            </div>
             <input
               style={inputStyle}
               placeholder="e.g. PMS Black, PMS 130 C, White"

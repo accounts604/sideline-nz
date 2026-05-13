@@ -252,7 +252,7 @@ export default function Quote() {
     return false;
   }, [step, form, needsBoth]);
 
-  const next = () => { setError(null); setCompletedSteps((prev) => new Set([...prev, step])); setStep((s) => Math.min(s + 1, totalSteps - 1)); };
+  const next = () => { setError(null); setCompletedSteps((prev) => new Set([...Array.from(prev), step])); setStep((s) => Math.min(s + 1, totalSteps - 1)); };
   const back = () => { setError(null); setStep((s) => Math.max(s - 1, 0)); };
   const goToStep = (target: number) => { if (completedSteps.has(target) || target < step) setStep(target); };
 

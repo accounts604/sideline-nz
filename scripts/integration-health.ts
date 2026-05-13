@@ -46,7 +46,7 @@ async function main() {
   const clubAccounts = await db.execute(sql`
     SELECT MAX(updated_at) AS t FROM club_accounts WHERE shopify_order_tag IS NOT NULL
   `);
-  rows.push(["Shopify Admin", "club_accounts.updated_at (proxy)", await ageDays((clubAccounts.rows?.[0] as any)?.t)]);
+  rows.push(["Shopify Admin", "club_accounts.updated_at (proxy)", await ageDays(((clubAccounts as any)[0])?.t)]);
 
   // Xero — quotes table (if exists)
   try {
@@ -65,7 +65,7 @@ async function main() {
 
   // Neon — trivial; just confirms DB reachable
   const now = await db.execute(sql`SELECT NOW() AS t`);
-  rows.push(["Neon Postgres", "SELECT NOW()", await ageDays((now.rows?.[0] as any)?.t)]);
+  rows.push(["Neon Postgres", "SELECT NOW()", await ageDays(((now as any)[0])?.t)]);
 
   // Auth — users.createdAt (last account created)
   const [userHit] = await db.select({ t: users.createdAt }).from(users)

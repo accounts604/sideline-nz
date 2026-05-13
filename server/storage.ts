@@ -759,6 +759,7 @@ export class DatabaseStorage implements IStorage {
       status: designFiles.status,
       version: designFiles.version,
       parentFileId: designFiles.parentFileId,
+      canonicalName: designFiles.canonicalName,
       createdAt: designFiles.createdAt,
       orderNumber: orders.orderNumber,
       customerEmail: orders.customerEmail,
