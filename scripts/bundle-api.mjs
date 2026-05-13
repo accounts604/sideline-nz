@@ -14,38 +14,17 @@ await build({
   alias: {
     "@shared": "./shared",
   },
-  // Keep npm packages external — Vercel installs them from package.json
+  // Only externalize packages with binary deps or huge native bundles —
+  // Vercel still pulls them via Node Modules File Tracing (NFT). Everything
+  // else gets inlined into api/index.js so the function package stays under
+  // Vercel's 300MB size limit. Node built-ins (`http`, `fs`, etc) are
+  // implicit-external on platform:node.
   external: [
-    "express",
-    "cookie-parser",
-    "dotenv",
+    "puppeteer-core",
+    "@sparticuz/chromium",
+    // Vite is dev-only; keep it external so esbuild doesn't try to bundle
+    // its plugin code into the function.
     "vite",
-    "nanoid",
-    "drizzle-orm",
-    "drizzle-orm/*",
-    "postgres",
-    "stripe",
-    "jsonwebtoken",
-    "bcryptjs",
-    "zod",
-    "@vercel/blob",
-    // Node built-ins
-    "http",
-    "https",
-    "fs",
-    "path",
-    "os",
-    "crypto",
-    "child_process",
-    "util",
-    "url",
-    "stream",
-    "buffer",
-    "events",
-    "net",
-    "tls",
-    "assert",
-    "querystring",
   ],
   // Banner to help with ESM compatibility
   banner: {
