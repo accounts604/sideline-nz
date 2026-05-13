@@ -23,11 +23,11 @@ var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
-var __copyProps = (to, from2, except, desc4) => {
+var __copyProps = (to, from2, except, desc6) => {
   if (from2 && typeof from2 === "object" || typeof from2 === "function") {
     for (let key of __getOwnPropNames(from2))
       if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from2[key], enumerable: !(desc4 = __getOwnPropDesc(from2, key)) || desc4.enumerable });
+        __defProp(to, key, { get: () => from2[key], enumerable: !(desc6 = __getOwnPropDesc(from2, key)) || desc6.enumerable });
   }
   return to;
 };
@@ -294,13 +294,17 @@ var init_drizzle_zod = __esm({
 // shared/schema.ts
 var schema_exports = {};
 __export(schema_exports, {
+  EZRA_MESSAGE_ROLES: () => EZRA_MESSAGE_ROLES,
   LOGO_POSITIONS: () => LOGO_POSITIONS,
+  NAME_PLACEMENT_OPTIONS: () => NAME_PLACEMENT_OPTIONS,
   approvalTokens: () => approvalTokens,
   cartItems: () => cartItems,
   carts: () => carts,
   clubAccounts: () => clubAccounts,
   designComments: () => designComments,
   designFiles: () => designFiles,
+  ezraConversations: () => ezraConversations,
+  ezraMessages: () => ezraMessages,
   ghlProducts: () => ghlProducts,
   insertApprovalTokenSchema: () => insertApprovalTokenSchema,
   insertCartItemSchema: () => insertCartItemSchema,
@@ -308,6 +312,8 @@ __export(schema_exports, {
   insertClubAccountSchema: () => insertClubAccountSchema,
   insertDesignCommentSchema: () => insertDesignCommentSchema,
   insertDesignFileSchema: () => insertDesignFileSchema,
+  insertEzraConversationSchema: () => insertEzraConversationSchema,
+  insertEzraMessageSchema: () => insertEzraMessageSchema,
   insertGhlProductSchema: () => insertGhlProductSchema,
   insertIntegrationEventSchema: () => insertIntegrationEventSchema,
   insertMockupDesignSchema: () => insertMockupDesignSchema,
@@ -342,7 +348,7 @@ __export(schema_exports, {
 });
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
-var users, insertUserSchema, carts, insertCartSchema, cartItems, insertCartItemSchema, orders, insertOrderSchema, orderItems, insertOrderItemSchema, LOGO_POSITIONS, ghlProducts, insertGhlProductSchema, designFiles, insertDesignFileSchema, designComments, insertDesignCommentSchema, orderSizeBreakdowns, insertOrderSizeBreakdownSchema, productionStages, insertProductionStageSchema, qualityChecks, insertQualityCheckSchema, orderMessages, insertOrderMessageSchema, orderActivity, insertOrderActivitySchema, integrationEvents, insertIntegrationEventSchema, clubAccounts, insertClubAccountSchema, mockupRequests, insertMockupRequestSchema, mockupDesigns, insertMockupDesignSchema, quoteTemplates, insertQuoteTemplateSchema, quotes, insertQuoteSchema, quoteItems, insertQuoteItemSchema, notifications, insertNotificationSchema, approvalTokens, insertApprovalTokenSchema;
+var users, insertUserSchema, carts, insertCartSchema, cartItems, insertCartItemSchema, orders, insertOrderSchema, orderItems, insertOrderItemSchema, LOGO_POSITIONS, ghlProducts, insertGhlProductSchema, designFiles, insertDesignFileSchema, designComments, insertDesignCommentSchema, orderSizeBreakdowns, NAME_PLACEMENT_OPTIONS, insertOrderSizeBreakdownSchema, productionStages, insertProductionStageSchema, qualityChecks, insertQualityCheckSchema, orderMessages, insertOrderMessageSchema, orderActivity, insertOrderActivitySchema, integrationEvents, insertIntegrationEventSchema, clubAccounts, insertClubAccountSchema, mockupRequests, insertMockupRequestSchema, mockupDesigns, insertMockupDesignSchema, quoteTemplates, insertQuoteTemplateSchema, quotes, insertQuoteSchema, quoteItems, insertQuoteItemSchema, notifications, insertNotificationSchema, approvalTokens, insertApprovalTokenSchema, ezraConversations, insertEzraConversationSchema, EZRA_MESSAGE_ROLES, ezraMessages, insertEzraMessageSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -482,6 +488,27 @@ var init_schema = __esm({
       artworkApproved: boolean("artwork_approved").default(false),
       artworkApprovedBy: text("artwork_approved_by"),
       artworkApprovedAt: timestamp("artwork_approved_at"),
+      // Sample/Bulk PO split — see migrations/po-sample-bulk-split.sql.
+      // poKind defaults to "single" so legacy orders flow through the original
+      // raise-po path unchanged. "sample" = qty-1 sample run; "bulk" = the
+      // production run that was duplicated from the sample.
+      poKind: text("po_kind").notNull().default("single"),
+      // "single" | "sample" | "bulk"
+      parentOrderId: varchar("parent_order_id"),
+      // bulk → its sample
+      poDispatchedAt: timestamp("po_dispatched_at"),
+      poHeldAt: timestamp("po_held_at"),
+      poHoldReason: text("po_hold_reason"),
+      poHeldBy: varchar("po_held_by").references(() => users.id),
+      sampleApprovedByClientAt: timestamp("sample_approved_by_client_at"),
+      depositPaidAt: timestamp("deposit_paid_at"),
+      // Pre-computed bulk size totals stashed when a sample PO is built from a
+      // closed Shopify supporter drop. Shape: { [orderItemId]: { [size]: qty } }.
+      // ensureBulkPoFromSample reads this when fanning out the bulk so qtys land
+      // populated instead of blank. Only set on sample rows.
+      bulkSizeBreakdown: jsonb("bulk_size_breakdown"),
+      // Source Shopify collection handle this PO was built from (closed-drop flow).
+      sourceCollectionHandle: text("source_collection_handle"),
       createdAt: timestamp("created_at").defaultNow(),
       updatedAt: timestamp("updated_at").defaultNow(),
       paidAt: timestamp("paid_at")
@@ -579,6 +606,11 @@ var init_schema = __esm({
       version: integer("version").notNull().default(1),
       parentFileId: varchar("parent_file_id"),
       // Links re-uploads to original
+      // AI-suggested canonical name (in-app AI worker output, accepted by admin).
+      // Format: "<year> <club> <product> [- <side>]". Used by Drive folder builder
+      // and supplier PO email so filenames stay consistent regardless of the raw
+      // Vercel Blob URL (which has a random suffix and can't be renamed).
+      canonicalName: text("canonical_name"),
       createdAt: timestamp("created_at").defaultNow()
     });
     insertDesignFileSchema = createInsertSchema(designFiles).omit({ id: true, createdAt: true });
@@ -600,9 +632,23 @@ var init_schema = __esm({
       quantity: integer("quantity").notNull().default(1),
       playerName: text("player_name"),
       playerNumber: text("player_number"),
+      // Where on the garment the player's name goes. Free-text so we accept any
+      // value, but the UI picker offers a canonical set (NAME_PLACEMENT_OPTIONS).
+      namePlacement: text("name_placement"),
       notes: text("notes"),
       createdAt: timestamp("created_at").defaultNow()
     });
+    NAME_PLACEMENT_OPTIONS = [
+      "Back Upper",
+      "Back Mid",
+      "Back Below Number",
+      "Left Chest",
+      "Right Chest",
+      "Front Center",
+      "Left Sleeve",
+      "Right Sleeve",
+      "None"
+    ];
     insertOrderSizeBreakdownSchema = createInsertSchema(orderSizeBreakdowns).omit({ id: true, createdAt: true });
     productionStages = pgTable("production_stages", {
       id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -694,6 +740,18 @@ var init_schema = __esm({
       // Supporter campaign — Shopify order tag this club's orders carry (e.g. "club:onewhero-rfc").
       // Set via Shopify Flow on order creation; used server-side to filter Admin API queries.
       shopifyOrderTag: text("shopify_order_tag").unique(),
+      // Shopify collection handle (e.g. "onewhero-rfc-supporters") for the
+      // supporter drop. The poll-supporter-collections cron watches this — when
+      // it flips to unpublished, the closed-drop PO build fires.
+      supporterCollectionHandle: text("supporter_collection_handle"),
+      // Last-seen published state of the supporter collection. The cron uses the
+      // published→unpublished transition (not the absolute state) to fire, so it
+      // doesn't keep building POs for collections that were never published.
+      supporterCollectionPublished: boolean("supporter_collection_published"),
+      // Set when the closed-drop build fires so re-publishing then re-closing
+      // doesn't auto-fire a duplicate. Cleared manually if a fresh drop reuses
+      // the same handle.
+      supporterDropClosedAt: timestamp("supporter_drop_closed_at"),
       // Profit share in basis points (800 = 8%). Avoids pg numeric quirks.
       profitShareTierBps: integer("profit_share_tier_bps").notNull().default(800),
       createdAt: timestamp("created_at").defaultNow(),
@@ -869,6 +927,42 @@ var init_schema = __esm({
       createdAt: timestamp("created_at").defaultNow()
     });
     insertApprovalTokenSchema = createInsertSchema(approvalTokens).omit({ id: true, createdAt: true });
+    ezraConversations = pgTable("ezra_conversations", {
+      id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+      userId: varchar("user_id").notNull(),
+      // not FK so service-token sessions don't break
+      title: text("title"),
+      scopeKind: text("scope_kind"),
+      // 'order' | 'club' | 'global' | 'telegram'
+      scopeId: text("scope_id"),
+      // orderId / clubAccountId / null
+      channel: text("channel"),
+      // 'web' | 'telegram'
+      channelRef: text("channel_ref"),
+      // telegram chat_id
+      createdAt: timestamp("created_at").defaultNow(),
+      updatedAt: timestamp("updated_at").defaultNow()
+    });
+    insertEzraConversationSchema = createInsertSchema(ezraConversations).omit({ id: true, createdAt: true, updatedAt: true });
+    EZRA_MESSAGE_ROLES = ["user", "assistant", "tool_call", "tool_result", "system"];
+    ezraMessages = pgTable("ezra_messages", {
+      id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+      conversationId: varchar("conversation_id").notNull().references(() => ezraConversations.id, { onDelete: "cascade" }),
+      role: text("role").notNull(),
+      // EzraMessageRole
+      content: text("content"),
+      toolName: text("tool_name"),
+      toolArgs: jsonb("tool_args"),
+      toolResult: jsonb("tool_result"),
+      toolCallId: text("tool_call_id"),
+      finishReason: text("finish_reason"),
+      // 'stop' | 'tool_calls' | 'error' | null
+      error: text("error"),
+      inputTokens: integer("input_tokens"),
+      outputTokens: integer("output_tokens"),
+      createdAt: timestamp("created_at").defaultNow()
+    });
+    insertEzraMessageSchema = createInsertSchema(ezraMessages).omit({ id: true, createdAt: true });
   }
 });
 
@@ -1380,6 +1474,7 @@ var init_storage = __esm({
           status: designFiles.status,
           version: designFiles.version,
           parentFileId: designFiles.parentFileId,
+          canonicalName: designFiles.canonicalName,
           createdAt: designFiles.createdAt,
           orderNumber: orders.orderNumber,
           customerEmail: orders.customerEmail
@@ -1895,8 +1990,8 @@ var init_email = __esm({
           console.error(`[EMAIL] Resend ${res.status}: ${body.slice(0, 300)}`);
           return { success: false };
         }
-        const json = await res.json().catch(() => ({}));
-        return { success: true, messageId: json.id };
+        const json2 = await res.json().catch(() => ({}));
+        return { success: true, messageId: json2.id };
       }
     };
     emailService = createEmailService();
@@ -2061,14 +2156,29 @@ async function createGhlContact(contactData, tags = []) {
     quote_status: "quote_status",
     quote_items: "quote_items",
     quote_valid_until: "quote_valid_until",
-    quote_url: "quote_url"
+    quote_url: "quote_url",
+    // Form keys mapped to existing GHL fields with different names (added 2026-05-04
+    // — these were silently falling into additional_notes blob before).
+    user_type: "organisation_type",
+    organisation_type: "organisation_type",
+    estimated_quantity: "expected_numbers",
+    expected_numbers: "expected_numbers",
+    budget_range: "budget_signal",
+    budget_signal: "budget_signal",
+    approval_process: "decision_maker",
+    decision_maker: "decision_maker",
+    main_concern: "pain_point_summary",
+    pain_point_summary: "pain_point_summary",
+    enquiry_type: "package_interest"
+    // contact-form enquiry type → package_interest field
+    // NOTE: preferred_date/backup_date/follow_up_date/proposal_date in GHL are
+    // typed date fields — they reject free-form strings like "March 2026".
+    // season_start / school_event_date stay in additional_notes overflow.
   };
   const additionalNotesFields = [
-    "user_type",
     "member_count",
     "mockup_interest",
     "needs",
-    "estimated_quantity",
     "kit_quantity",
     "supporter_quantity",
     "teams_involved",
@@ -2077,20 +2187,17 @@ async function createGhlContact(contactData, tags = []) {
     "style_preference",
     "fundraising_interest",
     "sponsorship_interest",
-    "season_start",
     "design_stage",
-    "budget_range",
-    "approval_process",
-    "main_concern",
-    "school_event_date",
     "slt_friendly",
     "team_store_interest",
     "team_store_audience",
     "team_store_goal",
-    "enquiry_type",
     "message",
     "logo_file_url",
-    "submitted_at"
+    "submitted_at",
+    "season_start",
+    "school_event_date"
+    // typed date GHL fields reject free-form strings
   ];
   for (const [formKey, ghlKey] of Object.entries(customFieldMappings)) {
     if (contactData[formKey]) {
@@ -2758,6 +2865,217 @@ Contact ID: ${contactId}`,
       }
     });
     ghl_default = router;
+  }
+});
+
+// server/shopify-admin.ts
+function isShopifyAdminConfigured() {
+  return Boolean(STORE_DOMAIN && ADMIN_TOKEN);
+}
+async function adminFetch(query, variables) {
+  if (!isShopifyAdminConfigured()) {
+    throw new Error("Shopify Admin API not configured. Set SHOPIFY_STORE_URL + SHOPIFY_ADMIN_TOKEN.");
+  }
+  const endpoint = `https://${STORE_DOMAIN}/admin/api/${API_VERSION}/graphql.json`;
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": ADMIN_TOKEN
+    },
+    body: JSON.stringify({ query, variables })
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Shopify Admin HTTP ${res.status}: ${body.slice(0, 300)}`);
+  }
+  const json2 = await res.json();
+  if (json2.errors && json2.errors.length) {
+    throw new Error("Shopify Admin GraphQL: " + json2.errors.map((e) => e.message).join("; "));
+  }
+  if (!json2.data) throw new Error("Shopify Admin returned no data");
+  return json2.data;
+}
+function moneyToCents(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100);
+}
+async function fetchSupporterOrdersByTag(tag) {
+  if (!tag) return [];
+  const cached = cache.get(tag);
+  if (cached && cached.expires > Date.now()) {
+    return cached.orders;
+  }
+  const queryString = `tag:"${tag.replace(/"/g, "")}"`;
+  const orders2 = [];
+  let after = null;
+  for (let page = 0; page < 20; page++) {
+    const data = await adminFetch(ORDERS_BY_TAG_QUERY, {
+      query: queryString,
+      first: 100,
+      after
+    });
+    for (const node of data.orders.nodes) {
+      if (!node.tags.includes(tag)) continue;
+      const customerName = node.customer ? [node.customer.firstName, node.customer.lastName].filter(Boolean).join(" ") || null : null;
+      orders2.push({
+        id: node.id,
+        number: node.name,
+        name: node.name,
+        customerName,
+        customerEmail: node.customer?.email || null,
+        totalCents: moneyToCents(node.currentTotalPriceSet.shopMoney.amount),
+        currency: node.currentTotalPriceSet.shopMoney.currencyCode,
+        financialStatus: node.displayFinancialStatus,
+        fulfillmentStatus: node.displayFulfillmentStatus,
+        createdAt: node.createdAt,
+        tags: node.tags,
+        lines: node.lineItems.nodes.map((l) => ({
+          title: l.title,
+          variantTitle: l.variantTitle,
+          quantity: l.quantity,
+          unitPriceCents: moneyToCents(l.originalUnitPriceSet.shopMoney.amount)
+        }))
+      });
+    }
+    if (!data.orders.pageInfo.hasNextPage) break;
+    after = data.orders.pageInfo.endCursor;
+  }
+  cache.set(tag, { expires: Date.now() + TTL_MS, orders: orders2 });
+  return orders2;
+}
+function summarizeSupporterOrders(orders2, profitShareTierBps) {
+  let revenueCents = 0;
+  let unitsSold = 0;
+  const currency = orders2[0]?.currency || "NZD";
+  const bySupporter = /* @__PURE__ */ new Map();
+  for (const o of orders2) {
+    revenueCents += o.totalCents;
+    for (const l of o.lines) unitsSold += l.quantity;
+    const key = (o.customerEmail || o.customerName || o.id).toLowerCase();
+    const prev = bySupporter.get(key);
+    const name = o.customerName || o.customerEmail || "Anonymous";
+    if (prev) {
+      prev.spendCents += o.totalCents;
+    } else {
+      bySupporter.set(key, { name, email: o.customerEmail, spendCents: o.totalCents });
+    }
+  }
+  const topSupporters = Array.from(bySupporter.values()).sort((a, b) => b.spendCents - a.spendCents).slice(0, 5);
+  return {
+    orderCount: orders2.length,
+    unitsSold,
+    revenueCents,
+    currency,
+    profitShareCents: Math.round(revenueCents * profitShareTierBps / 1e4),
+    topSupporters
+  };
+}
+async function fetchCollectionStatus(handle) {
+  if (!handle) return null;
+  const data = await adminFetch(
+    COLLECTION_BY_HANDLE_QUERY,
+    { handle }
+  );
+  const c = data.collectionByHandle;
+  if (!c) return null;
+  return {
+    id: c.id,
+    handle: c.handle,
+    title: c.title,
+    publishedOnOnlineStore: Boolean(c.publishedOnCurrentPublication),
+    productCount: Number(c.productsCount?.count || 0)
+  };
+}
+async function fetchProductsInCollection(handle) {
+  if (!handle) return [];
+  const data = await adminFetch(
+    PRODUCTS_IN_COLLECTION_QUERY,
+    { handle, first: 50 }
+  );
+  const nodes = data.collectionByHandle?.products.nodes || [];
+  return nodes.map((p) => ({
+    id: p.id,
+    title: p.title,
+    handle: p.handle,
+    imageUrl: p.featuredImage?.url || null,
+    variantTitles: (p.variants?.nodes || []).map((v) => v.title)
+  }));
+}
+function filterByDateRange(orders2, from2, to) {
+  if (!from2 && !to) return orders2;
+  const fromMs = from2 ? Date.parse(from2) : -Infinity;
+  let toMs = to ? Date.parse(to) : Infinity;
+  if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) toMs += 24 * 60 * 60 * 1e3 - 1;
+  return orders2.filter((o) => {
+    const t = Date.parse(o.createdAt);
+    return t >= fromMs && t <= toMs;
+  });
+}
+var STORE_DOMAIN, ADMIN_TOKEN, API_VERSION, ORDERS_BY_TAG_QUERY, TTL_MS, cache, COLLECTION_BY_HANDLE_QUERY, PRODUCTS_IN_COLLECTION_QUERY;
+var init_shopify_admin = __esm({
+  "server/shopify-admin.ts"() {
+    "use strict";
+    STORE_DOMAIN = process.env.SHOPIFY_STORE_URL || process.env.VITE_SHOPIFY_STORE_URL || "";
+    ADMIN_TOKEN = process.env.SHOPIFY_ADMIN_TOKEN || "";
+    API_VERSION = process.env.SHOPIFY_ADMIN_API_VERSION || "2024-10";
+    ORDERS_BY_TAG_QUERY = /* GraphQL */
+    `
+  query OrdersByTag($query: String!, $first: Int!, $after: String) {
+    orders(first: $first, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        id
+        name
+        createdAt
+        displayFinancialStatus
+        displayFulfillmentStatus
+        tags
+        currentTotalPriceSet { shopMoney { amount currencyCode } }
+        customer { firstName lastName email }
+        lineItems(first: 50) {
+          nodes {
+            title
+            variantTitle
+            quantity
+            originalUnitPriceSet { shopMoney { amount } }
+          }
+        }
+      }
+    }
+  }
+`;
+    TTL_MS = 5 * 60 * 1e3;
+    cache = /* @__PURE__ */ new Map();
+    COLLECTION_BY_HANDLE_QUERY = /* GraphQL */
+    `
+  query CollectionByHandle($handle: String!) {
+    collectionByHandle(handle: $handle) {
+      id
+      handle
+      title
+      publishedOnCurrentPublication
+      productsCount { count }
+    }
+  }
+`;
+    PRODUCTS_IN_COLLECTION_QUERY = /* GraphQL */
+    `
+  query ProductsInCollection($handle: String!, $first: Int!) {
+    collectionByHandle(handle: $handle) {
+      products(first: $first) {
+        nodes {
+          id
+          title
+          handle
+          featuredImage { url }
+          variants(first: 100) { nodes { title } }
+        }
+      }
+    }
+  }
+`;
   }
 });
 
@@ -6421,11 +6739,11 @@ function evaluationString(fun, ...args) {
   }
   return `(${fun})(${args.map(serializeArgument).join(",")})`;
 }
-async function getReadableAsTypedArray(readable, path13) {
+async function getReadableAsTypedArray(readable, path14) {
   const buffers = [];
   const reader = readable.getReader();
-  if (path13) {
-    const fileHandle = await environment.value.fs.promises.open(path13, "w+");
+  if (path14) {
+    const fileHandle = await environment.value.fs.promises.open(path14, "w+");
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -11432,13 +11750,13 @@ var init_Frame = __esm({
          */
         async addScriptTag(options) {
           let { content = "", type } = options;
-          const { path: path13 } = options;
-          if (+!!options.url + +!!path13 + +!!content !== 1) {
+          const { path: path14 } = options;
+          if (+!!options.url + +!!path14 + +!!content !== 1) {
             throw new Error("Exactly one of `url`, `path`, or `content` must be specified.");
           }
-          if (path13) {
-            content = await environment.value.fs.promises.readFile(path13, "utf8");
-            content += `//# sourceURL=${path13.replace(/\n/g, "")}`;
+          if (path14) {
+            content = await environment.value.fs.promises.readFile(path14, "utf8");
+            content += `//# sourceURL=${path14.replace(/\n/g, "")}`;
           }
           type = type ?? "text/javascript";
           return await this.mainRealm().transferHandle(await this.isolatedRealm().evaluateHandle(async ({ url, id, type: type2, content: content2 }) => {
@@ -11470,13 +11788,13 @@ var init_Frame = __esm({
          */
         async addStyleTag(options) {
           let { content = "" } = options;
-          const { path: path13 } = options;
-          if (+!!options.url + +!!path13 + +!!content !== 1) {
+          const { path: path14 } = options;
+          if (+!!options.url + +!!path14 + +!!content !== 1) {
             throw new Error("Exactly one of `url`, `path`, or `content` must be specified.");
           }
-          if (path13) {
-            content = await environment.value.fs.promises.readFile(path13, "utf8");
-            content += "/*# sourceURL=" + path13.replace(/\n/g, "") + "*/";
+          if (path14) {
+            content = await environment.value.fs.promises.readFile(path14, "utf8");
+            content += "/*# sourceURL=" + path14.replace(/\n/g, "") + "*/";
             options.content = content;
           }
           return await this.mainRealm().transferHandle(await this.isolatedRealm().evaluateHandle(async ({ url, content: content2 }) => {
@@ -13125,11 +13443,11 @@ var init_Page = __esm({
         /**
          * @internal
          */
-        async _maybeWriteTypedArrayToFile(path13, typedArray) {
-          if (!path13) {
+        async _maybeWriteTypedArrayToFile(path14, typedArray) {
+          if (!path14) {
             return;
           }
-          await environment.value.fs.promises.writeFile(path13, typedArray);
+          await environment.value.fs.promises.writeFile(path14, typedArray);
         }
         /**
          * Captures a screencast of this {@link Page | page}.
@@ -16862,13 +17180,13 @@ var init_ElementHandle2 = __esm({
             return element.multiple;
           });
           assert(files.length <= 1 || isMultiple, "Multiple file uploads only work with <input type=file multiple>");
-          const path13 = environment.value.path;
-          if (path13) {
+          const path14 = environment.value.path;
+          if (path14) {
             files = files.map((filePath) => {
-              if (path13.win32.isAbsolute(filePath) || path13.posix.isAbsolute(filePath)) {
+              if (path14.win32.isAbsolute(filePath) || path14.posix.isAbsolute(filePath)) {
                 return filePath;
               } else {
-                return path13.resolve(filePath);
+                return path14.resolve(filePath);
               }
             });
           }
@@ -20644,7 +20962,7 @@ var init_Tracing = __esm({
           "disabled-by-default-devtools.timeline.stack",
           "disabled-by-default-v8.cpu_profiler"
         ];
-        const { path: path13, screenshots = false, categories = defaultCategories } = options;
+        const { path: path14, screenshots = false, categories = defaultCategories } = options;
         if (screenshots) {
           categories.push("disabled-by-default-devtools.screenshot");
         }
@@ -20656,7 +20974,7 @@ var init_Tracing = __esm({
         const includedCategories = categories.filter((cat) => {
           return !cat.startsWith("-");
         });
-        this.#path = path13;
+        this.#path = path14;
         this.#recording = true;
         await this.#client.send("Tracing.start", {
           transferMode: "ReturnAsStream",
@@ -21835,9 +22153,9 @@ var init_Page2 = __esm({
         return await getReadableFromProtocolStream(this.#primaryTargetClient, result.stream);
       }
       async pdf(options = {}) {
-        const { path: path13 = void 0 } = options;
+        const { path: path14 = void 0 } = options;
         const readable = await this.createPDFStream(options);
-        const typedArray = await getReadableAsTypedArray(readable, path13);
+        const typedArray = await getReadableAsTypedArray(readable, path14);
         assert(typedArray, "Could not create typed array");
         return typedArray;
       }
@@ -22944,8 +23262,8 @@ var init_Browser2 = __esm({
         });
         return response.targetId;
       }
-      async installExtension(path13) {
-        const { id } = await this.#connection.send("Extensions.loadUnpacked", { path: path13 });
+      async installExtension(path14) {
+        const { id } = await this.#connection.send("Extensions.loadUnpacked", { path: path14 });
         this.#extensions.delete(id);
         return id;
       }
@@ -25346,13 +25664,13 @@ var require_protocol = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -28342,16 +28660,16 @@ var require_InputProcessor = __commonJS({
           }
           const { handle } = result2.result;
           (0, assert_js_1.assert)(handle !== void 0);
-          const { path: path13 } = await hiddenSandboxRealm.cdpClient.sendCommand("DOM.getFileInfo", {
+          const { path: path14 } = await hiddenSandboxRealm.cdpClient.sendCommand("DOM.getFileInfo", {
             objectId: handle
           });
-          paths.push(path13);
+          paths.push(path14);
           void hiddenSandboxRealm.disown(handle).catch(void 0);
         }
         paths.sort();
         const sortedFiles = [...params.files].sort();
-        if (paths.length !== params.files.length || sortedFiles.some((path13, index) => {
-          return paths[index] !== path13;
+        if (paths.length !== params.files.length || sortedFiles.some((path14, index) => {
+          return paths[index] !== path14;
         })) {
           const { objectId } = await hiddenSandboxRealm.deserializeForCdp(params.element);
           (0, assert_js_1.assert)(objectId !== void 0);
@@ -39181,13 +39499,13 @@ var init_ElementHandle3 = __esm({
           }
         }
         async uploadFile(...files) {
-          const path13 = environment.value.path;
-          if (path13) {
+          const path14 = environment.value.path;
+          if (path14) {
             files = files.map((file) => {
-              if (path13.win32.isAbsolute(file) || path13.posix.isAbsolute(file)) {
+              if (path14.win32.isAbsolute(file) || path14.posix.isAbsolute(file)) {
                 return file;
               } else {
-                return path13.resolve(file);
+                return path14.resolve(file);
               }
             });
           }
@@ -42098,7 +42416,7 @@ var init_Page3 = __esm({
           return this.#viewport;
         }
         async pdf(options = {}) {
-          const { timeout: ms = this._timeoutSettings.timeout(), path: path13 = void 0 } = options;
+          const { timeout: ms = this._timeoutSettings.timeout(), path: path14 = void 0 } = options;
           const { printBackground: background, margin, landscape, width, height, pageRanges: ranges, scale, preferCSSPageSize } = parsePDFOptions(options, "cm");
           const pageRanges = ranges ? ranges.split(", ") : [];
           await firstValueFrom(from(this.mainFrame().isolatedRealm().evaluate(() => {
@@ -42117,7 +42435,7 @@ var init_Page3 = __esm({
             shrinkToFit: !preferCSSPageSize
           })).pipe(raceWith(timeout(ms))));
           const typedArray = stringToTypedArray(data, true);
-          await this._maybeWriteTypedArrayToFile(path13, typedArray);
+          await this._maybeWriteTypedArrayToFile(path14, typedArray);
           return typedArray;
         }
         async createPDFStream(options) {
@@ -43253,9 +43571,9 @@ var init_Browser3 = __esm({
           }
           return this.#createUserContext(userContext);
         }
-        async installExtension(path13) {
+        async installExtension(path14) {
           const { result: { extension } } = await this.session.send("webExtension.install", {
-            extensionData: { type: "path", path: path13 }
+            extensionData: { type: "path", path: path14 }
           });
           return extension;
         }
@@ -43742,8 +44060,8 @@ var init_Browser4 = __esm({
         newPage(options) {
           return this.defaultBrowserContext().newPage(options);
         }
-        installExtension(path13) {
-          return this.#browserCore.installExtension(path13);
+        installExtension(path14) {
+          return this.#browserCore.installExtension(path14);
         }
         async uninstallExtension(id) {
           await this.#browserCore.uninstallExtension(id);
@@ -43964,8 +44282,8 @@ var require_constants = __commonJS({
 // node_modules/node-gyp-build/node-gyp-build.js
 var require_node_gyp_build = __commonJS({
   "node_modules/node-gyp-build/node-gyp-build.js"(exports, module) {
-    var fs8 = __require("fs");
-    var path13 = __require("path");
+    var fs9 = __require("fs");
+    var path14 = __require("path");
     var os10 = __require("os");
     var runtimeRequire = typeof __webpack_require__ === "function" ? __non_webpack_require__ : __require;
     var vars = process.config && process.config.variables || {};
@@ -43982,21 +44300,21 @@ var require_node_gyp_build = __commonJS({
       return runtimeRequire(load.resolve(dir));
     }
     load.resolve = load.path = function(dir) {
-      dir = path13.resolve(dir || ".");
+      dir = path14.resolve(dir || ".");
       try {
-        var name = runtimeRequire(path13.join(dir, "package.json")).name.toUpperCase().replace(/-/g, "_");
+        var name = runtimeRequire(path14.join(dir, "package.json")).name.toUpperCase().replace(/-/g, "_");
         if (process.env[name + "_PREBUILD"]) dir = process.env[name + "_PREBUILD"];
       } catch (err) {
       }
       if (!prebuildsOnly) {
-        var release = getFirst(path13.join(dir, "build/Release"), matchBuild);
+        var release = getFirst(path14.join(dir, "build/Release"), matchBuild);
         if (release) return release;
-        var debug6 = getFirst(path13.join(dir, "build/Debug"), matchBuild);
+        var debug6 = getFirst(path14.join(dir, "build/Debug"), matchBuild);
         if (debug6) return debug6;
       }
       var prebuild = resolve6(dir);
       if (prebuild) return prebuild;
-      var nearby = resolve6(path13.dirname(process.execPath));
+      var nearby = resolve6(path14.dirname(process.execPath));
       if (nearby) return nearby;
       var target = [
         "platform=" + platform,
@@ -44013,26 +44331,26 @@ var require_node_gyp_build = __commonJS({
       ].filter(Boolean).join(" ");
       throw new Error("No native build was found for " + target + "\n    loaded from: " + dir + "\n");
       function resolve6(dir2) {
-        var tuples = readdirSync2(path13.join(dir2, "prebuilds")).map(parseTuple);
+        var tuples = readdirSync2(path14.join(dir2, "prebuilds")).map(parseTuple);
         var tuple = tuples.filter(matchTuple(platform, arch)).sort(compareTuples)[0];
         if (!tuple) return;
-        var prebuilds = path13.join(dir2, "prebuilds", tuple.name);
+        var prebuilds = path14.join(dir2, "prebuilds", tuple.name);
         var parsed = readdirSync2(prebuilds).map(parseTags);
         var candidates = parsed.filter(matchTags(runtime, abi));
         var winner = candidates.sort(compareTags(runtime))[0];
-        if (winner) return path13.join(prebuilds, winner.file);
+        if (winner) return path14.join(prebuilds, winner.file);
       }
     };
     function readdirSync2(dir) {
       try {
-        return fs8.readdirSync(dir);
+        return fs9.readdirSync(dir);
       } catch (err) {
         return [];
       }
     }
     function getFirst(dir, filter2) {
       var files = readdirSync2(dir).filter(filter2);
-      return files[0] && path13.join(dir, files[0]);
+      return files[0] && path14.join(dir, files[0]);
     }
     function matchBuild(name) {
       return /\.node$/.test(name);
@@ -44119,7 +44437,7 @@ var require_node_gyp_build = __commonJS({
       return typeof window !== "undefined" && window.process && window.process.type === "renderer";
     }
     function isAlpine(platform2) {
-      return platform2 === "linux" && fs8.existsSync("/etc/alpine-release");
+      return platform2 === "linux" && fs9.existsSync("/etc/alpine-release");
     }
     load.parseTags = parseTags;
     load.matchTags = matchTags;
@@ -48576,8 +48894,8 @@ var require_eq = __commonJS({
   "node_modules/semver/functions/eq.js"(exports, module) {
     "use strict";
     var compare = require_compare();
-    var eq9 = (a, b, loose) => compare(a, b, loose) === 0;
-    module.exports = eq9;
+    var eq14 = (a, b, loose) => compare(a, b, loose) === 0;
+    module.exports = eq14;
   }
 });
 
@@ -48615,7 +48933,7 @@ var require_lte = __commonJS({
 var require_cmp = __commonJS({
   "node_modules/semver/functions/cmp.js"(exports, module) {
     "use strict";
-    var eq9 = require_eq();
+    var eq14 = require_eq();
     var neq = require_neq();
     var gt = require_gt();
     var gte = require_gte();
@@ -48642,7 +48960,7 @@ var require_cmp = __commonJS({
         case "":
         case "=":
         case "==":
-          return eq9(a, b, loose);
+          return eq14(a, b, loose);
         case "!=":
           return neq(a, b, loose);
         case ">":
@@ -49623,15 +49941,15 @@ var require_subset = __commonJS({
           return null;
         }
       }
-      for (const eq9 of eqSet) {
-        if (gt && !satisfies(eq9, String(gt), options)) {
+      for (const eq14 of eqSet) {
+        if (gt && !satisfies(eq14, String(gt), options)) {
           return null;
         }
-        if (lt && !satisfies(eq9, String(lt), options)) {
+        if (lt && !satisfies(eq14, String(lt), options)) {
           return null;
         }
         for (const c of dom) {
-          if (!satisfies(eq9, String(c), options)) {
+          if (!satisfies(eq14, String(c), options)) {
             return false;
           }
         }
@@ -49735,7 +50053,7 @@ var require_semver2 = __commonJS({
     var rsort = require_rsort();
     var gt = require_gt();
     var lt = require_lt();
-    var eq9 = require_eq();
+    var eq14 = require_eq();
     var neq = require_neq();
     var gte = require_gte();
     var lte = require_lte();
@@ -49773,7 +50091,7 @@ var require_semver2 = __commonJS({
       rsort,
       gt,
       lt,
-      eq: eq9,
+      eq: eq14,
       neq,
       gte,
       lte,
@@ -50811,13 +51129,13 @@ var require_helpers = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -50850,7 +51168,7 @@ var require_helpers = __commonJS({
       return Buffer.concat(chunks, length);
     }
     exports.toBuffer = toBuffer;
-    async function json(stream) {
+    async function json2(stream) {
       const buf = await toBuffer(stream);
       const str = buf.toString("utf8");
       try {
@@ -50861,7 +51179,7 @@ var require_helpers = __commonJS({
         throw err;
       }
     }
-    exports.json = json;
+    exports.json = json2;
     function req(url, opts = {}) {
       const href = typeof url === "string" ? url : url.href;
       const req2 = (href.startsWith("https:") ? https2 : http2).request(url, opts);
@@ -50881,13 +51199,13 @@ var require_dist = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -51107,13 +51425,13 @@ var require_dist2 = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -51333,13 +51651,13 @@ var require_dist3 = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -52927,13 +53245,13 @@ var require_ipv4 = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -53356,13 +53674,13 @@ var require_regular_expressions = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -53448,13 +53766,13 @@ var require_ipv6 = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -54362,13 +54680,13 @@ var require_ip_address = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -55246,13 +55564,13 @@ var require_build = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -55271,13 +55589,13 @@ var require_dist4 = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -56436,13 +56754,13 @@ var require_parseList = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -57117,8 +57435,8 @@ var require_Client = __commonJS({
       /**
        * Set the working directory.
        */
-      async cd(path13) {
-        const validPath = await this.protectWhitespace(path13);
+      async cd(path14) {
+        const validPath = await this.protectWhitespace(path14);
         return this.send("CWD " + validPath);
       }
       /**
@@ -57131,8 +57449,8 @@ var require_Client = __commonJS({
        * Get the last modified time of a file. This is not supported by every FTP server, in which case
        * calling this method will throw an exception.
        */
-      async lastMod(path13) {
-        const validPath = await this.protectWhitespace(path13);
+      async lastMod(path14) {
+        const validPath = await this.protectWhitespace(path14);
         const res = await this.send(`MDTM ${validPath}`);
         const date = res.message.slice(4);
         return (0, parseListMLSD_1.parseMLSxDate)(date);
@@ -57140,8 +57458,8 @@ var require_Client = __commonJS({
       /**
        * Get the size of a file.
        */
-      async size(path13) {
-        const validPath = await this.protectWhitespace(path13);
+      async size(path14) {
+        const validPath = await this.protectWhitespace(path14);
         const command2 = `SIZE ${validPath}`;
         const res = await this.send(command2);
         const size = parseInt(res.message.slice(4), 10);
@@ -57168,8 +57486,8 @@ var require_Client = __commonJS({
        * You can ignore FTP error return codes which won't throw an exception if e.g.
        * the file doesn't exist.
        */
-      async remove(path13, ignoreErrorCodes = false) {
-        const validPath = await this.protectWhitespace(path13);
+      async remove(path14, ignoreErrorCodes = false) {
+        const validPath = await this.protectWhitespace(path14);
         if (ignoreErrorCodes) {
           return this.sendIgnoringError(`DELE ${validPath}`);
         }
@@ -57323,8 +57641,8 @@ var require_Client = __commonJS({
        *
        * @param [path]  Path to remote file or directory.
        */
-      async list(path13 = "") {
-        const validPath = await this.protectWhitespace(path13);
+      async list(path14 = "") {
+        const validPath = await this.protectWhitespace(path14);
         let lastError;
         for (const candidate of this.availableListCommands) {
           const command2 = validPath === "" ? candidate : `${candidate} ${validPath}`;
@@ -57494,21 +57812,21 @@ var require_Client = __commonJS({
       /**
        * Remove an empty directory, will fail if not empty.
        */
-      async removeEmptyDir(path13) {
-        const validPath = await this.protectWhitespace(path13);
+      async removeEmptyDir(path14) {
+        const validPath = await this.protectWhitespace(path14);
         return this.send(`RMD ${validPath}`);
       }
       /**
        * FTP servers can't handle filenames that have leading whitespace. This method transforms
        * a given path to fix that issue for most cases.
        */
-      async protectWhitespace(path13) {
-        if (!path13.startsWith(" ")) {
-          return path13;
+      async protectWhitespace(path14) {
+        if (!path14.startsWith(" ")) {
+          return path14;
         }
         const pwd = await this.pwd();
         const absolutePathPrefix = pwd.endsWith("/") ? pwd : pwd + "/";
-        return absolutePathPrefix + path13;
+        return absolutePathPrefix + path14;
       }
       async _exitAtCurrentDirectory(func) {
         const userDir = await this.pwd();
@@ -57585,11 +57903,11 @@ var require_Client = __commonJS({
       }
     };
     exports.Client = Client;
-    async function ensureLocalDirectory(path13) {
+    async function ensureLocalDirectory(path14) {
       try {
-        await fsStat(path13);
+        await fsStat(path14);
       } catch (_a4) {
-        await fsMkDir(path13, { recursive: true });
+        await fsMkDir(path14, { recursive: true });
       }
     }
     async function ignoreError(func) {
@@ -57616,13 +57934,13 @@ var require_dist5 = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -58183,23 +58501,23 @@ var require_estraverse = __commonJS({
           return false;
         }
       };
-      function Element2(node, path13, wrap2, ref) {
+      function Element2(node, path14, wrap2, ref) {
         this.node = node;
-        this.path = path13;
+        this.path = path14;
         this.wrap = wrap2;
         this.ref = ref;
       }
       function Controller() {
       }
-      Controller.prototype.path = function path13() {
+      Controller.prototype.path = function path14() {
         var i, iz, j, jz, result, element;
-        function addToPath(result2, path14) {
-          if (Array.isArray(path14)) {
-            for (j = 0, jz = path14.length; j < jz; ++j) {
-              result2.push(path14[j]);
+        function addToPath(result2, path15) {
+          if (Array.isArray(path15)) {
+            for (j = 0, jz = path15.length; j < jz; ++j) {
+              result2.push(path15[j]);
             }
           } else {
-            result2.push(path14);
+            result2.push(path15);
           }
         }
         if (!this.__current.path) {
@@ -59084,16 +59402,16 @@ var require_util2 = __commonJS({
     }
     exports.urlGenerate = urlGenerate;
     function normalize2(aPath) {
-      var path13 = aPath;
+      var path14 = aPath;
       var url = urlParse(aPath);
       if (url) {
         if (!url.path) {
           return aPath;
         }
-        path13 = url.path;
+        path14 = url.path;
       }
-      var isAbsolute2 = exports.isAbsolute(path13);
-      var parts = path13.split(/\/+/);
+      var isAbsolute2 = exports.isAbsolute(path14);
+      var parts = path14.split(/\/+/);
       for (var part, up = 0, i = parts.length - 1; i >= 0; i--) {
         part = parts[i];
         if (part === ".") {
@@ -59110,15 +59428,15 @@ var require_util2 = __commonJS({
           }
         }
       }
-      path13 = parts.join("/");
-      if (path13 === "") {
-        path13 = isAbsolute2 ? "/" : ".";
+      path14 = parts.join("/");
+      if (path14 === "") {
+        path14 = isAbsolute2 ? "/" : ".";
       }
       if (url) {
-        url.path = path13;
+        url.path = path14;
         return urlGenerate(url);
       }
-      return path13;
+      return path14;
     }
     exports.normalize = normalize2;
     function join8(aRoot, aPath) {
@@ -60759,7 +61077,7 @@ var require_escodegen = __commonJS({
   "node_modules/escodegen/escodegen.js"(exports) {
     (function() {
       "use strict";
-      var Syntax, Precedence, BinaryPrecedence, SourceNode, estraverse, esutils, base, indent, json, renumber, hexadecimal, quotes2, escapeless, newline, space, parentheses, semicolons, safeConcatenation, directive, extra, parse, sourceMap, sourceCode, preserveBlankLines, FORMAT_MINIFY, FORMAT_DEFAULTS;
+      var Syntax, Precedence, BinaryPrecedence, SourceNode, estraverse, esutils, base, indent, json2, renumber, hexadecimal, quotes2, escapeless, newline, space, parentheses, semicolons, safeConcatenation, directive, extra, parse, sourceMap, sourceCode, preserveBlankLines, FORMAT_MINIFY, FORMAT_DEFAULTS;
       estraverse = require_estraverse();
       esutils = require_utils2();
       Syntax = estraverse.Syntax;
@@ -60922,14 +61240,14 @@ var require_escodegen = __commonJS({
           throw new Error("Numeric literal whose value is negative");
         }
         if (value === 1 / 0) {
-          return json ? "null" : renumber ? "1e400" : "1e+400";
+          return json2 ? "null" : renumber ? "1e400" : "1e+400";
         }
         result = "" + value;
         if (!renumber || result.length < 3) {
           return result;
         }
         point = result.indexOf(".");
-        if (!json && result.charCodeAt(0) === 48 && point === 1) {
+        if (!json2 && result.charCodeAt(0) === 48 && point === 1) {
           point = 0;
           result = result.slice(1);
         }
@@ -61017,7 +61335,7 @@ var require_escodegen = __commonJS({
           return "\\t";
         }
         hex = code.toString(16).toUpperCase();
-        if (json || code > 255) {
+        if (json2 || code > 255) {
           return "\\u" + "0000".slice(hex.length) + hex;
         } else if (code === 0 && !esutils.code.isDecimalDigit(next)) {
           return "\\0";
@@ -61070,12 +61388,12 @@ var require_escodegen = __commonJS({
             ++singleQuotes;
           } else if (code === 34) {
             ++doubleQuotes;
-          } else if (code === 47 && json) {
+          } else if (code === 47 && json2) {
             result += "\\";
           } else if (esutils.code.isLineTerminator(code) || code === 92) {
             result += escapeDisallowedCharacter(code);
             continue;
-          } else if (!esutils.code.isIdentifierPartES5(code) && (json && code < 32 || !json && !escapeless && (code < 32 || code > 126))) {
+          } else if (!esutils.code.isIdentifierPartES5(code) && (json2 && code < 32 || !json2 && !escapeless && (code < 32 || code > 126))) {
             result += escapeAllowedCharacter(code, str.charCodeAt(i + 1));
             continue;
           }
@@ -62767,10 +63085,10 @@ var require_escodegen = __commonJS({
           indent = options.format.indent.style;
           base = stringRepeat(indent, options.format.indent.base);
         }
-        json = options.format.json;
+        json2 = options.format.json;
         renumber = options.format.renumber;
-        hexadecimal = json ? false : options.format.hexadecimal;
-        quotes2 = json ? "double" : options.format.quotes;
+        hexadecimal = json2 ? false : options.format.hexadecimal;
+        quotes2 = json2 ? "double" : options.format.quotes;
         escapeless = options.format.escapeless;
         newline = options.format.newline;
         space = options.format.space;
@@ -62781,7 +63099,7 @@ var require_escodegen = __commonJS({
         semicolons = options.format.semicolons;
         safeConcatenation = options.format.safeConcatenation;
         directive = options.directive;
-        parse = json ? null : options.parse;
+        parse = json2 ? null : options.parse;
         sourceMap = options.sourceMap;
         sourceCode = options.sourceCode;
         preserveBlankLines = options.format.preserveBlankLines && sourceCode !== null;
@@ -69130,9 +69448,9 @@ function __rest(s, e) {
     }
   return t;
 }
-function __decorate(decorators, target, key, desc4) {
-  var c = arguments.length, r = c < 3 ? target : desc4 === null ? desc4 = Object.getOwnPropertyDescriptor(target, key) : desc4, d;
-  if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc4);
+function __decorate(decorators, target, key, desc6) {
+  var c = arguments.length, r = c < 3 ? target : desc6 === null ? desc6 = Object.getOwnPropertyDescriptor(target, key) : desc6, d;
+  if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc6);
   else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
   return c > 3 && r && Object.defineProperty(target, key, r), r;
 }
@@ -69502,13 +69820,13 @@ function __disposeResources20(env2) {
   }
   return next();
 }
-function __rewriteRelativeImportExtension(path13, preserveJsx) {
-  if (typeof path13 === "string" && /^\.\.?\//.test(path13)) {
-    return path13.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function(m, tsx, d, ext, cm) {
+function __rewriteRelativeImportExtension(path14, preserveJsx) {
+  if (typeof path14 === "string" && /^\.\.?\//.test(path14)) {
+    return path14.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function(m, tsx, d, ext, cm) {
       return tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : d + ext + "." + cm.toLowerCase() + "js";
     });
   }
-  return path13;
+  return path14;
 }
 var extendStatics2, __assign, __createBinding, __setModuleDefault, ownKeys, _SuppressedError, tslib_es6_default;
 var init_tslib_es6 = __esm({
@@ -69533,13 +69851,13 @@ var init_tslib_es6 = __esm({
     };
     __createBinding = Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -70315,16 +70633,16 @@ var require_path = __commonJS({
         this.__childCache = null;
       };
       var Pp = Path.prototype;
-      function getChildCache(path13) {
-        return path13.__childCache || (path13.__childCache = /* @__PURE__ */ Object.create(null));
+      function getChildCache(path14) {
+        return path14.__childCache || (path14.__childCache = /* @__PURE__ */ Object.create(null));
       }
-      function getChildPath(path13, name) {
-        var cache2 = getChildCache(path13);
-        var actualChildValue = path13.getValueProperty(name);
+      function getChildPath(path14, name) {
+        var cache2 = getChildCache(path14);
+        var actualChildValue = path14.getValueProperty(name);
         var childPath = cache2[name];
         if (!hasOwn.call(cache2, name) || // Ensure consistency between cache and reality.
         childPath.value !== actualChildValue) {
-          childPath = cache2[name] = new path13.constructor(actualChildValue, path13, name);
+          childPath = cache2[name] = new path14.constructor(actualChildValue, path14, name);
         }
         return childPath;
       }
@@ -70336,12 +70654,12 @@ var require_path = __commonJS({
         for (var _i = 0; _i < arguments.length; _i++) {
           names[_i] = arguments[_i];
         }
-        var path13 = this;
+        var path14 = this;
         var count2 = names.length;
         for (var i = 0; i < count2; ++i) {
-          path13 = getChildPath(path13, names[i]);
+          path14 = getChildPath(path14, names[i]);
         }
-        return path13;
+        return path14;
       };
       Pp.each = function each(callback, context2) {
         var childPaths = [];
@@ -70377,12 +70695,12 @@ var require_path = __commonJS({
       };
       function emptyMoves() {
       }
-      function getMoves(path13, offset, start, end) {
-        isArray4.assert(path13.value);
+      function getMoves(path14, offset, start, end) {
+        isArray4.assert(path14.value);
         if (offset === 0) {
           return emptyMoves;
         }
-        var length = path13.value.length;
+        var length = path14.value.length;
         if (length < 1) {
           return emptyMoves;
         }
@@ -70400,10 +70718,10 @@ var require_path = __commonJS({
         isNumber2.assert(start);
         isNumber2.assert(end);
         var moves = /* @__PURE__ */ Object.create(null);
-        var cache2 = getChildCache(path13);
+        var cache2 = getChildCache(path14);
         for (var i = start; i < end; ++i) {
-          if (hasOwn.call(path13.value, i)) {
-            var childPath = path13.get(i);
+          if (hasOwn.call(path14.value, i)) {
+            var childPath = path14.get(i);
             if (childPath.name !== i) {
               throw new Error("");
             }
@@ -70421,7 +70739,7 @@ var require_path = __commonJS({
               throw new Error("");
             }
             cache2[newIndex2] = childPath2;
-            path13.value[newIndex2] = childPath2.value;
+            path14.value[newIndex2] = childPath2.value;
           }
         };
       }
@@ -70496,34 +70814,34 @@ var require_path = __commonJS({
         }
         return pp.insertAt.apply(pp, insertAtArgs);
       };
-      function repairRelationshipWithParent(path13) {
-        if (!(path13 instanceof Path)) {
+      function repairRelationshipWithParent(path14) {
+        if (!(path14 instanceof Path)) {
           throw new Error("");
         }
-        var pp = path13.parentPath;
+        var pp = path14.parentPath;
         if (!pp) {
-          return path13;
+          return path14;
         }
         var parentValue = pp.value;
         var parentCache = getChildCache(pp);
-        if (parentValue[path13.name] === path13.value) {
-          parentCache[path13.name] = path13;
+        if (parentValue[path14.name] === path14.value) {
+          parentCache[path14.name] = path14;
         } else if (isArray4.check(parentValue)) {
-          var i = parentValue.indexOf(path13.value);
+          var i = parentValue.indexOf(path14.value);
           if (i >= 0) {
-            parentCache[path13.name = i] = path13;
+            parentCache[path14.name = i] = path14;
           }
         } else {
-          parentValue[path13.name] = path13.value;
-          parentCache[path13.name] = path13;
+          parentValue[path14.name] = path14.value;
+          parentCache[path14.name] = path14;
         }
-        if (parentValue[path13.name] !== path13.value) {
+        if (parentValue[path14.name] !== path14.value) {
           throw new Error("");
         }
-        if (path13.parentPath.get(path13.name) !== path13) {
+        if (path14.parentPath.get(path14.name) !== path14) {
           throw new Error("");
         }
-        return path13;
+        return path14;
       }
       Pp.replace = function replace(replacement) {
         var results = [];
@@ -70603,11 +70921,11 @@ var require_scope = __commonJS({
       var Expression = namedTypes.Expression;
       var isArray4 = types.builtInTypes.array;
       var b = types.builders;
-      var Scope = function Scope2(path13, parentScope) {
+      var Scope = function Scope2(path14, parentScope) {
         if (!(this instanceof Scope2)) {
           throw new Error("Scope constructor cannot be invoked without 'new'");
         }
-        ScopeType.assert(path13.value);
+        ScopeType.assert(path14.value);
         var depth;
         if (parentScope) {
           if (!(parentScope instanceof Scope2)) {
@@ -70619,8 +70937,8 @@ var require_scope = __commonJS({
           depth = 0;
         }
         Object.defineProperties(this, {
-          path: { value: path13 },
-          node: { value: path13.value },
+          path: { value: path14 },
+          node: { value: path14.value },
           isGlobal: { value: !parentScope, enumerable: true },
           depth: { value: depth },
           parent: { value: parentScope },
@@ -70695,50 +71013,50 @@ var require_scope = __commonJS({
         this.scan();
         return this.types;
       };
-      function scanScope(path13, bindings, scopeTypes2) {
-        var node = path13.value;
+      function scanScope(path14, bindings, scopeTypes2) {
+        var node = path14.value;
         ScopeType.assert(node);
         if (namedTypes.CatchClause.check(node)) {
-          var param = path13.get("param");
+          var param = path14.get("param");
           if (param.value) {
             addPattern(param, bindings);
           }
         } else {
-          recursiveScanScope(path13, bindings, scopeTypes2);
+          recursiveScanScope(path14, bindings, scopeTypes2);
         }
       }
-      function recursiveScanScope(path13, bindings, scopeTypes2) {
-        var node = path13.value;
-        if (path13.parent && namedTypes.FunctionExpression.check(path13.parent.node) && path13.parent.node.id) {
-          addPattern(path13.parent.get("id"), bindings);
+      function recursiveScanScope(path14, bindings, scopeTypes2) {
+        var node = path14.value;
+        if (path14.parent && namedTypes.FunctionExpression.check(path14.parent.node) && path14.parent.node.id) {
+          addPattern(path14.parent.get("id"), bindings);
         }
         if (!node) {
         } else if (isArray4.check(node)) {
-          path13.each(function(childPath) {
+          path14.each(function(childPath) {
             recursiveScanChild(childPath, bindings, scopeTypes2);
           });
         } else if (namedTypes.Function.check(node)) {
-          path13.get("params").each(function(paramPath) {
+          path14.get("params").each(function(paramPath) {
             addPattern(paramPath, bindings);
           });
-          recursiveScanChild(path13.get("body"), bindings, scopeTypes2);
+          recursiveScanChild(path14.get("body"), bindings, scopeTypes2);
         } else if (namedTypes.TypeAlias && namedTypes.TypeAlias.check(node) || namedTypes.InterfaceDeclaration && namedTypes.InterfaceDeclaration.check(node) || namedTypes.TSTypeAliasDeclaration && namedTypes.TSTypeAliasDeclaration.check(node) || namedTypes.TSInterfaceDeclaration && namedTypes.TSInterfaceDeclaration.check(node)) {
-          addTypePattern(path13.get("id"), scopeTypes2);
+          addTypePattern(path14.get("id"), scopeTypes2);
         } else if (namedTypes.VariableDeclarator.check(node)) {
-          addPattern(path13.get("id"), bindings);
-          recursiveScanChild(path13.get("init"), bindings, scopeTypes2);
+          addPattern(path14.get("id"), bindings);
+          recursiveScanChild(path14.get("init"), bindings, scopeTypes2);
         } else if (node.type === "ImportSpecifier" || node.type === "ImportNamespaceSpecifier" || node.type === "ImportDefaultSpecifier") {
           addPattern(
             // Esprima used to use the .name field to refer to the local
             // binding identifier for ImportSpecifier nodes, but .id for
             // ImportNamespaceSpecifier and ImportDefaultSpecifier nodes.
             // ESTree/Acorn/ESpree use .local for all three node types.
-            path13.get(node.local ? "local" : node.name ? "name" : "id"),
+            path14.get(node.local ? "local" : node.name ? "name" : "id"),
             bindings
           );
         } else if (Node2.check(node) && !Expression.check(node)) {
           types.eachField(node, function(name, child) {
-            var childPath = path13.get(name);
+            var childPath = path14.get(name);
             if (!pathHasValue(childPath, child)) {
               throw new Error("");
             }
@@ -70746,34 +71064,34 @@ var require_scope = __commonJS({
           });
         }
       }
-      function pathHasValue(path13, value) {
-        if (path13.value === value) {
+      function pathHasValue(path14, value) {
+        if (path14.value === value) {
           return true;
         }
-        if (Array.isArray(path13.value) && path13.value.length === 0 && Array.isArray(value) && value.length === 0) {
+        if (Array.isArray(path14.value) && path14.value.length === 0 && Array.isArray(value) && value.length === 0) {
           return true;
         }
         return false;
       }
-      function recursiveScanChild(path13, bindings, scopeTypes2) {
-        var node = path13.value;
+      function recursiveScanChild(path14, bindings, scopeTypes2) {
+        var node = path14.value;
         if (!node || Expression.check(node)) {
         } else if (namedTypes.FunctionDeclaration.check(node) && node.id !== null) {
-          addPattern(path13.get("id"), bindings);
+          addPattern(path14.get("id"), bindings);
         } else if (namedTypes.ClassDeclaration && namedTypes.ClassDeclaration.check(node)) {
-          addPattern(path13.get("id"), bindings);
+          addPattern(path14.get("id"), bindings);
         } else if (ScopeType.check(node)) {
           if (namedTypes.CatchClause.check(node) && // TODO Broaden this to accept any pattern.
           namedTypes.Identifier.check(node.param)) {
             var catchParamName = node.param.name;
             var hadBinding = hasOwn.call(bindings, catchParamName);
-            recursiveScanScope(path13.get("body"), bindings, scopeTypes2);
+            recursiveScanScope(path14.get("body"), bindings, scopeTypes2);
             if (!hadBinding) {
               delete bindings[catchParamName];
             }
           }
         } else {
-          recursiveScanScope(path13, bindings, scopeTypes2);
+          recursiveScanScope(path14, bindings, scopeTypes2);
         }
       }
       function addPattern(patternPath, bindings) {
@@ -71109,53 +71427,53 @@ var require_node_path = __commonJS({
       NPp.firstInStatement = function() {
         return firstInStatement(this);
       };
-      function firstInStatement(path13) {
-        for (var node, parent; path13.parent; path13 = path13.parent) {
-          node = path13.node;
-          parent = path13.parent.node;
-          if (n.BlockStatement.check(parent) && path13.parent.name === "body" && path13.name === 0) {
+      function firstInStatement(path14) {
+        for (var node, parent; path14.parent; path14 = path14.parent) {
+          node = path14.node;
+          parent = path14.parent.node;
+          if (n.BlockStatement.check(parent) && path14.parent.name === "body" && path14.name === 0) {
             if (parent.body[0] !== node) {
               throw new Error("Nodes must be equal");
             }
             return true;
           }
-          if (n.ExpressionStatement.check(parent) && path13.name === "expression") {
+          if (n.ExpressionStatement.check(parent) && path14.name === "expression") {
             if (parent.expression !== node) {
               throw new Error("Nodes must be equal");
             }
             return true;
           }
-          if (n.SequenceExpression.check(parent) && path13.parent.name === "expressions" && path13.name === 0) {
+          if (n.SequenceExpression.check(parent) && path14.parent.name === "expressions" && path14.name === 0) {
             if (parent.expressions[0] !== node) {
               throw new Error("Nodes must be equal");
             }
             continue;
           }
-          if (n.CallExpression.check(parent) && path13.name === "callee") {
+          if (n.CallExpression.check(parent) && path14.name === "callee") {
             if (parent.callee !== node) {
               throw new Error("Nodes must be equal");
             }
             continue;
           }
-          if (n.MemberExpression.check(parent) && path13.name === "object") {
+          if (n.MemberExpression.check(parent) && path14.name === "object") {
             if (parent.object !== node) {
               throw new Error("Nodes must be equal");
             }
             continue;
           }
-          if (n.ConditionalExpression.check(parent) && path13.name === "test") {
+          if (n.ConditionalExpression.check(parent) && path14.name === "test") {
             if (parent.test !== node) {
               throw new Error("Nodes must be equal");
             }
             continue;
           }
-          if (isBinary(parent) && path13.name === "left") {
+          if (isBinary(parent) && path14.name === "left") {
             if (parent.left !== node) {
               throw new Error("Nodes must be equal");
             }
             continue;
           }
-          if (n.UnaryExpression.check(parent) && !parent.prefix && path13.name === "argument") {
+          if (n.UnaryExpression.check(parent) && !parent.prefix && path14.name === "argument") {
             if (parent.argument !== node) {
               throw new Error("Nodes must be equal");
             }
@@ -71325,36 +71643,36 @@ var require_path_visitor = __commonJS({
       };
       PVp.reset = function(_path) {
       };
-      PVp.visitWithoutReset = function(path13) {
+      PVp.visitWithoutReset = function(path14) {
         if (this instanceof this.Context) {
-          return this.visitor.visitWithoutReset(path13);
+          return this.visitor.visitWithoutReset(path14);
         }
-        if (!(path13 instanceof NodePath)) {
+        if (!(path14 instanceof NodePath)) {
           throw new Error("");
         }
-        var value = path13.value;
+        var value = path14.value;
         var methodName = value && typeof value === "object" && typeof value.type === "string" && this._methodNameTable[value.type];
         if (methodName) {
-          var context2 = this.acquireContext(path13);
+          var context2 = this.acquireContext(path14);
           try {
             return context2.invokeVisitorMethod(methodName);
           } finally {
             this.releaseContext(context2);
           }
         } else {
-          return visitChildren(path13, this);
+          return visitChildren(path14, this);
         }
       };
-      function visitChildren(path13, visitor) {
-        if (!(path13 instanceof NodePath)) {
+      function visitChildren(path14, visitor) {
+        if (!(path14 instanceof NodePath)) {
           throw new Error("");
         }
         if (!(visitor instanceof PathVisitor)) {
           throw new Error("");
         }
-        var value = path13.value;
+        var value = path14.value;
         if (isArray4.check(value)) {
-          path13.each(visitor.visitWithoutReset, visitor);
+          path14.each(visitor.visitWithoutReset, visitor);
         } else if (!isObject.check(value)) {
         } else {
           var childNames = types.getFieldNames(value);
@@ -71368,19 +71686,19 @@ var require_path_visitor = __commonJS({
             if (!hasOwn.call(value, childName)) {
               value[childName] = types.getFieldValue(value, childName);
             }
-            childPaths.push(path13.get(childName));
+            childPaths.push(path14.get(childName));
           }
           for (var i = 0; i < childCount; ++i) {
             visitor.visitWithoutReset(childPaths[i]);
           }
         }
-        return path13.value;
+        return path14.value;
       }
-      PVp.acquireContext = function(path13) {
+      PVp.acquireContext = function(path14) {
         if (this._reusableContextStack.length === 0) {
-          return new this.Context(path13);
+          return new this.Context(path14);
         }
-        return this._reusableContextStack.pop().reset(path13);
+        return this._reusableContextStack.pop().reset(path14);
       };
       PVp.releaseContext = function(context2) {
         if (!(context2 instanceof this.Context)) {
@@ -71396,14 +71714,14 @@ var require_path_visitor = __commonJS({
         return this._changeReported;
       };
       function makeContextConstructor(visitor) {
-        function Context(path13) {
+        function Context(path14) {
           if (!(this instanceof Context)) {
             throw new Error("");
           }
           if (!(this instanceof PathVisitor)) {
             throw new Error("");
           }
-          if (!(path13 instanceof NodePath)) {
+          if (!(path14 instanceof NodePath)) {
             throw new Error("");
           }
           Object.defineProperty(this, "visitor", {
@@ -71412,7 +71730,7 @@ var require_path_visitor = __commonJS({
             enumerable: true,
             configurable: false
           });
-          this.currentPath = path13;
+          this.currentPath = path14;
           this.needToCallTraverse = true;
           Object.seal(this);
         }
@@ -71425,14 +71743,14 @@ var require_path_visitor = __commonJS({
         return Context;
       }
       var sharedContextProtoMethods = /* @__PURE__ */ Object.create(null);
-      sharedContextProtoMethods.reset = function reset(path13) {
+      sharedContextProtoMethods.reset = function reset(path14) {
         if (!(this instanceof this.Context)) {
           throw new Error("");
         }
-        if (!(path13 instanceof NodePath)) {
+        if (!(path14 instanceof NodePath)) {
           throw new Error("");
         }
-        this.currentPath = path13;
+        this.currentPath = path14;
         this.needToCallTraverse = true;
         return this;
       };
@@ -71455,34 +71773,34 @@ var require_path_visitor = __commonJS({
         if (this.needToCallTraverse !== false) {
           throw new Error("Must either call this.traverse or return false in " + methodName);
         }
-        var path13 = this.currentPath;
-        return path13 && path13.value;
+        var path14 = this.currentPath;
+        return path14 && path14.value;
       };
-      sharedContextProtoMethods.traverse = function traverse(path13, newVisitor) {
+      sharedContextProtoMethods.traverse = function traverse(path14, newVisitor) {
         if (!(this instanceof this.Context)) {
           throw new Error("");
         }
-        if (!(path13 instanceof NodePath)) {
+        if (!(path14 instanceof NodePath)) {
           throw new Error("");
         }
         if (!(this.currentPath instanceof NodePath)) {
           throw new Error("");
         }
         this.needToCallTraverse = false;
-        return visitChildren(path13, PathVisitor.fromMethodsObject(newVisitor || this.visitor));
+        return visitChildren(path14, PathVisitor.fromMethodsObject(newVisitor || this.visitor));
       };
-      sharedContextProtoMethods.visit = function visit(path13, newVisitor) {
+      sharedContextProtoMethods.visit = function visit(path14, newVisitor) {
         if (!(this instanceof this.Context)) {
           throw new Error("");
         }
-        if (!(path13 instanceof NodePath)) {
+        if (!(path14 instanceof NodePath)) {
           throw new Error("");
         }
         if (!(this.currentPath instanceof NodePath)) {
           throw new Error("");
         }
         this.needToCallTraverse = false;
-        return PathVisitor.fromMethodsObject(newVisitor || this.visitor).visitWithoutReset(path13);
+        return PathVisitor.fromMethodsObject(newVisitor || this.visitor).visitWithoutReset(path14);
       };
       sharedContextProtoMethods.reportChanged = function reportChanged() {
         this.visitor.reportChanged();
@@ -71780,54 +72098,54 @@ var require_core = __commonJS({
       var types = fork.use(types_1.default);
       var Type = types.Type;
       var def = Type.def;
-      var or = Type.or;
+      var or2 = Type.or;
       var shared = fork.use(shared_1.default);
       var defaults = shared.defaults;
       var geq = shared.geq;
-      def("Printable").field("loc", or(def("SourceLocation"), null), defaults["null"], true);
-      def("Node").bases("Printable").field("type", String).field("comments", or([def("Comment")], null), defaults["null"], true);
-      def("SourceLocation").field("start", def("Position")).field("end", def("Position")).field("source", or(String, null), defaults["null"]);
+      def("Printable").field("loc", or2(def("SourceLocation"), null), defaults["null"], true);
+      def("Node").bases("Printable").field("type", String).field("comments", or2([def("Comment")], null), defaults["null"], true);
+      def("SourceLocation").field("start", def("Position")).field("end", def("Position")).field("source", or2(String, null), defaults["null"]);
       def("Position").field("line", geq(1)).field("column", geq(0));
-      def("File").bases("Node").build("program", "name").field("program", def("Program")).field("name", or(String, null), defaults["null"]);
+      def("File").bases("Node").build("program", "name").field("program", def("Program")).field("name", or2(String, null), defaults["null"]);
       def("Program").bases("Node").build("body").field("body", [def("Statement")]);
-      def("Function").bases("Node").field("id", or(def("Identifier"), null), defaults["null"]).field("params", [def("Pattern")]).field("body", def("BlockStatement")).field("generator", Boolean, defaults["false"]).field("async", Boolean, defaults["false"]);
+      def("Function").bases("Node").field("id", or2(def("Identifier"), null), defaults["null"]).field("params", [def("Pattern")]).field("body", def("BlockStatement")).field("generator", Boolean, defaults["false"]).field("async", Boolean, defaults["false"]);
       def("Statement").bases("Node");
       def("EmptyStatement").bases("Statement").build();
       def("BlockStatement").bases("Statement").build("body").field("body", [def("Statement")]);
       def("ExpressionStatement").bases("Statement").build("expression").field("expression", def("Expression"));
-      def("IfStatement").bases("Statement").build("test", "consequent", "alternate").field("test", def("Expression")).field("consequent", def("Statement")).field("alternate", or(def("Statement"), null), defaults["null"]);
+      def("IfStatement").bases("Statement").build("test", "consequent", "alternate").field("test", def("Expression")).field("consequent", def("Statement")).field("alternate", or2(def("Statement"), null), defaults["null"]);
       def("LabeledStatement").bases("Statement").build("label", "body").field("label", def("Identifier")).field("body", def("Statement"));
-      def("BreakStatement").bases("Statement").build("label").field("label", or(def("Identifier"), null), defaults["null"]);
-      def("ContinueStatement").bases("Statement").build("label").field("label", or(def("Identifier"), null), defaults["null"]);
+      def("BreakStatement").bases("Statement").build("label").field("label", or2(def("Identifier"), null), defaults["null"]);
+      def("ContinueStatement").bases("Statement").build("label").field("label", or2(def("Identifier"), null), defaults["null"]);
       def("WithStatement").bases("Statement").build("object", "body").field("object", def("Expression")).field("body", def("Statement"));
       def("SwitchStatement").bases("Statement").build("discriminant", "cases", "lexical").field("discriminant", def("Expression")).field("cases", [def("SwitchCase")]).field("lexical", Boolean, defaults["false"]);
-      def("ReturnStatement").bases("Statement").build("argument").field("argument", or(def("Expression"), null));
+      def("ReturnStatement").bases("Statement").build("argument").field("argument", or2(def("Expression"), null));
       def("ThrowStatement").bases("Statement").build("argument").field("argument", def("Expression"));
-      def("TryStatement").bases("Statement").build("block", "handler", "finalizer").field("block", def("BlockStatement")).field("handler", or(def("CatchClause"), null), function() {
+      def("TryStatement").bases("Statement").build("block", "handler", "finalizer").field("block", def("BlockStatement")).field("handler", or2(def("CatchClause"), null), function() {
         return this.handlers && this.handlers[0] || null;
       }).field("handlers", [def("CatchClause")], function() {
         return this.handler ? [this.handler] : [];
-      }, true).field("guardedHandlers", [def("CatchClause")], defaults.emptyArray).field("finalizer", or(def("BlockStatement"), null), defaults["null"]);
-      def("CatchClause").bases("Node").build("param", "guard", "body").field("param", or(def("Pattern"), null), defaults["null"]).field("guard", or(def("Expression"), null), defaults["null"]).field("body", def("BlockStatement"));
+      }, true).field("guardedHandlers", [def("CatchClause")], defaults.emptyArray).field("finalizer", or2(def("BlockStatement"), null), defaults["null"]);
+      def("CatchClause").bases("Node").build("param", "guard", "body").field("param", or2(def("Pattern"), null), defaults["null"]).field("guard", or2(def("Expression"), null), defaults["null"]).field("body", def("BlockStatement"));
       def("WhileStatement").bases("Statement").build("test", "body").field("test", def("Expression")).field("body", def("Statement"));
       def("DoWhileStatement").bases("Statement").build("body", "test").field("body", def("Statement")).field("test", def("Expression"));
-      def("ForStatement").bases("Statement").build("init", "test", "update", "body").field("init", or(def("VariableDeclaration"), def("Expression"), null)).field("test", or(def("Expression"), null)).field("update", or(def("Expression"), null)).field("body", def("Statement"));
-      def("ForInStatement").bases("Statement").build("left", "right", "body").field("left", or(def("VariableDeclaration"), def("Expression"))).field("right", def("Expression")).field("body", def("Statement"));
+      def("ForStatement").bases("Statement").build("init", "test", "update", "body").field("init", or2(def("VariableDeclaration"), def("Expression"), null)).field("test", or2(def("Expression"), null)).field("update", or2(def("Expression"), null)).field("body", def("Statement"));
+      def("ForInStatement").bases("Statement").build("left", "right", "body").field("left", or2(def("VariableDeclaration"), def("Expression"))).field("right", def("Expression")).field("body", def("Statement"));
       def("DebuggerStatement").bases("Statement").build();
       def("Declaration").bases("Statement");
       def("FunctionDeclaration").bases("Function", "Declaration").build("id", "params", "body").field("id", def("Identifier"));
       def("FunctionExpression").bases("Function", "Expression").build("id", "params", "body");
-      def("VariableDeclaration").bases("Declaration").build("kind", "declarations").field("kind", or("var", "let", "const")).field("declarations", [def("VariableDeclarator")]);
-      def("VariableDeclarator").bases("Node").build("id", "init").field("id", def("Pattern")).field("init", or(def("Expression"), null), defaults["null"]);
+      def("VariableDeclaration").bases("Declaration").build("kind", "declarations").field("kind", or2("var", "let", "const")).field("declarations", [def("VariableDeclarator")]);
+      def("VariableDeclarator").bases("Node").build("id", "init").field("id", def("Pattern")).field("init", or2(def("Expression"), null), defaults["null"]);
       def("Expression").bases("Node");
       def("ThisExpression").bases("Expression").build();
-      def("ArrayExpression").bases("Expression").build("elements").field("elements", [or(def("Expression"), null)]);
+      def("ArrayExpression").bases("Expression").build("elements").field("elements", [or2(def("Expression"), null)]);
       def("ObjectExpression").bases("Expression").build("properties").field("properties", [def("Property")]);
-      def("Property").bases("Node").build("kind", "key", "value").field("kind", or("init", "get", "set")).field("key", or(def("Literal"), def("Identifier"))).field("value", def("Expression"));
+      def("Property").bases("Node").build("kind", "key", "value").field("kind", or2("init", "get", "set")).field("key", or2(def("Literal"), def("Identifier"))).field("value", def("Expression"));
       def("SequenceExpression").bases("Expression").build("expressions").field("expressions", [def("Expression")]);
-      var UnaryOperator = or("-", "+", "!", "~", "typeof", "void", "delete");
+      var UnaryOperator = or2("-", "+", "!", "~", "typeof", "void", "delete");
       def("UnaryExpression").bases("Expression").build("operator", "argument", "prefix").field("operator", UnaryOperator).field("argument", def("Expression")).field("prefix", Boolean, defaults["true"]);
-      var BinaryOperator = or(
+      var BinaryOperator = or2(
         "==",
         "!=",
         "===",
@@ -71853,16 +72171,16 @@ var require_core = __commonJS({
         "instanceof"
       );
       def("BinaryExpression").bases("Expression").build("operator", "left", "right").field("operator", BinaryOperator).field("left", def("Expression")).field("right", def("Expression"));
-      var AssignmentOperator = or("=", "+=", "-=", "*=", "/=", "%=", "<<=", ">>=", ">>>=", "|=", "^=", "&=");
-      def("AssignmentExpression").bases("Expression").build("operator", "left", "right").field("operator", AssignmentOperator).field("left", or(def("Pattern"), def("MemberExpression"))).field("right", def("Expression"));
-      var UpdateOperator = or("++", "--");
+      var AssignmentOperator = or2("=", "+=", "-=", "*=", "/=", "%=", "<<=", ">>=", ">>>=", "|=", "^=", "&=");
+      def("AssignmentExpression").bases("Expression").build("operator", "left", "right").field("operator", AssignmentOperator).field("left", or2(def("Pattern"), def("MemberExpression"))).field("right", def("Expression"));
+      var UpdateOperator = or2("++", "--");
       def("UpdateExpression").bases("Expression").build("operator", "argument", "prefix").field("operator", UpdateOperator).field("argument", def("Expression")).field("prefix", Boolean);
-      var LogicalOperator = or("||", "&&");
+      var LogicalOperator = or2("||", "&&");
       def("LogicalExpression").bases("Expression").build("operator", "left", "right").field("operator", LogicalOperator).field("left", def("Expression")).field("right", def("Expression"));
       def("ConditionalExpression").bases("Expression").build("test", "consequent", "alternate").field("test", def("Expression")).field("consequent", def("Expression")).field("alternate", def("Expression"));
       def("NewExpression").bases("Expression").build("callee", "arguments").field("callee", def("Expression")).field("arguments", [def("Expression")]);
       def("CallExpression").bases("Expression").build("callee", "arguments").field("callee", def("Expression")).field("arguments", [def("Expression")]);
-      def("MemberExpression").bases("Expression").build("object", "property", "computed").field("object", def("Expression")).field("property", or(def("Identifier"), def("Expression"))).field("computed", Boolean, function() {
+      def("MemberExpression").bases("Expression").build("object", "property", "computed").field("object", def("Expression")).field("property", or2(def("Identifier"), def("Expression"))).field("computed", Boolean, function() {
         var type = this.property.type;
         if (type === "Literal" || type === "MemberExpression" || type === "BinaryExpression") {
           return true;
@@ -71870,9 +72188,9 @@ var require_core = __commonJS({
         return false;
       });
       def("Pattern").bases("Node");
-      def("SwitchCase").bases("Node").build("test", "consequent").field("test", or(def("Expression"), null)).field("consequent", [def("Statement")]);
+      def("SwitchCase").bases("Node").build("test", "consequent").field("test", or2(def("Expression"), null)).field("consequent", [def("Statement")]);
       def("Identifier").bases("Expression", "Pattern").build("name").field("name", String).field("optional", Boolean, defaults["false"]);
-      def("Literal").bases("Expression").build("value").field("value", or(String, Boolean, null, Number, RegExp)).field("regex", or({
+      def("Literal").bases("Expression").build("value").field("value", or2(String, Boolean, null, Number, RegExp)).field("regex", or2({
         pattern: String,
         flags: String
       }, null), function() {
@@ -71911,47 +72229,47 @@ var require_es6 = __commonJS({
       fork.use(core_1.default);
       var types = fork.use(types_1.default);
       var def = types.Type.def;
-      var or = types.Type.or;
+      var or2 = types.Type.or;
       var defaults = fork.use(shared_1.default).defaults;
-      def("Function").field("generator", Boolean, defaults["false"]).field("expression", Boolean, defaults["false"]).field("defaults", [or(def("Expression"), null)], defaults.emptyArray).field("rest", or(def("Identifier"), null), defaults["null"]);
+      def("Function").field("generator", Boolean, defaults["false"]).field("expression", Boolean, defaults["false"]).field("defaults", [or2(def("Expression"), null)], defaults.emptyArray).field("rest", or2(def("Identifier"), null), defaults["null"]);
       def("RestElement").bases("Pattern").build("argument").field("argument", def("Pattern")).field(
         "typeAnnotation",
         // for Babylon. Flow parser puts it on the identifier
-        or(def("TypeAnnotation"), def("TSTypeAnnotation"), null),
+        or2(def("TypeAnnotation"), def("TSTypeAnnotation"), null),
         defaults["null"]
       );
       def("SpreadElementPattern").bases("Pattern").build("argument").field("argument", def("Pattern"));
       def("FunctionDeclaration").build("id", "params", "body", "generator", "expression");
       def("FunctionExpression").build("id", "params", "body", "generator", "expression");
-      def("ArrowFunctionExpression").bases("Function", "Expression").build("params", "body", "expression").field("id", null, defaults["null"]).field("body", or(def("BlockStatement"), def("Expression"))).field("generator", false, defaults["false"]);
-      def("ForOfStatement").bases("Statement").build("left", "right", "body").field("left", or(def("VariableDeclaration"), def("Pattern"))).field("right", def("Expression")).field("body", def("Statement"));
-      def("YieldExpression").bases("Expression").build("argument", "delegate").field("argument", or(def("Expression"), null)).field("delegate", Boolean, defaults["false"]);
-      def("GeneratorExpression").bases("Expression").build("body", "blocks", "filter").field("body", def("Expression")).field("blocks", [def("ComprehensionBlock")]).field("filter", or(def("Expression"), null));
-      def("ComprehensionExpression").bases("Expression").build("body", "blocks", "filter").field("body", def("Expression")).field("blocks", [def("ComprehensionBlock")]).field("filter", or(def("Expression"), null));
+      def("ArrowFunctionExpression").bases("Function", "Expression").build("params", "body", "expression").field("id", null, defaults["null"]).field("body", or2(def("BlockStatement"), def("Expression"))).field("generator", false, defaults["false"]);
+      def("ForOfStatement").bases("Statement").build("left", "right", "body").field("left", or2(def("VariableDeclaration"), def("Pattern"))).field("right", def("Expression")).field("body", def("Statement"));
+      def("YieldExpression").bases("Expression").build("argument", "delegate").field("argument", or2(def("Expression"), null)).field("delegate", Boolean, defaults["false"]);
+      def("GeneratorExpression").bases("Expression").build("body", "blocks", "filter").field("body", def("Expression")).field("blocks", [def("ComprehensionBlock")]).field("filter", or2(def("Expression"), null));
+      def("ComprehensionExpression").bases("Expression").build("body", "blocks", "filter").field("body", def("Expression")).field("blocks", [def("ComprehensionBlock")]).field("filter", or2(def("Expression"), null));
       def("ComprehensionBlock").bases("Node").build("left", "right", "each").field("left", def("Pattern")).field("right", def("Expression")).field("each", Boolean);
-      def("Property").field("key", or(def("Literal"), def("Identifier"), def("Expression"))).field("value", or(def("Expression"), def("Pattern"))).field("method", Boolean, defaults["false"]).field("shorthand", Boolean, defaults["false"]).field("computed", Boolean, defaults["false"]);
+      def("Property").field("key", or2(def("Literal"), def("Identifier"), def("Expression"))).field("value", or2(def("Expression"), def("Pattern"))).field("method", Boolean, defaults["false"]).field("shorthand", Boolean, defaults["false"]).field("computed", Boolean, defaults["false"]);
       def("ObjectProperty").field("shorthand", Boolean, defaults["false"]);
-      def("PropertyPattern").bases("Pattern").build("key", "pattern").field("key", or(def("Literal"), def("Identifier"), def("Expression"))).field("pattern", def("Pattern")).field("computed", Boolean, defaults["false"]);
-      def("ObjectPattern").bases("Pattern").build("properties").field("properties", [or(def("PropertyPattern"), def("Property"))]);
-      def("ArrayPattern").bases("Pattern").build("elements").field("elements", [or(def("Pattern"), null)]);
-      def("MethodDefinition").bases("Declaration").build("kind", "key", "value", "static").field("kind", or("constructor", "method", "get", "set")).field("key", def("Expression")).field("value", def("Function")).field("computed", Boolean, defaults["false"]).field("static", Boolean, defaults["false"]);
+      def("PropertyPattern").bases("Pattern").build("key", "pattern").field("key", or2(def("Literal"), def("Identifier"), def("Expression"))).field("pattern", def("Pattern")).field("computed", Boolean, defaults["false"]);
+      def("ObjectPattern").bases("Pattern").build("properties").field("properties", [or2(def("PropertyPattern"), def("Property"))]);
+      def("ArrayPattern").bases("Pattern").build("elements").field("elements", [or2(def("Pattern"), null)]);
+      def("MethodDefinition").bases("Declaration").build("kind", "key", "value", "static").field("kind", or2("constructor", "method", "get", "set")).field("key", def("Expression")).field("value", def("Function")).field("computed", Boolean, defaults["false"]).field("static", Boolean, defaults["false"]);
       def("SpreadElement").bases("Node").build("argument").field("argument", def("Expression"));
-      def("ArrayExpression").field("elements", [or(def("Expression"), def("SpreadElement"), def("RestElement"), null)]);
-      def("NewExpression").field("arguments", [or(def("Expression"), def("SpreadElement"))]);
-      def("CallExpression").field("arguments", [or(def("Expression"), def("SpreadElement"))]);
+      def("ArrayExpression").field("elements", [or2(def("Expression"), def("SpreadElement"), def("RestElement"), null)]);
+      def("NewExpression").field("arguments", [or2(def("Expression"), def("SpreadElement"))]);
+      def("CallExpression").field("arguments", [or2(def("Expression"), def("SpreadElement"))]);
       def("AssignmentPattern").bases("Pattern").build("left", "right").field("left", def("Pattern")).field("right", def("Expression"));
-      var ClassBodyElement = or(def("MethodDefinition"), def("VariableDeclarator"), def("ClassPropertyDefinition"), def("ClassProperty"));
-      def("ClassProperty").bases("Declaration").build("key").field("key", or(def("Literal"), def("Identifier"), def("Expression"))).field("computed", Boolean, defaults["false"]);
+      var ClassBodyElement = or2(def("MethodDefinition"), def("VariableDeclarator"), def("ClassPropertyDefinition"), def("ClassProperty"));
+      def("ClassProperty").bases("Declaration").build("key").field("key", or2(def("Literal"), def("Identifier"), def("Expression"))).field("computed", Boolean, defaults["false"]);
       def("ClassPropertyDefinition").bases("Declaration").build("definition").field("definition", ClassBodyElement);
       def("ClassBody").bases("Declaration").build("body").field("body", [ClassBodyElement]);
-      def("ClassDeclaration").bases("Declaration").build("id", "body", "superClass").field("id", or(def("Identifier"), null)).field("body", def("ClassBody")).field("superClass", or(def("Expression"), null), defaults["null"]);
-      def("ClassExpression").bases("Expression").build("id", "body", "superClass").field("id", or(def("Identifier"), null), defaults["null"]).field("body", def("ClassBody")).field("superClass", or(def("Expression"), null), defaults["null"]);
+      def("ClassDeclaration").bases("Declaration").build("id", "body", "superClass").field("id", or2(def("Identifier"), null)).field("body", def("ClassBody")).field("superClass", or2(def("Expression"), null), defaults["null"]);
+      def("ClassExpression").bases("Expression").build("id", "body", "superClass").field("id", or2(def("Identifier"), null), defaults["null"]).field("body", def("ClassBody")).field("superClass", or2(def("Expression"), null), defaults["null"]);
       def("Specifier").bases("Node");
-      def("ModuleSpecifier").bases("Specifier").field("local", or(def("Identifier"), null), defaults["null"]).field("id", or(def("Identifier"), null), defaults["null"]).field("name", or(def("Identifier"), null), defaults["null"]);
+      def("ModuleSpecifier").bases("Specifier").field("local", or2(def("Identifier"), null), defaults["null"]).field("id", or2(def("Identifier"), null), defaults["null"]).field("name", or2(def("Identifier"), null), defaults["null"]);
       def("ImportSpecifier").bases("ModuleSpecifier").build("id", "name");
       def("ImportNamespaceSpecifier").bases("ModuleSpecifier").build("id");
       def("ImportDefaultSpecifier").bases("ModuleSpecifier").build("id");
-      def("ImportDeclaration").bases("Declaration").build("specifiers", "source", "importKind").field("specifiers", [or(def("ImportSpecifier"), def("ImportNamespaceSpecifier"), def("ImportDefaultSpecifier"))], defaults.emptyArray).field("source", def("Literal")).field("importKind", or("value", "type"), function() {
+      def("ImportDeclaration").bases("Declaration").build("specifiers", "source", "importKind").field("specifiers", [or2(def("ImportSpecifier"), def("ImportNamespaceSpecifier"), def("ImportDefaultSpecifier"))], defaults.emptyArray).field("source", def("Literal")).field("importKind", or2("value", "type"), function() {
         return "value";
       });
       def("TaggedTemplateExpression").bases("Expression").build("tag", "quasi").field("tag", def("Expression")).field("quasi", def("TemplateLiteral"));
@@ -71976,14 +72294,14 @@ var require_es7 = __commonJS({
       fork.use(es6_1.default);
       var types = fork.use(types_1.default);
       var def = types.Type.def;
-      var or = types.Type.or;
+      var or2 = types.Type.or;
       var defaults = fork.use(shared_1.default).defaults;
       def("Function").field("async", Boolean, defaults["false"]);
       def("SpreadProperty").bases("Node").build("argument").field("argument", def("Expression"));
-      def("ObjectExpression").field("properties", [or(def("Property"), def("SpreadProperty"), def("SpreadElement"))]);
+      def("ObjectExpression").field("properties", [or2(def("Property"), def("SpreadProperty"), def("SpreadElement"))]);
       def("SpreadPropertyPattern").bases("Pattern").build("argument").field("argument", def("Pattern"));
-      def("ObjectPattern").field("properties", [or(def("Property"), def("PropertyPattern"), def("SpreadPropertyPattern"))]);
-      def("AwaitExpression").bases("Expression").build("argument", "all").field("argument", or(def("Expression"), null)).field("all", Boolean, defaults["false"]);
+      def("ObjectPattern").field("properties", [or2(def("Property"), def("PropertyPattern"), def("SpreadPropertyPattern"))]);
+      def("AwaitExpression").bases("Expression").build("argument", "all").field("argument", or2(def("Expression"), null)).field("all", Boolean, defaults["false"]);
     }
     exports.default = default_1;
     module.exports = exports["default"];
@@ -72022,9 +72340,9 @@ var require_jsx = __commonJS({
       fork.use(es7_1.default);
       var types = fork.use(types_1.default);
       var def = types.Type.def;
-      var or = types.Type.or;
+      var or2 = types.Type.or;
       var defaults = fork.use(shared_1.default).defaults;
-      def("JSXAttribute").bases("Node").build("name", "value").field("name", or(def("JSXIdentifier"), def("JSXNamespacedName"))).field("value", or(
+      def("JSXAttribute").bases("Node").build("name", "value").field("name", or2(def("JSXIdentifier"), def("JSXNamespacedName"))).field("value", or2(
         def("Literal"),
         // attr="value"
         def("JSXExpressionContainer"),
@@ -72034,12 +72352,12 @@ var require_jsx = __commonJS({
       ), defaults["null"]);
       def("JSXIdentifier").bases("Identifier").build("name").field("name", String);
       def("JSXNamespacedName").bases("Node").build("namespace", "name").field("namespace", def("JSXIdentifier")).field("name", def("JSXIdentifier"));
-      def("JSXMemberExpression").bases("MemberExpression").build("object", "property").field("object", or(def("JSXIdentifier"), def("JSXMemberExpression"))).field("property", def("JSXIdentifier")).field("computed", Boolean, defaults.false);
-      var JSXElementName = or(def("JSXIdentifier"), def("JSXNamespacedName"), def("JSXMemberExpression"));
+      def("JSXMemberExpression").bases("MemberExpression").build("object", "property").field("object", or2(def("JSXIdentifier"), def("JSXMemberExpression"))).field("property", def("JSXIdentifier")).field("computed", Boolean, defaults.false);
+      var JSXElementName = or2(def("JSXIdentifier"), def("JSXNamespacedName"), def("JSXMemberExpression"));
       def("JSXSpreadAttribute").bases("Node").build("argument").field("argument", def("Expression"));
-      var JSXAttributes = [or(def("JSXAttribute"), def("JSXSpreadAttribute"))];
+      var JSXAttributes = [or2(def("JSXAttribute"), def("JSXSpreadAttribute"))];
       def("JSXExpressionContainer").bases("Expression").build("expression").field("expression", def("Expression"));
-      def("JSXElement").bases("Expression").build("openingElement", "closingElement", "children").field("openingElement", def("JSXOpeningElement")).field("closingElement", or(def("JSXClosingElement"), null), defaults["null"]).field("children", [or(
+      def("JSXElement").bases("Expression").build("openingElement", "closingElement", "children").field("openingElement", def("JSXOpeningElement")).field("closingElement", or2(def("JSXClosingElement"), null), defaults["null"]).field("children", [or2(
         def("JSXElement"),
         def("JSXExpressionContainer"),
         def("JSXFragment"),
@@ -72055,7 +72373,7 @@ var require_jsx = __commonJS({
       }, true);
       def("JSXOpeningElement").bases("Node").build("name", "attributes", "selfClosing").field("name", JSXElementName).field("attributes", JSXAttributes, defaults.emptyArray).field("selfClosing", Boolean, defaults["false"]);
       def("JSXClosingElement").bases("Node").build("name").field("name", JSXElementName);
-      def("JSXFragment").bases("Expression").build("openingElement", "closingElement", "children").field("openingElement", def("JSXOpeningFragment")).field("closingElement", def("JSXClosingFragment")).field("children", [or(
+      def("JSXFragment").bases("Expression").build("openingElement", "closingElement", "children").field("openingElement", def("JSXOpeningFragment")).field("closingElement", def("JSXClosingFragment")).field("children", [or2(
         def("JSXElement"),
         def("JSXExpressionContainer"),
         def("JSXFragment"),
@@ -72085,19 +72403,19 @@ var require_type_annotations = __commonJS({
     function default_1(fork) {
       var types = fork.use(types_1.default);
       var def = types.Type.def;
-      var or = types.Type.or;
+      var or2 = types.Type.or;
       var defaults = fork.use(shared_1.default).defaults;
-      var TypeAnnotation = or(def("TypeAnnotation"), def("TSTypeAnnotation"), null);
-      var TypeParamDecl = or(def("TypeParameterDeclaration"), def("TSTypeParameterDeclaration"), null);
+      var TypeAnnotation = or2(def("TypeAnnotation"), def("TSTypeAnnotation"), null);
+      var TypeParamDecl = or2(def("TypeParameterDeclaration"), def("TSTypeParameterDeclaration"), null);
       def("Identifier").field("typeAnnotation", TypeAnnotation, defaults["null"]);
       def("ObjectPattern").field("typeAnnotation", TypeAnnotation, defaults["null"]);
       def("Function").field("returnType", TypeAnnotation, defaults["null"]).field("typeParameters", TypeParamDecl, defaults["null"]);
-      def("ClassProperty").build("key", "value", "typeAnnotation", "static").field("value", or(def("Expression"), null)).field("static", Boolean, defaults["false"]).field("typeAnnotation", TypeAnnotation, defaults["null"]);
+      def("ClassProperty").build("key", "value", "typeAnnotation", "static").field("value", or2(def("Expression"), null)).field("static", Boolean, defaults["false"]).field("typeAnnotation", TypeAnnotation, defaults["null"]);
       [
         "ClassDeclaration",
         "ClassExpression"
       ].forEach(function(typeName) {
-        def(typeName).field("typeParameters", TypeParamDecl, defaults["null"]).field("superTypeParameters", or(def("TypeParameterInstantiation"), def("TSTypeParameterInstantiation"), null), defaults["null"]).field("implements", or([def("ClassImplements")], [def("TSExpressionWithTypeArguments")]), defaults.emptyArray);
+        def(typeName).field("typeParameters", TypeParamDecl, defaults["null"]).field("superTypeParameters", or2(def("TypeParameterInstantiation"), def("TSTypeParameterInstantiation"), null), defaults["null"]).field("implements", or2([def("ClassImplements")], [def("TSExpressionWithTypeArguments")]), defaults.emptyArray);
       });
     }
     exports.default = default_1;
@@ -72120,7 +72438,7 @@ var require_flow = __commonJS({
       fork.use(type_annotations_1.default);
       var types = fork.use(types_1.default);
       var def = types.Type.def;
-      var or = types.Type.or;
+      var or2 = types.Type.or;
       var defaults = fork.use(shared_1.default).defaults;
       def("Flow").bases("Node");
       def("FlowType").bases("Flow");
@@ -72142,20 +72460,20 @@ var require_flow = __commonJS({
       def("ThisTypeAnnotation").bases("FlowType").build();
       def("ExistsTypeAnnotation").bases("FlowType").build();
       def("ExistentialTypeParam").bases("FlowType").build();
-      def("FunctionTypeAnnotation").bases("FlowType").build("params", "returnType", "rest", "typeParameters").field("params", [def("FunctionTypeParam")]).field("returnType", def("FlowType")).field("rest", or(def("FunctionTypeParam"), null)).field("typeParameters", or(def("TypeParameterDeclaration"), null));
+      def("FunctionTypeAnnotation").bases("FlowType").build("params", "returnType", "rest", "typeParameters").field("params", [def("FunctionTypeParam")]).field("returnType", def("FlowType")).field("rest", or2(def("FunctionTypeParam"), null)).field("typeParameters", or2(def("TypeParameterDeclaration"), null));
       def("FunctionTypeParam").bases("Node").build("name", "typeAnnotation", "optional").field("name", def("Identifier")).field("typeAnnotation", def("FlowType")).field("optional", Boolean);
       def("ArrayTypeAnnotation").bases("FlowType").build("elementType").field("elementType", def("FlowType"));
       def("ObjectTypeAnnotation").bases("FlowType").build("properties", "indexers", "callProperties").field("properties", [
-        or(def("ObjectTypeProperty"), def("ObjectTypeSpreadProperty"))
-      ]).field("indexers", [def("ObjectTypeIndexer")], defaults.emptyArray).field("callProperties", [def("ObjectTypeCallProperty")], defaults.emptyArray).field("inexact", or(Boolean, void 0), defaults["undefined"]).field("exact", Boolean, defaults["false"]).field("internalSlots", [def("ObjectTypeInternalSlot")], defaults.emptyArray);
-      def("Variance").bases("Node").build("kind").field("kind", or("plus", "minus"));
-      var LegacyVariance = or(def("Variance"), "plus", "minus", null);
-      def("ObjectTypeProperty").bases("Node").build("key", "value", "optional").field("key", or(def("Literal"), def("Identifier"))).field("value", def("FlowType")).field("optional", Boolean).field("variance", LegacyVariance, defaults["null"]);
+        or2(def("ObjectTypeProperty"), def("ObjectTypeSpreadProperty"))
+      ]).field("indexers", [def("ObjectTypeIndexer")], defaults.emptyArray).field("callProperties", [def("ObjectTypeCallProperty")], defaults.emptyArray).field("inexact", or2(Boolean, void 0), defaults["undefined"]).field("exact", Boolean, defaults["false"]).field("internalSlots", [def("ObjectTypeInternalSlot")], defaults.emptyArray);
+      def("Variance").bases("Node").build("kind").field("kind", or2("plus", "minus"));
+      var LegacyVariance = or2(def("Variance"), "plus", "minus", null);
+      def("ObjectTypeProperty").bases("Node").build("key", "value", "optional").field("key", or2(def("Literal"), def("Identifier"))).field("value", def("FlowType")).field("optional", Boolean).field("variance", LegacyVariance, defaults["null"]);
       def("ObjectTypeIndexer").bases("Node").build("id", "key", "value").field("id", def("Identifier")).field("key", def("FlowType")).field("value", def("FlowType")).field("variance", LegacyVariance, defaults["null"]);
       def("ObjectTypeCallProperty").bases("Node").build("value").field("value", def("FunctionTypeAnnotation")).field("static", Boolean, defaults["false"]);
-      def("QualifiedTypeIdentifier").bases("Node").build("qualification", "id").field("qualification", or(def("Identifier"), def("QualifiedTypeIdentifier"))).field("id", def("Identifier"));
-      def("GenericTypeAnnotation").bases("FlowType").build("id", "typeParameters").field("id", or(def("Identifier"), def("QualifiedTypeIdentifier"))).field("typeParameters", or(def("TypeParameterInstantiation"), null));
-      def("MemberTypeAnnotation").bases("FlowType").build("object", "property").field("object", def("Identifier")).field("property", or(def("MemberTypeAnnotation"), def("GenericTypeAnnotation")));
+      def("QualifiedTypeIdentifier").bases("Node").build("qualification", "id").field("qualification", or2(def("Identifier"), def("QualifiedTypeIdentifier"))).field("id", def("Identifier"));
+      def("GenericTypeAnnotation").bases("FlowType").build("id", "typeParameters").field("id", or2(def("Identifier"), def("QualifiedTypeIdentifier"))).field("typeParameters", or2(def("TypeParameterInstantiation"), null));
+      def("MemberTypeAnnotation").bases("FlowType").build("object", "property").field("object", def("Identifier")).field("property", or2(def("MemberTypeAnnotation"), def("GenericTypeAnnotation")));
       def("UnionTypeAnnotation").bases("FlowType").build("types").field("types", [def("FlowType")]);
       def("IntersectionTypeAnnotation").bases("FlowType").build("types").field("types", [def("FlowType")]);
       def("TypeofTypeAnnotation").bases("FlowType").build("argument").field("argument", def("FlowType"));
@@ -72163,15 +72481,15 @@ var require_flow = __commonJS({
       def("ObjectTypeInternalSlot").bases("Node").build("id", "value", "optional", "static", "method").field("id", def("Identifier")).field("value", def("FlowType")).field("optional", Boolean).field("static", Boolean).field("method", Boolean);
       def("TypeParameterDeclaration").bases("Node").build("params").field("params", [def("TypeParameter")]);
       def("TypeParameterInstantiation").bases("Node").build("params").field("params", [def("FlowType")]);
-      def("TypeParameter").bases("FlowType").build("name", "variance", "bound").field("name", String).field("variance", LegacyVariance, defaults["null"]).field("bound", or(def("TypeAnnotation"), null), defaults["null"]);
+      def("TypeParameter").bases("FlowType").build("name", "variance", "bound").field("name", String).field("variance", LegacyVariance, defaults["null"]).field("bound", or2(def("TypeAnnotation"), null), defaults["null"]);
       def("ClassProperty").field("variance", LegacyVariance, defaults["null"]);
-      def("ClassImplements").bases("Node").build("id").field("id", def("Identifier")).field("superClass", or(def("Expression"), null), defaults["null"]).field("typeParameters", or(def("TypeParameterInstantiation"), null), defaults["null"]);
-      def("InterfaceTypeAnnotation").bases("FlowType").build("body", "extends").field("body", def("ObjectTypeAnnotation")).field("extends", or([def("InterfaceExtends")], null), defaults["null"]);
-      def("InterfaceDeclaration").bases("Declaration").build("id", "body", "extends").field("id", def("Identifier")).field("typeParameters", or(def("TypeParameterDeclaration"), null), defaults["null"]).field("body", def("ObjectTypeAnnotation")).field("extends", [def("InterfaceExtends")]);
+      def("ClassImplements").bases("Node").build("id").field("id", def("Identifier")).field("superClass", or2(def("Expression"), null), defaults["null"]).field("typeParameters", or2(def("TypeParameterInstantiation"), null), defaults["null"]);
+      def("InterfaceTypeAnnotation").bases("FlowType").build("body", "extends").field("body", def("ObjectTypeAnnotation")).field("extends", or2([def("InterfaceExtends")], null), defaults["null"]);
+      def("InterfaceDeclaration").bases("Declaration").build("id", "body", "extends").field("id", def("Identifier")).field("typeParameters", or2(def("TypeParameterDeclaration"), null), defaults["null"]).field("body", def("ObjectTypeAnnotation")).field("extends", [def("InterfaceExtends")]);
       def("DeclareInterface").bases("InterfaceDeclaration").build("id", "body", "extends");
-      def("InterfaceExtends").bases("Node").build("id").field("id", def("Identifier")).field("typeParameters", or(def("TypeParameterInstantiation"), null), defaults["null"]);
-      def("TypeAlias").bases("Declaration").build("id", "typeParameters", "right").field("id", def("Identifier")).field("typeParameters", or(def("TypeParameterDeclaration"), null)).field("right", def("FlowType"));
-      def("OpaqueType").bases("Declaration").build("id", "typeParameters", "impltype", "supertype").field("id", def("Identifier")).field("typeParameters", or(def("TypeParameterDeclaration"), null)).field("impltype", def("FlowType")).field("supertype", def("FlowType"));
+      def("InterfaceExtends").bases("Node").build("id").field("id", def("Identifier")).field("typeParameters", or2(def("TypeParameterInstantiation"), null), defaults["null"]);
+      def("TypeAlias").bases("Declaration").build("id", "typeParameters", "right").field("id", def("Identifier")).field("typeParameters", or2(def("TypeParameterDeclaration"), null)).field("right", def("FlowType"));
+      def("OpaqueType").bases("Declaration").build("id", "typeParameters", "impltype", "supertype").field("id", def("Identifier")).field("typeParameters", or2(def("TypeParameterDeclaration"), null)).field("impltype", def("FlowType")).field("supertype", def("FlowType"));
       def("DeclareTypeAlias").bases("TypeAlias").build("id", "typeParameters", "right");
       def("DeclareOpaqueType").bases("TypeAlias").build("id", "typeParameters", "supertype");
       def("TypeCastExpression").bases("Expression").build("expression", "typeAnnotation").field("expression", def("Expression")).field("typeAnnotation", def("TypeAnnotation"));
@@ -72179,22 +72497,22 @@ var require_flow = __commonJS({
       def("DeclareVariable").bases("Statement").build("id").field("id", def("Identifier"));
       def("DeclareFunction").bases("Statement").build("id").field("id", def("Identifier"));
       def("DeclareClass").bases("InterfaceDeclaration").build("id");
-      def("DeclareModule").bases("Statement").build("id", "body").field("id", or(def("Identifier"), def("Literal"))).field("body", def("BlockStatement"));
+      def("DeclareModule").bases("Statement").build("id", "body").field("id", or2(def("Identifier"), def("Literal"))).field("body", def("BlockStatement"));
       def("DeclareModuleExports").bases("Statement").build("typeAnnotation").field("typeAnnotation", def("TypeAnnotation"));
-      def("DeclareExportDeclaration").bases("Declaration").build("default", "declaration", "specifiers", "source").field("default", Boolean).field("declaration", or(
+      def("DeclareExportDeclaration").bases("Declaration").build("default", "declaration", "specifiers", "source").field("default", Boolean).field("declaration", or2(
         def("DeclareVariable"),
         def("DeclareFunction"),
         def("DeclareClass"),
         def("FlowType"),
         // Implies default.
         null
-      )).field("specifiers", [or(def("ExportSpecifier"), def("ExportBatchSpecifier"))], defaults.emptyArray).field("source", or(def("Literal"), null), defaults["null"]);
-      def("DeclareExportAllDeclaration").bases("Declaration").build("source").field("source", or(def("Literal"), null), defaults["null"]);
+      )).field("specifiers", [or2(def("ExportSpecifier"), def("ExportBatchSpecifier"))], defaults.emptyArray).field("source", or2(def("Literal"), null), defaults["null"]);
+      def("DeclareExportAllDeclaration").bases("Declaration").build("source").field("source", or2(def("Literal"), null), defaults["null"]);
       def("FlowPredicate").bases("Flow");
       def("InferredPredicate").bases("FlowPredicate").build();
       def("DeclaredPredicate").bases("FlowPredicate").build("value").field("value", def("Expression"));
-      def("CallExpression").field("typeArguments", or(null, def("TypeParameterInstantiation")), defaults["null"]);
-      def("NewExpression").field("typeArguments", or(null, def("TypeParameterInstantiation")), defaults["null"]);
+      def("CallExpression").field("typeArguments", or2(null, def("TypeParameterInstantiation")), defaults["null"]);
+      def("NewExpression").field("typeArguments", or2(null, def("TypeParameterInstantiation")), defaults["null"]);
     }
     exports.default = default_1;
     module.exports = exports["default"];
@@ -72215,19 +72533,19 @@ var require_esprima2 = __commonJS({
       var types = fork.use(types_1.default);
       var defaults = fork.use(shared_1.default).defaults;
       var def = types.Type.def;
-      var or = types.Type.or;
-      def("VariableDeclaration").field("declarations", [or(
+      var or2 = types.Type.or;
+      def("VariableDeclaration").field("declarations", [or2(
         def("VariableDeclarator"),
         def("Identifier")
         // Esprima deviation.
       )]);
-      def("Property").field("value", or(
+      def("Property").field("value", or2(
         def("Expression"),
         def("Pattern")
         // Esprima deviation.
       ));
-      def("ArrayPattern").field("elements", [or(def("Pattern"), def("SpreadElement"), null)]);
-      def("ObjectPattern").field("properties", [or(
+      def("ArrayPattern").field("elements", [or2(def("Pattern"), def("SpreadElement"), null)]);
+      def("ObjectPattern").field("properties", [or2(
         def("Property"),
         def("PropertyPattern"),
         def("SpreadPropertyPattern"),
@@ -72236,12 +72554,12 @@ var require_esprima2 = __commonJS({
       )]);
       def("ExportSpecifier").bases("ModuleSpecifier").build("id", "name");
       def("ExportBatchSpecifier").bases("Specifier").build();
-      def("ExportDeclaration").bases("Declaration").build("default", "declaration", "specifiers", "source").field("default", Boolean).field("declaration", or(
+      def("ExportDeclaration").bases("Declaration").build("default", "declaration", "specifiers", "source").field("default", Boolean).field("declaration", or2(
         def("Declaration"),
         def("Expression"),
         // Implies default.
         null
-      )).field("specifiers", [or(def("ExportSpecifier"), def("ExportBatchSpecifier"))], defaults.emptyArray).field("source", or(def("Literal"), null), defaults["null"]);
+      )).field("specifiers", [or2(def("ExportSpecifier"), def("ExportBatchSpecifier"))], defaults.emptyArray).field("source", or2(def("Literal"), null), defaults["null"]);
       def("Block").bases("Comment").build(
         "value",
         /*optional:*/
@@ -72274,25 +72592,25 @@ var require_babel_core = __commonJS({
       var types = fork.use(types_1.default);
       var defaults = fork.use(shared_1.default).defaults;
       var def = types.Type.def;
-      var or = types.Type.or;
+      var or2 = types.Type.or;
       def("Noop").bases("Statement").build();
       def("DoExpression").bases("Expression").build("body").field("body", [def("Statement")]);
       def("Super").bases("Expression").build();
-      def("BindExpression").bases("Expression").build("object", "callee").field("object", or(def("Expression"), null)).field("callee", def("Expression"));
+      def("BindExpression").bases("Expression").build("object", "callee").field("object", or2(def("Expression"), null)).field("callee", def("Expression"));
       def("Decorator").bases("Node").build("expression").field("expression", def("Expression"));
-      def("Property").field("decorators", or([def("Decorator")], null), defaults["null"]);
-      def("MethodDefinition").field("decorators", or([def("Decorator")], null), defaults["null"]);
+      def("Property").field("decorators", or2([def("Decorator")], null), defaults["null"]);
+      def("MethodDefinition").field("decorators", or2([def("Decorator")], null), defaults["null"]);
       def("MetaProperty").bases("Expression").build("meta", "property").field("meta", def("Identifier")).field("property", def("Identifier"));
       def("ParenthesizedExpression").bases("Expression").build("expression").field("expression", def("Expression"));
       def("ImportSpecifier").bases("ModuleSpecifier").build("imported", "local").field("imported", def("Identifier"));
       def("ImportDefaultSpecifier").bases("ModuleSpecifier").build("local");
       def("ImportNamespaceSpecifier").bases("ModuleSpecifier").build("local");
-      def("ExportDefaultDeclaration").bases("Declaration").build("declaration").field("declaration", or(def("Declaration"), def("Expression")));
-      def("ExportNamedDeclaration").bases("Declaration").build("declaration", "specifiers", "source").field("declaration", or(def("Declaration"), null)).field("specifiers", [def("ExportSpecifier")], defaults.emptyArray).field("source", or(def("Literal"), null), defaults["null"]);
+      def("ExportDefaultDeclaration").bases("Declaration").build("declaration").field("declaration", or2(def("Declaration"), def("Expression")));
+      def("ExportNamedDeclaration").bases("Declaration").build("declaration", "specifiers", "source").field("declaration", or2(def("Declaration"), null)).field("specifiers", [def("ExportSpecifier")], defaults.emptyArray).field("source", or2(def("Literal"), null), defaults["null"]);
       def("ExportSpecifier").bases("ModuleSpecifier").build("local", "exported").field("exported", def("Identifier"));
       def("ExportNamespaceSpecifier").bases("Specifier").build("exported").field("exported", def("Identifier"));
       def("ExportDefaultSpecifier").bases("Specifier").build("exported").field("exported", def("Identifier"));
-      def("ExportAllDeclaration").bases("Declaration").build("exported", "source").field("exported", or(def("Identifier"), null)).field("source", def("Literal"));
+      def("ExportAllDeclaration").bases("Declaration").build("exported", "source").field("exported", or2(def("Identifier"), null)).field("source", def("Literal"));
       def("CommentBlock").bases("Comment").build(
         "value",
         /*optional:*/
@@ -72309,9 +72627,9 @@ var require_babel_core = __commonJS({
       def("DirectiveLiteral").bases("Node", "Expression").build("value").field("value", String, defaults["use strict"]);
       def("InterpreterDirective").bases("Node").build("value").field("value", String);
       def("BlockStatement").bases("Statement").build("body").field("body", [def("Statement")]).field("directives", [def("Directive")], defaults.emptyArray);
-      def("Program").bases("Node").build("body").field("body", [def("Statement")]).field("directives", [def("Directive")], defaults.emptyArray).field("interpreter", or(def("InterpreterDirective"), null), defaults["null"]);
+      def("Program").bases("Node").build("body").field("body", [def("Statement")]).field("directives", [def("Directive")], defaults.emptyArray).field("interpreter", or2(def("InterpreterDirective"), null), defaults["null"]);
       def("StringLiteral").bases("Literal").build("value").field("value", String);
-      def("NumericLiteral").bases("Literal").build("value").field("value", Number).field("raw", or(String, null), defaults["null"]).field("extra", {
+      def("NumericLiteral").bases("Literal").build("value").field("value", Number).field("raw", or2(String, null), defaults["null"]).field("extra", {
         rawValue: Number,
         raw: String
       }, function getDefault() {
@@ -72320,7 +72638,7 @@ var require_babel_core = __commonJS({
           raw: this.value + ""
         };
       });
-      def("BigIntLiteral").bases("Literal").build("value").field("value", or(String, Number)).field("extra", {
+      def("BigIntLiteral").bases("Literal").build("value").field("value", or2(String, Number)).field("extra", {
         rawValue: String,
         raw: String
       }, function getDefault() {
@@ -72334,35 +72652,35 @@ var require_babel_core = __commonJS({
       def("RegExpLiteral").bases("Literal").build("pattern", "flags").field("pattern", String).field("flags", String).field("value", RegExp, function() {
         return new RegExp(this.pattern, this.flags);
       });
-      var ObjectExpressionProperty = or(def("Property"), def("ObjectMethod"), def("ObjectProperty"), def("SpreadProperty"), def("SpreadElement"));
+      var ObjectExpressionProperty = or2(def("Property"), def("ObjectMethod"), def("ObjectProperty"), def("SpreadProperty"), def("SpreadElement"));
       def("ObjectExpression").bases("Expression").build("properties").field("properties", [ObjectExpressionProperty]);
-      def("ObjectMethod").bases("Node", "Function").build("kind", "key", "params", "body", "computed").field("kind", or("method", "get", "set")).field("key", or(def("Literal"), def("Identifier"), def("Expression"))).field("params", [def("Pattern")]).field("body", def("BlockStatement")).field("computed", Boolean, defaults["false"]).field("generator", Boolean, defaults["false"]).field("async", Boolean, defaults["false"]).field(
+      def("ObjectMethod").bases("Node", "Function").build("kind", "key", "params", "body", "computed").field("kind", or2("method", "get", "set")).field("key", or2(def("Literal"), def("Identifier"), def("Expression"))).field("params", [def("Pattern")]).field("body", def("BlockStatement")).field("computed", Boolean, defaults["false"]).field("generator", Boolean, defaults["false"]).field("async", Boolean, defaults["false"]).field(
         "accessibility",
         // TypeScript
-        or(def("Literal"), null),
+        or2(def("Literal"), null),
         defaults["null"]
-      ).field("decorators", or([def("Decorator")], null), defaults["null"]);
-      def("ObjectProperty").bases("Node").build("key", "value").field("key", or(def("Literal"), def("Identifier"), def("Expression"))).field("value", or(def("Expression"), def("Pattern"))).field(
+      ).field("decorators", or2([def("Decorator")], null), defaults["null"]);
+      def("ObjectProperty").bases("Node").build("key", "value").field("key", or2(def("Literal"), def("Identifier"), def("Expression"))).field("value", or2(def("Expression"), def("Pattern"))).field(
         "accessibility",
         // TypeScript
-        or(def("Literal"), null),
+        or2(def("Literal"), null),
         defaults["null"]
       ).field("computed", Boolean, defaults["false"]);
-      var ClassBodyElement = or(def("MethodDefinition"), def("VariableDeclarator"), def("ClassPropertyDefinition"), def("ClassProperty"), def("ClassPrivateProperty"), def("ClassMethod"), def("ClassPrivateMethod"));
+      var ClassBodyElement = or2(def("MethodDefinition"), def("VariableDeclarator"), def("ClassPropertyDefinition"), def("ClassProperty"), def("ClassPrivateProperty"), def("ClassMethod"), def("ClassPrivateMethod"));
       def("ClassBody").bases("Declaration").build("body").field("body", [ClassBodyElement]);
-      def("ClassMethod").bases("Declaration", "Function").build("kind", "key", "params", "body", "computed", "static").field("key", or(def("Literal"), def("Identifier"), def("Expression")));
+      def("ClassMethod").bases("Declaration", "Function").build("kind", "key", "params", "body", "computed", "static").field("key", or2(def("Literal"), def("Identifier"), def("Expression")));
       def("ClassPrivateMethod").bases("Declaration", "Function").build("key", "params", "body", "kind", "computed", "static").field("key", def("PrivateName"));
       [
         "ClassMethod",
         "ClassPrivateMethod"
       ].forEach(function(typeName) {
-        def(typeName).field("kind", or("get", "set", "method", "constructor"), function() {
+        def(typeName).field("kind", or2("get", "set", "method", "constructor"), function() {
           return "method";
-        }).field("body", def("BlockStatement")).field("computed", Boolean, defaults["false"]).field("static", or(Boolean, null), defaults["null"]).field("abstract", or(Boolean, null), defaults["null"]).field("access", or("public", "private", "protected", null), defaults["null"]).field("accessibility", or("public", "private", "protected", null), defaults["null"]).field("decorators", or([def("Decorator")], null), defaults["null"]).field("optional", or(Boolean, null), defaults["null"]);
+        }).field("body", def("BlockStatement")).field("computed", Boolean, defaults["false"]).field("static", or2(Boolean, null), defaults["null"]).field("abstract", or2(Boolean, null), defaults["null"]).field("access", or2("public", "private", "protected", null), defaults["null"]).field("accessibility", or2("public", "private", "protected", null), defaults["null"]).field("decorators", or2([def("Decorator")], null), defaults["null"]).field("optional", or2(Boolean, null), defaults["null"]);
       });
-      def("ClassPrivateProperty").bases("ClassProperty").build("key", "value").field("key", def("PrivateName")).field("value", or(def("Expression"), null), defaults["null"]);
+      def("ClassPrivateProperty").bases("ClassProperty").build("key", "value").field("key", def("PrivateName")).field("value", or2(def("Expression"), null), defaults["null"]);
       def("PrivateName").bases("Expression", "Pattern").build("id").field("id", def("Identifier"));
-      var ObjectPatternProperty = or(
+      var ObjectPatternProperty = or2(
         def("Property"),
         def("PropertyPattern"),
         def("SpreadPropertyPattern"),
@@ -72373,10 +72691,10 @@ var require_babel_core = __commonJS({
         def("RestProperty")
         // Babel 6
       );
-      def("ObjectPattern").bases("Pattern").build("properties").field("properties", [ObjectPatternProperty]).field("decorators", or([def("Decorator")], null), defaults["null"]);
+      def("ObjectPattern").bases("Pattern").build("properties").field("properties", [ObjectPatternProperty]).field("decorators", or2([def("Decorator")], null), defaults["null"]);
       def("SpreadProperty").bases("Node").build("argument").field("argument", def("Expression"));
       def("RestProperty").bases("Node").build("argument").field("argument", def("Expression"));
-      def("ForAwaitStatement").bases("Statement").build("left", "right", "body").field("left", or(def("VariableDeclaration"), def("Expression"))).field("right", def("Expression")).field("body", def("Statement"));
+      def("ForAwaitStatement").bases("Statement").build("left", "right", "body").field("left", or2(def("VariableDeclaration"), def("Expression"))).field("right", def("Expression")).field("body", def("Statement"));
       def("Import").bases("Expression").build();
     }
     exports.default = default_1;
@@ -72417,7 +72735,7 @@ var require_typescript = __commonJS({
       var types = fork.use(types_1.default);
       var n = types.namedTypes;
       var def = types.Type.def;
-      var or = types.Type.or;
+      var or2 = types.Type.or;
       var defaults = fork.use(shared_1.default).defaults;
       var StringLiteral = types.Type.from(function(value, deep) {
         if (n.StringLiteral && n.StringLiteral.check(value, deep)) {
@@ -72429,13 +72747,13 @@ var require_typescript = __commonJS({
         return false;
       }, "StringLiteral");
       def("TSType").bases("Node");
-      var TSEntityName = or(def("Identifier"), def("TSQualifiedName"));
+      var TSEntityName = or2(def("Identifier"), def("TSQualifiedName"));
       def("TSTypeReference").bases("TSType", "TSHasOptionalTypeParameterInstantiation").build("typeName", "typeParameters").field("typeName", TSEntityName);
-      def("TSHasOptionalTypeParameterInstantiation").field("typeParameters", or(def("TSTypeParameterInstantiation"), null), defaults["null"]);
-      def("TSHasOptionalTypeParameters").field("typeParameters", or(def("TSTypeParameterDeclaration"), null, void 0), defaults["null"]);
-      def("TSHasOptionalTypeAnnotation").field("typeAnnotation", or(def("TSTypeAnnotation"), null), defaults["null"]);
+      def("TSHasOptionalTypeParameterInstantiation").field("typeParameters", or2(def("TSTypeParameterInstantiation"), null), defaults["null"]);
+      def("TSHasOptionalTypeParameters").field("typeParameters", or2(def("TSTypeParameterDeclaration"), null, void 0), defaults["null"]);
+      def("TSHasOptionalTypeAnnotation").field("typeAnnotation", or2(def("TSTypeAnnotation"), null), defaults["null"]);
       def("TSQualifiedName").bases("Node").build("left", "right").field("left", TSEntityName).field("right", TSEntityName);
-      def("TSAsExpression").bases("Expression", "Pattern").build("expression", "typeAnnotation").field("expression", def("Expression")).field("typeAnnotation", def("TSType")).field("extra", or({ parenthesized: Boolean }, null), defaults["null"]);
+      def("TSAsExpression").bases("Expression", "Pattern").build("expression", "typeAnnotation").field("expression", def("Expression")).field("typeAnnotation", def("TSType")).field("extra", or2({ parenthesized: Boolean }, null), defaults["null"]);
       def("TSNonNullExpression").bases("Expression", "Pattern").build("expression").field("expression", def("Expression"));
       [
         "TSAnyKeyword",
@@ -72455,7 +72773,7 @@ var require_typescript = __commonJS({
         def(keywordType).bases("TSType").build();
       });
       def("TSArrayType").bases("TSType").build("elementType").field("elementType", def("TSType"));
-      def("TSLiteralType").bases("TSType").build("literal").field("literal", or(def("NumericLiteral"), def("StringLiteral"), def("BooleanLiteral"), def("TemplateLiteral"), def("UnaryExpression")));
+      def("TSLiteralType").bases("TSType").build("literal").field("literal", or2(def("NumericLiteral"), def("StringLiteral"), def("BooleanLiteral"), def("TemplateLiteral"), def("UnaryExpression")));
       [
         "TSUnionType",
         "TSIntersectionType"
@@ -72465,84 +72783,84 @@ var require_typescript = __commonJS({
       def("TSConditionalType").bases("TSType").build("checkType", "extendsType", "trueType", "falseType").field("checkType", def("TSType")).field("extendsType", def("TSType")).field("trueType", def("TSType")).field("falseType", def("TSType"));
       def("TSInferType").bases("TSType").build("typeParameter").field("typeParameter", def("TSTypeParameter"));
       def("TSParenthesizedType").bases("TSType").build("typeAnnotation").field("typeAnnotation", def("TSType"));
-      var ParametersType = [or(def("Identifier"), def("RestElement"), def("ArrayPattern"), def("ObjectPattern"))];
+      var ParametersType = [or2(def("Identifier"), def("RestElement"), def("ArrayPattern"), def("ObjectPattern"))];
       [
         "TSFunctionType",
         "TSConstructorType"
       ].forEach(function(typeName) {
         def(typeName).bases("TSType", "TSHasOptionalTypeParameters", "TSHasOptionalTypeAnnotation").build("parameters").field("parameters", ParametersType);
       });
-      def("TSDeclareFunction").bases("Declaration", "TSHasOptionalTypeParameters").build("id", "params", "returnType").field("declare", Boolean, defaults["false"]).field("async", Boolean, defaults["false"]).field("generator", Boolean, defaults["false"]).field("id", or(def("Identifier"), null), defaults["null"]).field("params", [def("Pattern")]).field("returnType", or(
+      def("TSDeclareFunction").bases("Declaration", "TSHasOptionalTypeParameters").build("id", "params", "returnType").field("declare", Boolean, defaults["false"]).field("async", Boolean, defaults["false"]).field("generator", Boolean, defaults["false"]).field("id", or2(def("Identifier"), null), defaults["null"]).field("params", [def("Pattern")]).field("returnType", or2(
         def("TSTypeAnnotation"),
         def("Noop"),
         // Still used?
         null
       ), defaults["null"]);
-      def("TSDeclareMethod").bases("Declaration", "TSHasOptionalTypeParameters").build("key", "params", "returnType").field("async", Boolean, defaults["false"]).field("generator", Boolean, defaults["false"]).field("params", [def("Pattern")]).field("abstract", Boolean, defaults["false"]).field("accessibility", or("public", "private", "protected", void 0), defaults["undefined"]).field("static", Boolean, defaults["false"]).field("computed", Boolean, defaults["false"]).field("optional", Boolean, defaults["false"]).field("key", or(
+      def("TSDeclareMethod").bases("Declaration", "TSHasOptionalTypeParameters").build("key", "params", "returnType").field("async", Boolean, defaults["false"]).field("generator", Boolean, defaults["false"]).field("params", [def("Pattern")]).field("abstract", Boolean, defaults["false"]).field("accessibility", or2("public", "private", "protected", void 0), defaults["undefined"]).field("static", Boolean, defaults["false"]).field("computed", Boolean, defaults["false"]).field("optional", Boolean, defaults["false"]).field("key", or2(
         def("Identifier"),
         def("StringLiteral"),
         def("NumericLiteral"),
         // Only allowed if .computed is true.
         def("Expression")
-      )).field("kind", or("get", "set", "method", "constructor"), function getDefault() {
+      )).field("kind", or2("get", "set", "method", "constructor"), function getDefault() {
         return "method";
       }).field(
         "access",
         // Not "accessibility"?
-        or("public", "private", "protected", void 0),
+        or2("public", "private", "protected", void 0),
         defaults["undefined"]
-      ).field("decorators", or([def("Decorator")], null), defaults["null"]).field("returnType", or(
+      ).field("decorators", or2([def("Decorator")], null), defaults["null"]).field("returnType", or2(
         def("TSTypeAnnotation"),
         def("Noop"),
         // Still used?
         null
       ), defaults["null"]);
-      def("TSMappedType").bases("TSType").build("typeParameter", "typeAnnotation").field("readonly", or(Boolean, "+", "-"), defaults["false"]).field("typeParameter", def("TSTypeParameter")).field("optional", or(Boolean, "+", "-"), defaults["false"]).field("typeAnnotation", or(def("TSType"), null), defaults["null"]);
-      def("TSTupleType").bases("TSType").build("elementTypes").field("elementTypes", [or(def("TSType"), def("TSNamedTupleMember"))]);
+      def("TSMappedType").bases("TSType").build("typeParameter", "typeAnnotation").field("readonly", or2(Boolean, "+", "-"), defaults["false"]).field("typeParameter", def("TSTypeParameter")).field("optional", or2(Boolean, "+", "-"), defaults["false"]).field("typeAnnotation", or2(def("TSType"), null), defaults["null"]);
+      def("TSTupleType").bases("TSType").build("elementTypes").field("elementTypes", [or2(def("TSType"), def("TSNamedTupleMember"))]);
       def("TSNamedTupleMember").bases("TSType").build("label", "elementType", "optional").field("label", def("Identifier")).field("optional", Boolean, defaults["false"]).field("elementType", def("TSType"));
       def("TSRestType").bases("TSType").build("typeAnnotation").field("typeAnnotation", def("TSType"));
       def("TSOptionalType").bases("TSType").build("typeAnnotation").field("typeAnnotation", def("TSType"));
       def("TSIndexedAccessType").bases("TSType").build("objectType", "indexType").field("objectType", def("TSType")).field("indexType", def("TSType"));
       def("TSTypeOperator").bases("TSType").build("operator").field("operator", String).field("typeAnnotation", def("TSType"));
-      def("TSTypeAnnotation").bases("Node").build("typeAnnotation").field("typeAnnotation", or(def("TSType"), def("TSTypeAnnotation")));
+      def("TSTypeAnnotation").bases("Node").build("typeAnnotation").field("typeAnnotation", or2(def("TSType"), def("TSTypeAnnotation")));
       def("TSIndexSignature").bases("Declaration", "TSHasOptionalTypeAnnotation").build("parameters", "typeAnnotation").field("parameters", [def("Identifier")]).field("readonly", Boolean, defaults["false"]);
-      def("TSPropertySignature").bases("Declaration", "TSHasOptionalTypeAnnotation").build("key", "typeAnnotation", "optional").field("key", def("Expression")).field("computed", Boolean, defaults["false"]).field("readonly", Boolean, defaults["false"]).field("optional", Boolean, defaults["false"]).field("initializer", or(def("Expression"), null), defaults["null"]);
+      def("TSPropertySignature").bases("Declaration", "TSHasOptionalTypeAnnotation").build("key", "typeAnnotation", "optional").field("key", def("Expression")).field("computed", Boolean, defaults["false"]).field("readonly", Boolean, defaults["false"]).field("optional", Boolean, defaults["false"]).field("initializer", or2(def("Expression"), null), defaults["null"]);
       def("TSMethodSignature").bases("Declaration", "TSHasOptionalTypeParameters", "TSHasOptionalTypeAnnotation").build("key", "parameters", "typeAnnotation").field("key", def("Expression")).field("computed", Boolean, defaults["false"]).field("optional", Boolean, defaults["false"]).field("parameters", ParametersType);
-      def("TSTypePredicate").bases("TSTypeAnnotation", "TSType").build("parameterName", "typeAnnotation", "asserts").field("parameterName", or(def("Identifier"), def("TSThisType"))).field("typeAnnotation", or(def("TSTypeAnnotation"), null), defaults["null"]).field("asserts", Boolean, defaults["false"]);
+      def("TSTypePredicate").bases("TSTypeAnnotation", "TSType").build("parameterName", "typeAnnotation", "asserts").field("parameterName", or2(def("Identifier"), def("TSThisType"))).field("typeAnnotation", or2(def("TSTypeAnnotation"), null), defaults["null"]).field("asserts", Boolean, defaults["false"]);
       [
         "TSCallSignatureDeclaration",
         "TSConstructSignatureDeclaration"
       ].forEach(function(typeName) {
         def(typeName).bases("Declaration", "TSHasOptionalTypeParameters", "TSHasOptionalTypeAnnotation").build("parameters", "typeAnnotation").field("parameters", ParametersType);
       });
-      def("TSEnumMember").bases("Node").build("id", "initializer").field("id", or(def("Identifier"), StringLiteral)).field("initializer", or(def("Expression"), null), defaults["null"]);
-      def("TSTypeQuery").bases("TSType").build("exprName").field("exprName", or(TSEntityName, def("TSImportType")));
-      var TSTypeMember = or(def("TSCallSignatureDeclaration"), def("TSConstructSignatureDeclaration"), def("TSIndexSignature"), def("TSMethodSignature"), def("TSPropertySignature"));
+      def("TSEnumMember").bases("Node").build("id", "initializer").field("id", or2(def("Identifier"), StringLiteral)).field("initializer", or2(def("Expression"), null), defaults["null"]);
+      def("TSTypeQuery").bases("TSType").build("exprName").field("exprName", or2(TSEntityName, def("TSImportType")));
+      var TSTypeMember = or2(def("TSCallSignatureDeclaration"), def("TSConstructSignatureDeclaration"), def("TSIndexSignature"), def("TSMethodSignature"), def("TSPropertySignature"));
       def("TSTypeLiteral").bases("TSType").build("members").field("members", [TSTypeMember]);
-      def("TSTypeParameter").bases("Identifier").build("name", "constraint", "default").field("name", String).field("constraint", or(def("TSType"), void 0), defaults["undefined"]).field("default", or(def("TSType"), void 0), defaults["undefined"]);
-      def("TSTypeAssertion").bases("Expression", "Pattern").build("typeAnnotation", "expression").field("typeAnnotation", def("TSType")).field("expression", def("Expression")).field("extra", or({ parenthesized: Boolean }, null), defaults["null"]);
+      def("TSTypeParameter").bases("Identifier").build("name", "constraint", "default").field("name", String).field("constraint", or2(def("TSType"), void 0), defaults["undefined"]).field("default", or2(def("TSType"), void 0), defaults["undefined"]);
+      def("TSTypeAssertion").bases("Expression", "Pattern").build("typeAnnotation", "expression").field("typeAnnotation", def("TSType")).field("expression", def("Expression")).field("extra", or2({ parenthesized: Boolean }, null), defaults["null"]);
       def("TSTypeParameterDeclaration").bases("Declaration").build("params").field("params", [def("TSTypeParameter")]);
       def("TSTypeParameterInstantiation").bases("Node").build("params").field("params", [def("TSType")]);
-      def("TSEnumDeclaration").bases("Declaration").build("id", "members").field("id", def("Identifier")).field("const", Boolean, defaults["false"]).field("declare", Boolean, defaults["false"]).field("members", [def("TSEnumMember")]).field("initializer", or(def("Expression"), null), defaults["null"]);
+      def("TSEnumDeclaration").bases("Declaration").build("id", "members").field("id", def("Identifier")).field("const", Boolean, defaults["false"]).field("declare", Boolean, defaults["false"]).field("members", [def("TSEnumMember")]).field("initializer", or2(def("Expression"), null), defaults["null"]);
       def("TSTypeAliasDeclaration").bases("Declaration", "TSHasOptionalTypeParameters").build("id", "typeAnnotation").field("id", def("Identifier")).field("declare", Boolean, defaults["false"]).field("typeAnnotation", def("TSType"));
       def("TSModuleBlock").bases("Node").build("body").field("body", [def("Statement")]);
-      def("TSModuleDeclaration").bases("Declaration").build("id", "body").field("id", or(StringLiteral, TSEntityName)).field("declare", Boolean, defaults["false"]).field("global", Boolean, defaults["false"]).field("body", or(def("TSModuleBlock"), def("TSModuleDeclaration"), null), defaults["null"]);
-      def("TSImportType").bases("TSType", "TSHasOptionalTypeParameterInstantiation").build("argument", "qualifier", "typeParameters").field("argument", StringLiteral).field("qualifier", or(TSEntityName, void 0), defaults["undefined"]);
-      def("TSImportEqualsDeclaration").bases("Declaration").build("id", "moduleReference").field("id", def("Identifier")).field("isExport", Boolean, defaults["false"]).field("moduleReference", or(TSEntityName, def("TSExternalModuleReference")));
+      def("TSModuleDeclaration").bases("Declaration").build("id", "body").field("id", or2(StringLiteral, TSEntityName)).field("declare", Boolean, defaults["false"]).field("global", Boolean, defaults["false"]).field("body", or2(def("TSModuleBlock"), def("TSModuleDeclaration"), null), defaults["null"]);
+      def("TSImportType").bases("TSType", "TSHasOptionalTypeParameterInstantiation").build("argument", "qualifier", "typeParameters").field("argument", StringLiteral).field("qualifier", or2(TSEntityName, void 0), defaults["undefined"]);
+      def("TSImportEqualsDeclaration").bases("Declaration").build("id", "moduleReference").field("id", def("Identifier")).field("isExport", Boolean, defaults["false"]).field("moduleReference", or2(TSEntityName, def("TSExternalModuleReference")));
       def("TSExternalModuleReference").bases("Declaration").build("expression").field("expression", StringLiteral);
       def("TSExportAssignment").bases("Statement").build("expression").field("expression", def("Expression"));
       def("TSNamespaceExportDeclaration").bases("Declaration").build("id").field("id", def("Identifier"));
       def("TSInterfaceBody").bases("Node").build("body").field("body", [TSTypeMember]);
       def("TSExpressionWithTypeArguments").bases("TSType", "TSHasOptionalTypeParameterInstantiation").build("expression", "typeParameters").field("expression", TSEntityName);
-      def("TSInterfaceDeclaration").bases("Declaration", "TSHasOptionalTypeParameters").build("id", "body").field("id", TSEntityName).field("declare", Boolean, defaults["false"]).field("extends", or([def("TSExpressionWithTypeArguments")], null), defaults["null"]).field("body", def("TSInterfaceBody"));
-      def("TSParameterProperty").bases("Pattern").build("parameter").field("accessibility", or("public", "private", "protected", void 0), defaults["undefined"]).field("readonly", Boolean, defaults["false"]).field("parameter", or(def("Identifier"), def("AssignmentPattern")));
+      def("TSInterfaceDeclaration").bases("Declaration", "TSHasOptionalTypeParameters").build("id", "body").field("id", TSEntityName).field("declare", Boolean, defaults["false"]).field("extends", or2([def("TSExpressionWithTypeArguments")], null), defaults["null"]).field("body", def("TSInterfaceBody"));
+      def("TSParameterProperty").bases("Pattern").build("parameter").field("accessibility", or2("public", "private", "protected", void 0), defaults["undefined"]).field("readonly", Boolean, defaults["false"]).field("parameter", or2(def("Identifier"), def("AssignmentPattern")));
       def("ClassProperty").field(
         "access",
         // Not "accessibility"?
-        or("public", "private", "protected", void 0),
+        or2("public", "private", "protected", void 0),
         defaults["undefined"]
       );
-      def("ClassBody").field("body", [or(
+      def("ClassBody").field("body", [or2(
         def("MethodDefinition"),
         def("VariableDeclarator"),
         def("ClassPropertyDefinition"),
@@ -72574,12 +72892,12 @@ var require_es_proposals = __commonJS({
       var types = fork.use(types_1.default);
       var Type = types.Type;
       var def = types.Type.def;
-      var or = Type.or;
+      var or2 = Type.or;
       var shared = fork.use(shared_1.default);
       var defaults = shared.defaults;
       def("OptionalMemberExpression").bases("MemberExpression").build("object", "property", "computed", "optional").field("optional", Boolean, defaults["true"]);
       def("OptionalCallExpression").bases("CallExpression").build("callee", "arguments", "optional").field("optional", Boolean, defaults["true"]);
-      var LogicalOperator = or("||", "&&", "??");
+      var LogicalOperator = or2("||", "&&", "??");
       def("LogicalExpression").field("operator", LogicalOperator);
     }
     exports.default = default_1;
@@ -72696,10 +73014,10 @@ var require_degenerator = __commonJS({
       do {
         lastNamesLength = names.length;
         (0, ast_types_1.visit)(ast, {
-          visitVariableDeclaration(path13) {
-            if (path13.node.declarations) {
-              for (let i = 0; i < path13.node.declarations.length; i++) {
-                const declaration = path13.node.declarations[i];
+          visitVariableDeclaration(path14) {
+            if (path14.node.declarations) {
+              for (let i = 0; i < path14.node.declarations.length; i++) {
+                const declaration = path14.node.declarations[i];
                 if (ast_types_1.namedTypes.VariableDeclarator.check(declaration) && ast_types_1.namedTypes.Identifier.check(declaration.init) && ast_types_1.namedTypes.Identifier.check(declaration.id) && checkName(declaration.init.name, names) && !checkName(declaration.id.name, names)) {
                   names.push(declaration.id.name);
                 }
@@ -72707,18 +73025,18 @@ var require_degenerator = __commonJS({
             }
             return false;
           },
-          visitAssignmentExpression(path13) {
-            if (ast_types_1.namedTypes.Identifier.check(path13.node.left) && ast_types_1.namedTypes.Identifier.check(path13.node.right) && checkName(path13.node.right.name, names) && !checkName(path13.node.left.name, names)) {
-              names.push(path13.node.left.name);
+          visitAssignmentExpression(path14) {
+            if (ast_types_1.namedTypes.Identifier.check(path14.node.left) && ast_types_1.namedTypes.Identifier.check(path14.node.right) && checkName(path14.node.right.name, names) && !checkName(path14.node.left.name, names)) {
+              names.push(path14.node.left.name);
             }
             return false;
           },
-          visitFunction(path13) {
-            if (path13.node.id) {
+          visitFunction(path14) {
+            if (path14.node.id) {
               let shouldDegenerate = false;
-              (0, ast_types_1.visit)(path13.node, {
-                visitCallExpression(path14) {
-                  if (checkNames(path14.node, names)) {
+              (0, ast_types_1.visit)(path14.node, {
+                visitCallExpression(path15) {
+                  if (checkNames(path15.node, names)) {
                     shouldDegenerate = true;
                   }
                   return false;
@@ -72727,28 +73045,28 @@ var require_degenerator = __commonJS({
               if (!shouldDegenerate) {
                 return false;
               }
-              path13.node.async = true;
-              if (!checkName(path13.node.id.name, names)) {
-                names.push(path13.node.id.name);
+              path14.node.async = true;
+              if (!checkName(path14.node.id.name, names)) {
+                names.push(path14.node.id.name);
               }
             }
-            this.traverse(path13);
+            this.traverse(path14);
           }
         });
       } while (lastNamesLength !== names.length);
       (0, ast_types_1.visit)(ast, {
-        visitCallExpression(path13) {
-          if (checkNames(path13.node, names)) {
+        visitCallExpression(path14) {
+          if (checkNames(path14.node, names)) {
             const delegate = false;
-            const { name, parent: { node: pNode } } = path13;
-            const expr = ast_types_1.builders.awaitExpression(path13.node, delegate);
+            const { name, parent: { node: pNode } } = path14;
+            const expr = ast_types_1.builders.awaitExpression(path14.node, delegate);
             if (ast_types_1.namedTypes.CallExpression.check(pNode)) {
               pNode.arguments[name] = expr;
             } else {
               pNode[name] = expr;
             }
           }
-          this.traverse(path13);
+          this.traverse(path14);
         }
       });
       return (0, escodegen_1.generate)(ast);
@@ -72892,13 +73210,13 @@ var require_dist7 = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -75729,14 +76047,14 @@ var require_emscripten_module_WASM_RELEASE_SYNC = __commonJS({
         });
         var p = Object.assign({}, a), t = "./this.program", u = "object" == typeof window, v = "function" == typeof importScripts, w = "object" == typeof process && "object" == typeof process.versions && "string" == typeof process.versions.node, x = "", y, z12, A;
         if (w) {
-          var fs8 = __require("fs"), B = __require("path");
+          var fs9 = __require("fs"), B = __require("path");
           x = v ? B.dirname(x) + "/" : __dirname + "/";
           y = (b, c) => {
             var d = C(b);
             if (d)
               return c ? d : d.toString();
             b = b.startsWith("file://") ? new URL(b) : B.normalize(b);
-            return fs8.readFileSync(b, c ? void 0 : "utf8");
+            return fs9.readFileSync(b, c ? void 0 : "utf8");
           };
           A = (b) => {
             b = y(b, true);
@@ -75747,7 +76065,7 @@ var require_emscripten_module_WASM_RELEASE_SYNC = __commonJS({
             var e = C(b);
             e && c(e);
             b = b.startsWith("file://") ? new URL(b) : B.normalize(b);
-            fs8.readFile(b, function(f, g) {
+            fs9.readFile(b, function(f, g) {
               f ? d(f) : c(g.buffer);
             });
           };
@@ -76455,13 +76773,13 @@ var require_variants = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -76648,13 +76966,13 @@ var require_dist9 = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -76745,13 +77063,13 @@ var require_dist10 = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -76948,13 +77266,13 @@ var require_dist11 = __commonJS({
     "use strict";
     var __createBinding2 = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
-      var desc4 = Object.getOwnPropertyDescriptor(m, k);
-      if (!desc4 || ("get" in desc4 ? !m.__esModule : desc4.writable || desc4.configurable)) {
-        desc4 = { enumerable: true, get: function() {
+      var desc6 = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc6 || ("get" in desc6 ? !m.__esModule : desc6.writable || desc6.configurable)) {
+        desc6 = { enumerable: true, get: function() {
           return m[k];
         } };
       }
-      Object.defineProperty(o, k2, desc4);
+      Object.defineProperty(o, k2, desc6);
     }) : (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
       o[k2] = m[k];
@@ -77292,8 +77610,8 @@ function getWslLocation(channel) {
     }
   }
   const windowsPath = getChromeWindowsLocation(channel, wslPrefixes);
-  return windowsPath.map((path13) => {
-    return execSync(`wslpath "${path13}"`).toString().trim();
+  return windowsPath.map((path14) => {
+    return execSync(`wslpath "${path14}"`).toString().trim();
   });
 }
 function getChromeLinuxOrWslLocation(channel) {
@@ -78388,16 +78706,16 @@ function computeSystemExecutablePath(options) {
     throw new Error(`Cannot download a binary for the provided platform: ${os4.platform()} (${os4.arch()})`);
   }
   const paths = resolveSystemExecutablePaths2(options.browser, options.platform, options.channel);
-  for (const path13 of paths) {
+  for (const path14 of paths) {
     try {
-      accessSync(path13);
-      return path13;
+      accessSync(path14);
+      return path14;
     } catch {
     }
   }
-  throw new Error(`Could not find Google Chrome executable for channel '${options.channel}' at:${paths.map((path13) => {
+  throw new Error(`Could not find Google Chrome executable for channel '${options.channel}' at:${paths.map((path14) => {
     return `
- - ${path13}`;
+ - ${path14}`;
   })}.`);
 }
 function launch(opts) {
@@ -79040,9 +79358,9 @@ var require_pump = __commonJS({
   "node_modules/pump/index.js"(exports, module) {
     var once = require_once();
     var eos = require_end_of_stream();
-    var fs8;
+    var fs9;
     try {
-      fs8 = __require("fs");
+      fs9 = __require("fs");
     } catch (e) {
     }
     var noop2 = function() {
@@ -79053,8 +79371,8 @@ var require_pump = __commonJS({
     };
     var isFS = function(stream) {
       if (!ancient) return false;
-      if (!fs8) return false;
-      return (stream instanceof (fs8.ReadStream || noop2) || stream instanceof (fs8.WriteStream || noop2)) && isFn(stream.close);
+      if (!fs9) return false;
+      return (stream instanceof (fs9.ReadStream || noop2) || stream instanceof (fs9.WriteStream || noop2)) && isFn(stream.close);
     };
     var isRequest = function(stream) {
       return stream.setHeader && isFn(stream.abort);
@@ -79266,7 +79584,7 @@ var require_pend = __commonJS({
 // node_modules/fd-slicer/index.js
 var require_fd_slicer = __commonJS({
   "node_modules/fd-slicer/index.js"(exports) {
-    var fs8 = __require("fs");
+    var fs9 = __require("fs");
     var util = __require("util");
     var stream = __require("stream");
     var Readable = stream.Readable;
@@ -79291,7 +79609,7 @@ var require_fd_slicer = __commonJS({
     FdSlicer.prototype.read = function(buffer, offset, length, position, callback) {
       var self2 = this;
       self2.pend.go(function(cb) {
-        fs8.read(self2.fd, buffer, offset, length, position, function(err, bytesRead, buffer2) {
+        fs9.read(self2.fd, buffer, offset, length, position, function(err, bytesRead, buffer2) {
           cb();
           callback(err, bytesRead, buffer2);
         });
@@ -79300,7 +79618,7 @@ var require_fd_slicer = __commonJS({
     FdSlicer.prototype.write = function(buffer, offset, length, position, callback) {
       var self2 = this;
       self2.pend.go(function(cb) {
-        fs8.write(self2.fd, buffer, offset, length, position, function(err, written, buffer2) {
+        fs9.write(self2.fd, buffer, offset, length, position, function(err, written, buffer2) {
           cb();
           callback(err, written, buffer2);
         });
@@ -79321,7 +79639,7 @@ var require_fd_slicer = __commonJS({
       if (self2.refCount > 0) return;
       if (self2.refCount < 0) throw new Error("invalid unref");
       if (self2.autoClose) {
-        fs8.close(self2.fd, onCloseDone);
+        fs9.close(self2.fd, onCloseDone);
       }
       function onCloseDone(err) {
         if (err) {
@@ -79358,7 +79676,7 @@ var require_fd_slicer = __commonJS({
       self2.context.pend.go(function(cb) {
         if (self2.destroyed) return cb();
         var buffer = new Buffer(toRead);
-        fs8.read(self2.context.fd, buffer, 0, toRead, self2.pos, function(err, bytesRead) {
+        fs9.read(self2.context.fd, buffer, 0, toRead, self2.pos, function(err, bytesRead) {
           if (err) {
             self2.destroy(err);
           } else if (bytesRead === 0) {
@@ -79405,7 +79723,7 @@ var require_fd_slicer = __commonJS({
       }
       self2.context.pend.go(function(cb) {
         if (self2.destroyed) return cb();
-        fs8.write(self2.context.fd, buffer, 0, buffer.length, self2.pos, function(err2, bytes) {
+        fs9.write(self2.context.fd, buffer, 0, buffer.length, self2.pos, function(err2, bytes) {
           if (err2) {
             self2.destroy();
             cb();
@@ -79832,7 +80150,7 @@ var require_buffer_crc32 = __commonJS({
 // node_modules/yauzl/index.js
 var require_yauzl = __commonJS({
   "node_modules/yauzl/index.js"(exports) {
-    var fs8 = __require("fs");
+    var fs9 = __require("fs");
     var zlib = __require("zlib");
     var fd_slicer = require_fd_slicer();
     var crc32 = require_buffer_crc32();
@@ -79850,7 +80168,7 @@ var require_yauzl = __commonJS({
     exports.ZipFile = ZipFile;
     exports.Entry = Entry;
     exports.RandomAccessReader = RandomAccessReader;
-    function open(path13, options, callback) {
+    function open(path14, options, callback) {
       if (typeof options === "function") {
         callback = options;
         options = null;
@@ -79862,10 +80180,10 @@ var require_yauzl = __commonJS({
       if (options.validateEntrySizes == null) options.validateEntrySizes = true;
       if (options.strictFileNames == null) options.strictFileNames = false;
       if (callback == null) callback = defaultCallback;
-      fs8.open(path13, "r", function(err, fd) {
+      fs9.open(path14, "r", function(err, fd) {
         if (err) return callback(err);
         fromFd(fd, options, function(err2, zipfile) {
-          if (err2) fs8.close(fd, defaultCallback);
+          if (err2) fs9.close(fd, defaultCallback);
           callback(err2, zipfile);
         });
       });
@@ -79882,7 +80200,7 @@ var require_yauzl = __commonJS({
       if (options.validateEntrySizes == null) options.validateEntrySizes = true;
       if (options.strictFileNames == null) options.strictFileNames = false;
       if (callback == null) callback = defaultCallback;
-      fs8.fstat(fd, function(err, stats) {
+      fs9.fstat(fd, function(err, stats) {
         if (err) return callback(err);
         var reader = fd_slicer.createFromFd(fd, { autoClose: true });
         fromRandomAccessReader(reader, stats.size, options, callback);
@@ -80462,9 +80780,9 @@ var require_yauzl = __commonJS({
 var require_extract_zip = __commonJS({
   "node_modules/extract-zip/index.js"(exports, module) {
     var debug6 = require_src()("extract-zip");
-    var { createWriteStream: createWriteStream4, promises: fs8 } = __require("fs");
+    var { createWriteStream: createWriteStream4, promises: fs9 } = __require("fs");
     var getStream = require_get_stream();
-    var path13 = __require("path");
+    var path14 = __require("path");
     var { promisify: promisify2 } = __require("util");
     var stream = __require("stream");
     var yauzl = require_yauzl();
@@ -80501,12 +80819,12 @@ var require_extract_zip = __commonJS({
               this.zipfile.readEntry();
               return;
             }
-            const destDir = path13.dirname(path13.join(this.opts.dir, entry.fileName));
+            const destDir = path14.dirname(path14.join(this.opts.dir, entry.fileName));
             try {
-              await fs8.mkdir(destDir, { recursive: true });
-              const canonicalDestDir = await fs8.realpath(destDir);
-              const relativeDestDir = path13.relative(this.opts.dir, canonicalDestDir);
-              if (relativeDestDir.split(path13.sep).includes("..")) {
+              await fs9.mkdir(destDir, { recursive: true });
+              const canonicalDestDir = await fs9.realpath(destDir);
+              const relativeDestDir = path14.relative(this.opts.dir, canonicalDestDir);
+              if (relativeDestDir.split(path14.sep).includes("..")) {
                 throw new Error(`Out of bound path "${canonicalDestDir}" found while processing file ${entry.fileName}`);
               }
               await this.extractEntry(entry);
@@ -80528,7 +80846,7 @@ var require_extract_zip = __commonJS({
         if (this.opts.onEntry) {
           this.opts.onEntry(entry, this.zipfile);
         }
-        const dest = path13.join(this.opts.dir, entry.fileName);
+        const dest = path14.join(this.opts.dir, entry.fileName);
         const mode = entry.externalFileAttributes >> 16 & 65535;
         const IFMT = 61440;
         const IFDIR = 16384;
@@ -80542,20 +80860,20 @@ var require_extract_zip = __commonJS({
         if (!isDir) isDir = madeBy === 0 && entry.externalFileAttributes === 16;
         debug6("extracting entry", { filename: entry.fileName, isDir, isSymlink: symlink2 });
         const procMode = this.getExtractedMode(mode, isDir) & 511;
-        const destDir = isDir ? dest : path13.dirname(dest);
+        const destDir = isDir ? dest : path14.dirname(dest);
         const mkdirOptions = { recursive: true };
         if (isDir) {
           mkdirOptions.mode = procMode;
         }
         debug6("mkdir", { dir: destDir, ...mkdirOptions });
-        await fs8.mkdir(destDir, mkdirOptions);
+        await fs9.mkdir(destDir, mkdirOptions);
         if (isDir) return;
         debug6("opening read stream", dest);
         const readStream = await promisify2(this.zipfile.openReadStream.bind(this.zipfile))(entry);
         if (symlink2) {
           const link = await getStream(readStream);
           debug6("creating symlink", link, dest);
-          await fs8.symlink(link, dest);
+          await fs9.symlink(link, dest);
         } else {
           await pipeline(readStream, createWriteStream4(dest, { mode: procMode }));
         }
@@ -80584,11 +80902,11 @@ var require_extract_zip = __commonJS({
     };
     module.exports = async function(zipPath, opts) {
       debug6("creating target directory", opts.dir);
-      if (!path13.isAbsolute(opts.dir)) {
+      if (!path14.isAbsolute(opts.dir)) {
         throw new Error("Target directory is expected to be absolute");
       }
-      await fs8.mkdir(opts.dir, { recursive: true });
-      opts.dir = await fs8.realpath(opts.dir);
+      await fs9.mkdir(opts.dir, { recursive: true });
+      opts.dir = await fs9.realpath(opts.dir);
       return new Extractor(zipPath, opts).extract();
     };
   }
@@ -82914,13 +83232,13 @@ var require_tar_fs = __commonJS({
   "node_modules/tar-fs/index.js"(exports) {
     var tar = require_tar_stream();
     var pump = require_pump();
-    var fs8 = __require("fs");
-    var path13 = __require("path");
+    var fs9 = __require("fs");
+    var path14 = __require("path");
     var win32 = (global.Bare ? global.Bare.platform : process.platform) === "win32";
     exports.pack = function pack(cwd, opts) {
       if (!cwd) cwd = ".";
       if (!opts) opts = {};
-      const xfs = opts.fs || fs8;
+      const xfs = opts.fs || fs9;
       const ignore = opts.ignore || opts.filter || noop2;
       const mapStream = opts.mapStream || echo;
       const statNext = statAll(xfs, opts.dereference ? xfs.stat : xfs.lstat, cwd, ignore, opts.entries, opts.sort);
@@ -82942,7 +83260,7 @@ var require_tar_fs = __commonJS({
       }
       onnextentry();
       function onsymlink(filename, header) {
-        xfs.readlink(path13.join(cwd, filename), function(err, linkname) {
+        xfs.readlink(path14.join(cwd, filename), function(err, linkname) {
           if (err) return pack2.destroy(err);
           header.linkname = normalize2(linkname);
           pack2.entry(header, onnextentry);
@@ -82983,7 +83301,7 @@ var require_tar_fs = __commonJS({
           return onnextentry();
         }
         const entry = pack2.entry(header, onnextentry);
-        const rs = mapStream(xfs.createReadStream(path13.join(cwd, filename), { start: 0, end: header.size > 0 ? header.size - 1 : header.size }), header);
+        const rs = mapStream(xfs.createReadStream(path14.join(cwd, filename), { start: 0, end: header.size > 0 ? header.size - 1 : header.size }), header);
         rs.on("error", function(err2) {
           entry.destroy(err2);
         });
@@ -83007,8 +83325,8 @@ var require_tar_fs = __commonJS({
     exports.extract = function extract3(cwd, opts) {
       if (!cwd) cwd = ".";
       if (!opts) opts = {};
-      cwd = path13.resolve(cwd);
-      const xfs = opts.fs || fs8;
+      cwd = path14.resolve(cwd);
+      const xfs = opts.fs || fs9;
       const ignore = opts.ignore || opts.filter || noop2;
       const mapStream = opts.mapStream || echo;
       const own = opts.chown !== false && !win32 && processGetuid() === 0;
@@ -83036,13 +83354,13 @@ var require_tar_fs = __commonJS({
       function onentry(header, stream, next) {
         header = map2(header) || header;
         header.name = normalize2(header.name);
-        const name = path13.join(cwd, path13.join("/", header.name));
+        const name = path14.join(cwd, path14.join("/", header.name));
         if (ignore(name, header)) {
           stream.resume();
           return next();
         }
-        const dir = path13.join(name, ".") === path13.join(cwd, ".") ? cwd : path13.dirname(name);
-        validate(xfs, dir, path13.join(cwd, "."), function(err, valid) {
+        const dir = path14.join(name, ".") === path14.join(cwd, ".") ? cwd : path14.dirname(name);
+        validate(xfs, dir, path14.join(cwd, "."), function(err, valid) {
           if (err) return next(err);
           if (!valid) return next(new Error(dir + " is not a valid path"));
           if (header.type === "directory") {
@@ -83090,9 +83408,9 @@ var require_tar_fs = __commonJS({
         function onsymlink() {
           if (win32) return next();
           xfs.unlink(name, function() {
-            const dst = path13.resolve(path13.dirname(name), header.linkname);
+            const dst = path14.resolve(path14.dirname(name), header.linkname);
             if (!inCwd(dst) && validateSymLinks) return next(new Error(name + " is not a valid symlink"));
-            validateNotSymlink(xfs, dst, path13.join(cwd, "."), function(err, valid) {
+            validateNotSymlink(xfs, dst, path14.join(cwd, "."), function(err, valid) {
               if (err) return next(err);
               if (!valid && validateSymLinks) return next(new Error(name + " is not a valid symlink"));
               xfs.symlink(header.linkname, name, stat);
@@ -83102,7 +83420,7 @@ var require_tar_fs = __commonJS({
         function onlink() {
           if (win32) return next();
           xfs.unlink(name, function() {
-            const link = path13.join(cwd, path13.join("/", header.linkname));
+            const link = path14.join(cwd, path14.join("/", header.linkname));
             xfs.realpath(link, function(err, dst) {
               if (err || !inCwd(dst)) return next(new Error(name + " is not a valid hardlink"));
               xfs.link(dst, name, function(err2) {
@@ -83116,7 +83434,7 @@ var require_tar_fs = __commonJS({
           });
         }
         function inCwd(dst) {
-          return dst === cwd || dst.startsWith(cwd + path13.sep);
+          return dst === cwd || dst.startsWith(cwd + path14.sep);
         }
         function onfile() {
           const ws = xfs.createWriteStream(name);
@@ -83170,20 +83488,20 @@ var require_tar_fs = __commonJS({
         });
       }
     };
-    function validateNotSymlink(fs9, name, root, cb) {
+    function validateNotSymlink(fs10, name, root, cb) {
       if (name === root) return cb(null, true);
-      if (!name.startsWith(root + path13.sep)) return cb(null, false);
-      fs9.lstat(name, function(err, st) {
+      if (!name.startsWith(root + path14.sep)) return cb(null, false);
+      fs10.lstat(name, function(err, st) {
         if (err && err.code !== "ENOENT" && err.code !== "EPERM") return cb(err);
-        if (err || !st.isSymbolicLink()) return validateNotSymlink(fs9, path13.join(name, ".."), root, cb);
+        if (err || !st.isSymbolicLink()) return validateNotSymlink(fs10, path14.join(name, ".."), root, cb);
         cb(null, false);
       });
     }
-    function validate(fs9, name, root, cb) {
+    function validate(fs10, name, root, cb) {
       if (name === root) return cb(null, true);
-      fs9.lstat(name, function(err, st) {
+      fs10.lstat(name, function(err, st) {
         if (err && err.code !== "ENOENT" && err.code !== "EPERM") return cb(err);
-        if (err || st.isDirectory()) return validate(fs9, path13.join(name, ".."), root, cb);
+        if (err || st.isDirectory()) return validate(fs10, path14.join(name, ".."), root, cb);
         cb(null, false);
       });
     }
@@ -83195,21 +83513,21 @@ var require_tar_fs = __commonJS({
     function normalize2(name) {
       return win32 ? name.replace(/\\/g, "/").replace(/[:?<>|]/g, "_") : name;
     }
-    function statAll(fs9, stat, cwd, ignore, entries, sort) {
+    function statAll(fs10, stat, cwd, ignore, entries, sort) {
       if (!entries) entries = ["."];
       const queue = entries.slice(0);
       return function loop(callback) {
         if (!queue.length) return callback(null);
         const next = queue.shift();
-        const nextAbs = path13.join(cwd, next);
-        stat.call(fs9, nextAbs, function(err, stat2) {
+        const nextAbs = path14.join(cwd, next);
+        stat.call(fs10, nextAbs, function(err, stat2) {
           if (err) return callback(entries.indexOf(next) === -1 && err.code === "ENOENT" ? null : err);
           if (!stat2.isDirectory()) return callback(null, next, stat2);
-          fs9.readdir(nextAbs, function(err2, files) {
+          fs10.readdir(nextAbs, function(err2, files) {
             if (err2) return callback(err2);
             if (sort) files.sort();
             for (let i = 0; i < files.length; i++) {
-              if (!ignore(path13.join(cwd, next, files[i]))) queue.push(path13.join(next, files[i]));
+              if (!ignore(path14.join(cwd, next, files[i]))) queue.push(path14.join(next, files[i]));
             }
             callback(null, next, stat2);
           });
@@ -83220,7 +83538,7 @@ var require_tar_fs = __commonJS({
       return function(header) {
         header.name = header.name.split("/").slice(level).join("/");
         const linkname = header.linkname;
-        if (linkname && (header.type === "link" || path13.isAbsolute(linkname))) {
+        if (linkname && (header.type === "link" || path14.isAbsolute(linkname))) {
           header.linkname = linkname.split("/").slice(level).join("/");
         }
         return map2(header);
@@ -84956,11 +85274,11 @@ var init_lib2 = __esm({
       resolve: resolve3,
       // TODO: figure  out a  way to combine ESM and CJS coverage, such  that
       // we can exercise all the lines below:
-      require: (path13) => {
+      require: (path14) => {
         if (typeof __require !== "undefined") {
-          return __require(path13);
-        } else if (path13.match(/\.json$/)) {
-          return JSON.parse(readFileSync2(path13, "utf8"));
+          return __require(path14);
+        } else if (path14.match(/\.json$/)) {
+          return JSON.parse(readFileSync2(path14, "utf8"));
         } else {
           throw Error("only .json config files are supported in ESM");
         }
@@ -85917,8 +86235,8 @@ var init_command = __esm({
       commandFromFilename(filename) {
         return this.shim.path.basename(filename, this.shim.path.extname(filename));
       }
-      extractDesc({ describe, description, desc: desc4 }) {
-        for (const test of [describe, description, desc4]) {
+      extractDesc({ describe, description, desc: desc6 }) {
+        for (const test of [describe, description, desc6]) {
           if (typeof test === "string" || test === false)
             return test;
           assertNotStrictEqual(test, true, this.shim);
@@ -86087,17 +86405,17 @@ function usage(yargs, shim3) {
   };
   self2.getCommands = () => commands;
   let descriptions = {};
-  self2.describe = function describe(keyOrKeys, desc4) {
+  self2.describe = function describe(keyOrKeys, desc6) {
     if (Array.isArray(keyOrKeys)) {
       keyOrKeys.forEach((k) => {
-        self2.describe(k, desc4);
+        self2.describe(k, desc6);
       });
     } else if (typeof keyOrKeys === "object") {
       Object.keys(keyOrKeys).forEach((k) => {
         self2.describe(k, keyOrKeys[k]);
       });
     } else {
-      descriptions[keyOrKeys] = desc4;
+      descriptions[keyOrKeys] = desc6;
     }
   };
   self2.getDescriptions = () => descriptions;
@@ -86255,10 +86573,10 @@ function usage(yargs, shim3) {
       ui2.div(groupName);
       normalizedKeys.forEach((key) => {
         const kswitch = switches[key];
-        let desc4 = descriptions[key] || "";
+        let desc6 = descriptions[key] || "";
         let type = null;
-        if (desc4.includes(deferY18nLookupPrefix))
-          desc4 = __(desc4.substring(deferY18nLookupPrefix.length));
+        if (desc6.includes(deferY18nLookupPrefix))
+          desc6 = __(desc6.substring(deferY18nLookupPrefix.length));
         if (options.boolean.includes(key))
           type = `[${__("boolean")}]`;
         if (options.count.includes(key))
@@ -86283,7 +86601,7 @@ function usage(yargs, shim3) {
           text: getText2(kswitch),
           padding: [0, 2, 0, 2 + getIndentation(kswitch)],
           width: maxWidth(switches, theWrap) + 4
-        }, desc4);
+        }, desc6);
         const shouldHideOptionExtras = yargs.getInternalMethods().getUsageConfiguration()["hide-types"] === true;
         if (extra && !shouldHideOptionExtras)
           ui2.div({ text: extra, padding: [0, 0, 0, 2], align: "right" });
@@ -86633,8 +86951,8 @@ var init_completion = __esm({
               if (!this.zshShell) {
                 completions.push(commandName);
               } else {
-                const desc4 = usageCommand[1] || "";
-                completions.push(commandName.replace(/:/g, "\\:") + ":" + desc4);
+                const desc6 = usageCommand[1] || "";
+                completions.push(commandName.replace(/:/g, "\\:") + ":" + desc6);
               }
             }
           });
@@ -86730,12 +87048,12 @@ var init_completion = __esm({
         if (this.zshShell) {
           const descs = this.usage.getDescriptions();
           const aliasKey = (_b2 = (_a4 = this === null || this === void 0 ? void 0 : this.aliases) === null || _a4 === void 0 ? void 0 : _a4[key]) === null || _b2 === void 0 ? void 0 : _b2.find((alias) => {
-            const desc5 = descs[alias];
-            return typeof desc5 === "string" && desc5.length > 0;
+            const desc7 = descs[alias];
+            return typeof desc7 === "string" && desc7.length > 0;
           });
           const descFromAlias = aliasKey ? descs[aliasKey] : void 0;
-          const desc4 = (_d = (_c2 = descs[key]) !== null && _c2 !== void 0 ? _c2 : descFromAlias) !== null && _d !== void 0 ? _d : "";
-          keyWithDesc = `${key.replace(/:/g, "\\:")}:${desc4.replace("__yargsString__:", "").replace(/(\r\n|\n|\r)/gm, " ")}`;
+          const desc6 = (_d = (_c2 = descs[key]) !== null && _c2 !== void 0 ? _c2 : descFromAlias) !== null && _d !== void 0 ? _d : "";
+          keyWithDesc = `${key.replace(/:/g, "\\:")}:${desc6.replace("__yargsString__:", "").replace(/(\r\n|\n|\r)/gm, " ")}`;
         }
         const startsByTwoDashes = (s) => /^--/.test(s);
         const isShortOption = (s) => /^[^0-9]$/.test(s);
@@ -87438,17 +87756,17 @@ var init_yargs_factory = __esm({
         });
         return this;
       }
-      completion(cmd, desc4, fn) {
-        argsert("[string] [string|boolean|function] [function]", [cmd, desc4, fn], arguments.length);
-        if (typeof desc4 === "function") {
-          fn = desc4;
-          desc4 = void 0;
+      completion(cmd, desc6, fn) {
+        argsert("[string] [string|boolean|function] [function]", [cmd, desc6, fn], arguments.length);
+        if (typeof desc6 === "function") {
+          fn = desc6;
+          desc6 = void 0;
         }
         __classPrivateFieldSet2(this, _YargsInstance_completionCommand, cmd || __classPrivateFieldGet2(this, _YargsInstance_completionCommand, "f") || "completion", "f");
-        if (!desc4 && desc4 !== false) {
-          desc4 = "generate completion script";
+        if (!desc6 && desc6 !== false) {
+          desc6 = "generate completion script";
         }
-        this.command(__classPrivateFieldGet2(this, _YargsInstance_completionCommand, "f"), desc4);
+        this.command(__classPrivateFieldGet2(this, _YargsInstance_completionCommand, "f"), desc6);
         if (fn)
           __classPrivateFieldGet2(this, _YargsInstance_completion, "f").registerFunction(fn);
         return this;
@@ -87830,10 +88148,10 @@ var init_yargs_factory = __esm({
           if (opt.skipValidation) {
             this.skipValidation(key);
           }
-          const desc4 = opt.describe || opt.description || opt.desc;
+          const desc6 = opt.describe || opt.description || opt.desc;
           const descriptions = __classPrivateFieldGet2(this, _YargsInstance_usage, "f").getDescriptions();
-          if (!Object.prototype.hasOwnProperty.call(descriptions, key) || typeof desc4 === "string") {
-            this.describe(key, desc4);
+          if (!Object.prototype.hasOwnProperty.call(descriptions, key) || typeof desc6 === "string") {
+            this.describe(key, desc6);
           }
           if (opt.hidden) {
             this.hide(key);
@@ -89510,8 +89828,8 @@ var init_BrowserLauncher = __esm({
             throw new Error("To use `enableExtensions` with a list of paths in Chrome, you must be connected with `--remote-debugging-pipe` (`pipe: true`).");
           }
           await Promise.all([
-            enableExtensions.map((path13) => {
-              return browser.installExtension(path13);
+            enableExtensions.map((path14) => {
+              return browser.installExtension(path14);
             })
           ]);
         }
@@ -89682,8 +90000,8 @@ For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides
 
 // node_modules/puppeteer-core/lib/esm/puppeteer/node/util/fs.js
 import fs3 from "node:fs";
-async function rm(path13) {
-  await fs3.promises.rm(path13, rmOptions);
+async function rm(path14) {
+  await fs3.promises.rm(path14, rmOptions);
 }
 var rmOptions;
 var init_fs = __esm({
@@ -89801,10 +90119,10 @@ var init_ChromeLauncher = __esm({
       /**
        * @internal
        */
-      async cleanUserDataDir(path13, opts) {
+      async cleanUserDataDir(path14, opts) {
         if (opts.isTemp) {
           try {
-            await rm(path13);
+            await rm(path14);
           } catch (error) {
             debugError(error);
             throw error;
@@ -90414,7 +90732,7 @@ var init_ScreenRecorder = __esm({
         /**
          * @internal
          */
-        constructor(page, width, height, { ffmpegPath, speed, scale, crop, format: format3, fps, loop, delay, quality, colors, path: path13, overwrite } = {}) {
+        constructor(page, width, height, { ffmpegPath, speed, scale, crop, format: format3, fps, loop, delay, quality, colors, path: path14, overwrite } = {}) {
           super({ allowHalfOpen: false });
           ffmpegPath ??= "ffmpeg";
           format3 ??= "webm";
@@ -90447,8 +90765,8 @@ var init_ScreenRecorder = __esm({
           if (vf !== -1) {
             filters.push(formatArgs.splice(vf, 2).at(-1) ?? "");
           }
-          if (path13) {
-            fs5.mkdirSync(dirname3(path13), { recursive: overwrite });
+          if (path14) {
+            fs5.mkdirSync(dirname3(path14), { recursive: overwrite });
           }
           this.#process = spawn2(
             ffmpegPath,
@@ -91485,162 +91803,12 @@ var init_esm2 = __esm({
   }
 });
 
-// server/shopify-admin.ts
-function isShopifyAdminConfigured() {
-  return Boolean(STORE_DOMAIN && ADMIN_TOKEN);
-}
-async function adminFetch(query, variables) {
-  if (!isShopifyAdminConfigured()) {
-    throw new Error("Shopify Admin API not configured. Set SHOPIFY_STORE_URL + SHOPIFY_ADMIN_TOKEN.");
-  }
-  const endpoint = `https://${STORE_DOMAIN}/admin/api/${API_VERSION}/graphql.json`;
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": ADMIN_TOKEN
-    },
-    body: JSON.stringify({ query, variables })
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Shopify Admin HTTP ${res.status}: ${body.slice(0, 300)}`);
-  }
-  const json = await res.json();
-  if (json.errors && json.errors.length) {
-    throw new Error("Shopify Admin GraphQL: " + json.errors.map((e) => e.message).join("; "));
-  }
-  if (!json.data) throw new Error("Shopify Admin returned no data");
-  return json.data;
-}
-function moneyToCents(amount) {
-  const n = Number(amount);
-  if (!Number.isFinite(n)) return 0;
-  return Math.round(n * 100);
-}
-async function fetchSupporterOrdersByTag(tag) {
-  if (!tag) return [];
-  const cached = cache.get(tag);
-  if (cached && cached.expires > Date.now()) {
-    return cached.orders;
-  }
-  const queryString = `tag:"${tag.replace(/"/g, "")}"`;
-  const orders2 = [];
-  let after = null;
-  for (let page = 0; page < 20; page++) {
-    const data = await adminFetch(ORDERS_BY_TAG_QUERY, {
-      query: queryString,
-      first: 100,
-      after
-    });
-    for (const node of data.orders.nodes) {
-      if (!node.tags.includes(tag)) continue;
-      const customerName = node.customer ? [node.customer.firstName, node.customer.lastName].filter(Boolean).join(" ") || null : null;
-      orders2.push({
-        id: node.id,
-        number: node.name,
-        name: node.name,
-        customerName,
-        customerEmail: node.customer?.email || null,
-        totalCents: moneyToCents(node.currentTotalPriceSet.shopMoney.amount),
-        currency: node.currentTotalPriceSet.shopMoney.currencyCode,
-        financialStatus: node.displayFinancialStatus,
-        fulfillmentStatus: node.displayFulfillmentStatus,
-        createdAt: node.createdAt,
-        tags: node.tags,
-        lines: node.lineItems.nodes.map((l) => ({
-          title: l.title,
-          quantity: l.quantity,
-          unitPriceCents: moneyToCents(l.originalUnitPriceSet.shopMoney.amount)
-        }))
-      });
-    }
-    if (!data.orders.pageInfo.hasNextPage) break;
-    after = data.orders.pageInfo.endCursor;
-  }
-  cache.set(tag, { expires: Date.now() + TTL_MS, orders: orders2 });
-  return orders2;
-}
-function summarizeSupporterOrders(orders2, profitShareTierBps) {
-  let revenueCents = 0;
-  let unitsSold = 0;
-  const currency = orders2[0]?.currency || "NZD";
-  const bySupporter = /* @__PURE__ */ new Map();
-  for (const o of orders2) {
-    revenueCents += o.totalCents;
-    for (const l of o.lines) unitsSold += l.quantity;
-    const key = (o.customerEmail || o.customerName || o.id).toLowerCase();
-    const prev = bySupporter.get(key);
-    const name = o.customerName || o.customerEmail || "Anonymous";
-    if (prev) {
-      prev.spendCents += o.totalCents;
-    } else {
-      bySupporter.set(key, { name, email: o.customerEmail, spendCents: o.totalCents });
-    }
-  }
-  const topSupporters = Array.from(bySupporter.values()).sort((a, b) => b.spendCents - a.spendCents).slice(0, 5);
-  return {
-    orderCount: orders2.length,
-    unitsSold,
-    revenueCents,
-    currency,
-    profitShareCents: Math.round(revenueCents * profitShareTierBps / 1e4),
-    topSupporters
-  };
-}
-function filterByDateRange(orders2, from2, to) {
-  if (!from2 && !to) return orders2;
-  const fromMs = from2 ? Date.parse(from2) : -Infinity;
-  let toMs = to ? Date.parse(to) : Infinity;
-  if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) toMs += 24 * 60 * 60 * 1e3 - 1;
-  return orders2.filter((o) => {
-    const t = Date.parse(o.createdAt);
-    return t >= fromMs && t <= toMs;
-  });
-}
-var STORE_DOMAIN, ADMIN_TOKEN, API_VERSION, ORDERS_BY_TAG_QUERY, TTL_MS, cache;
-var init_shopify_admin = __esm({
-  "server/shopify-admin.ts"() {
-    "use strict";
-    STORE_DOMAIN = process.env.SHOPIFY_STORE_URL || process.env.VITE_SHOPIFY_STORE_URL || "";
-    ADMIN_TOKEN = process.env.SHOPIFY_ADMIN_TOKEN || "";
-    API_VERSION = process.env.SHOPIFY_ADMIN_API_VERSION || "2024-10";
-    ORDERS_BY_TAG_QUERY = /* GraphQL */
-    `
-  query OrdersByTag($query: String!, $first: Int!, $after: String) {
-    orders(first: $first, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
-      pageInfo { hasNextPage endCursor }
-      nodes {
-        id
-        name
-        createdAt
-        displayFinancialStatus
-        displayFulfillmentStatus
-        tags
-        currentTotalPriceSet { shopMoney { amount currencyCode } }
-        customer { firstName lastName email }
-        lineItems(first: 50) {
-          nodes {
-            title
-            quantity
-            originalUnitPriceSet { shopMoney { amount } }
-          }
-        }
-      }
-    }
-  }
-`;
-    TTL_MS = 5 * 60 * 1e3;
-    cache = /* @__PURE__ */ new Map();
-  }
-});
-
 // server/reports/drop-summary.ts
 var drop_summary_exports = {};
 __export(drop_summary_exports, {
   generateDropSummary: () => generateDropSummary
 });
-function esc2(s) {
+function esc3(s) {
   return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 function fmtMoney(cents, currency) {
@@ -91659,12 +91827,12 @@ function buildHtml(opts) {
   const topRows = summary.topSupporters.length ? summary.topSupporters.map((s, i) => `
           <tr>
             <td style="padding:10px 12px;border-bottom:1px solid #1a1a1a;color:#666;font-size:12px;width:32px">${i + 1}</td>
-            <td style="padding:10px 12px;border-bottom:1px solid #1a1a1a;color:#fff;font-size:13px">${esc2(s.name)}</td>
-            <td style="padding:10px 12px;border-bottom:1px solid #1a1a1a;color:#999;font-size:12px">${esc2(s.email || "")}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #1a1a1a;color:#fff;font-size:13px">${esc3(s.name)}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #1a1a1a;color:#999;font-size:12px">${esc3(s.email || "")}</td>
             <td style="padding:10px 12px;border-bottom:1px solid #1a1a1a;color:#fff;font-size:13px;text-align:right;font-weight:600">${fmtMoney(s.spendCents, summary.currency)}</td>
           </tr>`).join("") : `<tr><td colspan="4" style="padding:24px;color:#666;font-size:12px;text-align:center">No supporter orders yet in this range.</td></tr>`;
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Drop Summary \u2014 ${esc2(clubName)}</title>
+<html><head><meta charset="utf-8"><title>Drop Summary \u2014 ${esc3(clubName)}</title>
 <style>
   * { box-sizing: border-box; }
   body { font-family: 'Inter', -apple-system, Segoe UI, Helvetica, Arial, sans-serif; color: #fff; margin: 0; padding: 0; background: #000; }
@@ -91686,11 +91854,11 @@ function buildHtml(opts) {
   <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:32px;padding-bottom:24px;border-bottom:1px solid #1f1f1f">
     <div>
       <div class="label" style="margin-bottom:4px">Sideline NZ \u2014 Drop Summary</div>
-      <h1 style="font-size:28px;font-weight:700;margin:0;letter-spacing:-0.5px;text-transform:uppercase">${esc2(clubName)}</h1>
-      <div style="margin-top:6px;font-size:12px;color:#888">${esc2(range)}</div>
+      <h1 style="font-size:28px;font-weight:700;margin:0;letter-spacing:-0.5px;text-transform:uppercase">${esc3(clubName)}</h1>
+      <div style="margin-top:6px;font-size:12px;color:#888">${esc3(range)}</div>
     </div>
     <div style="text-align:right;font-size:10px;color:#666;letter-spacing:0.5px">
-      Generated ${esc2(generatedAt)}
+      Generated ${esc3(generatedAt)}
     </div>
   </div>
 
@@ -91729,7 +91897,7 @@ function buildHtml(opts) {
 
   <!-- CTA -->
   <div style="margin-top:36px;text-align:center">
-    <a href="${esc2(portalUrl)}" class="cta">View live in your portal \u2192</a>
+    <a href="${esc3(portalUrl)}" class="cta">View live in your portal \u2192</a>
     <div style="margin-top:12px;font-size:11px;color:#666">Live orders, exports, and revisions update in real time.</div>
   </div>
 
@@ -91867,21 +92035,21 @@ __export(video_exports, {
 });
 import { execFile } from "child_process";
 import { promisify } from "util";
-import * as fs7 from "fs";
-import * as path12 from "path";
+import * as fs8 from "fs";
+import * as path13 from "path";
 import * as os9 from "os";
 async function createVideoMontage(opts) {
-  const tmpDir = await fs7.promises.mkdtemp(path12.join(os9.tmpdir(), "sideline-mockup-"));
+  const tmpDir = await fs8.promises.mkdtemp(path13.join(os9.tmpdir(), "sideline-mockup-"));
   try {
     const imagePaths = [];
     for (let i = 0; i < opts.images.length; i++) {
-      const imgPath = path12.join(tmpDir, `design_${i + 1}.png`);
-      await fs7.promises.writeFile(imgPath, opts.images[i]);
+      const imgPath = path13.join(tmpDir, `design_${i + 1}.png`);
+      await fs8.promises.writeFile(imgPath, opts.images[i]);
       imagePaths.push(imgPath);
     }
-    const audioPath = path12.join(tmpDir, "voiceover.mp3");
-    await fs7.promises.writeFile(audioPath, opts.audio);
-    const outputPath = path12.join(tmpDir, "mockup_video.mp4");
+    const audioPath = path13.join(tmpDir, "voiceover.mp3");
+    await fs8.promises.writeFile(audioPath, opts.audio);
+    const outputPath = path13.join(tmpDir, "mockup_video.mp4");
     const durationSeconds = await getAudioDuration(audioPath);
     const perImageDuration = Math.max(3, Math.floor(durationSeconds / opts.images.length));
     const fadeDuration = 0.5;
@@ -91927,11 +92095,11 @@ async function createVideoMontage(opts) {
       outputPath
     ];
     await execFileAsync("ffmpeg", ffmpegArgs, { timeout: 12e4 });
-    const videoBuffer = await fs7.promises.readFile(outputPath);
+    const videoBuffer = await fs8.promises.readFile(outputPath);
     const totalDuration = perImageDuration * imagePaths.length;
     return { videoBuffer, durationSeconds: totalDuration };
   } finally {
-    await fs7.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {
+    await fs8.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {
     });
   }
 }
@@ -91965,7 +92133,7 @@ var webhookHandlers_exports = {};
 __export(webhookHandlers_exports, {
   WebhookHandlers: () => WebhookHandlers
 });
-import { eq as eq8 } from "drizzle-orm";
+import { eq as eq13 } from "drizzle-orm";
 var WebhookHandlers;
 var init_webhookHandlers = __esm({
   "server/webhookHandlers.ts"() {
@@ -91992,7 +92160,7 @@ var init_webhookHandlers = __esm({
             customerName: session.customer_details?.name,
             paidAt: /* @__PURE__ */ new Date(),
             updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq8(orders.stripeCheckoutSessionId, session.id));
+          }).where(eq13(orders.stripeCheckoutSessionId, session.id));
           console.log(`Order paid: ${session.id}`);
         }
         if (event.type === "payment_intent.succeeded") {
@@ -92001,14 +92169,14 @@ var init_webhookHandlers = __esm({
             status: "paid",
             paidAt: /* @__PURE__ */ new Date(),
             updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq8(orders.stripePaymentIntentId, paymentIntent.id));
+          }).where(eq13(orders.stripePaymentIntentId, paymentIntent.id));
         }
       }
     };
   }
 });
 
-// api/index.ts
+// server/api-entry.ts
 import express from "express";
 import cookieParser from "cookie-parser";
 import { createServer } from "http";
@@ -92291,8 +92459,8 @@ router2.post("/checkout", async (req, res) => {
     await storage.updateOrderStatus(order.id, "pending");
     const { db: db2 } = await Promise.resolve().then(() => (init_db(), db_exports));
     const { orders: orders2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-    const { eq: eq9 } = await import("drizzle-orm");
-    await db2.update(orders2).set({ stripeCheckoutSessionId: checkoutSession.id }).where(eq9(orders2.id, order.id));
+    const { eq: eq14 } = await import("drizzle-orm");
+    await db2.update(orders2).set({ stripeCheckoutSessionId: checkoutSession.id }).where(eq14(orders2.id, order.id));
     await storage.clearCart(cart.id);
     res.json({ url: checkoutSession.url, orderNumber: order.orderNumber });
   } catch (e) {
@@ -92352,14 +92520,14 @@ async function shopifyFetch(query, variables) {
       const errorText = await res.text().catch(() => "unknown error");
       throw new Error(`Shopify HTTP ${res.status}: ${errorText.substring(0, 200)}`);
     }
-    const json = await res.json().catch((e) => {
+    const json2 = await res.json().catch((e) => {
       throw new Error(`Failed to parse JSON: ${e.message}`);
     });
-    if (json.errors && Array.isArray(json.errors)) {
-      const errorMsg = json.errors.map((e) => e.message).join("; ");
+    if (json2.errors && Array.isArray(json2.errors)) {
+      const errorMsg = json2.errors.map((e) => e.message).join("; ");
       throw new Error("Shopify GraphQL error: " + errorMsg);
     }
-    return json.data;
+    return json2.data;
   } catch (err) {
     throw err;
   }
@@ -92499,6 +92667,12 @@ function clearAuthCookie(res) {
   res.clearCookie(COOKIE_NAME, { path: "/" });
 }
 function requireAuth(req, res, next) {
+  const serviceToken = req.headers["x-service-token"];
+  const expectedServiceToken = process.env.SERVICE_TOKEN;
+  if (serviceToken && expectedServiceToken && serviceToken === expectedServiceToken) {
+    req.user = { userId: "service:telegram-bridge", role: "admin" };
+    return next();
+  }
   const token = req.cookies?.[COOKIE_NAME];
   if (!token) return res.status(401).json({ error: "Not authenticated" });
   try {
@@ -92834,8 +93008,489 @@ async function notifyOrderStatusChange(opts) {
 init_email();
 init_db();
 init_schema();
+init_shopify_admin();
+import { eq as eq9, and as and4 } from "drizzle-orm";
+
+// shared/product-catalog.ts
+function tiers(p11, p20, p30, p50, p100) {
+  return [
+    { minQty: 11, maxQty: 19, unitPrice: p11 * 100 },
+    { minQty: 20, maxQty: 29, unitPrice: p20 * 100 },
+    { minQty: 30, maxQty: 49, unitPrice: p30 * 100 },
+    { minQty: 50, maxQty: 99, unitPrice: p50 * 100 },
+    { minQty: 100, maxQty: 299, unitPrice: p100 * 100 }
+  ];
+}
+var ADULT_STANDARD = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"];
+var YOUTH_STANDARD = ["4", "6", "8", "10", "12", "14", "16"];
+var UNISEX_JERSEY = [...YOUTH_STANDARD, ...ADULT_STANDARD];
+var WOMENS_DRESS = ["6", "8", "10", "12", "14", "16", "18", "20", "22"];
+var HEADWEAR_ONE = ["One Size"];
+var SOCKS = ["Youth", "S", "M", "L", "XL"];
+var SIDELINE_PRODUCTS = [
+  // ─── Rugby ───
+  { id: "rugby-match-jersey", name: "Rugby Jersey", category: "Rugby", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Interlock Polyester (full sublimation)", pricing: tiers(44, 42, 40, 38, 36), minOrder: 10, puffinCostKey: "rugby-jersey" },
+  { id: "rugby-long-sleeve", name: "Rugby Long Sleeve Jersey", category: "Rugby", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Interlock Polyester", pricing: tiers(40, 38, 36, 34, 33), minOrder: 10, puffinCostKey: "rugby-jersey" },
+  // no LS SKU on Puffin — using jersey as proxy
+  { id: "rugby-shorts", name: "Rugby Shorts", category: "Rugby", sizes: UNISEX_JERSEY, defaultMaterial: "240gsm Stretch Woven Polyester", pricing: tiers(40, 38, 36, 34, 33), minOrder: 10, puffinCostKey: "rugby-short-lycra" },
+  { id: "rugby-socks", name: "Rugby Socks", category: "Rugby", sizes: SOCKS, defaultMaterial: "Nylon/Elastane Knit", pricing: tiers(26, 25, 23, 22, 21), minOrder: 20, puffinCostKey: "sublimated-socks" },
+  { id: "rugby-set", name: "Rugby Full Set (Jersey + Shorts + Socks)", category: "Rugby", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Interlock Polyester", pricing: tiers(112, 106, 101, 96, 91), minOrder: 10 },
+  // composite — cost computed as sum of components
+  // ─── League ───
+  { id: "league-jersey", name: "Rugby League Jersey", category: "League", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Interlock Polyester (full sublimation)", pricing: tiers(44, 42, 40, 38, 36), minOrder: 10, puffinCostKey: "rugby-jersey" },
+  { id: "league-shorts", name: "Rugby League Shorts", category: "League", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Polyester Tricot", pricing: tiers(40, 38, 36, 34, 33), minOrder: 10, puffinCostKey: "rugby-short-lycra" },
+  // ─── Netball ───
+  { id: "netball-dress", name: "Netball Dress", category: "Netball", sizes: WOMENS_DRESS, defaultMaterial: "Performance Spandex / Polyester", minOrder: 23, puffinCostKey: "netball-dress" },
+  { id: "netball-singlet", name: "Netball Singlet", category: "Netball", sizes: WOMENS_DRESS, defaultMaterial: "Performance Spandex / Polyester", puffinCostKey: "singlet" },
+  { id: "netball-skirt", name: "Netball Skirt", category: "Netball", sizes: WOMENS_DRESS, defaultMaterial: "Performance Spandex / Polyester" },
+  // no Puffin SKU — ask for quote
+  { id: "netball-bike-shorts", name: "Netball Bike Shorts", category: "Netball", sizes: WOMENS_DRESS, defaultMaterial: "Performance Spandex", puffinCostKey: "gym-tights-short" },
+  { id: "netball-spanks", name: "Netball Spanks (Briefs)", category: "Netball", sizes: WOMENS_DRESS, defaultMaterial: "Performance Spandex (modesty brief)", puffinCostKey: "gym-tights-short" },
+  // proxy
+  // ─── Tag Rugby ───
+  { id: "tag-reversible-singlet", name: "Tag Reversible Singlet", category: "Tag", sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Interlock Polyester (double-layer reversible)", puffinCostKey: "singlet" },
+  // proxy — reversible construction typically 1.3-1.5x single
+  { id: "tag-dri-fit-tee", name: "Tag Dri-Fit Tee", category: "Tag", sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Performance Polyester", puffinCostKey: "t-shirt" },
+  { id: "tag-shorts", name: "Tag Shorts", category: "Tag", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Polyester Tricot", puffinCostKey: "training-short" },
+  // ─── Football / Soccer ───
+  { id: "football-jersey", name: "Football Jersey", category: "Football", sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Micro-Mesh Polyester", minOrder: 11, puffinCostKey: "soccer-jersey" },
+  { id: "football-shorts", name: "Football Shorts", category: "Football", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Polyester Tricot", puffinCostKey: "soccer-short" },
+  { id: "football-socks", name: "Football Socks", category: "Football", sizes: SOCKS, defaultMaterial: "Nylon/Elastane Knit", puffinCostKey: "sublimated-socks" },
+  // ─── Basketball ───
+  { id: "basketball-singlet", name: "Basketball Singlet", category: "Basketball", sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Interlock Polyester", pricing: tiers(36, 34, 32, 31, 29), minOrder: 10, puffinCostKey: "basketball-jersey" },
+  { id: "basketball-shorts", name: "Basketball Shorts", category: "Basketball", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Polyester Tricot", pricing: tiers(40, 38, 36, 34, 33), minOrder: 10, puffinCostKey: "basketball-short" },
+  { id: "basketball-socks", name: "Basketball Socks", category: "Basketball", sizes: SOCKS, defaultMaterial: "Nylon/Elastane Knit", pricing: tiers(20, 19, 18, 17, 16), minOrder: 20, puffinCostKey: "sublimated-socks" },
+  // ─── Cricket / Hockey ───
+  { id: "cricket-polo", name: "Cricket Polo", category: "Cricket", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Micro-Pique Polyester", pricing: tiers(40, 38, 36, 34, 33), minOrder: 10, puffinCostKey: "cricket-shirt" },
+  { id: "cricket-trousers", name: "Cricket Trousers", category: "Cricket", sizes: UNISEX_JERSEY, defaultMaterial: "Polycotton Twill", puffinCostKey: "cricket-pant" },
+  { id: "hockey-jersey", name: "Hockey Jersey", category: "Hockey", sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Micro-Mesh Polyester", puffinCostKey: "soccer-jersey" },
+  // proxy — no hockey SKU on Puffin
+  { id: "hockey-skort", name: "Hockey Skort", category: "Hockey", sizes: WOMENS_DRESS, defaultMaterial: "Performance Spandex / Polyester", puffinCostKey: "gym-tights-short" },
+  // proxy
+  // ─── Training / Streetwear ───
+  { id: "dri-fit-shirt", name: "Dri-Fit Shirt", category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Performance Polyester", pricing: tiers(38, 36, 34, 33, 31), minOrder: 10, puffinCostKey: "t-shirt" },
+  { id: "dri-fit-polo", name: "Dri-Fit Polo", category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Micro-Pique Polyester", pricing: tiers(40, 38, 36, 34, 33), minOrder: 10, puffinCostKey: "polo-shirt" },
+  { id: "training-singlet", name: "Training Singlet", category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "160gsm Performance Polyester", pricing: tiers(33, 31, 30, 28, 27), minOrder: 10, puffinCostKey: "singlet" },
+  { id: "cotton-tee", name: "Cotton T-Shirt", category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Combed Cotton", puffinCostKey: "t-shirt-cotton-poly" },
+  { id: "gym-shorts", name: "Gym Shorts", category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Polyester Tricot", pricing: tiers(40, 38, 36, 34, 33), minOrder: 20, puffinCostKey: "training-short" },
+  { id: "track-pants", name: "Track Pants", category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "280gsm Polyfleece", pricing: tiers(56, 53, 50, 48, 46), minOrder: 20, puffinCostKey: "tracksuit-pants" },
+  // ─── Outerwear ───
+  { id: "hoodie", name: "Hoodie (Pullover)", category: "Outerwear", sizes: UNISEX_JERSEY, defaultMaterial: "320gsm Cotton/Poly Fleece", pricing: tiers(60, 57, 54, 51, 49), minOrder: 10, puffinCostKey: "hoodie-cotton-poly" },
+  { id: "zip-hoodie", name: "Zip Hoodie", category: "Outerwear", sizes: UNISEX_JERSEY, defaultMaterial: "320gsm Cotton/Poly Fleece", pricing: tiers(60, 57, 54, 51, 49), minOrder: 10, puffinCostKey: "hoodie-zip-cotton-poly" },
+  { id: "crew-neck", name: "Crew Neck Sweater", category: "Outerwear", sizes: UNISEX_JERSEY, defaultMaterial: "320gsm Cotton/Poly Fleece", puffinCostKey: "jumper-sweatshirt" },
+  { id: "anthem-jacket", name: "Anthem Jacket", category: "Outerwear", sizes: UNISEX_JERSEY, defaultMaterial: "300gsm Technical Polyester", pricing: tiers(60, 57, 54, 51, 49), minOrder: 20, puffinCostKey: "jacket-half-zipper" },
+  // proxy
+  { id: "rugby-shell-jacket", name: "Rugby Shell Jacket", category: "Outerwear", sizes: UNISEX_JERSEY, defaultMaterial: "Ripstop Polyester (waterproof)", pricing: tiers(84, 80, 76, 72, 68), minOrder: 20, puffinCostKey: "jacket-mesh-lining" },
+  { id: "windbreaker-jacket", name: "Windbreaker Jacket", category: "Outerwear", sizes: UNISEX_JERSEY, defaultMaterial: "Lightweight Polyester (WR)", pricing: tiers(112, 106, 101, 96, 91), minOrder: 10, puffinCostKey: "jacket-half-zipper" },
+  // proxy
+  { id: "stadium-jacket", name: "Stadium Jacket", category: "Outerwear", sizes: UNISEX_JERSEY, defaultMaterial: "Heavy Technical Polyester", pricing: tiers(160, 152, 144, 137, 130), minOrder: 30, puffinCostKey: "winter-softshell" },
+  // proxy — heaviest Puffin jacket
+  { id: "softshell-jacket", name: "Softshell Jacket", category: "Outerwear", sizes: UNISEX_JERSEY, defaultMaterial: "3-Layer Softshell (WR/Breathable)", puffinCostKey: "jacket-softshell-cutsew" },
+  { id: "puffer-jacket", name: "Puffer Jacket", category: "Outerwear", sizes: UNISEX_JERSEY, defaultMaterial: "Ripstop Polyester / Down Fill" },
+  // no Puffin SKU — ask for quote
+  { id: "tracksuit", name: "Tracksuit (Jacket + Pants)", category: "Outerwear", sizes: UNISEX_JERSEY, defaultMaterial: "280gsm Polyfleece", pricing: tiers(120, 114, 108, 103, 98), minOrder: 20 },
+  // composite — top + pants
+  // ─── Headwear ───
+  { id: "beanie", name: "Pom-Pom Beanie", category: "Headwear", sizes: HEADWEAR_ONE, defaultMaterial: '100% Acrylic Knit (12" / 30.5cm)', pricing: tiers(36, 34, 32, 31, 29), minOrder: 20, puffinCostKey: "beanie" },
+  { id: "cap-structured", name: "Cap", category: "Headwear", sizes: HEADWEAR_ONE, defaultMaterial: "Cotton Twill / Mesh Back", pricing: tiers(40, 38, 36, 34, 33), minOrder: 20, puffinCostKey: "baseball-cap" },
+  { id: "bucket-hat", name: "Bucket Hat", category: "Headwear", sizes: HEADWEAR_ONE, defaultMaterial: "100% Cotton Twill", pricing: tiers(36, 34, 32, 31, 29), minOrder: 20, puffinCostKey: "baseball-cap" },
+  // proxy — same construction class as cap
+  { id: "scarf", name: "Scarf", category: "Headwear", sizes: HEADWEAR_ONE, defaultMaterial: "Acrylic Knit", pricing: tiers(40, 38, 36, 34, 33), minOrder: 20 },
+  // no Puffin SKU — ask for quote
+  // ─── Bags ───
+  { id: "backpack", name: "Backpack", category: "Bags", sizes: HEADWEAR_ONE, defaultMaterial: "600D Polyester", pricing: tiers(120, 114, 108, 103, 98), minOrder: 30, puffinCostKey: "backpack" },
+  { id: "shoe-bag", name: "Shoe Bag", category: "Bags", sizes: HEADWEAR_ONE, defaultMaterial: "210D Polyester", pricing: tiers(48, 45, 43, 41, 39), minOrder: 20 },
+  // no matching Puffin SKU (smallest duffle is $27)
+  { id: "kit-bag", name: "Wheeled Kit Bag", category: "Bags", sizes: HEADWEAR_ONE, defaultMaterial: "600D Polyester", pricing: tiers(180, 171, 162, 154, 146), minOrder: 30, puffinCostKey: "duffle-large" },
+  { id: "drawstring-bag", name: "Drawstring Bag", category: "Bags", sizes: HEADWEAR_ONE, defaultMaterial: "210D Polyester" },
+  // no Puffin SKU
+  // ─── American Football ───
+  { id: "american-football-jersey", name: "American Football Jersey", category: "American Football", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Interlock Polyester", puffinCostKey: "am-football-jersey" }
+];
+
+// shared/supporter-range-mapping.ts
+var CANONICAL_PATTERNS = [
+  { id: "bucket-hat", patterns: [/bucket\s*hat/i] },
+  { id: "cap-structured", patterns: [/\bcap\b/i, /trucker/i, /snapback/i] },
+  { id: "beanie", patterns: [/beanie/i] },
+  { id: "rugby-shell-jacket", patterns: [/shell\s*jacket/i, /\bshell\b/i, /rain\s*jacket/i] },
+  { id: "zip-hoodie", patterns: [/zip\s*hoodie/i, /zip\s*up\s*hoodie/i] },
+  { id: "hoodie", patterns: [/hoodie/i, /hood\s*pullover/i] },
+  { id: "crew-neck", patterns: [/crew\s*neck/i, /crewneck/i] },
+  { id: "training-singlet", patterns: [/singlet/i, /tank\s*top/i] },
+  { id: "dri-fit-polo", patterns: [/\bpolo\b/i] },
+  { id: "dri-fit-shirt", patterns: [/dri[\-\s]?fit/i] },
+  { id: "cotton-tee", patterns: [/\btee\b/i, /t[\-\s]?shirt/i] }
+];
+var PRODUCT_BY_ID = new Map(
+  SIDELINE_PRODUCTS.map((p) => [p.id, p])
+);
+function matchSupporterProduct(title) {
+  if (!title) return null;
+  const cleaned = title.trim();
+  for (const { id, patterns } of CANONICAL_PATTERNS) {
+    for (const pat of patterns) {
+      if (pat.test(cleaned)) {
+        const product = PRODUCT_BY_ID.get(id);
+        if (product) return { productId: id, product, matchedPattern: pat.source };
+      }
+    }
+  }
+  return null;
+}
+function extractSizeFromVariant(variantTitle, productId) {
+  const product = PRODUCT_BY_ID.get(productId);
+  const headwear = product?.category === "Headwear";
+  if (!variantTitle || variantTitle.trim() === "" || /default\s*title/i.test(variantTitle)) {
+    return headwear ? "One Size" : "M";
+  }
+  const last2 = variantTitle.split("/").map((s) => s.trim()).filter(Boolean).pop() || variantTitle;
+  const stripped = last2.replace(/^size\s*[:\-]\s*/i, "").trim();
+  return stripped.toUpperCase();
+}
+
+// shared/size-charts.ts
+var SIZE_CHART_LABELS = {
+  tshirt: "T-Shirts / Polos",
+  hoodie: "Hoodies / Crew Necks",
+  singlet: "Singlets",
+  shorts: "Shorts",
+  trackpants: "Trackpants",
+  "rain-jacket": "Rain / Wet Weather Jackets",
+  "tracksuit-jacket": "Tracksuit / Softshell Jackets",
+  "baseball-jersey": "Baseball Jersey",
+  "rugby-jersey": "Rugby Jersey + Shorts",
+  socks: "Socks",
+  beanie: "Beanie (Pom-Pom)",
+  none: ""
+};
+var SIZE_CHART_DATA = {
+  tshirt: [
+    {
+      title: "Youth / Adult Unisex",
+      headers: ["", "Y2", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [32, 34, 36, 38, 40, 42, 44, 46, 49, 51, 53, 56, 58, 61, 64, 67, 70] },
+        { label: "B. Centre Back", values: [42, 46, 50, 54, 57, 62, 66, 70, 66, 68, 70, 73, 75, 77, 79, 80, 81] },
+        { label: "B. Centre Back (Tall)", values: [45, 49, 53, 57, 60, 65, 69, 73, 71, 73, 75, 78, 80, 82, 84, 85, 86] }
+      ],
+      tolerance: "\xB1 1.0cm"
+    },
+    {
+      title: "Women",
+      headers: ["", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [40, 42, 45, 48, 51, 53, 55, 56, 59] },
+        { label: "B. Centre Back", values: [58, 60, 62, 64, 67, 69, 71, 73, 74] },
+        { label: "B. Centre Back (Tall)", values: [63, 65, 67, 69, 72, 74, 76, 78, 79] }
+      ],
+      tolerance: "\xB1 1.0cm"
+    }
+  ],
+  hoodie: [
+    {
+      title: "Youth / Adult Unisex",
+      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      rows: [
+        { label: "A. Centre Back Length", values: [46, 49, 52, 55, 58, 61, 64, 66, 68, 70, 72, 74, 76, 78, 80, 82] },
+        { label: "B. \xBD Chest", values: [38, 40, 42, 44, 46, 48, 50, 52, 55, 58, 61, 64, 67, 70, 73, 76] },
+        { label: "C. Sleeve (neck to cuff)", values: [58, 61, 64, 65, 68, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, "\u2014"] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    },
+    {
+      title: "Women",
+      headers: ["", "W3XS", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
+      rows: [
+        { label: "A. Centre Back Length", values: [56, 59, 62, 65, 68, 71, 74, 77, 80, 83, 86] },
+        { label: "B. \xBD Chest", values: [43, 45.5, 48, 50.5, 54.5, 58.5, 62.5, 66.5, 70.5, 74.5, 78.5] },
+        { label: "C. Sleeve (neck to cuff)", values: [65, 68, 71, 73, 75, 77, 79, 82, 85, 88, 91] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    }
+  ],
+  singlet: [
+    {
+      title: "Youth",
+      headers: ["", "Y2", "Y3", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16"],
+      rows: [
+        { label: "A. \xBD Chest", values: [33.5, 35.5, 37.5, 39.5, 41.5, 43.5, 45.5, 47.5, 49.5] },
+        { label: "B. Back Length", values: [40.5, 44.5, 48.5, 52.5, 56.5, 60.5, 64.5, 68.5, 72.5] },
+        { label: "B. Back Length (Tall)", values: [43.5, 47.5, 51.5, 55.5, 59.5, 63.5, 67.5, 71.5, 75.5] }
+      ],
+      tolerance: "\xB1 1.0cm"
+    },
+    {
+      title: "Adult Unisex",
+      headers: ["", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [52, 54.5, 57, 59.5, 62, 64.5, 67, 69.5, 72] },
+        { label: "B. Back Length", values: [72.5, 74.5, 76.5, 78.5, 80.5, 84.5, 86, "\u2014", "\u2014"] },
+        { label: "B. Back Length (Tall)", values: [77.5, 79.5, 81.5, 83.5, 85.5, 89.5, 91, 93, 95] }
+      ],
+      tolerance: "\xB1 1.0cm"
+    }
+  ],
+  shorts: [
+    {
+      title: "Adult Football Shorts",
+      headers: ["", "XS", "S", "M", "L", "XL", "2XL", "3XL"],
+      rows: [
+        { label: "A. \xBD Waist", values: [32.5, 36.4, 40.3, 44.2, 48.1, 52, 55.9] },
+        { label: "B. \xBD Hip", values: [41.2, 45, 48.8, 52.6, 56.4, 60.2, 64] },
+        { label: "C. Leg Opening", values: [49.7, 55.7, 61.7, 67.6, 73.6, 80, 85.5] },
+        { label: "D. Front Rise", values: [35.5, 36, 36.5, 37, 37.5, 38, 38.5] },
+        { label: "E. Back Rise", values: [41.5, 42, 42.5, 43, 43.5, 44, 44.5] },
+        { label: "F. Inseam", values: [14, 14, 14, 14, 14, 14, 14] }
+      ],
+      tolerance: "\xB1 1.0cm"
+    },
+    {
+      title: "Youth Football Shorts",
+      headers: ["", "YS", "YM", "YL", "YXL"],
+      rows: [
+        { label: "A. \xBD Waist", values: [30, 32.5, 35.1, 37.7] },
+        { label: "B. \xBD Hip", values: [36, 38.5, 41, 43.5] },
+        { label: "C. Leg Opening", values: [45.9, 49.8, 53.7, 57.6] },
+        { label: "D. Front Rise", values: [25.9, 30, 34, 38] },
+        { label: "E. Back Rise", values: [29.9, 34, 38, 42] },
+        { label: "F. Inseam", values: [12, 12, 12, 12] }
+      ],
+      tolerance: "\xB1 1.0cm"
+    }
+  ],
+  trackpants: [
+    {
+      title: "Youth / Adult Unisex",
+      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      rows: [
+        { label: "A. \xBD Waist", values: [23, 25.5, 28, 30.5, 33, 35.5, 38, 40, 43, 45, 48, 50, 53, 55, 58] },
+        { label: "B. Outside Leg (incl W/B)", values: [70, 75, 80, 85, 90, 95, 99, 100, 101, 102, 103, 104, 105, 106, 107] },
+        { label: "C. \xBD Leg Opening (Regular)", values: [13, 14, 15, 17, 18, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] },
+        { label: "C. \xBD Leg Opening (Tapered)", values: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24] }
+      ],
+      tolerance: "\xB1 1.5cm"
+    },
+    {
+      title: "Women",
+      headers: ["", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
+      rows: [
+        { label: "A. \xBD Waist Relaxed", values: [32, 34, 36, 38, 40, 42, 44, 46, 48, 50] },
+        { label: "B. Outside Leg (incl W/B)", values: [96, 98, 100, 102, 104, 106, 108, 110, 112, 114] },
+        { label: "C. \xBD Leg Opening (Regular)", values: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29] },
+        { label: "C. \xBD Leg Opening (Tapered)", values: [12.5, 13, 13.5, 14, 14.5, 15, 15, 15.5, 15.5, 16] }
+      ],
+      tolerance: "\xB1 1.5cm"
+    }
+  ],
+  "rain-jacket": [
+    {
+      title: "Youth / Adult Unisex",
+      headers: ["", "YXS", "YS", "YM", "YL", "YXL", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [41, 44, 47, 50, 53, 55, 59, 62, 65, 68, 71, 74, 77] },
+        { label: "B. Centre Back Length", values: [54, 58, 62, 66, 70, 74, 78.5, 80, 81.5, 83, 84.5, 87, 90] },
+        { label: "C. Sleeve (neck to cuff)", values: [57, 60, 62, 65, 68, 71, 74, 77, 81, 84, 87, 90, 93] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    },
+    {
+      title: "Women",
+      headers: ["", "W3XS", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [43, 45.5, 48, 50.5, 54.5, 58.5, 62.5, 66.5, 70.5, 74.5, 78.5] },
+        { label: "B. Centre Back Length", values: [60, 63.5, 67, 70.5, 74, 77.5, 81, 84.5, 88, 91, 94] },
+        { label: "C. Sleeve (neck to cuff)", values: [65, 68, 71, 73, 75, 77, 79, 82, 85, 88, 91] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    }
+  ],
+  "tracksuit-jacket": [
+    {
+      title: "Youth / Adult Unisex",
+      headers: ["", "4", "6", "8", "10", "12", "14", "S", "M", "L", "XL", "2XL", "3XL", "4XL"],
+      rows: [
+        { label: "A. Length", values: [51, 55, 58, 61, 64, 67, 70, 73, 76, 79, 82, 85, "\u2014"] },
+        { label: "B. \xBD Chest", values: [41, 44, 47, 50, 53, 56, 59, 62, 65, 68, 71, 74, 77] },
+        { label: "C. Sleeve Length", values: [57, 60, 62, 65, 68, 71, 74, 77, 81, 84, 87, 90, 93] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    },
+    {
+      title: "Women",
+      headers: ["", "W3XS", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
+      rows: [
+        { label: "A. Length", values: [56, 59, 62, 65, 68, 71, 74, 77, 80, 83, 86] },
+        { label: "B. \xBD Chest", values: [43, 45.5, 48, 50.5, 54.5, 58.5, 62.5, 66.5, 70.5, 74.5, 78.5] },
+        { label: "C. Sleeve Length", values: [65, 68, 71, 73, 75, 77, 79, 82, 85, 88, 91] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    }
+  ],
+  "baseball-jersey": [
+    {
+      title: "Youth / Adult Unisex",
+      headers: ["", "Y2", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [32, 34, 36, 38, 40, 42, 44, 46, 49, 51, 53, 56, 58, 61, 64, 67, 70] },
+        { label: "B. Centre Back", values: [42, 46, 50, 54, 57, 62, 66, 70, 66, 68, 70, 73, 75, 77, 79, 80, 81] },
+        { label: "B. Centre Back (Tall)", values: [45, 49, 53, 57, 60, 65, 69, 73, 71, 73, 75, 78, 80, 82, 84, 85, 86] }
+      ],
+      tolerance: "\xB1 1.5cm"
+    },
+    {
+      title: "Women",
+      headers: ["", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [40, 42, 45, 48, 51, 53, 55, 56, 59] },
+        { label: "B. Centre Back", values: [58, 60, 62, 64, 67, 69, 71, 73, 74] },
+        { label: "B. Centre Back (Tall)", values: [63, 65, 67, 69, 72, 74, 76, 78, 79] }
+      ],
+      tolerance: "\xB1 1.5cm"
+    }
+  ],
+  "rugby-jersey": [
+    {
+      title: "Rugby Jersey",
+      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
+      rows: [
+        { label: "A. \xBD Chest", values: [35, 37, 39, 41, 43, 45, 43.5, 46, 48.5, 51, 53.5, 56, 58.5, 61, 63.5, 66, 68.5] },
+        { label: "B. Length", values: [50, 54, 58, 62, 66, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, 90, 92] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    },
+    {
+      title: "Rugby Shorts",
+      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
+      rows: [
+        { label: "A. \xBD Waist", values: [26, 28, 30, 32, 34, 36, 40, 42, 44, 45, 48, 50, 52, 54, 56, 58, "\u2014"] },
+        { label: "B. Outside Leg", values: [27.5, 28.5, 29.5, 30.5, 31.5, 32.5, 33.5, 34.5, 35.5, 36.5, 37.5, 38.5, 39.5, 40.5, 41.5, 42.5, 43.5] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    }
+  ],
+  beanie: [
+    {
+      title: "Pom-Pom Beanie \u2014 One Size Fits Most",
+      headers: ["", "One Size"],
+      rows: [
+        { label: "A. Width (\xBD flat)", values: [20.8] },
+        { label: "B. Height (excl pom-pom)", values: [23.5] },
+        { label: "C. Cuff Depth", values: [7.6] },
+        { label: "Pom-Pom Diameter", values: [7.6] },
+        { label: "Circumference (stretched)", values: ["45\u201348"] },
+        { label: "Total Height (knit)", values: [30.5] }
+      ],
+      tolerance: "\xB1 1.0cm"
+    }
+  ],
+  socks: [
+    {
+      title: "Rugby Socks",
+      headers: ["", "XXS", "XS", "S", "M", "L", "XL", "XXL"],
+      rows: [
+        { label: "A. Heel", values: [14, 15, 18, 21, 24, 27, 29] },
+        { label: "B. Heel Flap", values: [34, 37, 40, 45, 50, 54, 57] },
+        { label: "C. Cuff", values: [8, 8, 9, 9, 10, 10, 10] },
+        { label: "D. Ribbed Top", values: [10, 10, 10, 12, 12, 12, 12] },
+        { label: "Shoe Size", values: ["9-12", "13-3", "2-7", "7-11", "11-14", "\u2014", "\u2014"] }
+      ],
+      tolerance: "\xB1 2.0cm"
+    }
+  ],
+  none: []
+};
+var PRODUCT_TO_CHART = {
+  "rugby-match-jersey": "rugby-jersey",
+  "rugby-long-sleeve": "tshirt",
+  "rugby-shorts": "rugby-jersey",
+  // rugby shorts table is inside the rugby-jersey entry
+  "rugby-socks": "socks",
+  "league-jersey": "tshirt",
+  "league-shorts": "shorts",
+  "netball-dress": "tshirt",
+  "netball-singlet": "singlet",
+  "netball-skirt": "shorts",
+  "netball-bike-shorts": "shorts",
+  "netball-spanks": "none",
+  // no verified chart — Sizing Guide omitted on PO until one is added
+  "tag-reversible-singlet": "none",
+  // no verified chart
+  "tag-dri-fit-tee": "none",
+  // no verified chart
+  "tag-shorts": "none",
+  // no verified chart
+  "football-jersey": "tshirt",
+  "football-shorts": "shorts",
+  "football-socks": "socks",
+  "basketball-singlet": "singlet",
+  "basketball-shorts": "shorts",
+  "cricket-polo": "tshirt",
+  "cricket-trousers": "trackpants",
+  "hockey-jersey": "tshirt",
+  "hockey-skort": "shorts",
+  "dri-fit-shirt": "tshirt",
+  "dri-fit-polo": "tshirt",
+  "cotton-tee": "tshirt",
+  "training-singlet": "singlet",
+  "gym-shorts": "shorts",
+  "track-pants": "trackpants",
+  "hoodie": "hoodie",
+  "zip-hoodie": "hoodie",
+  "quarter-zip": "tracksuit-jacket",
+  "crew-neck": "hoodie",
+  "softshell-jacket": "rain-jacket",
+  "puffer-jacket": "rain-jacket",
+  "wet-weather-jacket": "rain-jacket",
+  "gameday-jacket": "tracksuit-jacket",
+  "anthem-jacket": "tracksuit-jacket",
+  "rugby-shell-jacket": "rain-jacket",
+  "windbreaker-jacket": "rain-jacket",
+  "stadium-jacket": "tracksuit-jacket",
+  "tracksuit": "tracksuit-jacket",
+  "rugby-set": "rugby-jersey",
+  "basketball-socks": "socks",
+  "scarf": "tshirt",
+  "shoe-bag": "tshirt",
+  "american-football-jersey": "tshirt",
+  "supporters-tee": "tshirt",
+  "supporters-polo": "tshirt",
+  "supporters-singlet": "singlet",
+  "bucket-hat": "tshirt",
+  // no specific hat chart; won't render in PO
+  "cap-structured": "tshirt",
+  "cap-snapback": "tshirt",
+  "beanie": "beanie",
+  "kit-bag": "tshirt",
+  "backpack": "tshirt",
+  "drawstring-bag": "tshirt",
+  "baseball-jersey": "baseball-jersey"
+};
+var SIZE_CHART_DIAGRAMS = {
+  tshirt: "/size-charts/tshirt-diagram.png",
+  hoodie: "/size-charts/hoodie-diagram.png",
+  singlet: "/size-charts/singlet-diagram.png",
+  shorts: "/size-charts/shorts-diagram.png",
+  trackpants: "/size-charts/trackpants-diagram.png",
+  "rain-jacket": "/size-charts/rain-jacket-diagram.png",
+  "tracksuit-jacket": "/size-charts/tracksuit-jacket-diagram.png",
+  "baseball-jersey": "/size-charts/baseball-jersey-diagram.png",
+  "rugby-jersey": "/size-charts/rugby-jersey-diagram.png",
+  socks: "/size-charts/socks-diagram.png",
+  beanie: "/size-charts/beanie-diagram.png",
+  none: ""
+};
+function suggestSizeChart(productType) {
+  if (!productType) return "none";
+  return PRODUCT_TO_CHART[productType] || "none";
+}
+function getSizeChartTables(chartType) {
+  if (chartType === "none") return [];
+  return SIZE_CHART_DATA[chartType] || [];
+}
+
+// server/routes/admin.ts
 init_ghl();
-import { eq as eq4 } from "drizzle-orm";
 
 // server/routes/approvals.ts
 init_db();
@@ -93058,10 +93713,10 @@ async function buildPoReference(now = /* @__PURE__ */ new Date()) {
 // server/google-drive.ts
 var OAUTH_TOKEN_URL2 = "https://oauth2.googleapis.com/token";
 var DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
-function driveUrl(path13, extra = {}) {
-  const url = new URL(`${DRIVE_API_BASE}${path13}`);
+function driveUrl(path14, extra = {}) {
+  const url = new URL(`${DRIVE_API_BASE}${path14}`);
   url.searchParams.set("supportsAllDrives", "true");
-  if (path13.startsWith("/files?") || path13 === "/files") {
+  if (path14.startsWith("/files?") || path14 === "/files") {
     url.searchParams.set("includeItemsFromAllDrives", "true");
   }
   for (const [k, v] of Object.entries(extra)) url.searchParams.set(k, v);
@@ -93109,10 +93764,10 @@ async function getAccessToken2() {
   };
   return cachedAccessToken2.token;
 }
-async function driveFetch(path13, init = {}) {
+async function driveFetch(path14, init = {}) {
   const token = await getAccessToken2();
   if (!token) return null;
-  return fetch(driveUrl(path13), {
+  return fetch(driveUrl(path14), {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -93517,21 +94172,24 @@ async function listFilesInFolder(folderId) {
 init_po_milestones();
 
 // server/mockup/color-extract.ts
-var COLOR_EXTRACT_PROMPT = `You are a uniform designer assistant. Look at this design image and identify the main colours used in the garment itself (ignore the background, mannequin, shadows, and tags).
+var COLOR_EXTRACT_PROMPT = `You are a uniform designer assistant. Look at this design image and identify EVERY distinct colour used in the garment itself (ignore the studio background, mannequin, shadows, and tags).
 
 Return STRICT JSON only \u2014 no markdown, no commentary. Shape:
 {
   "colors": [
-    { "hex": "#RRGGBB", "name": "Short name (1-3 words)" }
+    { "hex": "#RRGGBB", "name": "Short name (1-3 words)", "pms": "PMS <code> C" }
   ]
 }
 
 Rules:
-- 2 to 5 colours max, ordered by dominance (most-used first)
-- Hex must be 6 digits uppercase with leading #
-- Name must be human-friendly (e.g. "Navy Blue", "Off White", "Gold"), not generic ("dark colour 1")
-- Skip neutrals under 5% of the garment
-- If the garment is monochrome, return just that one colour`;
+- Return 2 to 8 colours, ordered by dominance (most-used first).
+- INCLUDE accent and trim colours even if they only cover a small area \u2014 e.g. collar piping, side panels, sleeve cuffs, hem stripes, logo fills, number outlines, dot/spot details. A blue strip on the sleeve still counts as a colour.
+- Inspect the WHOLE garment carefully: top to bottom, sleeves, collar, hem, side panels, back, logo, numbers, name placement panel. Multiple passes if needed.
+- Only skip a colour if it is clearly anti-aliasing noise (a single fuzzy pixel band) OR it is the studio backdrop (not part of the garment fabric).
+- Hex must be 6 digits uppercase with leading #.
+- Name must be human-friendly (e.g. "Navy Blue", "Off White", "Royal Blue", "Gold"), not generic ("dark colour 1").
+- pms = the closest Pantone Solid Coated swatch (the "C" series \u2014 what Sideline's supplier matches against). Format: "PMS <number> C" for numbered swatches (e.g. "PMS 186 C", "PMS 282 C"), or for the named-only swatches use exactly "PMS Black C", "PMS White", "PMS Cool Gray 7 C", "PMS Warm Gray 4 C", "PMS Process Black C", "PMS Reflex Blue C", "PMS Rhodamine Red C", "PMS Rubine Red C", "PMS Process Cyan C", "PMS Process Magenta C", "PMS Process Yellow C". Always pick from the Solid Coated set \u2014 never Solid Uncoated or TPX/TCX. If unsure, pick the closest numbered swatch by RGB distance.
+- If the garment is genuinely monochrome (one colour from edge to edge with NO logos, trims, or accents), return just that one colour.`;
 async function fetchAsBase64(url) {
   try {
     const r = await fetch(url);
@@ -93594,8 +94252,13 @@ async function extractColorsFromImage(imageUrl) {
       if (typeof c?.hex !== "string" || typeof c?.name !== "string") continue;
       const hex = c.hex.trim().toUpperCase();
       if (!/^#[0-9A-F]{6}$/.test(hex)) continue;
-      out.push({ hex, name: c.name.trim().slice(0, 40) });
-      if (out.length >= 5) break;
+      const entry = { hex, name: c.name.trim().slice(0, 40) };
+      if (typeof c?.pms === "string") {
+        const pms = c.pms.trim();
+        if (/^PMS\b/i.test(pms) && pms.length <= 40) entry.pms = pms;
+      }
+      out.push(entry);
+      if (out.length >= 8) break;
     }
     return out.length ? out : null;
   } catch (err) {
@@ -93605,29 +94268,14 @@ async function extractColorsFromImage(imageUrl) {
 }
 
 // server/mockup/design-brief.ts
-var BRIEF_PROMPT = `You are a sportswear production spec writer for Sideline NZ, a custom teamwear company. Look at these garment design mockup image(s) and write a structured design brief for the factory.
+var BRIEF_PROMPT = `You are a sportswear production spec writer for Sideline NZ. Look at the garment mockup image(s) and write ONE short paragraph describing what the factory needs to know to produce it.
 
-Output a SHORT, STRUCTURED brief covering (skip any section that doesn't apply):
-
-**GARMENT OVERVIEW**: One sentence \u2014 garment type, style, silhouette.
-
-**FRONT PANEL**: Describe what's on the front \u2014 main pattern, colour blocks, fade/gradient direction, stripe placement, panel boundaries.
-
-**BACK PANEL**: Describe what's on the back \u2014 number position, name bar, pattern continuation.
-
-**LOGOS & BRANDING**: For EACH logo/badge/sponsor mark visible, state: name (if readable), position (left chest, right chest, centre back collar, etc.), approximate size (small/medium/large).
-
-**COLLAR & CUFFS**: Style (v-neck, round, traditional), colours, ribbing.
-
-**COLOUR ZONES**: Map which colour goes where (e.g. "Navy dominates body panels; white on side inserts; gold on collar and cuff trim").
-
-**SPECIAL DETAILS**: Sublimation patterns, texture overlays, tonal prints, reflective elements, anything unusual.
+Cover (only what's relevant): garment type and silhouette; dominant colour zones (which colour goes where on body / panels / trim); logo positions (left chest, right chest, centre back, etc.); collar/cuff style; any unusual pattern, fade, gradient, or sublimation detail; key front and back distinctions.
 
 Rules:
-- Be CONCISE \u2014 max 250 words total
-- Use plain English the factory can follow
-- Don't describe the image quality or background \u2014 only the garment
-- If there are two images (front + back), integrate both into one brief`;
+- ONE paragraph. 80\u2013120 words. NO section headers, NO bullet lists, NO markdown.
+- Plain factory English. Skip anything that's not visible. Don't describe image quality or background.
+- If two images (front + back), integrate them into the one paragraph.`;
 async function fetchAsBase642(url) {
   try {
     const r = await fetch(url);
@@ -93659,7 +94307,7 @@ async function generateDesignBrief(imageUrls) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ role: "user", parts }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 800 }
+        generationConfig: { temperature: 0.3, maxOutputTokens: 400 }
       })
     });
     if (!res.ok) {
@@ -93680,348 +94328,6 @@ init_puppeteer_core();
 init_esm2();
 init_storage();
 init_po_milestones();
-
-// shared/size-charts.ts
-var SIZE_CHART_LABELS = {
-  tshirt: "T-Shirts / Polos",
-  hoodie: "Hoodies / Crew Necks",
-  singlet: "Singlets",
-  shorts: "Shorts",
-  trackpants: "Trackpants",
-  "rain-jacket": "Rain / Wet Weather Jackets",
-  "tracksuit-jacket": "Tracksuit / Softshell Jackets",
-  "baseball-jersey": "Baseball Jersey",
-  "rugby-jersey": "Rugby Jersey + Shorts",
-  socks: "Socks",
-  beanie: "Beanie (Pom-Pom)",
-  none: ""
-};
-var SIZE_CHART_DATA = {
-  tshirt: [
-    {
-      title: "Youth / Adult Unisex",
-      headers: ["", "Y2", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
-      rows: [
-        { label: "A. \xBD Chest", values: [32, 34, 36, 38, 40, 42, 44, 46, 49, 51, 53, 56, 58, 61, 64, 67, 70] },
-        { label: "B. Centre Back", values: [42, 46, 50, 54, 57, 62, 66, 70, 66, 68, 70, 73, 75, 77, 79, 80, 81] },
-        { label: "B. Centre Back (Tall)", values: [45, 49, 53, 57, 60, 65, 69, 73, 71, 73, 75, 78, 80, 82, 84, 85, 86] }
-      ],
-      tolerance: "\xB1 1.0cm"
-    },
-    {
-      title: "Women",
-      headers: ["", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL"],
-      rows: [
-        { label: "A. \xBD Chest", values: [40, 42, 45, 48, 51, 53, 55, 56, 59] },
-        { label: "B. Centre Back", values: [58, 60, 62, 64, 67, 69, 71, 73, 74] },
-        { label: "B. Centre Back (Tall)", values: [63, 65, 67, 69, 72, 74, 76, 78, 79] }
-      ],
-      tolerance: "\xB1 1.0cm"
-    }
-  ],
-  hoodie: [
-    {
-      title: "Youth / Adult Unisex",
-      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
-      rows: [
-        { label: "A. Centre Back Length", values: [46, 49, 52, 55, 58, 61, 64, 66, 68, 70, 72, 74, 76, 78, 80, 82] },
-        { label: "B. \xBD Chest", values: [38, 40, 42, 44, 46, 48, 50, 52, 55, 58, 61, 64, 67, 70, 73, 76] },
-        { label: "C. Sleeve (neck to cuff)", values: [58, 61, 64, 65, 68, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, "\u2014"] }
-      ],
-      tolerance: "\xB1 2.0cm"
-    },
-    {
-      title: "Women",
-      headers: ["", "W3XS", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
-      rows: [
-        { label: "A. Centre Back Length", values: [56, 59, 62, 65, 68, 71, 74, 77, 80, 83, 86] },
-        { label: "B. \xBD Chest", values: [43, 45.5, 48, 50.5, 54.5, 58.5, 62.5, 66.5, 70.5, 74.5, 78.5] },
-        { label: "C. Sleeve (neck to cuff)", values: [65, 68, 71, 73, 75, 77, 79, 82, 85, 88, 91] }
-      ],
-      tolerance: "\xB1 2.0cm"
-    }
-  ],
-  singlet: [
-    {
-      title: "Youth",
-      headers: ["", "Y2", "Y3", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16"],
-      rows: [
-        { label: "A. \xBD Chest", values: [33.5, 35.5, 37.5, 39.5, 41.5, 43.5, 45.5, 47.5, 49.5] },
-        { label: "B. Back Length", values: [40.5, 44.5, 48.5, 52.5, 56.5, 60.5, 64.5, 68.5, 72.5] },
-        { label: "B. Back Length (Tall)", values: [43.5, 47.5, 51.5, 55.5, 59.5, 63.5, 67.5, 71.5, 75.5] }
-      ],
-      tolerance: "\xB1 1.0cm"
-    },
-    {
-      title: "Adult Unisex",
-      headers: ["", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
-      rows: [
-        { label: "A. \xBD Chest", values: [52, 54.5, 57, 59.5, 62, 64.5, 67, 69.5, 72] },
-        { label: "B. Back Length", values: [72.5, 74.5, 76.5, 78.5, 80.5, 84.5, 86, "\u2014", "\u2014"] },
-        { label: "B. Back Length (Tall)", values: [77.5, 79.5, 81.5, 83.5, 85.5, 89.5, 91, 93, 95] }
-      ],
-      tolerance: "\xB1 1.0cm"
-    }
-  ],
-  shorts: [
-    {
-      title: "Adult Football Shorts",
-      headers: ["", "XS", "S", "M", "L", "XL", "2XL", "3XL"],
-      rows: [
-        { label: "A. \xBD Waist", values: [32.5, 36.4, 40.3, 44.2, 48.1, 52, 55.9] },
-        { label: "B. \xBD Hip", values: [41.2, 45, 48.8, 52.6, 56.4, 60.2, 64] },
-        { label: "C. Leg Opening", values: [49.7, 55.7, 61.7, 67.6, 73.6, 80, 85.5] },
-        { label: "D. Front Rise", values: [35.5, 36, 36.5, 37, 37.5, 38, 38.5] },
-        { label: "E. Back Rise", values: [41.5, 42, 42.5, 43, 43.5, 44, 44.5] },
-        { label: "F. Inseam", values: [14, 14, 14, 14, 14, 14, 14] }
-      ],
-      tolerance: "\xB1 1.0cm"
-    },
-    {
-      title: "Youth Football Shorts",
-      headers: ["", "YS", "YM", "YL", "YXL"],
-      rows: [
-        { label: "A. \xBD Waist", values: [30, 32.5, 35.1, 37.7] },
-        { label: "B. \xBD Hip", values: [36, 38.5, 41, 43.5] },
-        { label: "C. Leg Opening", values: [45.9, 49.8, 53.7, 57.6] },
-        { label: "D. Front Rise", values: [25.9, 30, 34, 38] },
-        { label: "E. Back Rise", values: [29.9, 34, 38, 42] },
-        { label: "F. Inseam", values: [12, 12, 12, 12] }
-      ],
-      tolerance: "\xB1 1.0cm"
-    }
-  ],
-  trackpants: [
-    {
-      title: "Youth / Adult Unisex",
-      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
-      rows: [
-        { label: "A. \xBD Waist", values: [23, 25.5, 28, 30.5, 33, 35.5, 38, 40, 43, 45, 48, 50, 53, 55, 58] },
-        { label: "B. Outside Leg (incl W/B)", values: [70, 75, 80, 85, 90, 95, 99, 100, 101, 102, 103, 104, 105, 106, 107] },
-        { label: "C. \xBD Leg Opening (Regular)", values: [13, 14, 15, 17, 18, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] },
-        { label: "C. \xBD Leg Opening (Tapered)", values: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24] }
-      ],
-      tolerance: "\xB1 1.5cm"
-    },
-    {
-      title: "Women",
-      headers: ["", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
-      rows: [
-        { label: "A. \xBD Waist Relaxed", values: [32, 34, 36, 38, 40, 42, 44, 46, 48, 50] },
-        { label: "B. Outside Leg (incl W/B)", values: [96, 98, 100, 102, 104, 106, 108, 110, 112, 114] },
-        { label: "C. \xBD Leg Opening (Regular)", values: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29] },
-        { label: "C. \xBD Leg Opening (Tapered)", values: [12.5, 13, 13.5, 14, 14.5, 15, 15, 15.5, 15.5, 16] }
-      ],
-      tolerance: "\xB1 1.5cm"
-    }
-  ],
-  "rain-jacket": [
-    {
-      title: "Youth / Adult Unisex",
-      headers: ["", "YXS", "YS", "YM", "YL", "YXL", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"],
-      rows: [
-        { label: "A. \xBD Chest", values: [41, 44, 47, 50, 53, 55, 59, 62, 65, 68, 71, 74, 77] },
-        { label: "B. Centre Back Length", values: [54, 58, 62, 66, 70, 74, 78.5, 80, 81.5, 83, 84.5, 87, 90] },
-        { label: "C. Sleeve (neck to cuff)", values: [57, 60, 62, 65, 68, 71, 74, 77, 81, 84, 87, 90, 93] }
-      ],
-      tolerance: "\xB1 2.0cm"
-    },
-    {
-      title: "Women",
-      headers: ["", "W3XS", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
-      rows: [
-        { label: "A. \xBD Chest", values: [43, 45.5, 48, 50.5, 54.5, 58.5, 62.5, 66.5, 70.5, 74.5, 78.5] },
-        { label: "B. Centre Back Length", values: [60, 63.5, 67, 70.5, 74, 77.5, 81, 84.5, 88, 91, 94] },
-        { label: "C. Sleeve (neck to cuff)", values: [65, 68, 71, 73, 75, 77, 79, 82, 85, 88, 91] }
-      ],
-      tolerance: "\xB1 2.0cm"
-    }
-  ],
-  "tracksuit-jacket": [
-    {
-      title: "Youth / Adult Unisex",
-      headers: ["", "4", "6", "8", "10", "12", "14", "S", "M", "L", "XL", "2XL", "3XL", "4XL"],
-      rows: [
-        { label: "A. Length", values: [51, 55, 58, 61, 64, 67, 70, 73, 76, 79, 82, 85, "\u2014"] },
-        { label: "B. \xBD Chest", values: [41, 44, 47, 50, 53, 56, 59, 62, 65, 68, 71, 74, 77] },
-        { label: "C. Sleeve Length", values: [57, 60, 62, 65, 68, 71, 74, 77, 81, 84, 87, 90, 93] }
-      ],
-      tolerance: "\xB1 2.0cm"
-    },
-    {
-      title: "Women",
-      headers: ["", "W3XS", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL", "W5XL"],
-      rows: [
-        { label: "A. Length", values: [56, 59, 62, 65, 68, 71, 74, 77, 80, 83, 86] },
-        { label: "B. \xBD Chest", values: [43, 45.5, 48, 50.5, 54.5, 58.5, 62.5, 66.5, 70.5, 74.5, 78.5] },
-        { label: "C. Sleeve Length", values: [65, 68, 71, 73, 75, 77, 79, 82, 85, 88, 91] }
-      ],
-      tolerance: "\xB1 2.0cm"
-    }
-  ],
-  "baseball-jersey": [
-    {
-      title: "Youth / Adult Unisex",
-      headers: ["", "Y2", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
-      rows: [
-        { label: "A. \xBD Chest", values: [32, 34, 36, 38, 40, 42, 44, 46, 49, 51, 53, 56, 58, 61, 64, 67, 70] },
-        { label: "B. Centre Back", values: [42, 46, 50, 54, 57, 62, 66, 70, 66, 68, 70, 73, 75, 77, 79, 80, 81] },
-        { label: "B. Centre Back (Tall)", values: [45, 49, 53, 57, 60, 65, 69, 73, 71, 73, 75, 78, 80, 82, 84, 85, 86] }
-      ],
-      tolerance: "\xB1 1.5cm"
-    },
-    {
-      title: "Women",
-      headers: ["", "WXXS", "WXS", "WS", "WM", "WL", "WXL", "W2XL", "W3XL", "W4XL"],
-      rows: [
-        { label: "A. \xBD Chest", values: [40, 42, 45, 48, 51, 53, 55, 56, 59] },
-        { label: "B. Centre Back", values: [58, 60, 62, 64, 67, 69, 71, 73, 74] },
-        { label: "B. Centre Back (Tall)", values: [63, 65, 67, 69, 72, 74, 76, 78, 79] }
-      ],
-      tolerance: "\xB1 1.5cm"
-    }
-  ],
-  "rugby-jersey": [
-    {
-      title: "Rugby Jersey",
-      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
-      rows: [
-        { label: "A. \xBD Chest", values: [35, 37, 39, 41, 43, 45, 43.5, 46, 48.5, 51, 53.5, 56, 58.5, 61, 63.5, 66, 68.5] },
-        { label: "B. Length", values: [50, 54, 58, 62, 66, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, 90, 92] }
-      ],
-      tolerance: "\xB1 2.0cm"
-    },
-    {
-      title: "Rugby Shorts",
-      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
-      rows: [
-        { label: "A. \xBD Waist", values: [26, 28, 30, 32, 34, 36, 40, 42, 44, 45, 48, 50, 52, 54, 56, 58, "\u2014"] },
-        { label: "B. Outside Leg", values: [27.5, 28.5, 29.5, 30.5, 31.5, 32.5, 33.5, 34.5, 35.5, 36.5, 37.5, 38.5, 39.5, 40.5, 41.5, 42.5, 43.5] }
-      ],
-      tolerance: "\xB1 2.0cm"
-    }
-  ],
-  beanie: [
-    {
-      title: "Pom-Pom Beanie \u2014 One Size Fits Most",
-      headers: ["", "One Size"],
-      rows: [
-        { label: "A. Width (\xBD flat)", values: [20.8] },
-        { label: "B. Height (excl pom-pom)", values: [23.5] },
-        { label: "C. Cuff Depth", values: [7.6] },
-        { label: "Pom-Pom Diameter", values: [7.6] },
-        { label: "Circumference (stretched)", values: ["45\u201348"] },
-        { label: "Total Height (knit)", values: [30.5] }
-      ],
-      tolerance: "\xB1 1.0cm"
-    }
-  ],
-  socks: [
-    {
-      title: "Rugby Socks",
-      headers: ["", "XXS", "XS", "S", "M", "L", "XL", "XXL"],
-      rows: [
-        { label: "A. Heel", values: [14, 15, 18, 21, 24, 27, 29] },
-        { label: "B. Heel Flap", values: [34, 37, 40, 45, 50, 54, 57] },
-        { label: "C. Cuff", values: [8, 8, 9, 9, 10, 10, 10] },
-        { label: "D. Ribbed Top", values: [10, 10, 10, 12, 12, 12, 12] },
-        { label: "Shoe Size", values: ["9-12", "13-3", "2-7", "7-11", "11-14", "\u2014", "\u2014"] }
-      ],
-      tolerance: "\xB1 2.0cm"
-    }
-  ],
-  none: []
-};
-var PRODUCT_TO_CHART = {
-  "rugby-match-jersey": "rugby-jersey",
-  "rugby-long-sleeve": "tshirt",
-  "rugby-shorts": "rugby-jersey",
-  // rugby shorts table is inside the rugby-jersey entry
-  "rugby-socks": "socks",
-  "league-jersey": "tshirt",
-  "league-shorts": "shorts",
-  "netball-dress": "tshirt",
-  "netball-singlet": "singlet",
-  "netball-skirt": "shorts",
-  "netball-bike-shorts": "shorts",
-  "netball-spanks": "none",
-  // no verified chart — Sizing Guide omitted on PO until one is added
-  "tag-reversible-singlet": "none",
-  // no verified chart
-  "tag-dri-fit-tee": "none",
-  // no verified chart
-  "tag-shorts": "none",
-  // no verified chart
-  "football-jersey": "tshirt",
-  "football-shorts": "shorts",
-  "football-socks": "socks",
-  "basketball-singlet": "singlet",
-  "basketball-shorts": "shorts",
-  "cricket-polo": "tshirt",
-  "cricket-trousers": "trackpants",
-  "hockey-jersey": "tshirt",
-  "hockey-skort": "shorts",
-  "dri-fit-shirt": "tshirt",
-  "dri-fit-polo": "tshirt",
-  "cotton-tee": "tshirt",
-  "training-singlet": "singlet",
-  "gym-shorts": "shorts",
-  "track-pants": "trackpants",
-  "hoodie": "hoodie",
-  "zip-hoodie": "hoodie",
-  "quarter-zip": "tracksuit-jacket",
-  "crew-neck": "hoodie",
-  "softshell-jacket": "rain-jacket",
-  "puffer-jacket": "rain-jacket",
-  "wet-weather-jacket": "rain-jacket",
-  "gameday-jacket": "tracksuit-jacket",
-  "anthem-jacket": "tracksuit-jacket",
-  "rugby-shell-jacket": "rain-jacket",
-  "windbreaker-jacket": "rain-jacket",
-  "stadium-jacket": "tracksuit-jacket",
-  "tracksuit": "tracksuit-jacket",
-  "rugby-set": "rugby-jersey",
-  "basketball-socks": "socks",
-  "scarf": "tshirt",
-  "shoe-bag": "tshirt",
-  "american-football-jersey": "tshirt",
-  "supporters-tee": "tshirt",
-  "supporters-polo": "tshirt",
-  "supporters-singlet": "singlet",
-  "bucket-hat": "tshirt",
-  // no specific hat chart; won't render in PO
-  "cap-structured": "tshirt",
-  "cap-snapback": "tshirt",
-  "beanie": "beanie",
-  "kit-bag": "tshirt",
-  "backpack": "tshirt",
-  "drawstring-bag": "tshirt",
-  "baseball-jersey": "baseball-jersey"
-};
-var SIZE_CHART_DIAGRAMS = {
-  tshirt: "/size-charts/tshirt-diagram.png",
-  hoodie: "/size-charts/hoodie-diagram.png",
-  singlet: "/size-charts/singlet-diagram.png",
-  shorts: "/size-charts/shorts-diagram.png",
-  trackpants: "/size-charts/trackpants-diagram.png",
-  "rain-jacket": "/size-charts/rain-jacket-diagram.png",
-  "tracksuit-jacket": "/size-charts/tracksuit-jacket-diagram.png",
-  "baseball-jersey": "/size-charts/baseball-jersey-diagram.png",
-  "rugby-jersey": "/size-charts/rugby-jersey-diagram.png",
-  socks: "/size-charts/socks-diagram.png",
-  beanie: "/size-charts/beanie-diagram.png",
-  none: ""
-};
-function suggestSizeChart(productType) {
-  if (!productType) return "none";
-  return PRODUCT_TO_CHART[productType] || "none";
-}
-function getSizeChartTables(chartType) {
-  if (chartType === "none") return [];
-  return SIZE_CHART_DATA[chartType] || [];
-}
-
-// server/po-pdf.ts
 init_schema();
 
 // shared/design-assets.ts
@@ -94102,6 +94408,18 @@ function renderAssetStrip(title, assets, headerBg = "#000") {
     </div>
   </div>`;
 }
+function filenameFromBlobUrl(url) {
+  if (!url) return "";
+  try {
+    const u = new URL(url);
+    const seg = decodeURIComponent(u.pathname.split("/").filter(Boolean).pop() || "");
+    if (!seg) return "";
+    const m = seg.match(/^(.+)-[A-Za-z0-9]{10,}(\.[a-zA-Z0-9]+)$/);
+    return m ? `${m[1]}${m[2]}` : seg;
+  } catch {
+    return "";
+  }
+}
 function renderLogoGrid(elements) {
   const presetSet = new Set(LOGO_POSITIONS);
   const byPosition = /* @__PURE__ */ new Map();
@@ -94124,12 +94442,13 @@ function renderLogoGrid(elements) {
   const lblCell = (label) => `<td style="padding:6px 8px;font-size:9px;font-weight:700;background:#f3f3f3;text-align:left;letter-spacing:0.2px;border:1px solid #ccc">${label}</td>`;
   const colgroup = `<colgroup><col style="width:13%" />${LOGO_POSITIONS.map(() => `<col style="width:9.67%" />`).join("")}</colgroup>`;
   const empty = `<span style="color:#ccc;font-size:16px">\u2014</span>`;
+  const checkerStyle = "display:inline-flex;align-items:center;justify-content:center;padding:2px 3px;border-radius:3px;background-color:#e5e5e5;background-image:linear-gradient(45deg,#d4d4d4 25%,transparent 25%),linear-gradient(-45deg,#d4d4d4 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d4d4d4 75%),linear-gradient(-45deg,transparent 75%,#d4d4d4 75%);background-size:8px 8px;background-position:0 0,0 4px,4px -4px,-4px 0px";
   const unassignedStrip = unassigned.length ? `
     <div style="background:#fff7ed;border:1px solid #fed7aa;border-bottom:none;padding:8px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span style="font-size:9px;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:0.4px;margin-right:4px">Unassigned (${unassigned.length}) \u2014 set position in admin</span>
       ${unassigned.map((el) => `
         <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px 3px 3px;background:#fff;border:1px solid #fdba74;border-radius:4px">
-          <img src="${el.url}" style="height:22px;max-width:40px;object-fit:contain" />
+          <span style="${checkerStyle}"><img src="${el.url}" style="height:22px;max-width:40px;object-fit:contain;display:block" /></span>
           <span style="font-size:10px;color:#555">${esc(el.name || "Logo")}</span>
         </div>`).join("")}
     </div>` : "";
@@ -94151,8 +94470,12 @@ function renderLogoGrid(elements) {
           ${LOGO_POSITIONS.map((p) => {
     const specs = byPosition.get(p) || [];
     if (!specs.length) return td(empty);
-    const maxH = specs.length === 1 ? 76 : 36;
-    const stacked = specs.map((s) => `<img src="${s.url}" style="max-width:88%;max-height:${maxH}px;object-fit:contain;margin:1px 0" />`).join("<br/>");
+    const maxH = specs.length === 1 ? 70 : 32;
+    const stacked = specs.map((s) => `
+              <div style="display:flex;flex-direction:column;align-items:center;gap:2px;margin:1px 0">
+                <span style="${checkerStyle};padding:3px 4px"><img src="${s.url}" style="max-width:88%;max-height:${maxH}px;object-fit:contain;display:block" /></span>
+                ${s.name ? `<span style="font-size:8px;color:#555;text-align:center;line-height:1.2;font-weight:600">${esc(s.name)}</span>` : ""}
+              </div>`).join("");
     return td(stacked);
   }).join("")}
         </tr>
@@ -94177,7 +94500,7 @@ function renderLogoGrid(elements) {
           ${LOGO_POSITIONS.map((p) => {
     const specs = byPosition.get(p) || [];
     if (!specs.length) return td("");
-    return td(specs.map((s) => s.threadColours?.length ? s.threadColours.map((c) => `<div style="font-size:9px;line-height:1.4">${esc(c)}</div>`).join("") : "\u2014").join('<div style="height:4px"></div>'));
+    return td(specs.map((s) => s.threadColours?.length ? s.threadColours.map((c) => `<span style="display:inline-block;font-size:8.5px;font-weight:700;color:#b8932f;background:#fdf6e3;border:1px solid #e6d59a;border-radius:2px;padding:0 4px;margin:1px 1px;line-height:1.4">${esc(c)}</span>`).join("") : "\u2014").join('<div style="height:4px"></div>'));
   }).join("")}
         </tr>
         <tr>
@@ -94185,7 +94508,11 @@ function renderLogoGrid(elements) {
           ${LOGO_POSITIONS.map((p) => {
     const specs = byPosition.get(p) || [];
     if (!specs.length) return td("");
-    return td(specs.map((s) => s.artworkFile ? `<span style="font-family:monospace;font-size:9px">${esc(s.artworkFile)}</span>` : "\u2014").join("<br/>"));
+    return td(specs.map((s) => {
+      const label = s.artworkFile || filenameFromBlobUrl(s.url) || "";
+      if (!label && !s.url) return "\u2014";
+      return s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="font-family:monospace;font-size:9px;color:#0ea5e9;text-decoration:underline;word-break:break-all">${esc(label || "View file \u2197")}</a>` : `<span style="font-family:monospace;font-size:9px">${esc(label)}</span>`;
+    }).join("<br/>"));
   }).join("")}
         </tr>
       </tbody>
@@ -94206,8 +94533,12 @@ function renderLogoGrid(elements) {
                 <td style="padding:5px 6px;border:1px solid #bfdbfe">${s.url ? `<img src="${s.url}" style="max-height:32px;max-width:56px;object-fit:contain" />` : ""}</td>
                 <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe"><strong>${esc((s.application || "\u2014").toUpperCase())}</strong></td>
                 <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe">${esc(s.sizeMm || "\u2014")}</td>
-                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe">${s.threadColours?.length ? s.threadColours.map((c) => esc(c)).join(", ") : "\u2014"}</td>
-                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe;font-family:monospace">${esc(s.artworkFile || "\u2014")}</td>
+                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe">${s.threadColours?.length ? s.threadColours.map((c) => `<span style="display:inline-block;font-size:8.5px;font-weight:700;color:#b8932f;background:#fdf6e3;border:1px solid #e6d59a;border-radius:2px;padding:0 4px;margin:1px 2px">${esc(c)}</span>`).join("") : "\u2014"}</td>
+                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe">${(() => {
+    const label = s.artworkFile || filenameFromBlobUrl(s.url) || "";
+    if (!label && !s.url) return "\u2014";
+    return s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="font-family:monospace;font-size:9px;color:#0ea5e9;text-decoration:underline;word-break:break-all">${esc(label || "View file \u2197")}</a>` : `<span style="font-family:monospace;font-size:9px">${esc(label)}</span>`;
+  })()}</td>
               </tr>`).join("")}
           </tbody>
         </table>
@@ -94228,7 +94559,13 @@ async function generatePoHtml(orderId) {
   const bdByItem = /* @__PURE__ */ new Map();
   for (const b of sizeBreakdowns ?? []) {
     const list = bdByItem.get(b.orderItemId) || [];
-    list.push({ size: b.size, quantity: b.quantity });
+    list.push({
+      size: b.size,
+      quantity: b.quantity,
+      playerName: b.playerName ?? null,
+      playerNumber: b.playerNumber ?? null,
+      namePlacement: b.namePlacement ?? null
+    });
     bdByItem.set(b.orderItemId, list);
   }
   const itemsHtml = items.map((item) => {
@@ -94261,12 +94598,22 @@ async function generatePoHtml(orderId) {
                   <span style="font-size:11px"><strong>${esc(c.name || "")}</strong> <span style="color:#888">${c.hex}</span></span>
                 </div>`).join("")}
             </div>` : ""}
+          ${item.designBrief ? `<div style="margin-bottom:8px"><div style="font-weight:700;margin-bottom:2px">Design Brief</div><div style="font-size:10px;color:#666;line-height:1.4">${esc(item.designBrief)}</div></div>` : ""}
           ${item.designNotes ? `<div><div style="font-weight:700;margin-bottom:2px">Notes</div><div style="font-size:11px;color:#555">${esc(item.designNotes)}</div></div>` : ""}
         </div>
 
         <div style="width:220px;padding:14px 16px;border-left:1px solid #eee">
           <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:6px"><span>Size</span><span>Count</span></div>
-          ${bds.map((b) => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">${esc(b.size)}<span>${b.quantity}</span></div>`).join("")}
+          ${bds.map((b) => {
+      const sub = [
+        b.playerName ? `${esc(b.playerName)}${b.playerNumber ? " #" + esc(b.playerNumber) : ""}` : b.playerNumber ? "#" + esc(b.playerNumber) : "",
+        b.namePlacement ? esc(b.namePlacement) : ""
+      ].filter(Boolean).join(" \xB7 ");
+      return `<div style="padding:3px 0">
+              <div style="display:flex;justify-content:space-between;font-size:12px">${esc(b.size)}<span>${b.quantity}</span></div>
+              ${sub ? `<div style="font-size:10px;color:#666;padding-left:8px;margin-top:1px">${sub}</div>` : ""}
+            </div>`;
+    }).join("")}
           ${bds.length ? `<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-top:10px"><span>Total</span><span>${totalQty}</span></div>` : `<div style="font-size:12px;color:#999">Qty: ${totalQty}</div>`}
         </div>
       </div>
@@ -94769,6 +95116,892 @@ function legacyStatusForStage(stage) {
   }
 }
 
+// server/telegram.ts
+var TG_API = "https://api.telegram.org";
+function botToken() {
+  return process.env.JARVESI_BOT_TOKEN || process.env.JARVESI_TOKEN || process.env.TELEGRAM_BOT_TOKEN || null;
+}
+function groupChatId() {
+  return process.env.KIG_GROUP_CHAT_ID || process.env.KIG_ENGINE_ROOM_ID || null;
+}
+function defaultThreadId() {
+  const t = process.env.SIDELINE_THREAD_ID;
+  return t ? parseInt(t, 10) : 614;
+}
+function isTelegramConfigured() {
+  return Boolean(botToken() && groupChatId());
+}
+async function sendTelegramCard(opts) {
+  const token = botToken();
+  const chatId = groupChatId();
+  if (!token || !chatId) {
+    console.warn("[telegram] missing JARVESI_BOT_TOKEN or KIG_GROUP_CHAT_ID \u2014 skipping post");
+    return { ok: false, reason: "not_configured" };
+  }
+  const payload = {
+    chat_id: chatId,
+    message_thread_id: opts.threadId ?? defaultThreadId(),
+    text: opts.text,
+    parse_mode: opts.parseMode ?? "HTML",
+    disable_web_page_preview: opts.disableWebPagePreview ?? true
+  };
+  if (opts.buttons && opts.buttons.length) {
+    payload.reply_markup = { inline_keyboard: opts.buttons };
+  }
+  try {
+    const res = await fetch(`${TG_API}/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const json2 = await res.json();
+    if (!json2.ok) {
+      console.error("[telegram] sendMessage failed:", json2.description || json2);
+      return { ok: false, reason: json2.description || "api_error" };
+    }
+    return { ok: true, messageId: json2.result?.message_id };
+  } catch (err) {
+    console.error("[telegram] sendMessage threw:", err?.message || err);
+    return { ok: false, reason: err?.message || "fetch_error" };
+  }
+}
+function buildPoApprovalCard(input2) {
+  const kindLabel = input2.poKind === "sample" ? "\u{1F9EA} Sample PO" : "\u{1F4E6} Bulk PO";
+  const lines = [
+    `<b>${kindLabel}</b> \u2014 ${esc2(input2.poReference)}`,
+    input2.accountName ? `Client: ${esc2(input2.accountName)}` : "",
+    input2.supplierName ? `Supplier: ${esc2(input2.supplierName)}` : "Supplier: <i>not assigned</i>",
+    input2.parentSampleRef ? `Sample: ${esc2(input2.parentSampleRef)}` : "",
+    input2.itemSummary,
+    `Total: $${input2.totalNzd.toFixed(2)} NZD`
+  ].filter(Boolean);
+  const linkLine = [];
+  if (input2.pdfUrl) linkLine.push(`<a href="${input2.pdfUrl}">\u{1F4C4} PO PDF</a>`);
+  if (input2.driveFolderUrl) linkLine.push(`<a href="${input2.driveFolderUrl}">\u{1F4C1} Drive folder</a>`);
+  if (linkLine.length) lines.push(linkLine.join(" \u2022 "));
+  return {
+    text: lines.join("\n"),
+    buttons: [
+      [
+        { text: "\u2705 Send", callback_data: `po_send_${input2.orderId}` },
+        { text: "\u270F\uFE0F Edit", callback_data: `po_edit_${input2.orderId}` },
+        { text: "\u23F8\uFE0F Hold", callback_data: `po_hold_${input2.orderId}` }
+      ]
+    ]
+  };
+}
+function esc2(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// server/ai/index.ts
+import fs7 from "node:fs";
+import path12 from "node:path";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
+
+// server/ai/providers/gemini.ts
+var DEFAULT_MODEL = process.env.AI_GEMINI_MODEL || "gemini-2.5-flash";
+var API_BASE = "https://generativelanguage.googleapis.com/v1beta";
+async function imageToInlinePart(image) {
+  if (image.base64) {
+    return {
+      inlineData: {
+        mimeType: image.mimeType || "image/png",
+        data: image.base64
+      }
+    };
+  }
+  if (image.url) {
+    const resp = await fetch(image.url);
+    if (!resp.ok) {
+      throw new Error(`Failed to fetch image ${image.url}: HTTP ${resp.status}`);
+    }
+    const buf = Buffer.from(await resp.arrayBuffer());
+    const mimeType = image.mimeType || resp.headers.get("content-type") || "image/png";
+    return {
+      inlineData: {
+        mimeType: mimeType.split(";")[0],
+        data: buf.toString("base64")
+      }
+    };
+  }
+  throw new Error("ImageInput requires either url or base64");
+}
+var geminiProvider = {
+  name: "gemini",
+  async complete(req) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY not configured");
+    }
+    const userParts = [{ text: req.user }];
+    if (req.images?.length) {
+      for (const img of req.images) {
+        userParts.push(await imageToInlinePart(img));
+      }
+    }
+    const generationConfig = {
+      temperature: req.temperature ?? 0.2,
+      maxOutputTokens: req.maxOutputTokens ?? 1024
+    };
+    if (req.jsonSchema) {
+      generationConfig.responseMimeType = "application/json";
+      generationConfig.responseSchema = req.jsonSchema;
+    }
+    const body = {
+      systemInstruction: { parts: [{ text: req.system }] },
+      contents: [{ role: "user", parts: userParts }],
+      generationConfig
+    };
+    const url = `${API_BASE}/models/${DEFAULT_MODEL}:generateContent?key=${apiKey}`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`Gemini API error (${resp.status}): ${errText.slice(0, 500)}`);
+    }
+    const data = await resp.json();
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const rawText = parts.map((p) => p.text).filter(Boolean).join("");
+    if (!rawText) {
+      throw new Error(`Gemini returned no text. Finish reason: ${data?.candidates?.[0]?.finishReason || "unknown"}`);
+    }
+    const text2 = req.jsonSchema ? extractJson(rawText) : rawText;
+    return {
+      text: text2,
+      usage: {
+        inputTokens: data?.usageMetadata?.promptTokenCount,
+        outputTokens: data?.usageMetadata?.candidatesTokenCount,
+        totalTokens: data?.usageMetadata?.totalTokenCount
+      },
+      model: DEFAULT_MODEL,
+      provider: "gemini"
+    };
+  }
+};
+function extractJson(text2) {
+  const trimmed = text2.trim();
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenceMatch) return fenceMatch[1].trim();
+  const firstBrace = trimmed.search(/[{[]/);
+  if (firstBrace >= 0) {
+    const opener = trimmed[firstBrace];
+    const closer = opener === "{" ? "}" : "]";
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let i = firstBrace; i < trimmed.length; i++) {
+      const ch = trimmed[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (ch === opener) depth++;
+      else if (ch === closer) {
+        depth--;
+        if (depth === 0) return trimmed.slice(firstBrace, i + 1);
+      }
+    }
+  }
+  return trimmed;
+}
+
+// server/ai/providers/claude.ts
+var claudeProvider = {
+  name: "claude",
+  async complete(_req) {
+    throw new Error(
+      "Claude provider not configured. Set AI_PROVIDER=gemini (default) or implement server/ai/providers/claude.ts and provide ANTHROPIC_API_KEY."
+    );
+  }
+};
+
+// server/ai/providers/select.ts
+var PROVIDERS = {
+  gemini: geminiProvider,
+  claude: claudeProvider
+};
+function getProvider() {
+  const name = process.env.AI_PROVIDER || "gemini";
+  const provider = PROVIDERS[name];
+  if (!provider) {
+    throw new Error(`Unknown AI_PROVIDER: ${name}. Expected one of: ${Object.keys(PROVIDERS).join(", ")}`);
+  }
+  return provider;
+}
+
+// server/ai/audit.ts
+init_integration_events();
+async function withAiAudit(meta, fn) {
+  const start = Date.now();
+  try {
+    const result = await fn();
+    void logIntegrationEvent({
+      system: "ai",
+      action: meta.taskName,
+      status: "success",
+      orderId: meta.orderId ?? null,
+      userId: meta.userId ?? null,
+      durationMs: Date.now() - start,
+      meta: {
+        provider: meta.provider,
+        model: meta.model,
+        inputTokens: meta.inputTokens,
+        outputTokens: meta.outputTokens,
+        ...meta.extra || {}
+      }
+    });
+    return result;
+  } catch (err) {
+    void logIntegrationEvent({
+      system: "ai",
+      action: meta.taskName,
+      status: "failed",
+      orderId: meta.orderId ?? null,
+      userId: meta.userId ?? null,
+      durationMs: Date.now() - start,
+      error: err?.message ? String(err.message).slice(0, 1e3) : String(err).slice(0, 1e3),
+      meta: {
+        provider: meta.provider,
+        model: meta.model,
+        ...meta.extra || {}
+      }
+    });
+    throw err;
+  }
+}
+
+// server/ai/tools.ts
+init_db();
+init_schema();
+import { eq as eq4 } from "drizzle-orm";
+async function getOrder(orderId) {
+  const rows = await db.select().from(orders).where(eq4(orders.id, orderId)).limit(1);
+  return rows[0] || null;
+}
+async function getClubAccount(clubAccountId) {
+  const rows = await db.select().from(clubAccounts).where(eq4(clubAccounts.id, clubAccountId)).limit(1);
+  return rows[0] || null;
+}
+function resolveClubDisplayName(club) {
+  if (!club) return "Unknown Club";
+  if (club.clubName) return club.clubName;
+  if (club.shopifyOrderTag) {
+    const slug = club.shopifyOrderTag.replace(/^club:/, "");
+    return slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  }
+  return "Unknown Club";
+}
+
+// server/ai/index.ts
+var __filename2 = fileURLToPath3(import.meta.url);
+var __dirname3 = path12.dirname(__filename2);
+var SKILLS_DIR = path12.join(__dirname3, "skills");
+var skillCache = /* @__PURE__ */ new Map();
+function loadSkill(name) {
+  if (skillCache.has(name)) return skillCache.get(name);
+  const filePath = path12.join(SKILLS_DIR, `${name}.md`);
+  const body = fs7.readFileSync(filePath, "utf8");
+  const stripped = body.replace(/^---\n[\s\S]*?\n---\n/, "");
+  skillCache.set(name, stripped);
+  return stripped;
+}
+var NAME_ASSET_SCHEMA = {
+  type: "object",
+  properties: {
+    canonicalName: { type: "string" },
+    confidence: { type: "string", enum: ["high", "medium", "low"] },
+    reasoning: { type: "string" }
+  },
+  required: ["canonicalName", "confidence", "reasoning"]
+};
+async function runNameAsset(input2) {
+  if (!input2.assetUrl) throw new Error("assetUrl is required");
+  let clubName = input2.context.clubName?.trim() || null;
+  if (!clubName && input2.context.orderId) {
+    try {
+      const order = await getOrder(input2.context.orderId);
+      if (order?.clubAccountId) {
+        const club = await getClubAccount(order.clubAccountId);
+        clubName = resolveClubDisplayName(club);
+      }
+    } catch (err) {
+      console.warn("[ai/name-asset] club lookup via orderId failed:", err?.message || err);
+    }
+  }
+  if (!clubName && input2.context.clubAccountId) {
+    try {
+      const club = await getClubAccount(input2.context.clubAccountId);
+      clubName = resolveClubDisplayName(club);
+    } catch (err) {
+      console.warn("[ai/name-asset] club lookup via clubAccountId failed:", err?.message || err);
+    }
+  }
+  const year = (/* @__PURE__ */ new Date()).getFullYear();
+  const provider = getProvider();
+  const system = loadSkill("name-asset");
+  const userParts = [
+    `Year: ${year}`,
+    `Club: ${clubName ?? "Unknown (no orderId or clubAccountId supplied)"}`
+  ];
+  if (input2.context.productHint) userParts.push(`Product hint: ${input2.context.productHint}`);
+  if (input2.context.side) userParts.push(`Side hint: ${input2.context.side}`);
+  userParts.push("", "Inspect the image attached and produce the canonical name.");
+  const userMessage = userParts.join("\n");
+  return withAiAudit(
+    {
+      taskName: "name-asset",
+      orderId: input2.context.orderId ?? null,
+      userId: input2.userId ?? null,
+      extra: { hasClubContext: clubName !== null, productHint: input2.context.productHint ?? null }
+    },
+    async () => {
+      const resp = await provider.complete({
+        system,
+        user: userMessage,
+        images: [{ url: input2.assetUrl }],
+        jsonSchema: NAME_ASSET_SCHEMA,
+        maxOutputTokens: 256,
+        temperature: 0.1
+      });
+      let parsed;
+      try {
+        parsed = JSON.parse(resp.text);
+      } catch (err) {
+        throw new Error(`Provider returned non-JSON: ${resp.text.slice(0, 200)}`);
+      }
+      if (!parsed.canonicalName || !parsed.confidence) {
+        throw new Error(`Provider response missing required fields: ${resp.text.slice(0, 200)}`);
+      }
+      return parsed;
+    }
+  );
+}
+async function runTask(req) {
+  switch (req.taskName) {
+    case "name-asset":
+      return runNameAsset(req.input);
+    default:
+      throw new Error(`Unknown AI task: ${req.taskName}`);
+  }
+}
+
+// server/ezra/index.ts
+init_db();
+init_schema();
+import { and as and3, eq as eq8, desc as desc3 } from "drizzle-orm";
+
+// server/ezra/runner.ts
+init_db();
+init_schema();
+import { eq as eq7, asc } from "drizzle-orm";
+
+// server/ezra/prompt.ts
+init_db();
+init_schema();
+import { eq as eq5 } from "drizzle-orm";
+var PERSONA = `You are Ezra, Sideline Custom Goods' in-app operations copilot.
+
+Voice: direct, terse, NZ-shop. No corporate fluff. Answer the question, then stop.
+
+What you handle:
+- Naming product images and logos to the canonical Sideline scheme (call name_asset)
+- Looking up orders, clubs, products, supporter drops (read-only tools)
+- Future: drafting POs from supporter orders, matching logos to placements, reconciling PO details (not yet wired)
+
+How you work:
+- Use tools when the user is asking about real data (order status, club info, drop state) \u2014 never guess or fabricate.
+- For multi-step tasks, plan in your head, but only say what's relevant to the user.
+- If a tool fails or returns an error, say so plainly and suggest a next step. Don't retry the same call with the same args.
+- If the user asks something outside Sideline ops (general chat, off-topic), answer briefly and steer back to the work.
+
+Scope of authority (Phase A):
+- Read-only. You can look things up. You CANNOT yet modify orders, send emails, dispatch POs, or write to the database. If asked to do any of those, say "I can read but I can't write yet \u2014 once you've reviewed Phase D of the plan I'll have action tools."
+
+Style rules:
+- Skip "I'll help you with that" / "Great question" / "Let me check". Just do the thing.
+- When you call a tool, the user sees it in the conversation \u2014 don't narrate "calling tool X".
+- When you return a result, lead with the answer. Details after.`;
+async function buildSystemPrompt(opts) {
+  let contextBlock = "";
+  if (opts.scopeKind === "order" && opts.scopeId) {
+    try {
+      const [order] = await db.select().from(orders).where(eq5(orders.id, opts.scopeId)).limit(1);
+      if (order) {
+        contextBlock += `
+
+## Current context
+You are anchored to order ${order.orderNumber || order.id} (PO ${order.poReference || "\u2014"}). Customer: ${order.customerEmail || order.customerName || "\u2014"}. Stage: ${order.pipelineStage || order.productionStage || "\u2014"}. Due: ${order.dueDate ? new Date(order.dueDate).toISOString().slice(0, 10) : "\u2014"}.`;
+      }
+    } catch {
+    }
+  } else if (opts.scopeKind === "club" && opts.scopeId) {
+    try {
+      const [club] = await db.select().from(clubAccounts).where(eq5(clubAccounts.id, opts.scopeId)).limit(1);
+      if (club) {
+        contextBlock += `
+
+## Current context
+You are anchored to club "${club.clubName}" (tag ${club.shopifyOrderTag || "\u2014"}). Supporter collection: ${club.supporterCollectionHandle || "\u2014"}.`;
+      }
+    } catch {
+    }
+  }
+  const dateNZ = (/* @__PURE__ */ new Date()).toLocaleDateString("en-NZ", { timeZone: "Pacific/Auckland", year: "numeric", month: "long", day: "numeric" });
+  contextBlock += `
+
+Today in NZ: ${dateNZ}.`;
+  return PERSONA + contextBlock;
+}
+
+// server/ezra/tools.ts
+init_db();
+init_schema();
+import { eq as eq6, desc as desc2, and as and2, ilike as ilike2 } from "drizzle-orm";
+init_shopify_admin();
+var nameAssetTool = {
+  name: "name_asset",
+  description: "Generate the canonical name for a product image / logo / mockup uploaded to Sideline. Returns `<year> <club> <product> [- <side>]`. Use this when the user asks to name, rename, or label an image. The asset must be reachable as a public URL.",
+  parameters: {
+    type: "object",
+    properties: {
+      assetUrl: { type: "string", description: "Public URL of the image (Vercel Blob, Shopify CDN, Drive, etc.)" },
+      orderId: { type: "string", description: "Optional \u2014 pulls club from the order" },
+      clubAccountId: { type: "string", description: "Optional \u2014 club account id" },
+      clubName: { type: "string", description: "Optional \u2014 explicit club name, wins over clubAccountId lookup" },
+      productHint: { type: "string", description: "Optional \u2014 e.g. 'bucket hat', 'rugby jersey'" },
+      side: { type: "string", enum: ["front", "back"], description: "Optional \u2014 for torso garments where front/back differs" }
+    },
+    required: ["assetUrl"]
+  },
+  async execute(args, ctx) {
+    return runTask({
+      taskName: "name-asset",
+      input: {
+        assetUrl: args.assetUrl,
+        context: {
+          orderId: args.orderId,
+          clubAccountId: args.clubAccountId,
+          clubName: args.clubName,
+          productHint: args.productHint,
+          side: args.side
+        },
+        userId: ctx.userId
+      }
+    });
+  }
+};
+var getOrderTool = {
+  name: "get_order",
+  description: "Look up a single order by id. Returns the order row including customer, PO reference, due date, status, totals.",
+  parameters: {
+    type: "object",
+    properties: { orderId: { type: "string", description: "Order id (uuid)" } },
+    required: ["orderId"]
+  },
+  async execute(args) {
+    const rows = await db.select().from(orders).where(eq6(orders.id, args.orderId)).limit(1);
+    return rows[0] || { error: "not_found" };
+  }
+};
+var getClubTool = {
+  name: "get_club",
+  description: "Look up a club account by id, name, or shopify_order_tag (e.g. 'club:onewhero-rfc'). Returns club name, supporter collection handle, profit share basis points, and drop-close timestamp.",
+  parameters: {
+    type: "object",
+    properties: {
+      idOrTag: { type: "string", description: "Club account id (uuid), shopify_order_tag, or partial club name" }
+    },
+    required: ["idOrTag"]
+  },
+  async execute(args) {
+    const q = String(args.idOrTag);
+    const byId = await db.select().from(clubAccounts).where(eq6(clubAccounts.id, q)).limit(1);
+    if (byId[0]) return byId[0];
+    const byTag = await db.select().from(clubAccounts).where(eq6(clubAccounts.shopifyOrderTag, q)).limit(1);
+    if (byTag[0]) return byTag[0];
+    const byName = await db.select().from(clubAccounts).where(ilike2(clubAccounts.clubName, `%${q}%`)).limit(3);
+    if (byName.length === 1) return byName[0];
+    if (byName.length > 1) return { error: "ambiguous", matches: byName.map((c) => ({ id: c.id, name: c.clubName, tag: c.shopifyOrderTag })) };
+    return { error: "not_found" };
+  }
+};
+var listOrdersTool = {
+  name: "list_orders",
+  description: "List recent orders, optionally filtered. Use this for 'show me recent orders' or 'what's open for Onewhero'.",
+  parameters: {
+    type: "object",
+    properties: {
+      clubAccountId: { type: "string", description: "Filter by club" },
+      stage: { type: "string", description: "Filter by stage (e.g. 'production', 'design_review')" },
+      limit: { type: "integer", description: "Default 20, max 100" }
+    }
+  },
+  async execute(args) {
+    const limit = Math.min(Math.max(parseInt(args.limit ?? 20, 10) || 20, 1), 100);
+    const conds = [];
+    if (args.clubAccountId) conds.push(eq6(orders.clubAccountId, args.clubAccountId));
+    if (args.stage) conds.push(eq6(orders.pipelineStage, args.stage));
+    const rows = conds.length ? await db.select().from(orders).where(and2(...conds)).orderBy(desc2(orders.createdAt)).limit(limit) : await db.select().from(orders).orderBy(desc2(orders.createdAt)).limit(limit);
+    return { orders: rows.map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      poReference: o.poReference,
+      customerEmail: o.customerEmail,
+      stage: o.pipelineStage,
+      dueDate: o.dueDate,
+      clubAccountId: o.clubAccountId,
+      createdAt: o.createdAt
+    })), count: rows.length };
+  }
+};
+var searchProductsTool = {
+  name: "search_products",
+  description: "Search the Sideline product catalogue (rugby jersey, cricket polo, netball dress, bucket hat, etc.). Returns matching products with material, category, and min order qty.",
+  parameters: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "Substring of the product name or category" }
+    },
+    required: ["query"]
+  },
+  async execute(args) {
+    const q = String(args.query).toLowerCase();
+    const matches = SIDELINE_PRODUCTS.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)
+    ).slice(0, 20);
+    return { products: matches.map((p) => ({ id: p.id, name: p.name, category: p.category, material: p.defaultMaterial, minOrder: p.minOrder })) };
+  }
+};
+var getDropStatusTool = {
+  name: "get_drop_status",
+  description: "Get the live status of a club's supporter campaign drop on Shopify. Returns whether the collection is currently published, product count, and the last-seen state used by the auto-PO cron.",
+  parameters: {
+    type: "object",
+    properties: {
+      clubAccountId: { type: "string", description: "Club account id" }
+    },
+    required: ["clubAccountId"]
+  },
+  async execute(args) {
+    if (!isShopifyAdminConfigured()) return { error: "shopify_admin_not_configured" };
+    const [club] = await db.select().from(clubAccounts).where(eq6(clubAccounts.id, args.clubAccountId)).limit(1);
+    if (!club) return { error: "club_not_found" };
+    if (!club.supporterCollectionHandle) return { error: "no_supporter_collection_handle_set" };
+    const status = await fetchCollectionStatus(club.supporterCollectionHandle);
+    if (!status) return { error: "collection_not_found", clubName: club.clubName, collectionHandle: club.supporterCollectionHandle };
+    return {
+      clubName: club.clubName,
+      collectionHandle: club.supporterCollectionHandle,
+      publishedNow: status.publishedOnOnlineStore,
+      publishedLastSeen: club.supporterCollectionPublished,
+      productCount: status.productCount,
+      dropClosedAt: club.supporterDropClosedAt
+    };
+  }
+};
+var listRecentDesignsTool = {
+  name: "list_recent_designs",
+  description: "List design files uploaded to an order, newest first. Useful before naming or matching logos.",
+  parameters: {
+    type: "object",
+    properties: {
+      orderId: { type: "string", description: "Order id" },
+      limit: { type: "integer", description: "Default 20" }
+    },
+    required: ["orderId"]
+  },
+  async execute(args) {
+    const limit = Math.min(Math.max(parseInt(args.limit ?? 20, 10) || 20, 1), 100);
+    const rows = await db.select().from(designFiles).where(eq6(designFiles.orderId, args.orderId)).orderBy(desc2(designFiles.createdAt)).limit(limit);
+    return { designs: rows.map((d) => ({ id: d.id, fileName: d.fileName, fileUrl: d.fileUrl, label: d.label, folder: d.folder, canonicalName: d.canonicalName, status: d.status, createdAt: d.createdAt })) };
+  }
+};
+var extractColoursTool = {
+  name: "extract_colours",
+  description: "Extract the dominant colours used in a design image and propose the nearest Pantone Solid Coated (PMS) code for each. Use when the user asks 'what colours are in this design' or 'what's the PMS code'. Read-only \u2014 does NOT save to the order; the user applies via the Extract Colours button in the UI.",
+  parameters: {
+    type: "object",
+    properties: {
+      imageUrl: { type: "string", description: "Public URL of a mockup or design image" }
+    },
+    required: ["imageUrl"]
+  },
+  async execute(args) {
+    const colors = await extractColorsFromImage(args.imageUrl);
+    if (!colors) return { error: "extraction_failed" };
+    return { colors };
+  }
+};
+var EZRA_TOOLS = [
+  nameAssetTool,
+  getOrderTool,
+  getClubTool,
+  listOrdersTool,
+  searchProductsTool,
+  getDropStatusTool,
+  listRecentDesignsTool,
+  extractColoursTool
+];
+function findTool(name) {
+  return EZRA_TOOLS.find((t) => t.name === name);
+}
+function geminiToolSchema() {
+  return [{
+    functionDeclarations: EZRA_TOOLS.map((t) => ({
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters
+    }))
+  }];
+}
+
+// server/ezra/audit.ts
+init_integration_events();
+async function withEzraAudit(meta, fn) {
+  const start = Date.now();
+  try {
+    const result = await fn();
+    void logIntegrationEvent({
+      system: "ezra",
+      action: meta.action,
+      status: "success",
+      userId: meta.userId ?? null,
+      durationMs: Date.now() - start,
+      meta: {
+        conversationId: meta.conversationId,
+        toolName: meta.toolName,
+        model: meta.model,
+        inputTokens: meta.inputTokens,
+        outputTokens: meta.outputTokens,
+        ...meta.extra || {}
+      }
+    });
+    return result;
+  } catch (err) {
+    void logIntegrationEvent({
+      system: "ezra",
+      action: meta.action,
+      status: "failed",
+      userId: meta.userId ?? null,
+      durationMs: Date.now() - start,
+      error: err?.message ? String(err.message).slice(0, 1e3) : String(err).slice(0, 1e3),
+      meta: {
+        conversationId: meta.conversationId,
+        toolName: meta.toolName,
+        model: meta.model,
+        ...meta.extra || {}
+      }
+    });
+    throw err;
+  }
+}
+
+// server/ezra/runner.ts
+var GEMINI_MODEL = process.env.AI_GEMINI_MODEL || "gemini-2.5-flash";
+var API_BASE2 = "https://generativelanguage.googleapis.com/v1beta";
+var MAX_TURNS = 6;
+var MAX_HISTORY = 40;
+async function runChatTurn(input2) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
+  await db.insert(ezraMessages).values({
+    conversationId: input2.conversationId,
+    role: "user",
+    content: input2.message
+  });
+  const [conv] = await db.select().from(ezraConversations).where(eq7(ezraConversations.id, input2.conversationId)).limit(1);
+  if (!conv) throw new Error(`Conversation ${input2.conversationId} not found`);
+  const allMessages = await db.select().from(ezraMessages).where(eq7(ezraMessages.conversationId, input2.conversationId)).orderBy(asc(ezraMessages.createdAt));
+  const history = allMessages.slice(-MAX_HISTORY);
+  const systemPrompt = await buildSystemPrompt({ scopeKind: conv.scopeKind, scopeId: conv.scopeId });
+  return withEzraAudit(
+    { action: "chat_turn", conversationId: input2.conversationId, userId: input2.userId, model: GEMINI_MODEL },
+    async () => {
+      const toolCalls = [];
+      let assistantText = "";
+      let totalInputTokens = 0;
+      let totalOutputTokens = 0;
+      let iterations = 0;
+      let workingHistory = history;
+      while (iterations < MAX_TURNS) {
+        iterations++;
+        const contents = historyToGeminiContents(workingHistory);
+        const body = {
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents,
+          tools: geminiToolSchema(),
+          generationConfig: { temperature: 0.2, maxOutputTokens: 1024 }
+        };
+        const resp = await fetch(`${API_BASE2}/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        if (!resp.ok) {
+          const errText = await resp.text();
+          await persistError(input2.conversationId, `Gemini API error (${resp.status}): ${errText.slice(0, 300)}`);
+          throw new Error(`Gemini API error (${resp.status}): ${errText.slice(0, 300)}`);
+        }
+        const data = await resp.json();
+        totalInputTokens += data?.usageMetadata?.promptTokenCount || 0;
+        totalOutputTokens += data?.usageMetadata?.candidatesTokenCount || 0;
+        const parts = data?.candidates?.[0]?.content?.parts || [];
+        const finishReason = data?.candidates?.[0]?.finishReason;
+        const textParts = [];
+        const functionCalls = [];
+        for (const p of parts) {
+          if (typeof p.text === "string") textParts.push(p.text);
+          if (p.functionCall) functionCalls.push({ name: p.functionCall.name, args: p.functionCall.args || {} });
+        }
+        if (functionCalls.length === 0) {
+          assistantText = textParts.join("").trim();
+          await db.insert(ezraMessages).values({
+            conversationId: input2.conversationId,
+            role: "assistant",
+            content: assistantText,
+            finishReason: finishReason || "stop",
+            inputTokens: data?.usageMetadata?.promptTokenCount || null,
+            outputTokens: data?.usageMetadata?.candidatesTokenCount || null
+          });
+          break;
+        }
+        const newMessages = [];
+        for (const call of functionCalls) {
+          const tool = findTool(call.name);
+          const callRow = await db.insert(ezraMessages).values({
+            conversationId: input2.conversationId,
+            role: "tool_call",
+            toolName: call.name,
+            toolArgs: call.args
+          }).returning();
+          const tcStart = Date.now();
+          let result;
+          try {
+            if (!tool) {
+              result = { error: `unknown_tool: ${call.name}` };
+            } else {
+              result = await withEzraAudit(
+                { action: `tool:${call.name}`, conversationId: input2.conversationId, userId: input2.userId, toolName: call.name },
+                () => tool.execute(call.args, { userId: input2.userId, conversationId: input2.conversationId })
+              );
+            }
+          } catch (err) {
+            result = { error: err?.message || String(err) };
+          }
+          const tcDuration = Date.now() - tcStart;
+          toolCalls.push({ name: call.name, args: call.args, result, durationMs: tcDuration });
+          const resultRow = await db.insert(ezraMessages).values({
+            conversationId: input2.conversationId,
+            role: "tool_result",
+            toolName: call.name,
+            toolResult: result,
+            toolCallId: callRow[0].id
+          }).returning();
+          newMessages.push(callRow[0], resultRow[0]);
+        }
+        workingHistory = [...workingHistory, ...newMessages];
+      }
+      if (iterations >= MAX_TURNS && !assistantText) {
+        assistantText = `I hit the ${MAX_TURNS}-iteration tool limit before reaching a final answer. The tool history is above \u2014 try a more specific ask.`;
+        await db.insert(ezraMessages).values({
+          conversationId: input2.conversationId,
+          role: "assistant",
+          content: assistantText,
+          finishReason: "iteration_cap"
+        });
+      }
+      await db.update(ezraConversations).set({ updatedAt: /* @__PURE__ */ new Date() }).where(eq7(ezraConversations.id, input2.conversationId));
+      return {
+        conversationId: input2.conversationId,
+        assistantText,
+        toolCalls,
+        iterations,
+        usage: { inputTokens: totalInputTokens || void 0, outputTokens: totalOutputTokens || void 0 }
+      };
+    }
+  );
+}
+function historyToGeminiContents(messages) {
+  const out = [];
+  for (const m of messages) {
+    if (m.role === "user") {
+      out.push({ role: "user", parts: [{ text: m.content || "" }] });
+    } else if (m.role === "assistant") {
+      if (m.content) out.push({ role: "model", parts: [{ text: m.content }] });
+    } else if (m.role === "tool_call") {
+      out.push({ role: "model", parts: [{ functionCall: { name: m.toolName, args: m.toolArgs || {} } }] });
+    } else if (m.role === "tool_result") {
+      out.push({
+        role: "user",
+        parts: [{
+          functionResponse: {
+            name: m.toolName,
+            response: m.toolResult || {}
+          }
+        }]
+      });
+    }
+  }
+  return out;
+}
+async function persistError(conversationId, error) {
+  try {
+    await db.insert(ezraMessages).values({
+      conversationId,
+      role: "assistant",
+      content: `[error] ${error.slice(0, 400)}`,
+      finishReason: "error",
+      error: error.slice(0, 1e3)
+    });
+  } catch {
+  }
+}
+var EZRA_TOOLS_AVAILABLE = EZRA_TOOLS.map((t) => ({ name: t.name, description: t.description }));
+
+// server/ezra/index.ts
+async function getOrCreateConversation(opts) {
+  const channel = opts.channel || "web";
+  if (channel === "telegram" && opts.channelRef) {
+    const existing = await db.select().from(ezraConversations).where(and3(eq8(ezraConversations.channel, "telegram"), eq8(ezraConversations.channelRef, opts.channelRef))).limit(1);
+    if (existing[0]) return existing[0];
+  }
+  if (channel === "web") {
+    const conds = [eq8(ezraConversations.userId, opts.userId), eq8(ezraConversations.channel, "web")];
+    if (opts.scopeKind) conds.push(eq8(ezraConversations.scopeKind, opts.scopeKind));
+    if (opts.scopeId) conds.push(eq8(ezraConversations.scopeId, opts.scopeId));
+    const existing = await db.select().from(ezraConversations).where(and3(...conds)).orderBy(desc3(ezraConversations.updatedAt)).limit(1);
+    if (existing[0]) return existing[0];
+  }
+  const [created] = await db.insert(ezraConversations).values({
+    userId: opts.userId,
+    channel,
+    channelRef: opts.channelRef || null,
+    scopeKind: opts.scopeKind || "global",
+    scopeId: opts.scopeId || null
+  }).returning();
+  return created;
+}
+async function listConversations(userId, limit = 30) {
+  return db.select().from(ezraConversations).where(eq8(ezraConversations.userId, userId)).orderBy(desc3(ezraConversations.updatedAt)).limit(limit);
+}
+async function listMessages(conversationId, limit = 200) {
+  const rows = await db.select().from(ezraMessages).where(eq8(ezraMessages.conversationId, conversationId)).orderBy(desc3(ezraMessages.createdAt)).limit(limit);
+  return rows.reverse();
+}
+
 // server/routes/admin.ts
 var router5 = Router6();
 router5.use(requireAdmin);
@@ -94777,12 +96010,12 @@ router5.get("/integration-events", async (req, res) => {
     const { system, status, orderId } = req.query;
     const limit = Math.min(parseInt(req.query.limit || "100", 10) || 100, 500);
     const { integrationEvents: integrationEvents2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-    const { eq: eqOp, and: and4, desc: desc4 } = await import("drizzle-orm");
+    const { eq: eqOp, and: and7, desc: desc6 } = await import("drizzle-orm");
     const conds = [];
     if (system) conds.push(eqOp(integrationEvents2.system, system));
     if (status) conds.push(eqOp(integrationEvents2.status, status));
     if (orderId) conds.push(eqOp(integrationEvents2.orderId, orderId));
-    const rows = await db.select().from(integrationEvents2).where(conds.length ? and4(...conds) : void 0).orderBy(desc4(integrationEvents2.createdAt)).limit(limit);
+    const rows = await db.select().from(integrationEvents2).where(conds.length ? and7(...conds) : void 0).orderBy(desc6(integrationEvents2.createdAt)).limit(limit);
     res.json({ events: rows, total: rows.length });
   } catch (err) {
     console.error("Admin integration-events error:", err);
@@ -95060,7 +96293,7 @@ router5.get("/vault/:orderId/files", async (req, res) => {
       driveFolderId: orders.driveFolderId,
       driveFolderUrl: orders.driveFolderUrl,
       driveFolderName: orders.driveFolderName
-    }).from(orders).where(eq4(orders.id, req.params.orderId)).limit(1);
+    }).from(orders).where(eq9(orders.id, req.params.orderId)).limit(1);
     if (!row) return res.status(404).json({ error: "Order not found" });
     if (!row.driveFolderId) {
       return res.json({ order: row, files: [], missing: true });
@@ -95089,7 +96322,7 @@ router5.get("/vault/:orderId/files", async (req, res) => {
 });
 router5.post("/vault/:orderId/create-folder", async (req, res) => {
   try {
-    const [row] = await db.select().from(orders).where(eq4(orders.id, req.params.orderId)).limit(1);
+    const [row] = await db.select().from(orders).where(eq9(orders.id, req.params.orderId)).limit(1);
     if (!row) return res.status(404).json({ error: "Order not found" });
     if (row.driveFolderId) return res.json({ ok: true, folderId: row.driveFolderId, already: true });
     const dateStr = (row.createdAt ? new Date(row.createdAt) : /* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -95366,6 +96599,14 @@ router5.get("/orders/:id/invoice", async (req, res) => {
   }
 });
 var updateItemSchema = z6.object({
+  // Quantity / size / cost — editable from the PO grid. Identical shape to
+  // Shopify variant fields so the two stay in sync. Cost flows back to
+  // Shopify via scripts/sync-po-costs-to-shopify.js (Chrome bridge).
+  unitAmount: z6.number().int().min(0).optional(),
+  // cents, matches Shopify inventoryItem.unitCost
+  quantity: z6.number().int().min(1).optional(),
+  size: z6.union([z6.string(), z6.null()]).optional(),
+  productImage: z6.union([z6.string(), z6.null()]).optional(),
   productColors: z6.array(z6.object({ hex: z6.string(), name: z6.string().optional() })).optional(),
   brandingMethod: z6.string().optional(),
   productType: z6.string().optional(),
@@ -95419,7 +96660,7 @@ router5.patch("/orders/:id/items/:itemId", async (req, res) => {
     }
     if (mirrorJobs.length) {
       (async () => {
-        const [ord] = await db.select({ id: orders.id, driveFolderId: orders.driveFolderId }).from(orders).where(eq4(orders.id, req.params.id)).limit(1);
+        const [ord] = await db.select({ id: orders.id, driveFolderId: orders.driveFolderId }).from(orders).where(eq9(orders.id, req.params.id)).limit(1);
         if (!ord?.driveFolderId) return;
         for (const job of mirrorJobs) {
           await mirrorBlobToPoFolder({
@@ -95430,11 +96671,18 @@ router5.patch("/orders/:id/items/:itemId", async (req, res) => {
         }
       })().catch((err) => console.error("[item-patch] Drive mirror failed:", err));
     }
+    let recomputed = false;
+    if (data.unitAmount !== void 0 || data.quantity !== void 0) {
+      const items = await db.select({ unitAmount: orderItems.unitAmount, quantity: orderItems.quantity }).from(orderItems).where(eq9(orderItems.orderId, req.params.id));
+      const subtotal = items.reduce((sum, it) => sum + it.unitAmount * it.quantity, 0);
+      await storage.updateOrder(req.params.id, { subtotal, total: subtotal });
+      recomputed = true;
+    }
     await storage.logOrderActivity({
       orderId: req.params.id,
       userId: user.userId,
       action: "item_updated",
-      details: { itemId: req.params.itemId, fields: Object.keys(data), mirroredCount: mirrorJobs.length }
+      details: { itemId: req.params.itemId, fields: Object.keys(data), mirroredCount: mirrorJobs.length, recomputedTotal: recomputed }
     });
     res.json(updated);
   } catch (err) {
@@ -95452,10 +96700,13 @@ router5.post("/orders/:id/items/:itemId/extract-colors", async (req, res) => {
   try {
     const { imageUrl, apply, side } = extractColorsSchema.parse(req.body);
     const user = req.user;
-    const [item] = await db.select().from(orderItems).where(eq4(orderItems.id, req.params.itemId)).limit(1);
+    const [item] = await db.select().from(orderItems).where(eq9(orderItems.id, req.params.itemId)).limit(1);
     if (!item) return res.status(404).json({ error: "Item not found" });
-    const sourceUrl = imageUrl || (side === "back" ? item.backDesignUrl : side === "front" ? item.frontDesignUrl : null) || item.frontDesignUrl || item.backDesignUrl;
-    if (!sourceUrl) return res.status(400).json({ error: "No design image on this item to analyse" });
+    const mockupsRaw = item.mockupImages;
+    const mockupUrls = Array.isArray(mockupsRaw) ? mockupsRaw.map((m) => typeof m === "string" ? { url: m } : m && typeof m.url === "string" ? { url: m.url, label: m.label } : null).filter((m) => m && m.url.startsWith("http")) : [];
+    const sideMatchedMockup = side ? mockupUrls.find((m) => (m.label || "").toLowerCase().includes(side))?.url : void 0;
+    const sourceUrl = imageUrl || (side === "back" ? item.backDesignUrl : side === "front" ? item.frontDesignUrl : null) || sideMatchedMockup || item.frontDesignUrl || item.backDesignUrl || mockupUrls[0]?.url;
+    if (!sourceUrl) return res.status(400).json({ error: "No design or mockup image on this item to analyse" });
     const colors = await extractColorsFromImage(sourceUrl);
     if (!colors) {
       return res.status(502).json({ error: "Colour extraction failed \u2014 check GEMINI_API_KEY or try a different image" });
@@ -95479,12 +96730,21 @@ router5.post("/orders/:id/items/:itemId/extract-colors", async (req, res) => {
 router5.post("/orders/:id/items/:itemId/generate-brief", async (req, res) => {
   try {
     const user = req.user;
-    const [item] = await db.select().from(orderItems).where(eq4(orderItems.id, req.params.itemId)).limit(1);
+    const [item] = await db.select().from(orderItems).where(eq9(orderItems.id, req.params.itemId)).limit(1);
     if (!item) return res.status(404).json({ error: "Item not found" });
     const imageUrls = [];
     if (item.frontDesignUrl) imageUrls.push(item.frontDesignUrl);
     if (item.backDesignUrl) imageUrls.push(item.backDesignUrl);
-    if (!imageUrls.length) return res.status(400).json({ error: "Upload front or back design first" });
+    if (!imageUrls.length) {
+      const mockupsRaw = item.mockupImages;
+      if (Array.isArray(mockupsRaw)) {
+        for (const m of mockupsRaw) {
+          const u = typeof m === "string" ? m : m && typeof m.url === "string" ? m.url : null;
+          if (u && u.startsWith("http")) imageUrls.push(u);
+        }
+      }
+    }
+    if (!imageUrls.length) return res.status(400).json({ error: "Upload a design or mockup image first" });
     const brief = await generateDesignBrief(imageUrls);
     if (!brief) return res.status(502).json({ error: "Design brief generation failed \u2014 check GEMINI_API_KEY" });
     await storage.updateOrderItem(req.params.itemId, { designBrief: brief });
@@ -95740,6 +97000,7 @@ var sizeBreakdownSchema = z6.object({
   quantity: z6.number().int().min(1),
   playerName: z6.string().optional(),
   playerNumber: z6.string().optional(),
+  namePlacement: z6.string().max(50).optional(),
   notes: z6.string().optional()
 });
 router5.post("/orders/:id/size-breakdowns", async (req, res) => {
@@ -95751,6 +97012,7 @@ router5.post("/orders/:id/size-breakdowns", async (req, res) => {
       orderId: req.params.id,
       playerName: data.playerName ?? null,
       playerNumber: data.playerNumber ?? null,
+      namePlacement: data.namePlacement ?? null,
       notes: data.notes ?? null
     });
     await storage.logOrderActivity({
@@ -96031,7 +97293,7 @@ router5.post("/orders/:id/assign-supplier", async (req, res) => {
     const order = await storage.getOrder(req.params.id);
     if (!order) return res.status(404).json({ error: "Order not found" });
     const previousSupplierId = order.assignedSupplierId;
-    await db.update(orders).set({ assignedSupplierId: supplierId, updatedAt: /* @__PURE__ */ new Date() }).where(eq4(orders.id, order.id));
+    await db.update(orders).set({ assignedSupplierId: supplierId, updatedAt: /* @__PURE__ */ new Date() }).where(eq9(orders.id, order.id));
     await db.insert(orderActivity).values({
       orderId: order.id,
       userId: req.user?.userId,
@@ -96112,132 +97374,445 @@ var raisePoSchema = z6.object({
   supplierId: z6.string().optional()
   // optional if already assigned
 });
-router5.post("/orders/:id/raise-po", async (req, res) => {
-  try {
-    const { supplierId: bodySupplierId } = raisePoSchema.parse(req.body ?? {});
-    const order = await storage.getOrder(req.params.id);
-    if (!order) return res.status(404).json({ error: "Order not found" });
-    const supplierId = bodySupplierId || order.assignedSupplierId;
-    if (!supplierId) {
-      return res.status(400).json({ error: "No supplier assigned \u2014 pass supplierId in the body or assign first" });
+async function dispatchPoToSupplier(orderId, opts) {
+  const order = await storage.getOrder(orderId);
+  if (!order) return { ok: false, status: 404, error: "Order not found" };
+  const supplierId = opts.supplierId || order.assignedSupplierId;
+  if (!supplierId) {
+    return {
+      ok: false,
+      status: 400,
+      error: "No supplier assigned \u2014 pass supplierId or assign first"
+    };
+  }
+  const supplier = await storage.getUser(supplierId);
+  if (!supplier || supplier.role !== "supplier") {
+    return { ok: false, status: 400, error: "Invalid supplier ID" };
+  }
+  if (order.assignedSupplierId !== supplierId) {
+    await db.update(orders).set({ assignedSupplierId: supplierId, updatedAt: /* @__PURE__ */ new Date() }).where(eq9(orders.id, order.id));
+  }
+  let ghlPushResult = { success: false, reason: "no_ghl_link" };
+  if (order.ghlOpportunityId) {
+    ghlPushResult = await updateGhlOpportunityStage(order.ghlOpportunityId, "PO Raised");
+  }
+  let instructionsDocId = null;
+  if (order.driveFolderId) {
+    const instructionsBody = buildSupplierInstructions({
+      orderNumber: order.orderNumber,
+      poReference: order.poReference,
+      accountName: order.accountName,
+      supplierName: supplier.teamName,
+      dueDate: order.dueDate,
+      deliveryAddress: order.deliveryAddress,
+      deliveryAttention: order.deliveryAttention
+    });
+    const doc = await createDocInFolder({
+      parentFolderId: order.driveFolderId,
+      name: `${order.poReference || order.orderNumber} \u2014 Supplier Instructions`,
+      body: instructionsBody
+    }).catch((err) => {
+      console.error("[dispatch-po] instructions doc create failed:", err);
+      return null;
+    });
+    if (doc) instructionsDocId = doc.id;
+  }
+  const driveShareResults = [];
+  if (order.driveFolderId && supplier.email) {
+    const targets = [supplier.email];
+    if (supplier.ccEmail) targets.push(supplier.ccEmail);
+    for (const email of targets) {
+      const permissionId = await shareFolderWithUser({
+        fileOrFolderId: order.driveFolderId,
+        emailAddress: email,
+        role: "reader",
+        notify: false
+      }).catch((err) => {
+        console.error(`[dispatch-po] Drive share failed for ${email}:`, err);
+        return null;
+      });
+      driveShareResults.push({ email, permissionId });
     }
-    const supplier = await storage.getUser(supplierId);
-    if (!supplier || supplier.role !== "supplier") {
-      return res.status(400).json({ error: "Invalid supplier ID" });
-    }
-    if (order.assignedSupplierId !== supplierId) {
-      await db.update(orders).set({ assignedSupplierId: supplierId, updatedAt: /* @__PURE__ */ new Date() }).where(eq4(orders.id, order.id));
-    }
-    let ghlPushResult = { success: false, reason: "no_ghl_link" };
-    if (order.ghlOpportunityId) {
-      ghlPushResult = await updateGhlOpportunityStage(order.ghlOpportunityId, "PO Raised");
-    }
-    let instructionsDocId = null;
-    if (order.driveFolderId) {
-      const instructionsBody = buildSupplierInstructions({
+  }
+  let gmailMessageId = null;
+  if (supplier.email) {
+    const items = await storage.getOrderItems(order.id);
+    gmailMessageId = await tracked(
+      {
+        system: "gmail",
+        action: "sendSupplierPo",
+        orderId: order.id,
+        userId: opts.userId,
+        context: {
+          poReference: order.poReference,
+          supplierId,
+          supplierEmail: supplier.email,
+          itemCount: items.length
+        }
+      },
+      () => sendSupplierPoDispatchGmail({
+        to: supplier.email,
+        cc: supplier.ccEmail || void 0,
+        supplierName: supplier.teamName,
         orderNumber: order.orderNumber,
         poReference: order.poReference,
         accountName: order.accountName,
-        supplierName: supplier.teamName,
         dueDate: order.dueDate,
         deliveryAddress: order.deliveryAddress,
-        deliveryAttention: order.deliveryAttention
-      });
-      const doc = await createDocInFolder({
-        parentFolderId: order.driveFolderId,
-        name: `${order.poReference || order.orderNumber} \u2014 Supplier Instructions`,
-        body: instructionsBody
-      }).catch((err) => {
-        console.error("[raise-po] instructions doc create failed:", err);
-        return null;
-      });
-      if (doc) instructionsDocId = doc.id;
-    }
-    const driveShareResults = [];
-    if (order.driveFolderId && supplier.email) {
-      const targets = [supplier.email];
-      if (supplier.ccEmail) targets.push(supplier.ccEmail);
-      for (const email of targets) {
-        const permissionId = await shareFolderWithUser({
-          fileOrFolderId: order.driveFolderId,
-          emailAddress: email,
-          role: "reader",
-          notify: false
-        }).catch((err) => {
-          console.error(`[raise-po] Drive share failed for ${email}:`, err);
-          return null;
-        });
-        driveShareResults.push({ email, permissionId });
-      }
-    }
-    let gmailMessageId = null;
-    if (supplier.email) {
-      try {
-        const items = await storage.getOrderItems(order.id);
-        gmailMessageId = await sendSupplierPoDispatchGmail({
-          to: supplier.email,
-          cc: supplier.ccEmail || void 0,
-          supplierName: supplier.teamName,
-          orderNumber: order.orderNumber,
-          poReference: order.poReference,
-          accountName: order.accountName,
-          dueDate: order.dueDate,
-          deliveryAddress: order.deliveryAddress,
-          driveFolderUrl: order.driveFolderUrl,
-          items: items.map((it) => ({
-            productName: it.productName,
-            material: it.material,
-            brandingMethod: it.brandingMethod,
-            quantity: it.quantity,
-            productColors: it.productColors
-          }))
-        });
-      } catch (err) {
-        console.error("Failed to send supplier PO email:", err);
-      }
-    }
-    let poPdfResult = null;
-    if (order.driveFolderId) {
-      poPdfResult = await uploadPoPdfToDrive(order.id, order.driveFolderId).catch((err) => {
-        console.error("[raise-po] PDF upload failed:", err);
-        return null;
-      });
-    }
-    await db.insert(orderActivity).values({
-      orderId: order.id,
-      userId: req.user?.userId,
-      action: "po_raised_to_supplier",
-      details: {
-        supplierId,
-        supplierName: supplier.teamName,
-        supplierEmail: supplier.email,
-        supplierCcEmail: supplier.ccEmail || null,
-        gmailMessageId,
-        poPdfId: poPdfResult?.pdfId || null,
-        instructionsDocId,
-        driveShares: driveShareResults,
-        ghlPushed: ghlPushResult.success,
-        ghlPushReason: ghlPushResult.reason
-      }
+        driveFolderUrl: order.driveFolderUrl,
+        items: items.map((it) => ({
+          productName: it.productName,
+          material: it.material,
+          brandingMethod: it.brandingMethod,
+          quantity: it.quantity,
+          productColors: it.productColors
+        }))
+      })
+    );
+  }
+  let poPdfResult = null;
+  if (order.driveFolderId) {
+    poPdfResult = await uploadPoPdfToDrive(order.id, order.driveFolderId).catch((err) => {
+      console.error("[dispatch-po] PDF upload failed:", err);
+      return null;
     });
-    res.json({
-      ok: true,
+  }
+  await db.update(orders).set({ poDispatchedAt: /* @__PURE__ */ new Date(), poHeldAt: null, poHoldReason: null, poHeldBy: null, updatedAt: /* @__PURE__ */ new Date() }).where(eq9(orders.id, order.id));
+  await db.insert(orderActivity).values({
+    orderId: order.id,
+    userId: opts.userId,
+    action: "po_raised_to_supplier",
+    details: {
+      poKind: order.poKind,
       supplierId,
+      supplierName: supplier.teamName,
       supplierEmail: supplier.email,
       supplierCcEmail: supplier.ccEmail || null,
-      emailSent: !!gmailMessageId,
       gmailMessageId,
-      poPdfUploaded: !!poPdfResult,
-      poPdfUrl: poPdfResult?.pdfUrl || null,
+      poPdfId: poPdfResult?.pdfId || null,
       instructionsDocId,
-      driveSharedWith: driveShareResults.filter((r) => r.permissionId).map((r) => r.email),
+      driveShares: driveShareResults,
       ghlPushed: ghlPushResult.success,
       ghlPushReason: ghlPushResult.reason
+    }
+  });
+  return {
+    ok: true,
+    supplierId,
+    supplierEmail: supplier.email,
+    supplierCcEmail: supplier.ccEmail || null,
+    emailSent: !!gmailMessageId,
+    gmailMessageId,
+    poPdfUploaded: !!poPdfResult,
+    poPdfUrl: poPdfResult?.pdfUrl || null,
+    instructionsDocId,
+    driveSharedWith: driveShareResults.filter((r) => r.permissionId).map((r) => r.email),
+    ghlPushed: ghlPushResult.success,
+    ghlPushReason: ghlPushResult.reason
+  };
+}
+router5.post("/orders/:id/raise-po", async (req, res) => {
+  try {
+    const { supplierId: bodySupplierId } = raisePoSchema.parse(req.body ?? {});
+    const result = await dispatchPoToSupplier(req.params.id, {
+      supplierId: bodySupplierId,
+      userId: req.user?.userId
     });
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    res.json(result);
   } catch (err) {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin raise PO error:", err);
     res.status(500).json({ error: "Failed to raise PO" });
+  }
+});
+async function summarizeOrderItems(orderId) {
+  const items = await storage.getOrderItems(orderId);
+  const lineCount = items.length;
+  const totalQty = items.reduce((s, it) => s + (it.quantity || 0), 0);
+  const totalCents = items.reduce((s, it) => s + (it.unitAmount || 0) * (it.quantity || 0), 0);
+  return { summary: `${lineCount} line${lineCount === 1 ? "" : "s"} \u2022 qty ${totalQty}`, totalCents, lineCount, totalQty };
+}
+async function postApprovalCardForOrder(orderId) {
+  if (!isTelegramConfigured()) {
+    console.warn("[po-card] Telegram not configured \u2014 skipping approval card post");
+    return { ok: false, reason: "telegram_not_configured" };
+  }
+  const order = await storage.getOrder(orderId);
+  if (!order) return { ok: false, reason: "order_not_found" };
+  if (order.poKind !== "sample" && order.poKind !== "bulk") {
+    return { ok: false, reason: `not_sample_or_bulk:${order.poKind}` };
+  }
+  let supplierName = null;
+  if (order.assignedSupplierId) {
+    const sup = await storage.getUser(order.assignedSupplierId);
+    if (sup) supplierName = sup.teamName;
+  }
+  let parentSampleRef = null;
+  if (order.poKind === "bulk" && order.parentOrderId) {
+    const parent = await storage.getOrder(order.parentOrderId);
+    if (parent) parentSampleRef = parent.poReference;
+  }
+  const { summary, totalCents } = await summarizeOrderItems(order.id);
+  const card = buildPoApprovalCard({
+    orderId: order.id,
+    poReference: order.poReference || order.orderNumber,
+    poKind: order.poKind,
+    accountName: order.accountName,
+    supplierName,
+    itemSummary: summary,
+    totalNzd: totalCents / 100,
+    driveFolderUrl: order.driveFolderUrl,
+    pdfUrl: null,
+    // PDF is generated at dispatch time, not at card-post time
+    parentSampleRef
+  });
+  return sendTelegramCard(card);
+}
+async function ensureBulkPoFromSample(sampleOrderId, userId) {
+  const sample = await storage.getOrderWithDetails(sampleOrderId);
+  if (!sample) return { error: "Sample order not found", status: 404 };
+  if (sample.order.poKind !== "sample") {
+    return { error: `Source order is poKind=${sample.order.poKind}, expected sample`, status: 400 };
+  }
+  const existing = await db.select().from(orders).where(eq9(orders.parentOrderId, sample.order.id));
+  const priorBulk = existing.find((o) => o.poKind === "bulk");
+  if (priorBulk) return { bulk: priorBulk, created: false };
+  const {
+    id: _id,
+    orderNumber: _n,
+    createdAt: _c2,
+    updatedAt: _u,
+    paidAt: _p,
+    poReference: _po,
+    poKind: _pk,
+    parentOrderId: _pid,
+    poDispatchedAt: _pd,
+    poHeldAt: _ph,
+    poHoldReason: _phr,
+    poHeldBy: _phb,
+    sampleApprovedByClientAt: _sa,
+    depositPaidAt: _dp,
+    driveFolderId: _df,
+    driveFolderUrl: _du,
+    driveFolderName: _dn,
+    artworkApproved: _aa,
+    artworkApprovedBy: _ab,
+    artworkApprovedAt: _at,
+    ...orderCopy
+  } = sample.order;
+  const newPoReference = await buildPoReference();
+  const clientForSlug = sample.order.accountName || sample.order.customerName || null;
+  const newOrder = await withPoNumberRetry(
+    clientForSlug,
+    async (orderNumber) => storage.createOrder({
+      ...orderCopy,
+      orderNumber,
+      poReference: newPoReference,
+      poKind: "bulk",
+      parentOrderId: sample.order.id
+      // ghlOpportunityId, assignedSupplierId, pipelineStage are intentionally
+      // copied through — bulk inherits the same supplier and GHL deal.
+    })
+  );
+  const stashedBulk = sample.order.bulkSizeBreakdown;
+  const bulkItemIdBySampleItemId = /* @__PURE__ */ new Map();
+  let bulkSubtotal = 0;
+  for (const it of sample.items) {
+    const { id: sampleItemId, orderId: _oid, ...itemCopy } = it;
+    const sizes = stashedBulk?.[sampleItemId];
+    const totalQty = sizes ? Object.values(sizes).reduce((a, b) => a + b, 0) : 0;
+    const newItem = await storage.createOrderItem({
+      ...itemCopy,
+      orderId: newOrder.id,
+      quantity: totalQty
+      // 0 if no stash → admin fills in; else real total
+    });
+    bulkItemIdBySampleItemId.set(sampleItemId, newItem.id);
+    bulkSubtotal += (it.unitAmount || 0) * totalQty;
+    if (sizes) {
+      for (const [size, qty] of Object.entries(sizes)) {
+        if (qty <= 0) continue;
+        await db.insert(orderSizeBreakdowns).values({
+          orderItemId: newItem.id,
+          orderId: newOrder.id,
+          size,
+          quantity: qty
+        });
+      }
+    }
+  }
+  if (stashedBulk) {
+    await db.update(orders).set({ subtotal: bulkSubtotal, total: bulkSubtotal, updatedAt: /* @__PURE__ */ new Date() }).where(eq9(orders.id, newOrder.id));
+  }
+  await db.insert(orderActivity).values({
+    orderId: newOrder.id,
+    userId,
+    action: "bulk_po_duplicated_from_sample",
+    details: {
+      sampleOrderId: sample.order.id,
+      samplePoReference: sample.order.poReference,
+      populatedFromStash: Boolean(stashedBulk)
+    }
+  });
+  return { bulk: newOrder, created: true };
+}
+router5.post("/orders/:id/raise-sample-po", async (req, res) => {
+  try {
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.poKind === "bulk") {
+      return res.status(400).json({ error: "Order is already a bulk PO \u2014 can't downgrade to sample" });
+    }
+    if (order.poDispatchedAt) {
+      return res.status(400).json({ error: "PO already dispatched \u2014 raise a new sample PO if needed" });
+    }
+    await db.update(orders).set({ poKind: "sample", poHeldAt: null, poHoldReason: null, poHeldBy: null, updatedAt: /* @__PURE__ */ new Date() }).where(eq9(orders.id, order.id));
+    const items = await storage.getOrderItems(order.id);
+    for (const it of items) {
+      if (it.quantity !== 1) {
+        await db.update(orderItems).set({ quantity: 1 }).where(eq9(orderItems.id, it.id));
+      }
+    }
+    const subtotal = items.reduce((s, it) => s + (it.unitAmount || 0) * 1, 0);
+    await db.update(orders).set({ subtotal, total: subtotal, updatedAt: /* @__PURE__ */ new Date() }).where(eq9(orders.id, order.id));
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId: req.user?.userId,
+      action: "sample_po_raised",
+      details: { previousKind: order.poKind, itemCount: items.length }
+    });
+    const cardResult = await postApprovalCardForOrder(order.id);
+    res.json({
+      ok: true,
+      poKind: "sample",
+      itemCount: items.length,
+      cardPosted: cardResult.ok,
+      cardReason: cardResult.reason,
+      cardMessageId: cardResult.messageId
+    });
+  } catch (err) {
+    console.error("Admin raise-sample-po error:", err);
+    res.status(500).json({ error: "Failed to raise sample PO" });
+  }
+});
+router5.post("/orders/:id/raise-bulk-po", async (req, res) => {
+  try {
+    const result = await ensureBulkPoFromSample(req.params.id, req.user?.userId);
+    if ("error" in result) return res.status(result.status).json({ error: result.error });
+    const cardResult = await postApprovalCardForOrder(result.bulk.id);
+    res.json({
+      ok: true,
+      bulkOrderId: result.bulk.id,
+      bulkPoReference: result.bulk.poReference,
+      created: result.created,
+      cardPosted: cardResult.ok,
+      cardReason: cardResult.reason,
+      cardMessageId: cardResult.messageId
+    });
+  } catch (err) {
+    console.error("Admin raise-bulk-po error:", err);
+    res.status(500).json({ error: "Failed to raise bulk PO" });
+  }
+});
+var poDecisionSchema = z6.object({
+  action: z6.enum(["send", "hold", "edit"]),
+  reason: z6.string().optional()
+});
+router5.post("/orders/:id/po-decision", async (req, res) => {
+  try {
+    const { action, reason } = poDecisionSchema.parse(req.body ?? {});
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (action === "send") {
+      const result = await dispatchPoToSupplier(order.id, { userId: req.user?.userId });
+      if (!result.ok) return res.status(result.status).json({ error: result.error });
+      const { ok: _ok, ...rest } = result;
+      return res.json({ ok: true, action: "send", ...rest });
+    }
+    if (action === "hold") {
+      await db.update(orders).set({
+        poHeldAt: /* @__PURE__ */ new Date(),
+        poHoldReason: reason || null,
+        poHeldBy: req.user?.userId || null,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq9(orders.id, order.id));
+      await db.insert(orderActivity).values({
+        orderId: order.id,
+        userId: req.user?.userId,
+        action: "po_held",
+        details: { reason: reason || null, poKind: order.poKind }
+      });
+      return res.json({ ok: true, action: "hold", heldAt: (/* @__PURE__ */ new Date()).toISOString() });
+    }
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId: req.user?.userId,
+      action: "po_edit_requested",
+      details: { poKind: order.poKind }
+    });
+    res.json({ ok: true, action: "edit", note: "Edit in admin UI, then re-tap Send on the card." });
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin po-decision error:", err);
+    res.status(500).json({ error: "Failed to record PO decision" });
+  }
+});
+router5.post("/orders/:id/mark-sample-approved-by-client", async (req, res) => {
+  try {
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.poKind !== "sample") {
+      return res.status(400).json({ error: `Order poKind=${order.poKind}, expected sample` });
+    }
+    if (!order.sampleApprovedByClientAt) {
+      await db.update(orders).set({ sampleApprovedByClientAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq9(orders.id, order.id));
+      await db.insert(orderActivity).values({
+        orderId: order.id,
+        userId: req.user?.userId,
+        action: "sample_approved_by_client",
+        details: {}
+      });
+    }
+    let bulkResult = null;
+    if (order.depositPaidAt) {
+      const bulk = await ensureBulkPoFromSample(order.id, req.user?.userId);
+      if (!("error" in bulk)) {
+        const card = await postApprovalCardForOrder(bulk.bulk.id);
+        bulkResult = { bulkOrderId: bulk.bulk.id, created: bulk.created, cardPosted: card.ok };
+      }
+    }
+    res.json({ ok: true, sampleApproved: true, bulkTriggered: !!bulkResult, bulk: bulkResult });
+  } catch (err) {
+    console.error("Admin mark-sample-approved error:", err);
+    res.status(500).json({ error: "Failed to mark sample approved" });
+  }
+});
+router5.post("/orders/:id/mark-deposit-paid", async (req, res) => {
+  try {
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (!order.depositPaidAt) {
+      await db.update(orders).set({ depositPaidAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq9(orders.id, order.id));
+      await db.insert(orderActivity).values({
+        orderId: order.id,
+        userId: req.user?.userId,
+        action: "deposit_paid",
+        details: {}
+      });
+    }
+    let bulkResult = null;
+    if (order.poKind === "sample" && order.sampleApprovedByClientAt) {
+      const bulk = await ensureBulkPoFromSample(order.id, req.user?.userId);
+      if (!("error" in bulk)) {
+        const card = await postApprovalCardForOrder(bulk.bulk.id);
+        bulkResult = { bulkOrderId: bulk.bulk.id, created: bulk.created, cardPosted: card.ok };
+      }
+    }
+    res.json({ ok: true, depositPaid: true, bulkTriggered: !!bulkResult, bulk: bulkResult });
+  } catch (err) {
+    console.error("Admin mark-deposit-paid error:", err);
+    res.status(500).json({ error: "Failed to mark deposit paid" });
   }
 });
 var adminUploadDesignSchema = z6.object({
@@ -96303,7 +97878,7 @@ var updateFolderSchema = z6.object({
 router5.patch("/designs/:id/folder", async (req, res) => {
   try {
     const { folder: folder5 } = updateFolderSchema.parse(req.body);
-    const [updated] = await db.update(designFiles).set({ folder: folder5 }).where(eq4(designFiles.id, req.params.id)).returning();
+    const [updated] = await db.update(designFiles).set({ folder: folder5 }).where(eq9(designFiles.id, req.params.id)).returning();
     if (!updated) return res.status(404).json({ error: "Design file not found" });
     res.json({ ok: true, folder: updated.folder });
   } catch (err) {
@@ -96440,6 +98015,364 @@ router5.post("/reports/club-drop-summary", async (req, res) => {
   } catch (err) {
     console.error("Drop summary error:", err);
     res.status(500).json({ error: "Failed to generate drop summary", message: String(err?.message || err) });
+  }
+});
+async function buildPoFromClosedDrop(clubId, userId) {
+  if (!isShopifyAdminConfigured()) {
+    return { error: "Shopify Admin API not configured", status: 503 };
+  }
+  const [club] = await db.select().from(clubAccounts).where(eq9(clubAccounts.id, clubId)).limit(1);
+  if (!club) return { error: "Club not found", status: 404 };
+  if (!club.shopifyOrderTag) {
+    return { error: "Club has no shopifyOrderTag \u2014 set it before building PO", status: 400 };
+  }
+  if (!club.supporterCollectionHandle) {
+    return { error: "Club has no supporterCollectionHandle \u2014 set it before building PO", status: 400 };
+  }
+  if (club.supporterDropClosedAt) {
+    const existing = await db.select().from(orders).where(and4(
+      eq9(orders.poKind, "sample"),
+      eq9(orders.sourceCollectionHandle, club.supporterCollectionHandle)
+    )).limit(1);
+    if (existing.length) {
+      return {
+        ok: true,
+        sampleOrderId: existing[0].id,
+        poReference: existing[0].poReference || existing[0].orderNumber,
+        cardPosted: false,
+        cardReason: "drop_already_closed",
+        productsAdded: 0,
+        totalSupporterOrders: 0,
+        totalUnits: 0,
+        skippedLineItems: [],
+        reused: true
+      };
+    }
+  }
+  const supporterOrders = await fetchSupporterOrdersByTag(club.shopifyOrderTag);
+  if (!supporterOrders.length) {
+    return { error: "No supporter orders found for this club's tag", status: 400 };
+  }
+  const products = await fetchProductsInCollection(club.supporterCollectionHandle);
+  const productImageByTitle = /* @__PURE__ */ new Map();
+  for (const p of products) {
+    if (p.imageUrl) productImageByTitle.set(p.title.toLowerCase(), p.imageUrl);
+  }
+  const byCanonical = /* @__PURE__ */ new Map();
+  const skipped = [];
+  let totalUnits = 0;
+  for (const o of supporterOrders) {
+    for (const line of o.lines) {
+      const match = matchSupporterProduct(line.title);
+      if (!match) {
+        skipped.push(line.title);
+        continue;
+      }
+      let agg = byCanonical.get(match.productId);
+      if (!agg) {
+        agg = { canonical: match, sizeTotals: /* @__PURE__ */ new Map(), titles: /* @__PURE__ */ new Set() };
+        byCanonical.set(match.productId, agg);
+      }
+      agg.titles.add(line.title);
+      const size = extractSizeFromVariant(line.variantTitle, match.productId);
+      agg.sizeTotals.set(size, (agg.sizeTotals.get(size) || 0) + line.quantity);
+      totalUnits += line.quantity;
+    }
+  }
+  if (byCanonical.size === 0) {
+    return { error: "No supporter range products matched in any order line", status: 400 };
+  }
+  const poReference = await buildPoReference();
+  const dueDate = new Date(Date.now() + 35 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
+  const order = await withPoNumberRetry(
+    club.clubName,
+    async (orderNumber) => storage.createOrder({
+      orderNumber,
+      storeSlug: "sideline",
+      orderType: "supporter-drop",
+      status: "processing",
+      subtotal: 0,
+      total: 0,
+      currency: "nzd",
+      customerEmail: club.email,
+      customerName: club.clubName,
+      poReference,
+      poKind: "sample",
+      accountName: club.clubName,
+      isRepeatOrder: false,
+      dueDate,
+      sourceCollectionHandle: club.supporterCollectionHandle
+    })
+  );
+  const bulkSizeBreakdown = {};
+  let productsAdded = 0;
+  for (const entry of Array.from(byCanonical.entries())) {
+    const [canonicalId, agg] = entry;
+    const product = agg.canonical.product;
+    const displayTitle = Array.from(agg.titles)[0] || product.name;
+    const imageUrl = productImageByTitle.get(displayTitle.toLowerCase()) || null;
+    const chartType = suggestSizeChart(canonicalId);
+    const isHeadwear = product.category === "Headwear";
+    const item = await storage.createOrderItem({
+      orderId: order.id,
+      productId: canonicalId,
+      priceId: "supporter-drop",
+      productName: displayTitle,
+      productImage: imageUrl,
+      quantity: 1,
+      // sample run
+      unitAmount: 0,
+      currency: "nzd",
+      productType: canonicalId,
+      material: product.defaultMaterial,
+      sizeChartType: chartType,
+      mockupImages: imageUrl ? [{ url: imageUrl, label: "Shopify product image" }] : null
+    });
+    await db.insert(orderSizeBreakdowns).values({
+      orderItemId: item.id,
+      orderId: order.id,
+      size: isHeadwear ? "One Size" : "Sample",
+      quantity: 1
+    });
+    bulkSizeBreakdown[item.id] = Object.fromEntries(agg.sizeTotals);
+    productsAdded++;
+  }
+  await db.update(orders).set({ bulkSizeBreakdown, updatedAt: /* @__PURE__ */ new Date() }).where(eq9(orders.id, order.id));
+  await db.update(clubAccounts).set({ supporterDropClosedAt: /* @__PURE__ */ new Date(), supporterCollectionPublished: false, updatedAt: /* @__PURE__ */ new Date() }).where(eq9(clubAccounts.id, club.id));
+  await db.insert(orderActivity).values({
+    orderId: order.id,
+    userId,
+    action: "closed_drop_po_built",
+    details: {
+      collection: club.supporterCollectionHandle,
+      tag: club.shopifyOrderTag,
+      supporterOrderCount: supporterOrders.length,
+      totalUnits,
+      productsAdded,
+      skippedCount: skipped.length
+    }
+  });
+  const cardResult = await postApprovalCardForOrder(order.id);
+  return {
+    ok: true,
+    sampleOrderId: order.id,
+    poReference: order.poReference || order.orderNumber,
+    cardPosted: cardResult.ok,
+    cardReason: cardResult.reason,
+    productsAdded,
+    totalSupporterOrders: supporterOrders.length,
+    totalUnits,
+    skippedLineItems: Array.from(new Set(skipped)),
+    reused: false
+  };
+}
+router5.get("/clubs", async (_req, res) => {
+  try {
+    const rows = await db.select({
+      id: clubAccounts.id,
+      email: clubAccounts.email,
+      clubName: clubAccounts.clubName,
+      shopifyOrderTag: clubAccounts.shopifyOrderTag,
+      supporterCollectionHandle: clubAccounts.supporterCollectionHandle,
+      supporterCollectionPublished: clubAccounts.supporterCollectionPublished,
+      supporterDropClosedAt: clubAccounts.supporterDropClosedAt,
+      profitShareTierBps: clubAccounts.profitShareTierBps
+    }).from(clubAccounts);
+    res.json({ ok: true, clubs: rows });
+  } catch (err) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+var patchClubSchema = z6.object({
+  supporterCollectionHandle: z6.string().optional(),
+  clearDropClosedAt: z6.boolean().optional()
+});
+router5.patch("/clubs/:id", async (req, res) => {
+  try {
+    const data = patchClubSchema.parse(req.body);
+    const updates = { updatedAt: /* @__PURE__ */ new Date() };
+    if (data.supporterCollectionHandle !== void 0) {
+      updates.supporterCollectionHandle = data.supporterCollectionHandle || null;
+    }
+    if (data.clearDropClosedAt) {
+      updates.supporterDropClosedAt = null;
+      updates.supporterCollectionPublished = null;
+    }
+    await db.update(clubAccounts).set(updates).where(eq9(clubAccounts.id, req.params.id));
+    const [club] = await db.select().from(clubAccounts).where(eq9(clubAccounts.id, req.params.id)).limit(1);
+    res.json({ ok: true, club });
+  } catch (err) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+router5.post("/clubs/:id/build-po-from-closed-drop", async (req, res) => {
+  try {
+    const result = await buildPoFromClosedDrop(req.params.id, req.user?.userId);
+    if ("error" in result) return res.status(result.status).json({ error: result.error });
+    res.json(result);
+  } catch (err) {
+    console.error("[closed-drop-po] build error:", err);
+    res.status(500).json({ error: "Failed to build PO from closed drop", message: String(err?.message || err) });
+  }
+});
+router5.post("/clubs/:id/build-po-from-closed-drop-service", async (req, res) => {
+  const expected = process.env.SIDELINE_SERVICE_TOKEN || process.env.SERVICE_TOKEN;
+  if (!expected || req.header("X-Service-Token") !== expected) {
+    return res.status(401).json({ error: "Invalid service token" });
+  }
+  try {
+    const result = await buildPoFromClosedDrop(req.params.id, void 0);
+    if ("error" in result) return res.status(result.status).json({ error: result.error });
+    res.json(result);
+  } catch (err) {
+    console.error("[closed-drop-po] service build error:", err);
+    res.status(500).json({ error: "Failed to build PO from closed drop", message: String(err?.message || err) });
+  }
+});
+router5.get("/clubs/:id/collection-status", async (req, res) => {
+  try {
+    const [club] = await db.select().from(clubAccounts).where(eq9(clubAccounts.id, req.params.id)).limit(1);
+    if (!club) return res.status(404).json({ error: "Club not found" });
+    if (!club.supporterCollectionHandle) {
+      return res.json({ ok: true, configured: false });
+    }
+    const status = await fetchCollectionStatus(club.supporterCollectionHandle);
+    if (!status) return res.json({ ok: true, configured: true, found: false });
+    res.json({
+      ok: true,
+      configured: true,
+      found: true,
+      publishedNow: status.publishedOnOnlineStore,
+      publishedLastSeen: club.supporterCollectionPublished,
+      transitionedToClosed: club.supporterCollectionPublished === true && status.publishedOnOnlineStore === false,
+      dropClosedAt: club.supporterDropClosedAt,
+      productCount: status.productCount
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+var nameAssetSchema = z6.object({
+  assetUrl: z6.string().url(),
+  context: z6.object({
+    orderId: z6.string().optional(),
+    clubAccountId: z6.string().optional(),
+    clubName: z6.string().max(80).optional(),
+    productHint: z6.string().max(80).optional(),
+    side: z6.enum(["front", "back"]).optional()
+  }).default({})
+});
+function describeError(err) {
+  if (err?.errors && Array.isArray(err.errors) && err.errors.length) {
+    const first2 = err.errors[0];
+    return `${err.name || "Error"}: ${first2?.message || first2?.code || String(first2)}`;
+  }
+  return String(err?.message || err);
+}
+router5.post("/ai/name-asset", async (req, res) => {
+  try {
+    const body = nameAssetSchema.parse(req.body ?? {});
+    const userId = req.user?.userId;
+    const result = await runTask({
+      taskName: "name-asset",
+      input: { assetUrl: body.assetUrl, context: body.context, userId }
+    });
+    res.json(result);
+  } catch (err) {
+    if (err.name === "ZodError") {
+      return res.status(400).json({ error: "Invalid data", details: err.errors });
+    }
+    console.error("Admin ai/name-asset error:", err);
+    res.status(500).json({ error: describeError(err) });
+  }
+});
+var chatSchema = z6.object({
+  message: z6.string().min(1).max(8e3),
+  conversationId: z6.string().optional(),
+  scopeKind: z6.enum(["order", "club", "global"]).optional(),
+  scopeId: z6.string().optional()
+});
+router5.post("/ai/chat", async (req, res) => {
+  try {
+    const body = chatSchema.parse(req.body ?? {});
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: "no_user" });
+    let conversationId = body.conversationId;
+    if (!conversationId) {
+      const conv = await getOrCreateConversation({
+        userId,
+        channel: "web",
+        scopeKind: body.scopeKind || "global",
+        scopeId: body.scopeId
+      });
+      conversationId = conv.id;
+    }
+    const result = await runChatTurn({ conversationId, userId, message: body.message });
+    res.json(result);
+  } catch (err) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin ai/chat error:", err);
+    res.status(500).json({ error: describeError(err) });
+  }
+});
+router5.get("/ai/conversations", async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: "no_user" });
+    const list = await listConversations(userId);
+    res.json({ conversations: list });
+  } catch (err) {
+    res.status(500).json({ error: describeError(err) });
+  }
+});
+router5.get("/ai/conversations/:id/messages", async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: "no_user" });
+    const { ezraConversations: ezraConversations2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+    const { eq: eqOp, and: andOp } = await import("drizzle-orm");
+    const [conv] = await db.select().from(ezraConversations2).where(andOp(eqOp(ezraConversations2.id, req.params.id), eqOp(ezraConversations2.userId, userId))).limit(1);
+    if (!conv) {
+      if (req.user?.userId?.startsWith("service:")) {
+      } else {
+        return res.status(404).json({ error: "not_found" });
+      }
+    }
+    const messages = await listMessages(req.params.id);
+    res.json({ conversation: conv, messages });
+  } catch (err) {
+    res.status(500).json({ error: describeError(err) });
+  }
+});
+router5.get("/ai/tools", async (_req, res) => {
+  res.json({ tools: EZRA_TOOLS_AVAILABLE });
+});
+router5.get("/ai/lookups", async (_req, res) => {
+  try {
+    const { desc: desc6 } = await import("drizzle-orm");
+    const clubs = await db.select({ id: clubAccounts.id, name: clubAccounts.clubName, tag: clubAccounts.shopifyOrderTag }).from(clubAccounts).orderBy(clubAccounts.clubName);
+    const products = SIDELINE_PRODUCTS.map((p) => ({ id: p.id, name: p.name, category: p.category }));
+    res.json({ clubs, products });
+  } catch (err) {
+    console.error("Admin ai/lookups error:", err);
+    res.status(500).json({ error: describeError(err) });
+  }
+});
+var updateCanonicalNameSchema = z6.object({
+  canonicalName: z6.string().min(1).max(200)
+});
+router5.patch("/designs/:id/canonical-name", async (req, res) => {
+  try {
+    const { canonicalName } = updateCanonicalNameSchema.parse(req.body ?? {});
+    const [updated] = await db.update(designFiles).set({ canonicalName }).where(eq9(designFiles.id, req.params.id)).returning();
+    if (!updated) return res.status(404).json({ error: "Design file not found" });
+    res.json({ ok: true, canonicalName: updated.canonicalName });
+  } catch (err) {
+    if (err.name === "ZodError") {
+      return res.status(400).json({ error: "Invalid data", details: err.errors });
+    }
+    console.error("Admin update canonical-name error:", err);
+    res.status(500).json({ error: "Failed to update canonical name" });
   }
 });
 var admin_default = router5;
@@ -96656,10 +98589,11 @@ router6.patch("/profile", async (req, res) => {
 var customer_default = router6;
 
 // server/routes/uploads.ts
-import { Router as Router8 } from "express";
+import { Router as Router8, json } from "express";
 import { handleUpload } from "@vercel/blob/client";
 var router7 = Router8();
 router7.use(requireAuth);
+var largeJson = json({ limit: "60mb" });
 router7.post("/token", async (req, res) => {
   try {
     const body = req.body;
@@ -96748,6 +98682,35 @@ router7.post("/from-url", async (req, res) => {
     res.status(500).json({ error: err.message || "Upload from URL failed" });
   }
 });
+router7.post("/blob", largeJson, async (req, res) => {
+  try {
+    const { filename, contentType, dataBase64 } = req.body;
+    if (!filename || !contentType || !dataBase64) {
+      return res.status(400).json({ error: "filename, contentType, and dataBase64 are required" });
+    }
+    const allowed = ["image/png", "image/jpeg", "image/svg+xml", "image/webp", "image/gif"];
+    if (!allowed.includes(contentType)) {
+      return res.status(400).json({ error: `Unsupported content type: ${contentType}` });
+    }
+    const buffer = Buffer.from(dataBase64, "base64");
+    if (buffer.byteLength > 50 * 1024 * 1024) {
+      return res.status(400).json({ error: "Image > 50MB" });
+    }
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!blobToken) return res.status(500).json({ error: "BLOB_READ_WRITE_TOKEN missing" });
+    const { put } = await import("@vercel/blob");
+    const blob = await put(filename, buffer, {
+      access: "public",
+      contentType,
+      token: blobToken,
+      addRandomSuffix: true
+    });
+    res.json({ url: blob.url });
+  } catch (err) {
+    console.error("Upload blob error:", err);
+    res.status(500).json({ error: err.message || "Upload failed" });
+  }
+});
 var uploads_default = router7;
 
 // server/routes/mockups.ts
@@ -96755,12 +98718,12 @@ init_db();
 init_schema();
 import { Router as Router9 } from "express";
 import { z as z8 } from "zod";
-import { eq as eq6, desc as desc2, sql as sql4, and as and2 } from "drizzle-orm";
+import { eq as eq11, desc as desc4, sql as sql4, and as and5 } from "drizzle-orm";
 
 // server/mockup/orchestrator.ts
 init_db();
 init_schema();
-import { eq as eq5 } from "drizzle-orm";
+import { eq as eq10 } from "drizzle-orm";
 
 // server/mockup/gemini.ts
 var SPORT_TEMPLATES = {
@@ -96832,28 +98795,30 @@ function buildPrompt(opts) {
   const sport = opts.sport.toLowerCase();
   const template = SPORT_TEMPLATES[sport] || SPORT_TEMPLATES.rugby;
   const direction = DESIGN_DIRECTIONS[opts.designNumber - 1] || DESIGN_DIRECTIONS[0];
-  const colorDesc = [
-    `primary color ${opts.primaryColor}`,
-    opts.secondaryColor ? `secondary color ${opts.secondaryColor}` : null,
-    opts.accentColor ? `accent color ${opts.accentColor}` : null
-  ].filter(Boolean).join(", ");
-  return `Create a professional product mockup photograph of a custom ${template.garments} for "${opts.teamName}".
+  const colorBody = opts.primaryColor;
+  const colorPanels = opts.secondaryColor || opts.primaryColor;
+  const colorTrim = opts.accentColor || opts.secondaryColor || opts.primaryColor;
+  const fabricFinish = sport === "netball" || sport === "basketball" || sport === "volleyball" ? "performance gloss with subtle sheen" : sport === "cricket" ? "matte micro-pique" : "matte performance interlock";
+  return `Generate a high-resolution photorealistic 3D product mockup of a ${template.garments} rendered as a flat lay photorealistic render on a pure white background.
 
-Design style: ${direction.style}.
-Sport aesthetic: ${template.style}.
-Design details: ${template.details}.
-Team colors: ${colorDesc}.
-${opts.logoUrl ? "Include a placeholder area on the chest for the team logo/crest." : ""}
+The garment should be:
+- Laid horizontally on a flat surface (flat lay photography)
+- Studio photography quality with real fabric texture and material weight visible
+- Fully unfolded and symmetrical, showing the complete front panel
+- All seams, panels, and construction lines clearly visible
+- Zero logos, zero text, zero branding
+- Zero wrinkles or distortion \u2014 clean and press-ready
 
-The mockup should be:
-- Photographed on a clean white/light grey studio background
-- Laid flat or on an invisible mannequin, showing front view
-- Professional product photography quality, sharp focus
-- The uniform should look like a real manufactured garment, not a drawing
-- High contrast, vivid colors matching the exact hex values provided
-- No human models, no faces, just the garment mockup
+Colourway: ${colorBody} body / ${colorPanels} panels / ${colorTrim} trim only
 
-Style: ${direction.name} \u2014 ${direction.style}`;
+Panel layout: ${direction.style}
+
+Fabric finish: ${fabricFinish}
+Style: ${template.style} \u2014 ${template.details}
+Fit: athletic
+
+Lighting: even studio lighting, minimal shadow, no gradients
+Render quality: ultra high resolution, tech pack ready`;
 }
 async function generateMockupImage(opts) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -97019,9 +98984,9 @@ async function uploadToBlob(buffer, filename, contentType) {
 }
 async function runMockupPipeline(requestId) {
   const startTime = Date.now();
-  const [request3] = await db.select().from(mockupRequests).where(eq5(mockupRequests.id, requestId));
+  const [request3] = await db.select().from(mockupRequests).where(eq10(mockupRequests.id, requestId));
   if (!request3) throw new Error(`Mockup request ${requestId} not found`);
-  await db.update(mockupRequests).set({ status: "generating", generationStartedAt: /* @__PURE__ */ new Date() }).where(eq5(mockupRequests.id, requestId));
+  await db.update(mockupRequests).set({ status: "generating", generationStartedAt: /* @__PURE__ */ new Date() }).where(eq10(mockupRequests.id, requestId));
   const designUrls = [];
   const imageBuffers = [];
   try {
@@ -97046,13 +99011,13 @@ async function runMockupPipeline(requestId) {
         designNumber
       };
       try {
-        await db.update(mockupDesigns).set({ status: "generating" }).where(eq5(mockupDesigns.requestId, requestId));
+        await db.update(mockupDesigns).set({ status: "generating" }).where(eq10(mockupDesigns.requestId, requestId));
         const result = await generateMockupImage(opts);
         const imageBuffer = Buffer.from(result.imageBase64, "base64");
         const ext = result.mimeType.includes("png") ? "png" : "jpg";
         const filename = `mockups/${requestId}/design_${designNumber}.${ext}`;
         const imageUrl = await uploadToBlob(imageBuffer, filename, result.mimeType);
-        const allDesigns = await db.select().from(mockupDesigns).where(eq5(mockupDesigns.requestId, requestId));
+        const allDesigns = await db.select().from(mockupDesigns).where(eq10(mockupDesigns.requestId, requestId));
         const design = allDesigns.find((d) => d.designNumber === designNumber);
         if (design) {
           await db.update(mockupDesigns).set({
@@ -97060,15 +99025,15 @@ async function runMockupPipeline(requestId) {
             imageUrl,
             status: "completed",
             generationTimeMs: result.generationTimeMs
-          }).where(eq5(mockupDesigns.id, design.id));
+          }).where(eq10(mockupDesigns.id, design.id));
         }
         return { designNumber, imageUrl, imageBuffer };
       } catch (err) {
         console.error(`[Mockup] Design ${designNumber} failed:`, err.message);
-        const allDesigns = await db.select().from(mockupDesigns).where(eq5(mockupDesigns.requestId, requestId));
+        const allDesigns = await db.select().from(mockupDesigns).where(eq10(mockupDesigns.requestId, requestId));
         const design = allDesigns.find((d) => d.designNumber === designNumber);
         if (design) {
-          await db.update(mockupDesigns).set({ status: "failed", errorMessage: err.message }).where(eq5(mockupDesigns.id, design.id));
+          await db.update(mockupDesigns).set({ status: "failed", errorMessage: err.message }).where(eq10(mockupDesigns.id, design.id));
         }
         return null;
       }
@@ -97082,7 +99047,7 @@ async function runMockupPipeline(requestId) {
       designUrls.push(d.imageUrl);
       imageBuffers.push(d.imageBuffer);
     }
-    await db.update(mockupRequests).set({ status: "designs_ready" }).where(eq5(mockupRequests.id, requestId));
+    await db.update(mockupRequests).set({ status: "designs_ready" }).where(eq10(mockupRequests.id, requestId));
     console.log(`[Mockup] ${designResults.length} designs generated for ${request3.teamName}`);
     let audioBuffer = null;
     let voiceoverUrl = null;
@@ -97100,7 +99065,7 @@ async function runMockupPipeline(requestId) {
           `mockups/${requestId}/voiceover.mp3`,
           "audio/mpeg"
         );
-        await db.update(mockupRequests).set({ voiceoverUrl }).where(eq5(mockupRequests.id, requestId));
+        await db.update(mockupRequests).set({ voiceoverUrl }).where(eq10(mockupRequests.id, requestId));
         console.log(`[Mockup] Voiceover generated`);
       }
     } catch (err) {
@@ -97121,7 +99086,7 @@ async function runMockupPipeline(requestId) {
           `mockups/${requestId}/presentation.mp4`,
           "video/mp4"
         );
-        await db.update(mockupRequests).set({ videoUrl, status: "video_ready" }).where(eq5(mockupRequests.id, requestId));
+        await db.update(mockupRequests).set({ videoUrl, status: "video_ready" }).where(eq10(mockupRequests.id, requestId));
         console.log(`[Mockup] Video created (${videoResult.durationSeconds}s)`);
       }
     } catch (err) {
@@ -97170,7 +99135,7 @@ www.sidelinenz.com`,
           </div>`
       });
       emailSent = true;
-      await db.update(mockupRequests).set({ status: "sent", emailSentAt: /* @__PURE__ */ new Date() }).where(eq5(mockupRequests.id, requestId));
+      await db.update(mockupRequests).set({ status: "sent", emailSentAt: /* @__PURE__ */ new Date() }).where(eq10(mockupRequests.id, requestId));
       console.log(`[Mockup] Email sent to ${request3.contactEmail}`);
     } catch (err) {
       console.error("[Mockup] Email send failed:", err.message);
@@ -97178,7 +99143,7 @@ www.sidelinenz.com`,
     try {
       await syncGhlTag(request3.contactEmail, "Mockup Generated");
       await syncGhlTag(request3.contactEmail, `Sport: ${request3.sport}`);
-      await db.update(mockupRequests).set({ ghlTagsSynced: true }).where(eq5(mockupRequests.id, requestId));
+      await db.update(mockupRequests).set({ ghlTagsSynced: true }).where(eq10(mockupRequests.id, requestId));
     } catch (err) {
       console.error("[Mockup] GHL sync failed:", err.message);
     }
@@ -97193,13 +99158,13 @@ www.sidelinenz.com`,
         designCount: designResults.length
       });
       if (taskId) {
-        await db.update(mockupRequests).set({ clickupTaskId: taskId }).where(eq5(mockupRequests.id, requestId));
+        await db.update(mockupRequests).set({ clickupTaskId: taskId }).where(eq10(mockupRequests.id, requestId));
       }
     } catch (err) {
       console.error("[Mockup] ClickUp task failed:", err.message);
     }
     const totalTimeMs = Date.now() - startTime;
-    await db.update(mockupRequests).set({ generationCompletedAt: /* @__PURE__ */ new Date() }).where(eq5(mockupRequests.id, requestId));
+    await db.update(mockupRequests).set({ generationCompletedAt: /* @__PURE__ */ new Date() }).where(eq10(mockupRequests.id, requestId));
     console.log(`[Mockup] Pipeline complete for ${request3.teamName} in ${(totalTimeMs / 1e3).toFixed(1)}s`);
     return {
       requestId,
@@ -97213,7 +99178,7 @@ www.sidelinenz.com`,
       status: "failed",
       errorMessage: err.message,
       generationCompletedAt: /* @__PURE__ */ new Date()
-    }).where(eq5(mockupRequests.id, requestId));
+    }).where(eq10(mockupRequests.id, requestId));
     console.error(`[Mockup] Pipeline failed for ${request3.teamName}:`, err.message);
     throw err;
   }
@@ -97267,11 +99232,11 @@ publicRouter.post("/request", async (req, res) => {
 });
 publicRouter.get("/:id/status", async (req, res) => {
   try {
-    const [request3] = await db.select().from(mockupRequests).where(eq6(mockupRequests.id, req.params.id));
+    const [request3] = await db.select().from(mockupRequests).where(eq11(mockupRequests.id, req.params.id));
     if (!request3) {
       return res.status(404).json({ error: "Mockup request not found" });
     }
-    const designs = await db.select().from(mockupDesigns).where(eq6(mockupDesigns.requestId, request3.id)).orderBy(mockupDesigns.designNumber);
+    const designs = await db.select().from(mockupDesigns).where(eq11(mockupDesigns.requestId, request3.id)).orderBy(mockupDesigns.designNumber);
     res.json({
       id: request3.id,
       status: request3.status,
@@ -97300,18 +99265,18 @@ adminMockupRouter.get("/", async (req, res) => {
     const offset = (page - 1) * limit;
     const statusFilter = req.query.status;
     const search = req.query.search;
-    let query = db.select().from(mockupRequests).orderBy(desc2(mockupRequests.createdAt));
+    let query = db.select().from(mockupRequests).orderBy(desc4(mockupRequests.createdAt));
     const conditions = [];
     if (statusFilter) {
-      conditions.push(eq6(mockupRequests.status, statusFilter));
+      conditions.push(eq11(mockupRequests.status, statusFilter));
     }
     if (search) {
       conditions.push(
         sql4`(${mockupRequests.teamName} ILIKE ${"%" + search + "%"} OR ${mockupRequests.contactEmail} ILIKE ${"%" + search + "%"} OR ${mockupRequests.contactName} ILIKE ${"%" + search + "%"})`
       );
     }
-    const whereClause = conditions.length > 0 ? and2(...conditions) : void 0;
-    const requests2 = await db.select().from(mockupRequests).where(whereClause).orderBy(desc2(mockupRequests.createdAt)).limit(limit).offset(offset);
+    const whereClause = conditions.length > 0 ? and5(...conditions) : void 0;
+    const requests2 = await db.select().from(mockupRequests).where(whereClause).orderBy(desc4(mockupRequests.createdAt)).limit(limit).offset(offset);
     const [{ count: count2 }] = await db.select({ count: sql4`count(*)` }).from(mockupRequests).where(whereClause);
     res.json({
       requests: requests2,
@@ -97347,11 +99312,11 @@ adminMockupRouter.get("/stats", async (req, res) => {
 });
 adminMockupRouter.get("/:id", async (req, res) => {
   try {
-    const [request3] = await db.select().from(mockupRequests).where(eq6(mockupRequests.id, req.params.id));
+    const [request3] = await db.select().from(mockupRequests).where(eq11(mockupRequests.id, req.params.id));
     if (!request3) {
       return res.status(404).json({ error: "Not found" });
     }
-    const designs = await db.select().from(mockupDesigns).where(eq6(mockupDesigns.requestId, request3.id)).orderBy(mockupDesigns.designNumber);
+    const designs = await db.select().from(mockupDesigns).where(eq11(mockupDesigns.requestId, request3.id)).orderBy(mockupDesigns.designNumber);
     res.json({ request: request3, designs });
   } catch (err) {
     console.error("[Mockup] Detail error:", err);
@@ -97360,15 +99325,15 @@ adminMockupRouter.get("/:id", async (req, res) => {
 });
 adminMockupRouter.post("/:id/retry", async (req, res) => {
   try {
-    const [request3] = await db.select().from(mockupRequests).where(eq6(mockupRequests.id, req.params.id));
+    const [request3] = await db.select().from(mockupRequests).where(eq11(mockupRequests.id, req.params.id));
     if (!request3) {
       return res.status(404).json({ error: "Not found" });
     }
     if (request3.status !== "failed") {
       return res.status(400).json({ error: "Can only retry failed requests" });
     }
-    await db.update(mockupRequests).set({ status: "pending", errorMessage: null }).where(eq6(mockupRequests.id, req.params.id));
-    await db.delete(mockupDesigns).where(eq6(mockupDesigns.requestId, req.params.id));
+    await db.update(mockupRequests).set({ status: "pending", errorMessage: null }).where(eq11(mockupRequests.id, req.params.id));
+    await db.delete(mockupDesigns).where(eq11(mockupDesigns.requestId, req.params.id));
     runMockupPipeline(req.params.id).catch((err) => {
       console.error(`[Mockup] Retry pipeline failed:`, err.message);
     });
@@ -97380,8 +99345,8 @@ adminMockupRouter.post("/:id/retry", async (req, res) => {
 });
 adminMockupRouter.delete("/:id", async (req, res) => {
   try {
-    await db.delete(mockupDesigns).where(eq6(mockupDesigns.requestId, req.params.id));
-    await db.delete(mockupRequests).where(eq6(mockupRequests.id, req.params.id));
+    await db.delete(mockupDesigns).where(eq11(mockupDesigns.requestId, req.params.id));
+    await db.delete(mockupRequests).where(eq11(mockupRequests.id, req.params.id));
     res.json({ deleted: true });
   } catch (err) {
     console.error("[Mockup] Delete error:", err);
@@ -97394,7 +99359,7 @@ init_db();
 init_schema();
 import { Router as Router10 } from "express";
 import { z as z9 } from "zod";
-import { eq as eq7, desc as desc3, sql as sql5, and as and3 } from "drizzle-orm";
+import { eq as eq12, desc as desc5, sql as sql5, and as and6 } from "drizzle-orm";
 init_email();
 init_ghl();
 import crypto3 from "crypto";
@@ -97426,14 +99391,14 @@ adminQuoteRouter.get("/", async (req, res) => {
     const limit = 20;
     const offset = (page - 1) * limit;
     const conditions = [];
-    if (status) conditions.push(eq7(quotes.status, status));
+    if (status) conditions.push(eq12(quotes.status, status));
     if (search) {
       conditions.push(
         sql5`(${quotes.customerName} ILIKE ${"%" + search + "%"} OR ${quotes.customerEmail} ILIKE ${"%" + search + "%"} OR ${quotes.teamName} ILIKE ${"%" + search + "%"} OR ${quotes.quoteNumber} ILIKE ${"%" + search + "%"})`
       );
     }
-    const where = conditions.length > 0 ? and3(...conditions) : void 0;
-    const allQuotes = await db.select().from(quotes).where(where).orderBy(desc3(quotes.createdAt)).limit(limit).offset(offset);
+    const where = conditions.length > 0 ? and6(...conditions) : void 0;
+    const allQuotes = await db.select().from(quotes).where(where).orderBy(desc5(quotes.createdAt)).limit(limit).offset(offset);
     const [{ count: count2 }] = await db.select({ count: sql5`count(*)` }).from(quotes).where(where);
     res.json({ quotes: allQuotes, total: Number(count2), page, totalPages: Math.ceil(Number(count2) / limit) });
   } catch (err) {
@@ -97548,9 +99513,9 @@ adminQuoteRouter.post("/", async (req, res) => {
 });
 adminQuoteRouter.get("/:id", async (req, res) => {
   try {
-    const [quote] = await db.select().from(quotes).where(eq7(quotes.id, req.params.id));
+    const [quote] = await db.select().from(quotes).where(eq12(quotes.id, req.params.id));
     if (!quote) return res.status(404).json({ error: "Not found" });
-    const items = await db.select().from(quoteItems).where(eq7(quoteItems.quoteId, quote.id)).orderBy(quoteItems.sortOrder);
+    const items = await db.select().from(quoteItems).where(eq12(quoteItems.quoteId, quote.id)).orderBy(quoteItems.sortOrder);
     res.json({ quote, items });
   } catch (err) {
     console.error("[Quotes] Detail error:", err);
@@ -97578,7 +99543,7 @@ adminQuoteRouter.patch("/:id", async (req, res) => {
       if (req.body[key] !== void 0) updates[key] = req.body[key];
     }
     if (updates.discount !== void 0 || updates.shipping !== void 0) {
-      const items = await db.select().from(quoteItems).where(eq7(quoteItems.quoteId, req.params.id));
+      const items = await db.select().from(quoteItems).where(eq12(quoteItems.quoteId, req.params.id));
       const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
       const discount = updates.discount ?? 0;
       const shipping = updates.shipping ?? 0;
@@ -97588,7 +99553,7 @@ adminQuoteRouter.patch("/:id", async (req, res) => {
       updates.total = subtotal - discount + shipping + tax;
     }
     updates.updatedAt = /* @__PURE__ */ new Date();
-    const [updated] = await db.update(quotes).set(updates).where(eq7(quotes.id, req.params.id)).returning();
+    const [updated] = await db.update(quotes).set(updates).where(eq12(quotes.id, req.params.id)).returning();
     res.json(updated);
   } catch (err) {
     console.error("[Quotes] Update error:", err);
@@ -97597,7 +99562,7 @@ adminQuoteRouter.patch("/:id", async (req, res) => {
 });
 adminQuoteRouter.post("/:id/send", async (req, res) => {
   try {
-    const [quote] = await db.select().from(quotes).where(eq7(quotes.id, req.params.id));
+    const [quote] = await db.select().from(quotes).where(eq12(quotes.id, req.params.id));
     if (!quote) return res.status(404).json({ error: "Not found" });
     const baseUrl = process.env.BASE_URL || "https://sidelinenz.com";
     const quoteUrl = `${baseUrl}/quote-view/${quote.accessToken}`;
@@ -97639,7 +99604,7 @@ The Sideline Team`,
           </div>
         </div>`
     });
-    await db.update(quotes).set({ status: "sent", sentAt: /* @__PURE__ */ new Date() }).where(eq7(quotes.id, req.params.id));
+    await db.update(quotes).set({ status: "sent", sentAt: /* @__PURE__ */ new Date() }).where(eq12(quotes.id, req.params.id));
     syncGhlTag(quote.customerEmail, "Quote Sent").catch(
       (err) => console.error("[Quotes] GHL tag sync error:", err)
     );
@@ -97651,9 +99616,9 @@ The Sideline Team`,
 });
 adminQuoteRouter.post("/:id/convert", async (req, res) => {
   try {
-    const [quote] = await db.select().from(quotes).where(eq7(quotes.id, req.params.id));
+    const [quote] = await db.select().from(quotes).where(eq12(quotes.id, req.params.id));
     if (!quote) return res.status(404).json({ error: "Not found" });
-    const items = await db.select().from(quoteItems).where(eq7(quoteItems.quoteId, quote.id));
+    const items = await db.select().from(quoteItems).where(eq12(quoteItems.quoteId, quote.id));
     const [{ count: count2 }] = await db.select({ count: sql5`count(*)` }).from(orders);
     const orderNumber = `PO-${String(Number(count2) + 1).padStart(4, "0")}`;
     const [order] = await db.insert(orders).values({
@@ -97680,7 +99645,7 @@ adminQuoteRouter.post("/:id/convert", async (req, res) => {
         brandingMethod: item.brandingMethod
       });
     }
-    await db.update(quotes).set({ convertedToOrderId: order.id, status: "accepted" }).where(eq7(quotes.id, req.params.id));
+    await db.update(quotes).set({ convertedToOrderId: order.id, status: "accepted" }).where(eq12(quotes.id, req.params.id));
     res.json({ orderId: order.id, orderNumber });
   } catch (err) {
     console.error("[Quotes] Convert error:", err);
@@ -97689,8 +99654,8 @@ adminQuoteRouter.post("/:id/convert", async (req, res) => {
 });
 adminQuoteRouter.delete("/:id", async (req, res) => {
   try {
-    await db.delete(quoteItems).where(eq7(quoteItems.quoteId, req.params.id));
-    await db.delete(quotes).where(eq7(quotes.id, req.params.id));
+    await db.delete(quoteItems).where(eq12(quoteItems.quoteId, req.params.id));
+    await db.delete(quotes).where(eq12(quotes.id, req.params.id));
     res.json({ deleted: true });
   } catch (err) {
     console.error("[Quotes] Delete error:", err);
@@ -97701,7 +99666,7 @@ var templateRouter = Router10();
 templateRouter.use(requireAdmin);
 templateRouter.get("/", async (_req, res) => {
   try {
-    const templates = await db.select().from(quoteTemplates).orderBy(desc3(quoteTemplates.createdAt));
+    const templates = await db.select().from(quoteTemplates).orderBy(desc5(quoteTemplates.createdAt));
     res.json(templates);
   } catch (err) {
     res.status(500).json({ error: "Failed to list templates" });
@@ -97750,7 +99715,7 @@ templateRouter.patch("/:id", async (req, res) => {
     if (data.category) updates.category = data.category;
     if (data.items) updates.items = data.items;
     if (data.validUntilDays) updates.validUntilDays = data.validUntilDays;
-    const [updated] = await db.update(quoteTemplates).set(updates).where(eq7(quoteTemplates.id, req.params.id)).returning();
+    const [updated] = await db.update(quoteTemplates).set(updates).where(eq12(quoteTemplates.id, req.params.id)).returning();
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: "Failed to update template" });
@@ -97758,7 +99723,7 @@ templateRouter.patch("/:id", async (req, res) => {
 });
 templateRouter.delete("/:id", async (req, res) => {
   try {
-    await db.delete(quoteTemplates).where(eq7(quoteTemplates.id, req.params.id));
+    await db.delete(quoteTemplates).where(eq12(quoteTemplates.id, req.params.id));
     res.json({ deleted: true });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete template" });
@@ -97767,14 +99732,14 @@ templateRouter.delete("/:id", async (req, res) => {
 var publicQuoteRouter = Router10();
 publicQuoteRouter.get("/:token", async (req, res) => {
   try {
-    const [quote] = await db.select().from(quotes).where(eq7(quotes.accessToken, req.params.token));
+    const [quote] = await db.select().from(quotes).where(eq12(quotes.accessToken, req.params.token));
     if (!quote) return res.status(404).json({ error: "Quote not found" });
     if (quote.status === "sent") {
-      await db.update(quotes).set({ status: "viewed", viewedAt: /* @__PURE__ */ new Date() }).where(eq7(quotes.id, quote.id));
+      await db.update(quotes).set({ status: "viewed", viewedAt: /* @__PURE__ */ new Date() }).where(eq12(quotes.id, quote.id));
       syncGhlTag(quote.customerEmail, "Quote Viewed").catch(() => {
       });
     }
-    const items = await db.select().from(quoteItems).where(eq7(quoteItems.quoteId, quote.id)).orderBy(quoteItems.sortOrder);
+    const items = await db.select().from(quoteItems).where(eq12(quoteItems.quoteId, quote.id)).orderBy(quoteItems.sortOrder);
     const { accessToken, adminNotes, createdBy, ...publicQuote } = quote;
     res.json({ quote: publicQuote, items });
   } catch (err) {
@@ -97783,13 +99748,13 @@ publicQuoteRouter.get("/:token", async (req, res) => {
 });
 publicQuoteRouter.post("/:token/accept", async (req, res) => {
   try {
-    const [quote] = await db.select().from(quotes).where(eq7(quotes.accessToken, req.params.token));
+    const [quote] = await db.select().from(quotes).where(eq12(quotes.accessToken, req.params.token));
     if (!quote) return res.status(404).json({ error: "Quote not found" });
     if (quote.status === "accepted") return res.json({ already: true });
     if (quote.status === "expired" || quote.status === "rejected") {
       return res.status(400).json({ error: `Quote is ${quote.status}` });
     }
-    await db.update(quotes).set({ status: "accepted", acceptedAt: /* @__PURE__ */ new Date() }).where(eq7(quotes.id, quote.id));
+    await db.update(quotes).set({ status: "accepted", acceptedAt: /* @__PURE__ */ new Date() }).where(eq12(quotes.id, quote.id));
     syncGhlTag(quote.customerEmail, "Quote Accepted").catch(() => {
     });
     res.json({ accepted: true });
@@ -97799,9 +99764,9 @@ publicQuoteRouter.post("/:token/accept", async (req, res) => {
 });
 publicQuoteRouter.post("/:token/reject", async (req, res) => {
   try {
-    const [quote] = await db.select().from(quotes).where(eq7(quotes.accessToken, req.params.token));
+    const [quote] = await db.select().from(quotes).where(eq12(quotes.accessToken, req.params.token));
     if (!quote) return res.status(404).json({ error: "Quote not found" });
-    await db.update(quotes).set({ status: "rejected", rejectedAt: /* @__PURE__ */ new Date(), rejectionReason: req.body.reason || null }).where(eq7(quotes.id, quote.id));
+    await db.update(quotes).set({ status: "rejected", rejectedAt: /* @__PURE__ */ new Date(), rejectionReason: req.body.reason || null }).where(eq12(quotes.id, quote.id));
     syncGhlTag(quote.customerEmail, "Quote Rejected").catch(() => {
     });
     res.json({ rejected: true });
@@ -98292,9 +100257,9 @@ async function shopifyFetch2(query, variables) {
     body: JSON.stringify({ query, variables })
   });
   if (!res.ok) throw new Error(`Shopify HTTP ${res.status}`);
-  const json = await res.json();
-  if (json.errors) throw new Error(json.errors.map((e) => e.message).join("; "));
-  return json.data;
+  const json2 = await res.json();
+  if (json2.errors) throw new Error(json2.errors.map((e) => e.message).join("; "));
+  return json2.data;
 }
 var PRODUCT_FIELDS = `
   id handle title description tags
@@ -98372,8 +100337,8 @@ router10.post("/search", async (req, res) => {
       const all = (data?.collections?.edges || []).map((e) => e.node);
       results.collections = all.filter((c) => {
         const title = (c.title || "").toLowerCase();
-        const desc4 = (c.description || "").toLowerCase();
-        return title.includes(q) || desc4.includes(q) || q.includes(title.split(" ")[0]);
+        const desc6 = (c.description || "").toLowerCase();
+        return title.includes(q) || desc6.includes(q) || q.includes(title.split(" ")[0]);
       }).map(formatCollection);
     }
     const total = (results.products?.length || 0) + (results.collections?.length || 0);
@@ -98582,7 +100547,7 @@ async function registerRoutes(httpServer2, app2) {
   return httpServer2;
 }
 
-// api/index.ts
+// server/api-entry.ts
 var WebhookHandlers2 = null;
 try {
   WebhookHandlers2 = (init_webhookHandlers(), __toCommonJS(webhookHandlers_exports)).WebhookHandlers;
