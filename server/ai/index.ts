@@ -10,27 +10,15 @@
 // Tasks are switch-cased rather than registered to keep the type narrowing
 // tight — each task's input/output is a discriminated union.
 
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { getProvider } from "./providers/select";
 import { withAiAudit } from "./audit";
 import { getOrder, getClubAccount, resolveClubDisplayName } from "./tools";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const SKILLS_DIR = path.join(__dirname, "skills");
-const skillCache = new Map<string, string>();
+import { SKILLS } from "./skills/name-asset";
 
 function loadSkill(name: string): string {
-  if (skillCache.has(name)) return skillCache.get(name)!;
-  const filePath = path.join(SKILLS_DIR, `${name}.md`);
-  const body = fs.readFileSync(filePath, "utf8");
-  // Strip YAML frontmatter — we use it for metadata but the model only
-  // needs the prose below.
-  const stripped = body.replace(/^---\n[\s\S]*?\n---\n/, "");
-  skillCache.set(name, stripped);
-  return stripped;
+  const body = SKILLS[name];
+  if (!body) throw new Error(`Unknown skill: ${name}`);
+  return body;
 }
 
 // ----- name-asset task -----
