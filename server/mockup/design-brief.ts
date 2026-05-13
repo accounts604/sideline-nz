@@ -6,29 +6,14 @@
 //
 // Reuses GEMINI_API_KEY already set on Railway for mockup generation.
 
-const BRIEF_PROMPT = `You are a sportswear production spec writer for Sideline NZ, a custom teamwear company. Look at these garment design mockup image(s) and write a structured design brief for the factory.
+const BRIEF_PROMPT = `You are a sportswear production spec writer for Sideline NZ. Look at the garment mockup image(s) and write ONE short paragraph describing what the factory needs to know to produce it.
 
-Output a SHORT, STRUCTURED brief covering (skip any section that doesn't apply):
-
-**GARMENT OVERVIEW**: One sentence — garment type, style, silhouette.
-
-**FRONT PANEL**: Describe what's on the front — main pattern, colour blocks, fade/gradient direction, stripe placement, panel boundaries.
-
-**BACK PANEL**: Describe what's on the back — number position, name bar, pattern continuation.
-
-**LOGOS & BRANDING**: For EACH logo/badge/sponsor mark visible, state: name (if readable), position (left chest, right chest, centre back collar, etc.), approximate size (small/medium/large).
-
-**COLLAR & CUFFS**: Style (v-neck, round, traditional), colours, ribbing.
-
-**COLOUR ZONES**: Map which colour goes where (e.g. "Navy dominates body panels; white on side inserts; gold on collar and cuff trim").
-
-**SPECIAL DETAILS**: Sublimation patterns, texture overlays, tonal prints, reflective elements, anything unusual.
+Cover (only what's relevant): garment type and silhouette; dominant colour zones (which colour goes where on body / panels / trim); logo positions (left chest, right chest, centre back, etc.); collar/cuff style; any unusual pattern, fade, gradient, or sublimation detail; key front and back distinctions.
 
 Rules:
-- Be CONCISE — max 250 words total
-- Use plain English the factory can follow
-- Don't describe the image quality or background — only the garment
-- If there are two images (front + back), integrate both into one brief`;
+- ONE paragraph. 80–120 words. NO section headers, NO bullet lists, NO markdown.
+- Plain factory English. Skip anything that's not visible. Don't describe image quality or background.
+- If two images (front + back), integrate them into the one paragraph.`;
 
 async function fetchAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
   try {
@@ -66,7 +51,7 @@ export async function generateDesignBrief(imageUrls: string[]): Promise<string |
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ role: "user", parts }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 800 },
+        generationConfig: { temperature: 0.3, maxOutputTokens: 400 },
       }),
     });
 

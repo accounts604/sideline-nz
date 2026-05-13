@@ -15,7 +15,11 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { SidelineLogo } from "./sideline-logo";
+import { EzraLauncher } from "./ezra-launcher";
 
+// Sidebar — eight items. Ezra lives in the bottom-right launcher (mounted
+// below); the standalone "AI Tools" / name-asset form is still reachable
+// at /admin/ai but doesn't take a sidebar slot.
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
@@ -211,6 +215,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
+
+      {/* Ezra copilot — floating launcher + slide-out panel, mounted globally. */}
+      <EzraLauncher />
 
       {/* Responsive CSS */}
       <style>{`

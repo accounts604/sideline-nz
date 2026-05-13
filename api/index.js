@@ -294,6 +294,7 @@ var init_drizzle_zod = __esm({
 // shared/schema.ts
 var schema_exports = {};
 __export(schema_exports, {
+  LOGO_POSITIONS: () => LOGO_POSITIONS,
   approvalTokens: () => approvalTokens,
   cartItems: () => cartItems,
   carts: () => carts,
@@ -308,6 +309,7 @@ __export(schema_exports, {
   insertDesignCommentSchema: () => insertDesignCommentSchema,
   insertDesignFileSchema: () => insertDesignFileSchema,
   insertGhlProductSchema: () => insertGhlProductSchema,
+  insertIntegrationEventSchema: () => insertIntegrationEventSchema,
   insertMockupDesignSchema: () => insertMockupDesignSchema,
   insertMockupRequestSchema: () => insertMockupRequestSchema,
   insertNotificationSchema: () => insertNotificationSchema,
@@ -322,6 +324,7 @@ __export(schema_exports, {
   insertQuoteSchema: () => insertQuoteSchema,
   insertQuoteTemplateSchema: () => insertQuoteTemplateSchema,
   insertUserSchema: () => insertUserSchema,
+  integrationEvents: () => integrationEvents,
   mockupDesigns: () => mockupDesigns,
   mockupRequests: () => mockupRequests,
   notifications: () => notifications,
@@ -339,7 +342,7 @@ __export(schema_exports, {
 });
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
-var users, insertUserSchema, carts, insertCartSchema, cartItems, insertCartItemSchema, orders, insertOrderSchema, orderItems, insertOrderItemSchema, ghlProducts, insertGhlProductSchema, designFiles, insertDesignFileSchema, designComments, insertDesignCommentSchema, orderSizeBreakdowns, insertOrderSizeBreakdownSchema, productionStages, insertProductionStageSchema, qualityChecks, insertQualityCheckSchema, orderMessages, insertOrderMessageSchema, orderActivity, insertOrderActivitySchema, clubAccounts, insertClubAccountSchema, mockupRequests, insertMockupRequestSchema, mockupDesigns, insertMockupDesignSchema, quoteTemplates, insertQuoteTemplateSchema, quotes, insertQuoteSchema, quoteItems, insertQuoteItemSchema, notifications, insertNotificationSchema, approvalTokens, insertApprovalTokenSchema;
+var users, insertUserSchema, carts, insertCartSchema, cartItems, insertCartItemSchema, orders, insertOrderSchema, orderItems, insertOrderItemSchema, LOGO_POSITIONS, ghlProducts, insertGhlProductSchema, designFiles, insertDesignFileSchema, designComments, insertDesignCommentSchema, orderSizeBreakdowns, insertOrderSizeBreakdownSchema, productionStages, insertProductionStageSchema, qualityChecks, insertQualityCheckSchema, orderMessages, insertOrderMessageSchema, orderActivity, insertOrderActivitySchema, integrationEvents, insertIntegrationEventSchema, clubAccounts, insertClubAccountSchema, mockupRequests, insertMockupRequestSchema, mockupDesigns, insertMockupDesignSchema, quoteTemplates, insertQuoteTemplateSchema, quotes, insertQuoteSchema, quoteItems, insertQuoteItemSchema, notifications, insertNotificationSchema, approvalTokens, insertApprovalTokenSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -475,6 +478,10 @@ var init_schema = __esm({
       driveFolderId: text("drive_folder_id"),
       driveFolderUrl: text("drive_folder_url"),
       driveFolderName: text("drive_folder_name"),
+      // Artwork approval — drives the Approval band on the Production Sheet PDF
+      artworkApproved: boolean("artwork_approved").default(false),
+      artworkApprovedBy: text("artwork_approved_by"),
+      artworkApprovedAt: timestamp("artwork_approved_at"),
       createdAt: timestamp("created_at").defaultNow(),
       updatedAt: timestamp("updated_at").defaultNow(),
       paidAt: timestamp("paid_at")
@@ -501,11 +508,15 @@ var init_schema = __esm({
       material: text("material"),
       // Garment material / fabric spec (e.g. "180gsm Interlock Polyester")
       frontDesignUrl: text("front_design_url"),
-      // Front design proof image
+      // LEGACY — read via getMockups() in shared/design-assets.ts. New writes go to mockupImages.
       backDesignUrl: text("back_design_url"),
-      // Back design proof image
+      // LEGACY — same as frontDesignUrl.
+      designPrints: jsonb("design_prints"),
+      // DesignAsset[] — 2D vector flats (factory production files). Pure new data (2026-04-24), no legacy.
+      mockupImages: jsonb("mockup_images"),
+      // DesignAsset[] — 3D vendor renders. New writes go here; falls back to frontDesignUrl/backDesignUrl via getMockups() if empty.
       elementUrls: jsonb("element_urls"),
-      // [{ name: "Onewhero RFC", url: "..." }, { name: "Summit Homes", url: "..." }]
+      // LogoElement[] — { name, url, position?, application?, sizeMm?, threadColours?: string[], artworkFile? }
       gradeGroup: text("grade_group"),
       // DEPRECATED — kept for back-compat; no longer shown in UI (2026-04-16)
       designNotes: text("design_notes"),
@@ -516,6 +527,17 @@ var init_schema = __esm({
       // key from shared/size-charts.ts; auto-set from productType, admin can override
     });
     insertOrderItemSchema = createInsertSchema(orderItems).omit({ id: true });
+    LOGO_POSITIONS = [
+      "Left Chest",
+      "Right Chest",
+      "Center Chest",
+      "Front Pocket",
+      "Left Sleeve",
+      "Right Sleeve",
+      "Center Back",
+      "Top Back",
+      "Bottom"
+    ];
     ghlProducts = pgTable("ghl_products", {
       id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
       ghlProductId: text("ghl_product_id").notNull().unique(),
@@ -639,6 +661,27 @@ var init_schema = __esm({
       createdAt: timestamp("created_at").defaultNow()
     });
     insertOrderActivitySchema = createInsertSchema(orderActivity).omit({ id: true, createdAt: true });
+    integrationEvents = pgTable("integration_events", {
+      id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+      createdAt: timestamp("created_at").defaultNow(),
+      system: text("system").notNull(),
+      // "ghl" | "drive" | "gmail" | "resend" | "apiease" | "stripe" | "shopify" | "xero" | "vercel-blob"
+      action: text("action").notNull(),
+      // "upsertContact" | "createFolder" | "sendSupplierPo" | "mirrorBlob" | ...
+      status: text("status").notNull(),
+      // "success" | "failed"
+      orderId: varchar("order_id"),
+      // loose FK — NOT enforced; log survives order delete
+      userId: varchar("user_id"),
+      // who triggered it, if applicable
+      durationMs: integer("duration_ms"),
+      // wall time of the call
+      error: text("error"),
+      // null on success; error.message on failure
+      meta: jsonb("meta")
+      // arbitrary structured context (HTTP status, response snippet, params)
+    });
+    insertIntegrationEventSchema = createInsertSchema(integrationEvents).omit({ id: true, createdAt: true });
     clubAccounts = pgTable("club_accounts", {
       id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
       email: text("email").notNull().unique(),
@@ -648,6 +691,11 @@ var init_schema = __esm({
       // GHL contact ID
       shopifyStoreUrl: text("shopify_store_url"),
       // Their Shopify store URL
+      // Supporter campaign — Shopify order tag this club's orders carry (e.g. "club:onewhero-rfc").
+      // Set via Shopify Flow on order creation; used server-side to filter Admin API queries.
+      shopifyOrderTag: text("shopify_order_tag").unique(),
+      // Profit share in basis points (800 = 8%). Avoids pg numeric quirks.
+      profitShareTierBps: integer("profit_share_tier_bps").notNull().default(800),
       createdAt: timestamp("created_at").defaultNow(),
       updatedAt: timestamp("updated_at").defaultNow()
     });
@@ -953,6 +1001,9 @@ var init_storage = __esm({
         const [account] = await db.select().from(clubAccounts).where(eq(clubAccounts.email, email));
         return account;
       }
+      async getAllClubAccounts() {
+        return db.select().from(clubAccounts).orderBy(desc(clubAccounts.createdAt));
+      }
       async createClubAccount(account) {
         const [created] = await db.insert(clubAccounts).values(account).returning();
         return created;
@@ -1152,15 +1203,33 @@ var init_storage = __esm({
       async getAllOrders(opts) {
         const conditions = [];
         if (opts.status) conditions.push(eq(orders.status, opts.status));
+        if (opts.stage) conditions.push(eq(orders.pipelineStage, opts.stage));
         if (opts.designStatus) conditions.push(eq(orders.designStatus, opts.designStatus));
         if (opts.search) {
           conditions.push(
-            sql2`(${orders.orderNumber} ILIKE ${"%" + opts.search + "%"} OR ${orders.customerEmail} ILIKE ${"%" + opts.search + "%"} OR ${orders.customerName} ILIKE ${"%" + opts.search + "%"})`
+            sql2`(${orders.orderNumber} ILIKE ${"%" + opts.search + "%"} OR ${orders.customerEmail} ILIKE ${"%" + opts.search + "%"} OR ${orders.customerName} ILIKE ${"%" + opts.search + "%"} OR ${orders.poReference} ILIKE ${"%" + opts.search + "%"} OR ${orders.accountName} ILIKE ${"%" + opts.search + "%"})`
           );
         }
+        if (opts.createdFrom) {
+          conditions.push(sql2`${orders.createdAt} >= ${new Date(opts.createdFrom).toISOString()}`);
+        }
+        if (opts.createdTo) {
+          const end = new Date(opts.createdTo);
+          end.setHours(23, 59, 59, 999);
+          conditions.push(sql2`${orders.createdAt} <= ${end.toISOString()}`);
+        }
+        if (opts.dueFrom) conditions.push(sql2`${orders.dueDate} >= ${opts.dueFrom}`);
+        if (opts.dueTo) conditions.push(sql2`${orders.dueDate} <= ${opts.dueTo}`);
+        if (opts.overdue) {
+          const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+          conditions.push(sql2`${orders.dueDate} IS NOT NULL AND ${orders.dueDate} < ${today} AND ${orders.pipelineStage} NOT IN ('Delivered','Invoice Sent','Paid','Completed','Cancelled')`);
+        }
         const where = conditions.length > 0 ? and(...conditions) : void 0;
+        const sortDir = opts.sortDir === "asc" ? "asc" : "desc";
+        const sortColumn = opts.sortBy === "dueDate" ? orders.dueDate : orders.createdAt;
+        const orderClause = sortDir === "asc" ? sql2`${sortColumn} ASC NULLS LAST` : sql2`${sortColumn} DESC NULLS LAST`;
         const [totalResult] = await db.select({ count: count() }).from(orders).where(where);
-        const result = await db.select().from(orders).where(where).orderBy(desc(orders.createdAt)).limit(opts.limit || 50).offset(opts.offset || 0);
+        const result = await db.select().from(orders).where(where).orderBy(orderClause).limit(opts.limit || 50).offset(opts.offset || 0);
         return { orders: result, total: totalResult.count };
       }
       async getOrderWithDetails(orderId) {
@@ -1183,6 +1252,37 @@ var init_storage = __esm({
       async updateOrder(orderId, data) {
         const [order] = await db.update(orders).set({ ...data, updatedAt: /* @__PURE__ */ new Date() }).where(eq(orders.id, orderId)).returning();
         return order;
+      }
+      // Delete a single order line item + its size breakdowns.
+      async deleteOrderItem(itemId) {
+        const [existing] = await db.select({ id: orderItems.id }).from(orderItems).where(eq(orderItems.id, itemId));
+        if (!existing) return false;
+        await db.delete(orderSizeBreakdowns).where(eq(orderSizeBreakdowns.orderItemId, itemId));
+        await db.delete(orderItems).where(eq(orderItems.id, itemId));
+        return true;
+      }
+      // Hard-delete an order + every row that references it. We cascade manually
+      // rather than ON DELETE CASCADE so the scope is explicit and reviewable.
+      // Returns false if the order didn't exist.
+      async deleteOrder(orderId) {
+        const existing = await this.getOrder(orderId);
+        if (!existing) return false;
+        const designRows = await db.select({ id: designFiles.id }).from(designFiles).where(eq(designFiles.orderId, orderId));
+        const designIds = designRows.map((d) => d.id);
+        if (designIds.length > 0) {
+          await db.delete(designComments).where(
+            sql2`${designComments.designFileId} IN (${sql2.join(designIds.map((id) => sql2`${id}`), sql2`, `)})`
+          );
+        }
+        await db.delete(designFiles).where(eq(designFiles.orderId, orderId));
+        await db.delete(orderSizeBreakdowns).where(eq(orderSizeBreakdowns.orderId, orderId));
+        await db.delete(productionStages).where(eq(productionStages.orderId, orderId));
+        await db.delete(qualityChecks).where(eq(qualityChecks.orderId, orderId));
+        await db.delete(orderMessages).where(eq(orderMessages.orderId, orderId));
+        await db.delete(orderActivity).where(eq(orderActivity.orderId, orderId));
+        await db.delete(orderItems).where(eq(orderItems.orderId, orderId));
+        await db.delete(orders).where(eq(orders.id, orderId));
+        return true;
       }
       async getAllCustomers(opts) {
         const conditions = [eq(users.role, "customer")];
@@ -1513,12 +1613,15 @@ async function sendGmail(input2) {
     return null;
   }
 }
-var OAUTH_TOKEN_URL, GMAIL_SEND_URL, cachedAccessToken;
+var OAUTH_TOKEN_URL, GMAIL_API_BASE, GMAIL_SEND_URL, GMAIL_DRAFTS_URL, GMAIL_THREADS_URL, cachedAccessToken;
 var init_gmail = __esm({
   "server/gmail.ts"() {
     "use strict";
     OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
-    GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+    GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
+    GMAIL_SEND_URL = `${GMAIL_API_BASE}/messages/send`;
+    GMAIL_DRAFTS_URL = `${GMAIL_API_BASE}/drafts`;
+    GMAIL_THREADS_URL = `${GMAIL_API_BASE}/threads`;
     cachedAccessToken = null;
   }
 });
@@ -1579,13 +1682,16 @@ var init_po_milestones = __esm({
 // server/email.ts
 function createEmailService() {
   const provider = process.env.EMAIL_PROVIDER;
-  switch (provider) {
-    // Future providers go here:
-    // case "resend": return new ResendEmailService();
-    // case "sendgrid": return new SendGridEmailService();
-    default:
+  const resendKey = process.env.RESEND_API_KEY;
+  const resendFrom = process.env.RESEND_FROM || "Sideline NZ <hello@sidelinenz.com>";
+  if (provider === "resend" || !provider && resendKey) {
+    if (!resendKey) {
+      console.warn("[EMAIL] EMAIL_PROVIDER=resend but RESEND_API_KEY missing \u2014 falling back to console");
       return new ConsoleEmailService();
+    }
+    return new ResendEmailService(resendKey, resendFrom);
   }
+  return new ConsoleEmailService();
 }
 async function sendDesignApprovedEmail(to, orderNumber, label) {
   return emailService.send({
@@ -1703,7 +1809,7 @@ async function sendSupplierPoDispatchGmail(input2) {
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#111;max-width:640px">
       <p>${hi}</p>
-      <p>A new purchase order has been raised. ${poLine}.</p>
+      <p>A new production sheet has been raised. ${poLine}.</p>
       ${itemsHtml}
       ${input2.deliveryAddress ? `<p><strong>Delivery:</strong><br/>${input2.deliveryAddress.replace(/\n/g, "<br/>")}</p>` : ""}
       ${milestonesHtml}
@@ -1742,7 +1848,7 @@ This link expires in 7 days.`,
     html: `<p>${greeting}</p><p><a href="${link}">Set up your account</a></p><p><small>This link expires in 7 days.</small></p>`
   });
 }
-var ConsoleEmailService, emailService, SIDELINE_ORDERS_FROM;
+var ConsoleEmailService, ResendEmailService, emailService, SIDELINE_ORDERS_FROM;
 var init_email = __esm({
   "server/email.ts"() {
     "use strict";
@@ -1756,6 +1862,41 @@ var init_email = __esm({
         console.log(`[EMAIL] Body: ${payload.text}`);
         console.log(`[EMAIL] ID: ${id}`);
         return { success: true, messageId: id };
+      }
+    };
+    ResendEmailService = class {
+      constructor(apiKey, from2) {
+        this.apiKey = apiKey;
+        this.from = from2;
+      }
+      async send(payload) {
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            from: this.from,
+            to: [payload.to],
+            reply_to: payload.replyTo,
+            subject: payload.subject,
+            text: payload.text,
+            html: payload.html,
+            attachments: payload.attachments?.map((a) => ({
+              filename: a.filename,
+              content: Buffer.isBuffer(a.content) ? a.content.toString("base64") : a.content,
+              content_type: a.contentType
+            }))
+          })
+        });
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          console.error(`[EMAIL] Resend ${res.status}: ${body.slice(0, 300)}`);
+          return { success: false };
+        }
+        const json = await res.json().catch(() => ({}));
+        return { success: true, messageId: json.id };
       }
     };
     emailService = createEmailService();
@@ -1808,6 +1949,65 @@ var init_pipeline = __esm({
   }
 });
 
+// server/integration-events.ts
+var integration_events_exports = {};
+__export(integration_events_exports, {
+  logIntegrationEvent: () => logIntegrationEvent,
+  tracked: () => tracked
+});
+async function logIntegrationEvent(input2) {
+  try {
+    await db.insert(integrationEvents).values({
+      system: input2.system,
+      action: input2.action,
+      status: input2.status,
+      orderId: input2.orderId ?? null,
+      userId: input2.userId ?? null,
+      durationMs: input2.durationMs ?? null,
+      error: input2.error ?? null,
+      meta: input2.meta ?? null
+    });
+  } catch (err) {
+    console.error("[integration-events] insert failed:", err);
+  }
+}
+async function tracked(meta, fn) {
+  const start = Date.now();
+  try {
+    const result = await fn();
+    void logIntegrationEvent({
+      system: meta.system,
+      action: meta.action,
+      status: "success",
+      orderId: meta.orderId,
+      userId: meta.userId,
+      durationMs: Date.now() - start,
+      meta: meta.context
+    });
+    return result;
+  } catch (err) {
+    void logIntegrationEvent({
+      system: meta.system,
+      action: meta.action,
+      status: "failed",
+      orderId: meta.orderId,
+      userId: meta.userId,
+      durationMs: Date.now() - start,
+      error: err?.message ? String(err.message).slice(0, 1e3) : String(err).slice(0, 1e3),
+      meta: meta.context
+    });
+    console.error(`[${meta.system}.${meta.action}] failed:`, err?.message || err);
+    return null;
+  }
+}
+var init_integration_events = __esm({
+  "server/integration-events.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+  }
+});
+
 // server/routes/ghl.ts
 var ghl_exports = {};
 __export(ghl_exports, {
@@ -1827,57 +2027,20 @@ async function createGhlContact(contactData, tags = []) {
   }
   const ghlPayload = {
     locationId,
-    firstName: contactData.name?.split(" ")[0] || "",
-    lastName: contactData.name?.split(" ").slice(1).join(" ") || "",
+    firstName: contactData.name?.split(" ")[0] || contactData.contact_name?.split(" ")[0] || "",
+    lastName: contactData.name?.split(" ").slice(1).join(" ") || contactData.contact_name?.split(" ").slice(1).join(" ") || "",
     email: contactData.email,
     phone: contactData.phone,
     tags,
     source: contactData.source || "sidelinenz.com",
     customFields: []
   };
+  if (contactData.organization) ghlPayload.companyName = contactData.organization;
   const customFieldMappings = {
-    user_type: "user_type",
     role: "role",
-    organization: "organization",
-    member_count: "member_count",
-    current_supplier: "current_supplier",
-    sports: "sports",
-    sport: "sport",
-    mockup_interest: "mockup_interest",
-    needs: "needs",
-    estimated_quantity: "estimated_quantity",
-    teams_involved: "teams_involved",
-    kit_items: "kit_items",
-    personalisation: "personalisation",
-    supporter_audience: "supporter_audience",
-    style_preference: "style_preference",
-    fundraising_interest: "fundraising_interest",
-    sponsorship_interest: "sponsorship_interest",
-    timing: "timing",
-    season_start: "season_start",
-    design_stage: "design_stage",
-    budget_range: "budget_range",
-    approval_process: "approval_process",
-    main_concern: "main_concern",
-    notes: "notes",
-    school_event_date: "school_event_date",
-    slt_friendly: "slt_friendly",
-    team_store_interest: "team_store_interest",
-    team_store_audience: "team_store_audience",
-    team_store_goal: "team_store_goal",
-    enquiry_type: "enquiry_type",
-    message: "message",
-    submitted_at: "submitted_at",
-    // Smart Quote fields
-    quote_number: "quote_number",
-    quote_total: "quote_total",
-    quote_status: "quote_status",
-    quote_items: "quote_items",
-    quote_valid_until: "quote_valid_until",
-    quote_url: "quote_url",
-    // Free Mockup Intake fields
-    club_type: "club_type",
     contact_name: "contact_name",
+    current_supplier: "current_supplier",
+    kit_items: "kit_items",
     quantity_range: "quantity_range",
     primary_colour: "primary_colour",
     secondary_colour: "secondary_colour",
@@ -1886,13 +2049,64 @@ async function createGhlContact(contactData, tags = []) {
     logo_status: "logo_status",
     logo_notes: "logo_notes",
     design_notes: "design_notes",
-    logo_file_url: "logo_file_url"
+    club_type: "club_type",
+    sport: "sport",
+    sports: "sport",
+    // synonym
+    timing: "timeline",
+    // synonym
+    notes: "notes",
+    quote_number: "quote_number",
+    quote_total: "quote_total",
+    quote_status: "quote_status",
+    quote_items: "quote_items",
+    quote_valid_until: "quote_valid_until",
+    quote_url: "quote_url"
   };
+  const additionalNotesFields = [
+    "user_type",
+    "member_count",
+    "mockup_interest",
+    "needs",
+    "estimated_quantity",
+    "kit_quantity",
+    "supporter_quantity",
+    "teams_involved",
+    "personalisation",
+    "supporter_audience",
+    "style_preference",
+    "fundraising_interest",
+    "sponsorship_interest",
+    "season_start",
+    "design_stage",
+    "budget_range",
+    "approval_process",
+    "main_concern",
+    "school_event_date",
+    "slt_friendly",
+    "team_store_interest",
+    "team_store_audience",
+    "team_store_goal",
+    "enquiry_type",
+    "message",
+    "logo_file_url",
+    "submitted_at"
+  ];
   for (const [formKey, ghlKey] of Object.entries(customFieldMappings)) {
     if (contactData[formKey]) {
       const value = Array.isArray(contactData[formKey]) ? contactData[formKey].join(", ") : String(contactData[formKey]);
       ghlPayload.customFields.push({ key: ghlKey, field_value: value });
     }
+  }
+  const overflowLines = [];
+  for (const k of additionalNotesFields) {
+    if (contactData[k]) {
+      const v = Array.isArray(contactData[k]) ? contactData[k].join(", ") : String(contactData[k]);
+      overflowLines.push(`${k}: ${v}`);
+    }
+  }
+  if (overflowLines.length) {
+    ghlPayload.customFields.push({ key: "additional_notes", field_value: overflowLines.join("\n") });
   }
   try {
     const response = await fetch(`${GHL_API_BASE}/contacts/`, {
@@ -1989,6 +2203,7 @@ var init_ghl = __esm({
     init_schema();
     init_ghl_config();
     init_pipeline();
+    init_integration_events();
     router = Router();
     GHL_API_BASE = "https://services.leadconnectorhq.com";
     SIDELINE_STAGE_LEAD_RECEIVED = SIDELINE_STAGE_IDS["Lead Received"];
@@ -2043,6 +2258,14 @@ var init_ghl = __esm({
         const result = await createGhlContact(enriched, ["Website Lead", "Start a Project"]);
         if (!result.success && result.reason === "credentials_missing") {
           console.log("GHL not configured - form data logged above");
+        }
+        if (result.contactId) {
+          await createGhlOpportunity(
+            result.contactId,
+            `Website Lead \u2014 ${payload.name}`,
+            SIDELINE_PIPELINE_ID,
+            SIDELINE_STAGE_LEAD_RECEIVED
+          );
         }
         res.json({ ok: true, id: result.contactId || crypto.randomUUID() });
       } catch (e) {
@@ -2110,6 +2333,14 @@ var init_ghl = __esm({
         const result = await createGhlContact(enriched, ["Website Lead", "Free Mockup Request"]);
         if (!result.success && result.reason === "credentials_missing") {
           console.log("GHL not configured - mockup request logged above");
+        }
+        if (result.contactId) {
+          await createGhlOpportunity(
+            result.contactId,
+            `Free Mockup \u2014 ${payload.club_name}`,
+            SIDELINE_PIPELINE_ID,
+            SIDELINE_STAGE_LEAD_RECEIVED
+          );
         }
         res.json({ ok: true, id: result.contactId || crypto.randomUUID() });
       } catch (e) {
@@ -2221,6 +2452,14 @@ Contact ID: ${contactId}`,
         }
         if (!result.success && result.reason === "credentials_missing") {
           console.log("GHL not configured - intake form logged above");
+        }
+        if (result.contactId) {
+          await createGhlOpportunity(
+            result.contactId,
+            `Free Mockup Intake \u2014 ${payload.organization}`,
+            SIDELINE_PIPELINE_ID,
+            SIDELINE_STAGE_LEAD_RECEIVED
+          );
         }
         res.json({ ok: true, id: contactId });
       } catch (e) {
@@ -2407,6 +2646,7 @@ Contact ID: ${contactId}`,
         const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${process.env.PORT || 3e3}`;
         const collectionEndpoint = `${baseUrl}/api/shopify/create-collection`;
         console.log(`[GHL Webhook] Creating Shopify collection: ${clubName} (${clubHandle})`);
+        const apieaseStart = Date.now();
         const collectionResponse = await fetch(collectionEndpoint, {
           method: "POST",
           headers: {
@@ -2421,8 +2661,23 @@ Contact ID: ${contactId}`,
         const collectionData = await collectionResponse.json().catch(() => ({}));
         if (!collectionResponse.ok) {
           console.error(`[GHL Webhook] Collection creation failed:`, collectionData);
+          void logIntegrationEvent({
+            system: "apiease",
+            action: "createCollection",
+            status: "failed",
+            durationMs: Date.now() - apieaseStart,
+            error: `HTTP ${collectionResponse.status}: ${JSON.stringify(collectionData).slice(0, 500)}`,
+            meta: { clubName, clubHandle, contactId: payload.contactId }
+          });
         } else {
           console.log(`[GHL Webhook] Collection created successfully:`, collectionData);
+          void logIntegrationEvent({
+            system: "apiease",
+            action: "createCollection",
+            status: "success",
+            durationMs: Date.now() - apieaseStart,
+            meta: { clubName, clubHandle, contactId: payload.contactId, collectionId: collectionData?.id }
+          });
         }
         res.json({ ok: true, contactId: payload.contactId, collection: collectionData });
       } catch (e) {
@@ -8139,7 +8394,7 @@ function inertIfDisposed(target, _) {
   };
 }
 function invokeAtMostOnceForArguments(target, _) {
-  const cache = /* @__PURE__ */ new WeakMap();
+  const cache2 = /* @__PURE__ */ new WeakMap();
   let cacheDepth = -1;
   return function(...args) {
     if (cacheDepth === -1) {
@@ -8149,7 +8404,7 @@ function invokeAtMostOnceForArguments(target, _) {
       throw new Error("Memoized method was called with the wrong number of arguments");
     }
     let freshArguments = false;
-    let cacheIterator = cache;
+    let cacheIterator = cache2;
     for (const arg of args) {
       if (cacheIterator.has(arg)) {
         cacheIterator = cacheIterator.get(arg);
@@ -47692,14 +47947,14 @@ var require_re = __commonJS({
       return value;
     };
     var createToken = (name, value, isGlobal) => {
-      const safe = makeSafeRegex(value);
+      const safe2 = makeSafeRegex(value);
       const index = R++;
       debug6(name, index, value);
       t[name] = index;
       src[index] = value;
-      safeSrc[index] = safe;
+      safeSrc[index] = safe2;
       re[index] = new RegExp(value, isGlobal ? "g" : void 0);
-      safeRe[index] = new RegExp(safe, isGlobal ? "g" : void 0);
+      safeRe[index] = new RegExp(safe2, isGlobal ? "g" : void 0);
     };
     createToken("NUMERICIDENTIFIER", "0|[1-9]\\d*");
     createToken("NUMERICIDENTIFIERLOOSE", "\\d+");
@@ -48562,7 +48817,7 @@ var require_range = __commonJS({
       parseRange(range) {
         const memoOpts = (this.options.includePrerelease && FLAG_INCLUDE_PRERELEASE) | (this.options.loose && FLAG_LOOSE);
         const memoKey = memoOpts + ":" + range;
-        const cached = cache.get(memoKey);
+        const cached = cache2.get(memoKey);
         if (cached) {
           return cached;
         }
@@ -48596,7 +48851,7 @@ var require_range = __commonJS({
           rangeMap.delete("");
         }
         const result = [...rangeMap.values()];
-        cache.set(memoKey, result);
+        cache2.set(memoKey, result);
         return result;
       }
       intersects(range, options) {
@@ -48635,7 +48890,7 @@ var require_range = __commonJS({
     };
     module.exports = Range;
     var LRU = require_lrucache();
-    var cache = new LRU();
+    var cache2 = new LRU();
     var parseOptions = require_parse_options();
     var Comparator = require_comparator();
     var debug6 = require_debug();
@@ -55315,12 +55570,12 @@ var require_data = __commonJS({
         this.hash = hash;
       }
     };
-    var data = async ({ href: uri }, { cache } = {}) => {
+    var data = async ({ href: uri }, { cache: cache2 } = {}) => {
       const shasum = (0, crypto_1.createHash)("sha1");
       shasum.update(uri);
       const hash = shasum.digest("hex");
       debug6('generated SHA1 hash for "data:" URI: %o', hash);
-      if (cache?.hash === hash) {
+      if (cache2?.hash === hash) {
         debug6("got matching cache SHA1 hash: %o", hash);
         throw new notmodified_1.default();
       } else {
@@ -55365,7 +55620,7 @@ var require_file = __commonJS({
     var debug6 = (0, debug_1.default)("get-uri:file");
     var file = async ({ href: uri }, opts = {}) => {
       const {
-        cache,
+        cache: cache2,
         flags = "r",
         mode = 438
         // =0666
@@ -55376,7 +55631,7 @@ var require_file = __commonJS({
         const fdHandle = await fs_1.promises.open(filepath, flags, mode);
         const fd = fdHandle.fd;
         const stat = await fdHandle.stat();
-        if (cache && cache.stat && stat && isNotModified(cache.stat, stat)) {
+        if (cache2 && cache2.stat && stat && isNotModified(cache2.stat, stat)) {
           await fdHandle.close();
           throw new notmodified_1.default();
         }
@@ -57409,7 +57664,7 @@ var require_ftp = __commonJS({
     var notmodified_1 = __importDefault2(require_notmodified());
     var debug6 = (0, debug_1.default)("get-uri:ftp");
     var ftp = async (url, opts = {}) => {
-      const { cache } = opts;
+      const { cache: cache2 } = opts;
       const filepath = decodeURIComponent(url.pathname);
       let lastModified;
       if (!filepath) {
@@ -57463,8 +57718,8 @@ var require_ftp = __commonJS({
         throw err;
       }
       function isNotModified() {
-        if (cache?.lastModified && lastModified) {
-          return +cache.lastModified === +lastModified;
+        if (cache2?.lastModified && lastModified) {
+          return +cache2.lastModified === +lastModified;
         }
         return false;
       }
@@ -57509,10 +57764,10 @@ var require_http = __commonJS({
     var debug6 = (0, debug_1.default)("get-uri:http");
     var http2 = async (url, opts = {}) => {
       debug6("GET %o", url.href);
-      const cache = getCache(url, opts.cache);
-      if (cache && isFresh(cache) && typeof cache.statusCode === "number") {
-        const type2 = cache.statusCode / 100 | 0;
-        if (type2 === 3 && cache.headers.location) {
+      const cache2 = getCache(url, opts.cache);
+      if (cache2 && isFresh(cache2) && typeof cache2.statusCode === "number") {
+        const type2 = cache2.statusCode / 100 | 0;
+        if (type2 === 3 && cache2.headers.location) {
           debug6("cached redirect");
           throw new Error("TODO: implement cached redirects!");
         }
@@ -57529,16 +57784,16 @@ var require_http = __commonJS({
         debug6("using `http` core module");
       }
       const options = { ...opts };
-      if (cache) {
+      if (cache2) {
         if (!options.headers) {
           options.headers = {};
         }
-        const lastModified = cache.headers["last-modified"];
+        const lastModified = cache2.headers["last-modified"];
         if (lastModified) {
           options.headers["If-Modified-Since"] = lastModified;
           debug6('added "If-Modified-Since" request header: %o', lastModified);
         }
-        const etag = cache.headers.etag;
+        const etag = cache2.headers.etag;
         if (etag) {
           options.headers["If-None-Match"] = etag;
           debug6('added "If-None-Match" request header: %o', etag);
@@ -57585,10 +57840,10 @@ var require_http = __commonJS({
       return res;
     };
     exports.http = http2;
-    function isFresh(cache) {
+    function isFresh(cache2) {
       let fresh = false;
-      let expires = parseInt(cache.headers.expires || "", 10);
-      const cacheControl = cache.headers["cache-control"];
+      let expires = parseInt(cache2.headers.expires || "", 10);
+      const cacheControl = cache2.headers["cache-control"];
       if (cacheControl) {
         debug6("Cache-Control: %o", cacheControl);
         const parts = cacheControl.split(/,\s*?\b/);
@@ -57598,7 +57853,7 @@ var require_http = __commonJS({
           const name = subparts[0];
           switch (name) {
             case "max-age":
-              expires = (cache.date || 0) + parseInt(subparts[1], 10) * 1e3;
+              expires = (cache2.date || 0) + parseInt(subparts[1], 10) * 1e3;
               fresh = Date.now() < expires;
               if (fresh) {
                 debug6('cache is "fresh" due to previous %o Cache-Control param', part);
@@ -57624,14 +57879,14 @@ var require_http = __commonJS({
       }
       return false;
     }
-    function getCache(url, cache) {
-      if (cache) {
-        if (cache.parsed && cache.parsed.href === url.href) {
-          return cache;
+    function getCache(url, cache2) {
+      if (cache2) {
+        if (cache2.parsed && cache2.parsed.href === url.href) {
+          return cache2;
         }
-        if (cache.redirects) {
-          for (let i = 0; i < cache.redirects.length; i++) {
-            const c = getCache(url, cache.redirects[i]);
+        if (cache2.redirects) {
+          for (let i = 0; i < cache2.redirects.length; i++) {
+            const c = getCache(url, cache2.redirects[i]);
             if (c) {
               return c;
             }
@@ -70064,12 +70319,12 @@ var require_path = __commonJS({
         return path13.__childCache || (path13.__childCache = /* @__PURE__ */ Object.create(null));
       }
       function getChildPath(path13, name) {
-        var cache = getChildCache(path13);
+        var cache2 = getChildCache(path13);
         var actualChildValue = path13.getValueProperty(name);
-        var childPath = cache[name];
-        if (!hasOwn.call(cache, name) || // Ensure consistency between cache and reality.
+        var childPath = cache2[name];
+        if (!hasOwn.call(cache2, name) || // Ensure consistency between cache and reality.
         childPath.value !== actualChildValue) {
-          childPath = cache[name] = new path13.constructor(actualChildValue, path13, name);
+          childPath = cache2[name] = new path13.constructor(actualChildValue, path13, name);
         }
         return childPath;
       }
@@ -70145,7 +70400,7 @@ var require_path = __commonJS({
         isNumber2.assert(start);
         isNumber2.assert(end);
         var moves = /* @__PURE__ */ Object.create(null);
-        var cache = getChildCache(path13);
+        var cache2 = getChildCache(path13);
         for (var i = start; i < end; ++i) {
           if (hasOwn.call(path13.value, i)) {
             var childPath = path13.get(i);
@@ -70155,17 +70410,17 @@ var require_path = __commonJS({
             var newIndex = i + offset;
             childPath.name = newIndex;
             moves[newIndex] = childPath;
-            delete cache[i];
+            delete cache2[i];
           }
         }
-        delete cache.length;
+        delete cache2.length;
         return function() {
           for (var newIndex2 in moves) {
             var childPath2 = moves[newIndex2];
             if (childPath2.name !== +newIndex2) {
               throw new Error("");
             }
-            cache[newIndex2] = childPath2;
+            cache2[newIndex2] = childPath2;
             path13.value[newIndex2] = childPath2.value;
           }
         };
@@ -70197,9 +70452,9 @@ var require_path = __commonJS({
       };
       Pp.pop = function pop() {
         isArray4.assert(this.value);
-        var cache = getChildCache(this);
-        delete cache[this.value.length - 1];
-        delete cache.length;
+        var cache2 = getChildCache(this);
+        delete cache2[this.value.length - 1];
+        delete cache2.length;
         return this.value.pop();
       };
       Pp.insertAt = function insertAt(index) {
@@ -77952,12 +78207,12 @@ var init_Cache = __esm({
       /**
        * @internal
        */
-      constructor(cache, browser, buildId, platform) {
-        this.#cache = cache;
+      constructor(cache2, browser, buildId, platform) {
+        this.#cache = cache2;
         this.browser = browser;
         this.buildId = buildId;
         this.platform = platform;
-        this.executablePath = cache.computeExecutablePath({
+        this.executablePath = cache2.computeExecutablePath({
           browser,
           buildId,
           platform
@@ -83127,8 +83382,8 @@ async function installWithProviders(options) {
   if (!options.platform) {
     throw new Error("Platform must be defined");
   }
-  const cache = new Cache(options.cacheDir);
-  const browserRoot = cache.browserRoot(options.browser);
+  const cache2 = new Cache(options.cacheDir);
+  const browserRoot = cache2.browserRoot(options.browser);
   const providers = [...options.providers || []];
   if (options.baseUrl) {
     providers.push(new DefaultProvider(options.baseUrl));
@@ -83230,8 +83485,8 @@ async function installUrl(url, options, provider) {
   }
   const fileName = decodeURIComponent(url.toString()).split("/").pop();
   assert2(fileName, `A malformed download URL was found: ${url}.`);
-  const cache = new Cache(options.cacheDir);
-  const browserRoot = cache.browserRoot(options.browser);
+  const cache2 = new Cache(options.cacheDir);
+  const browserRoot = cache2.browserRoot(options.browser);
   const archivePath = path8.join(browserRoot, `${options.buildId}-${fileName}`);
   if (!existsSync(browserRoot)) {
     await mkdir2(browserRoot, { recursive: true });
@@ -83246,16 +83501,16 @@ async function installUrl(url, options, provider) {
     debugTimeEnd("download");
     return archivePath;
   }
-  const outputPath = cache.installationDir(options.browser, options.platform, options.buildId);
+  const outputPath = cache2.installationDir(options.browser, options.platform, options.buildId);
   const relativeExecutablePath6 = await provider.getExecutablePath({
     browser: options.browser,
     buildId: options.buildId,
     platform: options.platform
   });
   debugInstall(`Using executable path from provider: ${relativeExecutablePath6}`);
-  const installedBrowser = new InstalledBrowser(cache, options.browser, options.buildId, options.platform);
+  const installedBrowser = new InstalledBrowser(cache2, options.browser, options.buildId, options.platform);
   if (!(provider instanceof DefaultProvider)) {
-    cache.writeExecutablePath(options.browser, options.platform, options.buildId, relativeExecutablePath6);
+    cache2.writeExecutablePath(options.browser, options.platform, options.buildId, relativeExecutablePath6);
   }
   try {
     if (existsSync(outputPath)) {
@@ -88627,8 +88882,8 @@ var init_CLI = __esm({
               console.log("Cancelled.");
               return;
             }
-            const cache = new Cache(cacheDir);
-            cache.clear();
+            const cache2 = new Cache(cacheDir);
+            cache2.clear();
             console.log(`${cacheDir} cleared.`);
           });
         }).command("list", "List all installed browsers in the cache directory", (yargs2) => {
@@ -88639,8 +88894,8 @@ var init_CLI = __esm({
           return this.#definePathParameter(yargs2);
         }, async (args) => {
           const cacheDir = args.path ?? this.#cachePath;
-          const cache = new Cache(cacheDir);
-          const browsers = cache.getInstalledBrowsers();
+          const cache2 = new Cache(cacheDir);
+          const browsers = cache2.getInstalledBrowsers();
           for (const browser of browsers) {
             console.log(`${browser.browser}@${browser.buildId} (${browser.platform}) ${browser.executablePath}`);
           }
@@ -89037,6 +89292,1380 @@ var init_index_browser = __esm({
     init_common();
     init_revisions();
     init_util3();
+  }
+});
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/PipeTransport.js
+var PipeTransport;
+var init_PipeTransport = __esm({
+  "node_modules/puppeteer-core/lib/esm/puppeteer/node/PipeTransport.js"() {
+    init_EventEmitter();
+    init_util();
+    init_assert();
+    init_disposable();
+    PipeTransport = class {
+      #pipeWrite;
+      #subscriptions = new DisposableStack();
+      #isClosed = false;
+      #pendingMessage = [];
+      onclose;
+      onmessage;
+      constructor(pipeWrite, pipeRead) {
+        this.#pipeWrite = pipeWrite;
+        const pipeReadEmitter = this.#subscriptions.use(
+          // NodeJS event emitters don't support `*` so we need to typecast
+          // As long as we don't use it we should be OK.
+          new EventEmitter(pipeRead)
+        );
+        pipeReadEmitter.on("data", (buffer) => {
+          return this.#dispatch(buffer);
+        });
+        pipeReadEmitter.on("close", () => {
+          if (this.onclose) {
+            this.onclose.call(null);
+          }
+        });
+        pipeReadEmitter.on("error", debugError);
+        const pipeWriteEmitter = this.#subscriptions.use(
+          // NodeJS event emitters don't support `*` so we need to typecast
+          // As long as we don't use it we should be OK.
+          new EventEmitter(pipeWrite)
+        );
+        pipeWriteEmitter.on("error", debugError);
+      }
+      send(message) {
+        assert(!this.#isClosed, "`PipeTransport` is closed.");
+        this.#pipeWrite.write(message);
+        this.#pipeWrite.write("\0");
+      }
+      #dispatch(buffer) {
+        assert(!this.#isClosed, "`PipeTransport` is closed.");
+        this.#pendingMessage.push(buffer);
+        if (buffer.indexOf("\0") === -1) {
+          return;
+        }
+        const concatBuffer = Buffer.concat(this.#pendingMessage);
+        let start = 0;
+        let end = concatBuffer.indexOf("\0");
+        while (end !== -1) {
+          const message = concatBuffer.toString(void 0, start, end);
+          setImmediate(() => {
+            if (this.onmessage) {
+              this.onmessage.call(null, message);
+            }
+          });
+          start = end + 1;
+          end = concatBuffer.indexOf("\0", start);
+        }
+        if (start >= concatBuffer.length) {
+          this.#pendingMessage = [];
+        } else {
+          this.#pendingMessage = [concatBuffer.subarray(start)];
+        }
+      }
+      close() {
+        this.#isClosed = true;
+        this.#subscriptions.dispose();
+      }
+    };
+  }
+});
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/BrowserLauncher.js
+import { existsSync as existsSync2 } from "node:fs";
+import { tmpdir } from "node:os";
+import { join as join2 } from "node:path";
+var BrowserLauncher;
+var init_BrowserLauncher = __esm({
+  "node_modules/puppeteer-core/lib/esm/puppeteer/node/BrowserLauncher.js"() {
+    init_main();
+    init_rxjs();
+    init_Browser2();
+    init_Connection();
+    init_Errors();
+    init_util();
+    init_incremental_id_generator();
+    init_NodeWebSocketTransport();
+    init_PipeTransport();
+    BrowserLauncher = class {
+      #browser;
+      /**
+       * @internal
+       */
+      puppeteer;
+      /**
+       * @internal
+       */
+      constructor(puppeteer2, browser) {
+        this.puppeteer = puppeteer2;
+        this.#browser = browser;
+      }
+      get browser() {
+        return this.#browser;
+      }
+      async launch(options = {}) {
+        const { dumpio = false, enableExtensions = false, env: env2 = process.env, handleSIGINT = true, handleSIGTERM = true, handleSIGHUP = true, acceptInsecureCerts = false, networkEnabled = true, issuesEnabled = true, defaultViewport = DEFAULT_VIEWPORT, downloadBehavior, slowMo = 0, timeout: timeout2 = 3e4, waitForInitialPage = true, protocolTimeout, handleDevToolsAsPage, idGenerator = createIncrementalIdGenerator() } = options;
+        let { protocol } = options;
+        if (this.#browser === "firefox" && protocol === void 0) {
+          protocol = "webDriverBiDi";
+        }
+        if (this.#browser === "firefox" && protocol === "cdp") {
+          throw new Error("Connecting to Firefox using CDP is no longer supported");
+        }
+        const launchArgs = await this.computeLaunchArguments({
+          ...options,
+          protocol
+        });
+        if (!existsSync2(launchArgs.executablePath)) {
+          throw new Error(`Browser was not found at the configured executablePath (${launchArgs.executablePath})`);
+        }
+        const usePipe = launchArgs.args.includes("--remote-debugging-pipe");
+        const onProcessExit = async () => {
+          await this.cleanUserDataDir(launchArgs.userDataDir, {
+            isTemp: launchArgs.isTempUserDataDir
+          });
+        };
+        if (this.#browser === "firefox" && protocol === "webDriverBiDi" && usePipe) {
+          throw new Error("Pipe connections are not supported with Firefox and WebDriver BiDi");
+        }
+        const browserProcess = launch({
+          executablePath: launchArgs.executablePath,
+          args: launchArgs.args,
+          handleSIGHUP,
+          handleSIGTERM,
+          handleSIGINT,
+          dumpio,
+          env: env2,
+          pipe: usePipe,
+          onExit: onProcessExit,
+          signal: options.signal
+        });
+        let browser;
+        let cdpConnection;
+        let closing = false;
+        const browserCloseCallback = async () => {
+          if (closing) {
+            return;
+          }
+          closing = true;
+          await this.closeBrowser(browserProcess, cdpConnection);
+        };
+        try {
+          if (this.#browser === "firefox") {
+            browser = await this.createBiDiBrowser(browserProcess, browserCloseCallback, {
+              timeout: timeout2,
+              protocolTimeout,
+              slowMo,
+              defaultViewport,
+              acceptInsecureCerts,
+              networkEnabled,
+              idGenerator
+            });
+          } else {
+            if (usePipe) {
+              cdpConnection = await this.createCdpPipeConnection(browserProcess, {
+                timeout: timeout2,
+                protocolTimeout,
+                slowMo,
+                idGenerator
+              });
+            } else {
+              cdpConnection = await this.createCdpSocketConnection(browserProcess, {
+                timeout: timeout2,
+                protocolTimeout,
+                slowMo,
+                idGenerator
+              });
+            }
+            if (protocol === "webDriverBiDi") {
+              browser = await this.createBiDiOverCdpBrowser(browserProcess, cdpConnection, browserCloseCallback, {
+                defaultViewport,
+                acceptInsecureCerts,
+                networkEnabled,
+                issuesEnabled
+              });
+            } else {
+              browser = await CdpBrowser._create(cdpConnection, [], acceptInsecureCerts, defaultViewport, downloadBehavior, browserProcess.nodeProcess, browserCloseCallback, options.targetFilter, void 0, void 0, networkEnabled, issuesEnabled, handleDevToolsAsPage);
+            }
+          }
+        } catch (error) {
+          void browserCloseCallback();
+          const logs = browserProcess.getRecentLogs().join("\n");
+          if (logs.includes("Failed to create a ProcessSingleton for your profile directory") || // On Windows we will not get logs due to the singleton process
+          // handover. See
+          // https://source.chromium.org/chromium/chromium/src/+/main:chrome/browser/process_singleton_win.cc;l=46;drc=fc7952f0422b5073515a205a04ec9c3a1ae81658
+          process.platform === "win32" && existsSync2(join2(launchArgs.userDataDir, "lockfile"))) {
+            throw new Error(`The browser is already running for ${launchArgs.userDataDir}. Use a different \`userDataDir\` or stop the running browser first.`);
+          }
+          if (logs.includes("Missing X server") && options.headless === false) {
+            throw new Error(`Missing X server to start the headful browser. Either set headless to true or use xvfb-run to run your Puppeteer script.`);
+          }
+          if (error instanceof TimeoutError2) {
+            throw new TimeoutError(error.message);
+          }
+          throw error;
+        }
+        if (Array.isArray(enableExtensions)) {
+          if (this.#browser === "chrome" && !usePipe) {
+            throw new Error("To use `enableExtensions` with a list of paths in Chrome, you must be connected with `--remote-debugging-pipe` (`pipe: true`).");
+          }
+          await Promise.all([
+            enableExtensions.map((path13) => {
+              return browser.installExtension(path13);
+            })
+          ]);
+        }
+        if (waitForInitialPage) {
+          await this.waitForPageTarget(browser, timeout2);
+        }
+        return browser;
+      }
+      /**
+       * @internal
+       */
+      async closeBrowser(browserProcess, cdpConnection) {
+        if (cdpConnection) {
+          try {
+            await cdpConnection.closeBrowser();
+            await browserProcess.hasClosed();
+          } catch (error) {
+            debugError(error);
+            await browserProcess.close();
+          }
+        } else {
+          await firstValueFrom(race(from(browserProcess.hasClosed()), timer(5e3).pipe(map(() => {
+            return from(browserProcess.close());
+          }))));
+        }
+      }
+      /**
+       * @internal
+       */
+      async waitForPageTarget(browser, timeout2) {
+        try {
+          await browser.waitForTarget((t) => {
+            return t.type() === "page";
+          }, { timeout: timeout2 });
+        } catch (error) {
+          await browser.close();
+          throw error;
+        }
+      }
+      /**
+       * @internal
+       */
+      async createCdpSocketConnection(browserProcess, opts) {
+        const browserWSEndpoint = await browserProcess.waitForLineOutput(CDP_WEBSOCKET_ENDPOINT_REGEX, opts.timeout);
+        const transport = await NodeWebSocketTransport.create(browserWSEndpoint);
+        return new Connection(
+          browserWSEndpoint,
+          transport,
+          opts.slowMo,
+          opts.protocolTimeout,
+          /* rawErrors */
+          false,
+          opts.idGenerator
+        );
+      }
+      /**
+       * @internal
+       */
+      async createCdpPipeConnection(browserProcess, opts) {
+        const { 3: pipeWrite, 4: pipeRead } = browserProcess.nodeProcess.stdio;
+        const transport = new PipeTransport(pipeWrite, pipeRead);
+        return new Connection(
+          "",
+          transport,
+          opts.slowMo,
+          opts.protocolTimeout,
+          /* rawErrors */
+          false,
+          opts.idGenerator
+        );
+      }
+      /**
+       * @internal
+       */
+      async createBiDiOverCdpBrowser(browserProcess, cdpConnection, closeCallback, opts) {
+        const bidiOnly = process.env["PUPPETEER_WEBDRIVER_BIDI_ONLY"] === "true";
+        const BiDi = await Promise.resolve().then(() => (init_bidi(), bidi_exports));
+        const bidiConnection = await BiDi.connectBidiOverCdp(cdpConnection);
+        return await BiDi.BidiBrowser.create({
+          connection: bidiConnection,
+          // Do not provide CDP connection to Browser, if BiDi-only mode is enabled. This
+          // would restrict Browser to use only BiDi endpoint.
+          cdpConnection: bidiOnly ? void 0 : cdpConnection,
+          closeCallback,
+          process: browserProcess.nodeProcess,
+          defaultViewport: opts.defaultViewport,
+          acceptInsecureCerts: opts.acceptInsecureCerts,
+          networkEnabled: opts.networkEnabled,
+          issuesEnabled: opts.issuesEnabled
+        });
+      }
+      /**
+       * @internal
+       */
+      async createBiDiBrowser(browserProcess, closeCallback, opts) {
+        const browserWSEndpoint = await browserProcess.waitForLineOutput(WEBDRIVER_BIDI_WEBSOCKET_ENDPOINT_REGEX, opts.timeout) + "/session";
+        const transport = await NodeWebSocketTransport.create(browserWSEndpoint);
+        const BiDi = await Promise.resolve().then(() => (init_bidi(), bidi_exports));
+        const bidiConnection = new BiDi.BidiConnection(browserWSEndpoint, transport, opts.idGenerator, opts.slowMo, opts.protocolTimeout);
+        return await BiDi.BidiBrowser.create({
+          connection: bidiConnection,
+          closeCallback,
+          process: browserProcess.nodeProcess,
+          defaultViewport: opts.defaultViewport,
+          acceptInsecureCerts: opts.acceptInsecureCerts,
+          networkEnabled: opts.networkEnabled ?? true,
+          issuesEnabled: opts.issuesEnabled ?? true
+        });
+      }
+      /**
+       * @internal
+       */
+      getProfilePath() {
+        return join2(this.puppeteer.configuration.temporaryDirectory ?? tmpdir(), `puppeteer_dev_${this.browser}_profile-`);
+      }
+      /**
+       * @internal
+       */
+      resolveExecutablePath(headless, validatePath = true) {
+        let executablePath2 = this.puppeteer.configuration.executablePath;
+        if (executablePath2) {
+          if (validatePath && !existsSync2(executablePath2)) {
+            throw new Error(`Tried to find the browser at the configured path (${executablePath2}), but no executable was found.`);
+          }
+          return executablePath2;
+        }
+        function puppeteerBrowserToInstalledBrowser(browser, headless2) {
+          switch (browser) {
+            case "chrome":
+              if (headless2 === "shell") {
+                return Browser3.CHROMEHEADLESSSHELL;
+              }
+              return Browser3.CHROME;
+            case "firefox":
+              return Browser3.FIREFOX;
+          }
+          return Browser3.CHROME;
+        }
+        const browserType = puppeteerBrowserToInstalledBrowser(this.browser, headless);
+        executablePath2 = computeExecutablePath({
+          cacheDir: this.puppeteer.defaultDownloadPath,
+          browser: browserType,
+          buildId: this.puppeteer.browserVersion
+        });
+        if (validatePath && !existsSync2(executablePath2)) {
+          const configVersion = this.puppeteer.configuration?.[this.browser]?.version;
+          if (configVersion) {
+            throw new Error(`Tried to find the browser at the configured path (${executablePath2}) for version ${configVersion}, but no executable was found.`);
+          }
+          switch (this.browser) {
+            case "chrome":
+              throw new Error(`Could not find Chrome (ver. ${this.puppeteer.browserVersion}). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. \`npx puppeteer browsers install ${browserType}\`) or
+ 2. your cache path is incorrectly configured (which is: ${this.puppeteer.configuration.cacheDirectory}).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.`);
+            case "firefox":
+              throw new Error(`Could not find Firefox (rev. ${this.puppeteer.browserVersion}). This can occur if either
+ 1. you did not perform an installation for Firefox before running the script (e.g. \`npx puppeteer browsers install firefox\`) or
+ 2. your cache path is incorrectly configured (which is: ${this.puppeteer.configuration.cacheDirectory}).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.`);
+          }
+        }
+        return executablePath2;
+      }
+    };
+  }
+});
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/util/fs.js
+import fs3 from "node:fs";
+async function rm(path13) {
+  await fs3.promises.rm(path13, rmOptions);
+}
+var rmOptions;
+var init_fs = __esm({
+  "node_modules/puppeteer-core/lib/esm/puppeteer/node/util/fs.js"() {
+    rmOptions = {
+      force: true,
+      recursive: true,
+      maxRetries: 5
+    };
+  }
+});
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/ChromeLauncher.js
+import { mkdtemp } from "node:fs/promises";
+import os6 from "node:os";
+import path9 from "node:path";
+function getFeatures(flag, options = []) {
+  return options.filter((s) => {
+    return s.startsWith(flag.endsWith("=") ? flag : `${flag}=`);
+  }).map((s) => {
+    return s.split(new RegExp(`${flag}=\\s*`))[1]?.trim();
+  }).filter((s) => {
+    return s;
+  });
+}
+function removeMatchingFlags(array, flag) {
+  const regex = new RegExp(`^${flag}=.*`);
+  let i = 0;
+  while (i < array.length) {
+    if (regex.test(array[i])) {
+      array.splice(i, 1);
+    } else {
+      i++;
+    }
+  }
+  return array;
+}
+var ChromeLauncher;
+var init_ChromeLauncher = __esm({
+  "node_modules/puppeteer-core/lib/esm/puppeteer/node/ChromeLauncher.js"() {
+    init_main();
+    init_util();
+    init_assert();
+    init_BrowserLauncher();
+    init_LaunchOptions();
+    init_fs();
+    ChromeLauncher = class extends BrowserLauncher {
+      constructor(puppeteer2) {
+        super(puppeteer2, "chrome");
+      }
+      launch(options = {}) {
+        if (this.puppeteer.configuration.logLevel === "warn" && process.platform === "darwin" && process.arch === "x64") {
+          const cpus = os6.cpus();
+          if (cpus[0]?.model.includes("Apple")) {
+            console.warn([
+              "\x1B[1m\x1B[43m\x1B[30m",
+              "Degraded performance warning:\x1B[0m\x1B[33m",
+              "Launching Chrome on Mac Silicon (arm64) from an x64 Node installation results in",
+              "Rosetta translating the Chrome binary, even if Chrome is already arm64. This would",
+              "result in huge performance issues. To resolve this, you must run Puppeteer with",
+              "a version of Node built for arm64."
+            ].join("\n  "));
+          }
+        }
+        return super.launch(options);
+      }
+      /**
+       * @internal
+       */
+      async computeLaunchArguments(options = {}) {
+        const { ignoreDefaultArgs = false, args = [], pipe: pipe2 = false, debuggingPort, channel, executablePath: executablePath2 } = options;
+        const chromeArguments = [];
+        if (!ignoreDefaultArgs) {
+          chromeArguments.push(...this.defaultArgs(options));
+        } else if (Array.isArray(ignoreDefaultArgs)) {
+          chromeArguments.push(...this.defaultArgs(options).filter((arg) => {
+            return !ignoreDefaultArgs.includes(arg);
+          }));
+        } else {
+          chromeArguments.push(...args);
+        }
+        if (!chromeArguments.some((argument) => {
+          return argument.startsWith("--remote-debugging-");
+        })) {
+          if (pipe2) {
+            assert(!debuggingPort, "Browser should be launched with either pipe or debugging port - not both.");
+            chromeArguments.push("--remote-debugging-pipe");
+          } else {
+            chromeArguments.push(`--remote-debugging-port=${debuggingPort || 0}`);
+          }
+        }
+        let isTempUserDataDir = false;
+        let userDataDirIndex = chromeArguments.findIndex((arg) => {
+          return arg.startsWith("--user-data-dir");
+        });
+        if (userDataDirIndex < 0) {
+          isTempUserDataDir = true;
+          chromeArguments.push(`--user-data-dir=${await mkdtemp(this.getProfilePath())}`);
+          userDataDirIndex = chromeArguments.length - 1;
+        }
+        const userDataDir = chromeArguments[userDataDirIndex].split("=", 2)[1];
+        assert(typeof userDataDir === "string", "`--user-data-dir` is malformed");
+        let chromeExecutable = executablePath2;
+        if (!chromeExecutable) {
+          assert(channel || !this.puppeteer._isPuppeteerCore, `An \`executablePath\` or \`channel\` must be specified for \`puppeteer-core\``);
+          chromeExecutable = channel ? this.executablePath(channel) : this.resolveExecutablePath(options.headless ?? true);
+        }
+        return {
+          executablePath: chromeExecutable,
+          args: chromeArguments,
+          isTempUserDataDir,
+          userDataDir
+        };
+      }
+      /**
+       * @internal
+       */
+      async cleanUserDataDir(path13, opts) {
+        if (opts.isTemp) {
+          try {
+            await rm(path13);
+          } catch (error) {
+            debugError(error);
+            throw error;
+          }
+        }
+      }
+      defaultArgs(options = {}) {
+        const userDisabledFeatures = getFeatures("--disable-features", options.args);
+        if (options.args && userDisabledFeatures.length > 0) {
+          removeMatchingFlags(options.args, "--disable-features");
+        }
+        const turnOnExperimentalFeaturesForTesting = process.env["PUPPETEER_TEST_EXPERIMENTAL_CHROME_FEATURES"] === "true";
+        const disabledFeatures = [
+          "Translate",
+          // AcceptCHFrame disabled because of crbug.com/1348106.
+          "AcceptCHFrame",
+          "MediaRouter",
+          "OptimizationHints",
+          "PartitionAllocSchedulerLoopQuarantineTaskControlledPurge",
+          // https://crbug.com/489314676
+          ...turnOnExperimentalFeaturesForTesting ? [] : [
+            // https://crbug.com/1492053
+            "ProcessPerSiteUpToMainFrameThreshold",
+            // https://github.com/puppeteer/puppeteer/issues/10715
+            "IsolateSandboxedIframes"
+          ],
+          ...userDisabledFeatures
+        ].filter((feature) => {
+          return feature !== "";
+        });
+        const userEnabledFeatures = getFeatures("--enable-features", options.args);
+        if (options.args && userEnabledFeatures.length > 0) {
+          removeMatchingFlags(options.args, "--enable-features");
+        }
+        const enabledFeatures = [
+          "PdfOopif",
+          // Add features to enable by default here.
+          ...userEnabledFeatures
+        ].filter((feature) => {
+          return feature !== "";
+        });
+        const chromeArguments = [
+          "--allow-pre-commit-input",
+          "--disable-background-networking",
+          "--disable-background-timer-throttling",
+          "--disable-backgrounding-occluded-windows",
+          "--disable-breakpad",
+          "--disable-client-side-phishing-detection",
+          "--disable-component-extensions-with-background-pages",
+          "--disable-crash-reporter",
+          // No crash reporting in CfT.
+          "--disable-default-apps",
+          "--disable-dev-shm-usage",
+          "--disable-hang-monitor",
+          "--disable-infobars",
+          "--disable-ipc-flooding-protection",
+          "--disable-popup-blocking",
+          "--disable-prompt-on-repost",
+          "--disable-renderer-backgrounding",
+          "--disable-search-engine-choice-screen",
+          "--disable-sync",
+          "--enable-automation",
+          "--export-tagged-pdf",
+          "--force-color-profile=srgb",
+          "--generate-pdf-document-outline",
+          "--metrics-recording-only",
+          "--no-first-run",
+          "--password-store=basic",
+          "--use-mock-keychain",
+          `--disable-features=${disabledFeatures.join(",")}`,
+          `--enable-features=${enabledFeatures.join(",")}`
+        ].filter((arg) => {
+          return arg !== "";
+        });
+        const { devtools = false, headless = !devtools, args = [], userDataDir, enableExtensions = false } = options;
+        if (process.env["PUPPETEER_DANGEROUS_NO_SANDBOX"] === "true" && !args.includes("--no-sandbox")) {
+          chromeArguments.push("--no-sandbox");
+        }
+        if (userDataDir) {
+          chromeArguments.push(`--user-data-dir=${path9.posix.isAbsolute(userDataDir) || path9.win32.isAbsolute(userDataDir) ? userDataDir : path9.resolve(userDataDir)}`);
+        }
+        if (devtools) {
+          chromeArguments.push("--auto-open-devtools-for-tabs");
+        }
+        if (headless) {
+          chromeArguments.push(headless === "shell" ? "--headless" : "--headless=new", "--hide-scrollbars", "--mute-audio");
+        }
+        chromeArguments.push(enableExtensions ? "--enable-unsafe-extension-debugging" : "--disable-extensions");
+        if (args.every((arg) => {
+          return arg.startsWith("-");
+        })) {
+          chromeArguments.push("about:blank");
+        }
+        chromeArguments.push(...args);
+        return chromeArguments;
+      }
+      executablePath(channel, validatePath = true) {
+        if (channel) {
+          return computeSystemExecutablePath({
+            browser: Browser3.CHROME,
+            channel: convertPuppeteerChannelToBrowsersChannel(channel)
+          });
+        } else {
+          return this.resolveExecutablePath(void 0, validatePath);
+        }
+      }
+    };
+  }
+});
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/FirefoxLauncher.js
+import fs4 from "node:fs";
+import { rename, unlink as unlink2, mkdtemp as mkdtemp2 } from "node:fs/promises";
+import os7 from "node:os";
+import path10 from "node:path";
+var FirefoxLauncher;
+var init_FirefoxLauncher = __esm({
+  "node_modules/puppeteer-core/lib/esm/puppeteer/node/FirefoxLauncher.js"() {
+    init_main();
+    init_util();
+    init_assert();
+    init_BrowserLauncher();
+    init_fs();
+    FirefoxLauncher = class _FirefoxLauncher extends BrowserLauncher {
+      constructor(puppeteer2) {
+        super(puppeteer2, "firefox");
+      }
+      static getPreferences(extraPrefsFirefox) {
+        return {
+          ...extraPrefsFirefox,
+          // Force all web content to use a single content process. TODO: remove
+          // this once Firefox supports mouse event dispatch from the main frame
+          // context. See https://bugzilla.mozilla.org/show_bug.cgi?id=1773393.
+          "fission.webContentIsolationStrategy": 0
+        };
+      }
+      /**
+       * @internal
+       */
+      async computeLaunchArguments(options = {}) {
+        const { ignoreDefaultArgs = false, args = [], executablePath: executablePath2, pipe: pipe2 = false, extraPrefsFirefox = {}, debuggingPort = null } = options;
+        const firefoxArguments = [];
+        if (!ignoreDefaultArgs) {
+          firefoxArguments.push(...this.defaultArgs(options));
+        } else if (Array.isArray(ignoreDefaultArgs)) {
+          firefoxArguments.push(...this.defaultArgs(options).filter((arg) => {
+            return !ignoreDefaultArgs.includes(arg);
+          }));
+        } else {
+          firefoxArguments.push(...args);
+        }
+        if (!firefoxArguments.some((argument) => {
+          return argument.startsWith("--remote-debugging-");
+        })) {
+          if (pipe2) {
+            assert(debuggingPort === null, "Browser should be launched with either pipe or debugging port - not both.");
+          }
+          firefoxArguments.push(`--remote-debugging-port=${debuggingPort || 0}`);
+        }
+        let userDataDir;
+        let isTempUserDataDir = true;
+        const profileArgIndex = firefoxArguments.findIndex((arg) => {
+          return ["-profile", "--profile"].includes(arg);
+        });
+        if (profileArgIndex !== -1) {
+          userDataDir = firefoxArguments[profileArgIndex + 1];
+          if (!userDataDir) {
+            throw new Error(`Missing value for profile command line argument`);
+          }
+          isTempUserDataDir = false;
+        } else {
+          userDataDir = await mkdtemp2(this.getProfilePath());
+          firefoxArguments.push("--profile");
+          firefoxArguments.push(userDataDir);
+        }
+        await createProfile2(Browser3.FIREFOX, {
+          path: userDataDir,
+          preferences: _FirefoxLauncher.getPreferences(extraPrefsFirefox)
+        });
+        let firefoxExecutable;
+        if (this.puppeteer._isPuppeteerCore || executablePath2) {
+          assert(executablePath2, `An \`executablePath\` must be specified for \`puppeteer-core\``);
+          firefoxExecutable = executablePath2;
+        } else {
+          firefoxExecutable = this.executablePath(void 0);
+        }
+        return {
+          isTempUserDataDir,
+          userDataDir,
+          args: firefoxArguments,
+          executablePath: firefoxExecutable
+        };
+      }
+      /**
+       * @internal
+       */
+      async cleanUserDataDir(userDataDir, opts) {
+        if (opts.isTemp) {
+          try {
+            await rm(userDataDir);
+          } catch (error) {
+            debugError(error);
+            throw error;
+          }
+        } else {
+          try {
+            const backupSuffix = ".puppeteer";
+            const backupFiles = ["prefs.js", "user.js"];
+            const results = await Promise.allSettled(backupFiles.map(async (file) => {
+              const prefsBackupPath = path10.join(userDataDir, file + backupSuffix);
+              if (fs4.existsSync(prefsBackupPath)) {
+                const prefsPath = path10.join(userDataDir, file);
+                await unlink2(prefsPath);
+                await rename(prefsBackupPath, prefsPath);
+              }
+            }));
+            for (const result of results) {
+              if (result.status === "rejected") {
+                throw result.reason;
+              }
+            }
+          } catch (error) {
+            debugError(error);
+          }
+        }
+      }
+      executablePath(_, validatePath = true) {
+        return this.resolveExecutablePath(
+          void 0,
+          /* validatePath=*/
+          validatePath
+        );
+      }
+      defaultArgs(options = {}) {
+        const { devtools = false, headless = !devtools, args = [], userDataDir = null } = options;
+        const firefoxArguments = [];
+        switch (os7.platform()) {
+          case "darwin":
+            firefoxArguments.push("--foreground");
+            break;
+          case "win32":
+            firefoxArguments.push("--wait-for-browser");
+            break;
+        }
+        if (userDataDir) {
+          firefoxArguments.push("--profile");
+          firefoxArguments.push(userDataDir);
+        }
+        if (headless) {
+          firefoxArguments.push("--headless");
+        }
+        if (devtools) {
+          firefoxArguments.push("--devtools");
+        }
+        if (args.every((arg) => {
+          return arg.startsWith("-");
+        })) {
+          firefoxArguments.push("about:blank");
+        }
+        firefoxArguments.push(...args);
+        return firefoxArguments;
+      }
+    };
+  }
+});
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/PuppeteerNode.js
+var PuppeteerNode;
+var init_PuppeteerNode = __esm({
+  "node_modules/puppeteer-core/lib/esm/puppeteer/node/PuppeteerNode.js"() {
+    init_main();
+    init_Puppeteer();
+    init_revisions();
+    init_ChromeLauncher();
+    init_FirefoxLauncher();
+    PuppeteerNode = class extends Puppeteer {
+      #launcher;
+      #lastLaunchedBrowser;
+      /**
+       * @internal
+       */
+      defaultBrowserRevision;
+      /**
+       * @internal
+       */
+      configuration = {};
+      /**
+       * @internal
+       */
+      constructor(settings) {
+        const { configuration, ...commonSettings } = settings;
+        super(commonSettings);
+        if (configuration) {
+          this.configuration = configuration;
+        }
+        switch (this.configuration.defaultBrowser) {
+          case "firefox":
+            this.defaultBrowserRevision = PUPPETEER_REVISIONS.firefox;
+            break;
+          default:
+            this.configuration.defaultBrowser = "chrome";
+            this.defaultBrowserRevision = PUPPETEER_REVISIONS.chrome;
+            break;
+        }
+        this.connect = this.connect.bind(this);
+        this.launch = this.launch.bind(this);
+        this.executablePath = this.executablePath.bind(this);
+        this.defaultArgs = this.defaultArgs.bind(this);
+        this.trimCache = this.trimCache.bind(this);
+      }
+      /**
+       * This method attaches Puppeteer to an existing browser instance.
+       *
+       * @param options - Set of configurable options to set on the browser.
+       * @returns Promise which resolves to browser instance.
+       */
+      connect(options) {
+        return super.connect(options);
+      }
+      /**
+       * Launches a browser instance with given arguments and options when
+       * specified.
+       *
+       * When using with `puppeteer-core`,
+       * {@link LaunchOptions.executablePath | options.executablePath} or
+       * {@link LaunchOptions.channel | options.channel} must be provided.
+       *
+       * @example
+       * You can use {@link LaunchOptions.ignoreDefaultArgs | options.ignoreDefaultArgs}
+       * to filter out `--mute-audio` from default arguments:
+       *
+       * ```ts
+       * const browser = await puppeteer.launch({
+       *   ignoreDefaultArgs: ['--mute-audio'],
+       * });
+       * ```
+       *
+       * @remarks
+       * Puppeteer can also be used to control the Chrome browser, but it works best
+       * with the version of Chrome for Testing downloaded by default.
+       * There is no guarantee it will work with any other version. If Google Chrome
+       * (rather than Chrome for Testing) is preferred, a
+       * {@link https://www.google.com/chrome/browser/canary.html | Chrome Canary}
+       * or
+       * {@link https://www.chromium.org/getting-involved/dev-channel | Dev Channel}
+       * build is suggested. See
+       * {@link https://www.howtogeek.com/202825/what%E2%80%99s-the-difference-between-chromium-and-chrome/ | this article}
+       * for a description of the differences between Chromium and Chrome.
+       * {@link https://chromium.googlesource.com/chromium/src/+/lkgr/docs/chromium_browser_vs_google_chrome.md | This article}
+       * describes some differences for Linux users. See
+       * {@link https://developer.chrome.com/blog/chrome-for-testing/ | this doc} for the description
+       * of Chrome for Testing.
+       *
+       * @param options - Options to configure launching behavior.
+       */
+      launch(options = {}) {
+        const { browser = this.defaultBrowser } = options;
+        this.#lastLaunchedBrowser = browser;
+        switch (browser) {
+          case "chrome":
+            this.defaultBrowserRevision = PUPPETEER_REVISIONS.chrome;
+            break;
+          case "firefox":
+            this.defaultBrowserRevision = PUPPETEER_REVISIONS.firefox;
+            break;
+          default:
+            throw new Error(`Unknown product: ${browser}`);
+        }
+        this.#launcher = this.#getLauncher(browser);
+        return this.#launcher.launch(options);
+      }
+      /**
+       * @internal
+       */
+      #getLauncher(browser) {
+        if (this.#launcher && this.#launcher.browser === browser) {
+          return this.#launcher;
+        }
+        switch (browser) {
+          case "chrome":
+            return new ChromeLauncher(this);
+          case "firefox":
+            return new FirefoxLauncher(this);
+          default:
+            throw new Error(`Unknown product: ${browser}`);
+        }
+      }
+      executablePath(optsOrChannel) {
+        if (optsOrChannel === void 0) {
+          return this.#getLauncher(this.lastLaunchedBrowser).executablePath(
+            void 0,
+            /* validatePath= */
+            false
+          );
+        }
+        if (typeof optsOrChannel === "string") {
+          return this.#getLauncher("chrome").executablePath(
+            optsOrChannel,
+            /* validatePath= */
+            false
+          );
+        }
+        return this.#getLauncher(optsOrChannel.browser ?? this.lastLaunchedBrowser).resolveExecutablePath(
+          optsOrChannel.headless,
+          /* validatePath= */
+          false
+        );
+      }
+      /**
+       * @internal
+       */
+      get browserVersion() {
+        return this.configuration?.[this.lastLaunchedBrowser]?.version ?? this.defaultBrowserRevision;
+      }
+      /**
+       * The default download path for puppeteer. For puppeteer-core, this
+       * code should never be called as it is never defined.
+       *
+       * @internal
+       */
+      get defaultDownloadPath() {
+        return this.configuration.cacheDirectory;
+      }
+      /**
+       * The name of the browser that was last launched.
+       */
+      get lastLaunchedBrowser() {
+        return this.#lastLaunchedBrowser ?? this.defaultBrowser;
+      }
+      /**
+       * The name of the browser that will be launched by default. For
+       * `puppeteer`, this is influenced by your configuration. Otherwise, it's
+       * `chrome`.
+       */
+      get defaultBrowser() {
+        return this.configuration.defaultBrowser ?? "chrome";
+      }
+      /**
+       * @deprecated Do not use as this field as it does not take into account
+       * multiple browsers of different types. Use
+       * {@link PuppeteerNode.defaultBrowser | defaultBrowser} or
+       * {@link PuppeteerNode.lastLaunchedBrowser | lastLaunchedBrowser}.
+       *
+       * @returns The name of the browser that is under automation.
+       */
+      get product() {
+        return this.lastLaunchedBrowser;
+      }
+      /**
+       * @param options - Set of configurable options to set on the browser.
+       *
+       * @returns The default arguments that the browser will be launched with.
+       */
+      defaultArgs(options = {}) {
+        return this.#getLauncher(options.browser ?? this.lastLaunchedBrowser).defaultArgs(options);
+      }
+      /**
+       * Removes all non-current Firefox and Chrome binaries in the cache directory
+       * identified by the provided Puppeteer configuration. The current browser
+       * version is determined by resolving PUPPETEER_REVISIONS from Puppeteer
+       * unless `configuration.browserRevision` is provided.
+       *
+       * @remarks
+       *
+       * Note that the method does not check if any other Puppeteer versions
+       * installed on the host that use the same cache directory require the
+       * non-current binaries.
+       *
+       * @public
+       */
+      async trimCache() {
+        const platform = detectBrowserPlatform();
+        if (!platform) {
+          throw new Error("The current platform is not supported.");
+        }
+        const cacheDir = this.configuration.cacheDirectory;
+        const installedBrowsers = await getInstalledBrowsers({
+          cacheDir
+        });
+        const puppeteerBrowsers = [
+          {
+            product: "chrome",
+            browser: Browser3.CHROME,
+            currentBuildId: ""
+          },
+          {
+            product: "firefox",
+            browser: Browser3.FIREFOX,
+            currentBuildId: ""
+          }
+        ];
+        await Promise.all(puppeteerBrowsers.map(async (item) => {
+          const tag = this.configuration?.[item.product]?.version ?? PUPPETEER_REVISIONS[item.product];
+          item.currentBuildId = await resolveBuildId4(item.browser, platform, tag);
+        }));
+        const currentBrowserBuilds = new Set(puppeteerBrowsers.map((browser) => {
+          return `${browser.browser}_${browser.currentBuildId}`;
+        }));
+        const currentBrowsers = new Set(puppeteerBrowsers.map((browser) => {
+          return browser.browser;
+        }));
+        for (const installedBrowser of installedBrowsers) {
+          if (!currentBrowsers.has(installedBrowser.browser)) {
+            continue;
+          }
+          if (currentBrowserBuilds.has(`${installedBrowser.browser}_${installedBrowser.buildId}`)) {
+            continue;
+          }
+          await uninstall({
+            browser: installedBrowser.browser,
+            platform,
+            cacheDir,
+            buildId: installedBrowser.buildId
+          });
+        }
+      }
+    };
+  }
+});
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/ScreenRecorder.js
+import { spawn as spawn2, spawnSync as spawnSync3 } from "node:child_process";
+import fs5 from "node:fs";
+import os8 from "node:os";
+import { dirname as dirname3 } from "node:path";
+import { PassThrough } from "node:stream";
+var import_debug6, __runInitializers23, __esDecorate23, __setFunctionName6, CRF_VALUE, DEFAULT_FPS, debugFfmpeg, ScreenRecorder;
+var init_ScreenRecorder = __esm({
+  "node_modules/puppeteer-core/lib/esm/puppeteer/node/ScreenRecorder.js"() {
+    import_debug6 = __toESM(require_src(), 1);
+    init_rxjs();
+    init_CDPSession();
+    init_util();
+    init_decorators();
+    init_disposable();
+    __runInitializers23 = function(thisArg, initializers, value) {
+      var useValue = arguments.length > 2;
+      for (var i = 0; i < initializers.length; i++) {
+        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);
+      }
+      return useValue ? value : void 0;
+    };
+    __esDecorate23 = function(ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {
+      function accept(f) {
+        if (f !== void 0 && typeof f !== "function") throw new TypeError("Function expected");
+        return f;
+      }
+      var kind = contextIn.kind, key = kind === "getter" ? "get" : kind === "setter" ? "set" : "value";
+      var target = !descriptorIn && ctor ? contextIn["static"] ? ctor : ctor.prototype : null;
+      var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});
+      var _, done = false;
+      for (var i = decorators.length - 1; i >= 0; i--) {
+        var context2 = {};
+        for (var p in contextIn) context2[p] = p === "access" ? {} : contextIn[p];
+        for (var p in contextIn.access) context2.access[p] = contextIn.access[p];
+        context2.addInitializer = function(f) {
+          if (done) throw new TypeError("Cannot add initializers after decoration has completed");
+          extraInitializers.push(accept(f || null));
+        };
+        var result = (0, decorators[i])(kind === "accessor" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context2);
+        if (kind === "accessor") {
+          if (result === void 0) continue;
+          if (result === null || typeof result !== "object") throw new TypeError("Object expected");
+          if (_ = accept(result.get)) descriptor.get = _;
+          if (_ = accept(result.set)) descriptor.set = _;
+          if (_ = accept(result.init)) initializers.unshift(_);
+        } else if (_ = accept(result)) {
+          if (kind === "field") initializers.unshift(_);
+          else descriptor[key] = _;
+        }
+      }
+      if (target) Object.defineProperty(target, contextIn.name, descriptor);
+      done = true;
+    };
+    __setFunctionName6 = function(f, name, prefix) {
+      if (typeof name === "symbol") name = name.description ? "[".concat(name.description, "]") : "";
+      return Object.defineProperty(f, "name", { configurable: true, value: prefix ? "".concat(prefix, " ", name) : name });
+    };
+    CRF_VALUE = 30;
+    DEFAULT_FPS = 30;
+    debugFfmpeg = (0, import_debug6.default)("puppeteer:ffmpeg");
+    ScreenRecorder = (() => {
+      let _classSuper = PassThrough;
+      let _instanceExtraInitializers = [];
+      let _private_writeFrame_decorators;
+      let _private_writeFrame_descriptor;
+      let _stop_decorators;
+      return class ScreenRecorder extends _classSuper {
+        static {
+          const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+          __esDecorate23(this, _private_writeFrame_descriptor = { value: __setFunctionName6(async function(buffer) {
+            const error = await new Promise((resolve6) => {
+              this.#process.stdin.write(buffer, resolve6);
+            });
+            if (error) {
+              console.log(`ffmpeg failed to write: ${error.message}.`);
+            }
+          }, "#writeFrame") }, _private_writeFrame_decorators, { kind: "method", name: "#writeFrame", static: false, private: true, access: { has: (obj) => #writeFrame in obj, get: (obj) => obj.#writeFrame }, metadata: _metadata }, null, _instanceExtraInitializers);
+          __esDecorate23(this, null, _stop_decorators, { kind: "method", name: "stop", static: false, private: false, access: { has: (obj) => "stop" in obj, get: (obj) => obj.stop }, metadata: _metadata }, null, _instanceExtraInitializers);
+          if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
+        }
+        #page = __runInitializers23(this, _instanceExtraInitializers);
+        #process;
+        #controller = new AbortController();
+        #lastFrame;
+        #fps;
+        /**
+         * @internal
+         */
+        constructor(page, width, height, { ffmpegPath, speed, scale, crop, format: format3, fps, loop, delay, quality, colors, path: path13, overwrite } = {}) {
+          super({ allowHalfOpen: false });
+          ffmpegPath ??= "ffmpeg";
+          format3 ??= "webm";
+          fps ??= DEFAULT_FPS;
+          loop ||= -1;
+          delay ??= -1;
+          quality ??= CRF_VALUE;
+          colors ??= 256;
+          overwrite ??= true;
+          this.#fps = fps;
+          const { error } = spawnSync3(ffmpegPath);
+          if (error) {
+            throw error;
+          }
+          const filters = [
+            `crop='min(${width},iw):min(${height},ih):0:0'`,
+            `pad=${width}:${height}:0:0`
+          ];
+          if (speed) {
+            filters.push(`setpts=${1 / speed}*PTS`);
+          }
+          if (crop) {
+            filters.push(`crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}`);
+          }
+          if (scale) {
+            filters.push(`scale=iw*${scale}:-1:flags=lanczos`);
+          }
+          const formatArgs = this.#getFormatArgs(format3, fps, loop, delay, quality, colors);
+          const vf = formatArgs.indexOf("-vf");
+          if (vf !== -1) {
+            filters.push(formatArgs.splice(vf, 2).at(-1) ?? "");
+          }
+          if (path13) {
+            fs5.mkdirSync(dirname3(path13), { recursive: overwrite });
+          }
+          this.#process = spawn2(
+            ffmpegPath,
+            // See https://trac.ffmpeg.org/wiki/Encode/VP9 for more information on flags.
+            [
+              ["-loglevel", "error"],
+              // Reduces general buffering.
+              ["-avioflags", "direct"],
+              // Reduces initial buffering while analyzing input fps and other stats.
+              [
+                "-fpsprobesize",
+                "0",
+                "-probesize",
+                "32",
+                "-analyzeduration",
+                "0",
+                "-fflags",
+                "nobuffer"
+              ],
+              // Forces input to be read from standard input, and forces png input
+              // image format.
+              ["-f", "image2pipe", "-vcodec", "png", "-i", "pipe:0"],
+              // No audio
+              ["-an"],
+              // This drastically reduces stalling when cpu is overbooked. By default
+              // VP9 tries to use all available threads?
+              ["-threads", "1"],
+              // Specifies the frame rate we are giving ffmpeg.
+              ["-framerate", `${fps}`],
+              // Disable bitrate.
+              ["-b:v", "0"],
+              // Specifies the encoding and format we are using.
+              formatArgs,
+              // Filters to ensure the images are piped correctly,
+              // combined with any format-specific filters.
+              ["-vf", filters.join()],
+              // Overwrite output, or exit immediately if file already exists.
+              [overwrite ? "-y" : "-n"],
+              "pipe:1"
+            ].flat(),
+            { stdio: ["pipe", "pipe", "pipe"] }
+          );
+          this.#process.stdout.pipe(this);
+          this.#process.stderr.on("data", (data) => {
+            debugFfmpeg(data.toString("utf8"));
+          });
+          this.#page = page;
+          const { client } = this.#page.mainFrame();
+          client.once(CDPSessionEvent.Disconnected, () => {
+            void this.stop().catch(debugError);
+          });
+          this.#lastFrame = lastValueFrom(fromEmitterEvent(client, "Page.screencastFrame").pipe(tap((event) => {
+            void client.send("Page.screencastFrameAck", {
+              sessionId: event.sessionId
+            });
+          }), filter((event) => {
+            return event.metadata.timestamp !== void 0;
+          }), map((event) => {
+            return {
+              buffer: Buffer.from(event.data, "base64"),
+              timestamp: event.metadata.timestamp
+            };
+          }), bufferCount(2, 1), concatMap(([{ timestamp: previousTimestamp, buffer }, { timestamp: timestamp2 }]) => {
+            return from(Array(Math.round(fps * Math.max(timestamp2 - previousTimestamp, 0))).fill(buffer));
+          }), map((buffer) => {
+            void this.#writeFrame(buffer);
+            return [buffer, performance.now()];
+          }), takeUntil(fromEvent(this.#controller.signal, "abort"))), { defaultValue: [Buffer.from([]), performance.now()] });
+        }
+        #getFormatArgs(format3, fps, loop, delay, quality, colors) {
+          const libvpx = [
+            ["-vcodec", "vp9"],
+            // Sets the quality. Lower the better.
+            ["-crf", `${quality}`],
+            // Sets the quality and how efficient the compression will be.
+            [
+              "-deadline",
+              "realtime",
+              "-cpu-used",
+              `${Math.min(os8.cpus().length / 2, 8)}`
+            ]
+          ];
+          switch (format3) {
+            case "webm":
+              return [
+                ...libvpx,
+                // Sets the format
+                ["-f", "webm"]
+              ].flat();
+            case "gif":
+              fps = DEFAULT_FPS === fps ? 20 : "source_fps";
+              if (loop === Infinity) {
+                loop = 0;
+              }
+              if (delay !== -1) {
+                delay /= 10;
+              }
+              return [
+                // Sets the frame rate and uses a custom palette generated from the
+                // input.
+                [
+                  "-vf",
+                  `fps=${fps},split[s0][s1];[s0]palettegen=stats_mode=diff:max_colors=${colors}[p];[s1][p]paletteuse=dither=bayer`
+                ],
+                // Sets the number of times to loop playback.
+                ["-loop", `${loop}`],
+                // Sets the delay between iterations of a loop.
+                ["-final_delay", `${delay}`],
+                // Sets the format
+                ["-f", "gif"]
+              ].flat();
+            case "mp4":
+              return [
+                ...libvpx,
+                // Fragment file during stream to avoid errors.
+                ["-movflags", "hybrid_fragmented"],
+                // Sets the format
+                ["-f", "mp4"]
+              ].flat();
+          }
+        }
+        get #writeFrame() {
+          return _private_writeFrame_descriptor.value;
+        }
+        /**
+         * Stops the recorder.
+         *
+         * @public
+         */
+        async stop() {
+          if (this.#controller.signal.aborted) {
+            return;
+          }
+          await this.#page._stopScreencast().catch(debugError);
+          this.#controller.abort();
+          const [buffer, timestamp2] = await this.#lastFrame;
+          await Promise.all(Array(Math.max(1, Math.round(this.#fps * (performance.now() - timestamp2) / 1e3))).fill(buffer).map(this.#writeFrame.bind(this)));
+          this.#process.stdin.end();
+          await new Promise((resolve6) => {
+            this.#process.once("close", resolve6);
+          });
+        }
+        /**
+         * @internal
+         */
+        async [(_private_writeFrame_decorators = [guarded()], _stop_decorators = [guarded()], asyncDisposeSymbol)]() {
+          await this.stop();
+        }
+      };
+    })();
+  }
+});
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/node/node.js
+var init_node2 = __esm({
+  "node_modules/puppeteer-core/lib/esm/puppeteer/node/node.js"() {
+    init_ChromeLauncher();
+    init_FirefoxLauncher();
+    init_PipeTransport();
+    init_BrowserLauncher();
+    init_PuppeteerNode();
+    init_ScreenRecorder();
+  }
+});
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/index.js
+var init_puppeteer = __esm({
+  "node_modules/puppeteer-core/lib/esm/puppeteer/index.js"() {
+    init_index_browser();
+    init_node2();
+  }
+});
+
+// node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js
+import fs6 from "node:fs";
+import path11 from "node:path";
+var puppeteer, connect, defaultArgs, executablePath, launch2, puppeteer_core_default;
+var init_puppeteer_core = __esm({
+  "node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js"() {
+    init_puppeteer();
+    init_environment();
+    init_puppeteer();
+    environment.value = {
+      fs: fs6,
+      path: path11,
+      ScreenRecorder
+    };
+    puppeteer = new PuppeteerNode({
+      isPuppeteerCore: true
+    });
+    ({
+      connect: (
+        /**
+         * @public
+         */
+        connect
+      ),
+      defaultArgs: (
+        /**
+         * @public
+         */
+        defaultArgs
+      ),
+      executablePath: (
+        /**
+         * @public
+         */
+        executablePath
+      ),
+      launch: (
+        /**
+         * @public
+         */
+        launch2
+      )
+    } = puppeteer);
+    puppeteer_core_default = puppeteer;
   }
 });
 
@@ -89571,6 +91200,666 @@ var require_follow_redirects = __commonJS({
   }
 });
 
+// node_modules/@sparticuz/chromium/build/esm/helper.js
+import { access, createWriteStream as createWriteStream2, rm as rm2, symlink } from "node:fs";
+import { tmpdir as tmpdir2 } from "node:os";
+import { join as join3 } from "node:path";
+var import_follow_redirects, import_tar_fs, setupLambdaEnvironment, isValidUrl, isRunningInAmazonLinux2023, downloadAndExtract;
+var init_helper = __esm({
+  "node_modules/@sparticuz/chromium/build/esm/helper.js"() {
+    import_follow_redirects = __toESM(require_follow_redirects(), 1);
+    import_tar_fs = __toESM(require_tar_fs(), 1);
+    setupLambdaEnvironment = (baseLibPath) => {
+      process.env["FONTCONFIG_PATH"] ??= join3(tmpdir2(), "fonts");
+      process.env["HOME"] ??= tmpdir2();
+      if (process.env["LD_LIBRARY_PATH"] === void 0) {
+        process.env["LD_LIBRARY_PATH"] = baseLibPath;
+      } else if (!process.env["LD_LIBRARY_PATH"].startsWith(baseLibPath)) {
+        process.env["LD_LIBRARY_PATH"] = [
+          baseLibPath,
+          ...new Set(process.env["LD_LIBRARY_PATH"].split(":"))
+        ].join(":");
+      }
+    };
+    isValidUrl = (input2) => {
+      try {
+        return Boolean(new URL(input2));
+      } catch {
+        return false;
+      }
+    };
+    isRunningInAmazonLinux2023 = (nodeMajorVersion2) => {
+      const awsExecEnv = process.env["AWS_EXECUTION_ENV"] ?? "";
+      const awsLambdaJsRuntime = process.env["AWS_LAMBDA_JS_RUNTIME"] ?? "";
+      const codebuildImage = process.env["CODEBUILD_BUILD_IMAGE"] ?? "";
+      if (awsExecEnv.includes("20.x") || awsExecEnv.includes("22.x") || awsExecEnv.includes("24.x") || awsLambdaJsRuntime.includes("20.x") || awsLambdaJsRuntime.includes("22.x") || awsLambdaJsRuntime.includes("24.x") || codebuildImage.includes("nodejs20") || codebuildImage.includes("nodejs22") || codebuildImage.includes("nodejs24")) {
+        return true;
+      }
+      if (process.env["VERCEL"] && nodeMajorVersion2 >= 20) {
+        return true;
+      }
+      return false;
+    };
+    downloadAndExtract = async (url) => {
+      const getOptions = new URL(url);
+      getOptions.maxBodyLength = 60 * 1024 * 1024;
+      const destDir = join3(tmpdir2(), "chromium-pack");
+      return new Promise((resolve6, reject) => {
+        const extractObj = (0, import_tar_fs.extract)(destDir);
+        const cleanupOnError = (err) => {
+          rm2(destDir, { force: true, recursive: true }, () => {
+            reject(err);
+          });
+        };
+        extractObj.once("error", cleanupOnError);
+        extractObj.once("finish", () => {
+          resolve6(destDir);
+        });
+        const req = import_follow_redirects.default.https.get(url, (response) => {
+          if (response.statusCode !== 200) {
+            reject(new Error(`Unexpected status code: ${response.statusCode?.toFixed(0) ?? "UNK"}.`));
+            return;
+          }
+          response.pipe(extractObj);
+          response.once("error", cleanupOnError);
+        });
+        req.once("error", cleanupOnError);
+        req.setTimeout(60 * 1e3, () => {
+          req.destroy();
+          cleanupOnError(new Error("Request timeout"));
+        });
+      });
+    };
+  }
+});
+
+// node_modules/@sparticuz/chromium/build/esm/lambdafs.js
+import { createReadStream as createReadStream2, createWriteStream as createWriteStream3, existsSync as existsSync3 } from "node:fs";
+import { tmpdir as tmpdir3 } from "node:os";
+import { basename as basename2, join as join4 } from "node:path";
+import { createBrotliDecompress, createUnzip } from "node:zlib";
+var import_tar_fs2, inflate;
+var init_lambdafs = __esm({
+  "node_modules/@sparticuz/chromium/build/esm/lambdafs.js"() {
+    import_tar_fs2 = __toESM(require_tar_fs(), 1);
+    inflate = (filePath) => {
+      const output2 = filePath.includes("swiftshader") ? tmpdir3() : join4(tmpdir3(), basename2(filePath).replace(/\.(?:t(?:ar(?:\.(?:br|gz))?|br|gz)|br|gz)$/i, ""));
+      return new Promise((resolve6, reject) => {
+        if (filePath.includes("swiftshader")) {
+          if (existsSync3(`${output2}/libGLESv2.so`)) {
+            resolve6(output2);
+            return;
+          }
+        } else if (existsSync3(output2)) {
+          resolve6(output2);
+          return;
+        }
+        const isBrotli = /br$/i.test(filePath);
+        const isGzip = /gz$/i.test(filePath);
+        const isTar = /\.t(?:ar(?:\.(?:br|gz))?|br|gz)$/i.test(filePath);
+        const highWaterMark = 2 ** 22;
+        const source2 = createReadStream2(filePath, { highWaterMark });
+        let target;
+        const handleError2 = (error) => {
+          reject(error);
+        };
+        source2.once("error", handleError2);
+        if (isTar) {
+          target = (0, import_tar_fs2.extract)(output2);
+          target.once("finish", () => {
+            resolve6(output2);
+          });
+        } else {
+          target = createWriteStream3(output2, { mode: 448 });
+          target.once("close", () => {
+            resolve6(output2);
+          });
+        }
+        target.once("error", handleError2);
+        if (isBrotli || isGzip) {
+          const decompressor = isBrotli ? createBrotliDecompress({ chunkSize: 2 ** 21 }) : createUnzip({ chunkSize: 2 ** 21 });
+          decompressor.once("error", handleError2);
+          source2.pipe(decompressor).pipe(target);
+        } else {
+          source2.pipe(target);
+        }
+      });
+    };
+  }
+});
+
+// node_modules/@sparticuz/chromium/build/esm/paths.esm.js
+import { dirname as dirname4, join as join5 } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+function getBinPath() {
+  return join5(dirname4(fileURLToPath2(import.meta.url)), "..", "..", "bin");
+}
+var init_paths_esm = __esm({
+  "node_modules/@sparticuz/chromium/build/esm/paths.esm.js"() {
+  }
+});
+
+// node_modules/@sparticuz/chromium/build/esm/index.js
+import { existsSync as existsSync4 } from "node:fs";
+import { tmpdir as tmpdir4 } from "node:os";
+import { join as join6 } from "node:path";
+var nodeMajorVersion, Chromium, esm_default2;
+var init_esm2 = __esm({
+  "node_modules/@sparticuz/chromium/build/esm/index.js"() {
+    init_helper();
+    init_lambdafs();
+    init_paths_esm();
+    nodeMajorVersion = Number.parseInt(process.versions.node.split(".")[0] ?? "");
+    if (isRunningInAmazonLinux2023(nodeMajorVersion)) {
+      setupLambdaEnvironment(join6(tmpdir4(), "al2023", "lib"));
+    }
+    Chromium = class {
+      /**
+       * Returns a list of additional Chromium flags recommended for serverless environments.
+       * The canonical list of flags can be found on https://peter.sh/experiments/chromium-command-line-switches/.
+       * Most of below can be found here: https://github.com/GoogleChrome/chrome-launcher/blob/main/docs/chrome-flags-for-tools.md
+       */
+      static get args() {
+        const chromiumFlags = [
+          "--ash-no-nudges",
+          // Avoids blue bubble "user education" nudges (eg., "… give your browser a new look", Memory Saver)
+          "--disable-domain-reliability",
+          // Disables Domain Reliability Monitoring, which tracks whether the browser has difficulty contacting Google-owned sites and uploads reports to Google.
+          "--disable-print-preview",
+          // https://source.chromium.org/search?q=lang:cpp+symbol:kDisablePrintPreview&ss=chromium
+          "--disk-cache-size=33554432",
+          // https://source.chromium.org/search?q=lang:cpp+symbol:kDiskCacheSize&ss=chromium Forces the maximum disk space to be used by the disk cache, in bytes.
+          "--no-default-browser-check",
+          // Disable the default browser check, do not prompt to set it as such. (This is already set by Playwright, but not Puppeteer)
+          "--no-pings",
+          // Don't send hyperlink auditing pings
+          "--single-process",
+          // Runs the renderer and plugins in the same process as the browser. NOTES: Needs to be single-process to avoid `prctl(PR_SET_NO_NEW_PRIVS) failed` error
+          "--font-render-hinting=none"
+          // https://github.com/puppeteer/puppeteer/issues/2410#issuecomment-560573612
+        ];
+        const chromiumDisableFeatures = [
+          "AudioServiceOutOfProcess",
+          "IsolateOrigins",
+          "site-per-process"
+          // Disables OOPIF. https://www.chromium.org/Home/chromium-security/site-isolation
+        ];
+        const chromiumEnableFeatures = ["SharedArrayBuffer"];
+        const graphicsFlags = [
+          "--ignore-gpu-blocklist",
+          // https://source.chromium.org/search?q=lang:cpp+symbol:kIgnoreGpuBlocklist&ss=chromium
+          "--in-process-gpu"
+          // Saves some memory by moving GPU process into a browser process thread
+        ];
+        if (this.graphics) {
+          graphicsFlags.push(
+            // As the unsafe WebGL fallback, SwANGLE (ANGLE + SwiftShader Vulkan)
+            "--use-gl=angle",
+            "--use-angle=swiftshader",
+            "--enable-unsafe-swiftshader"
+          );
+        } else {
+          graphicsFlags.push("--disable-webgl");
+        }
+        const insecureFlags = [
+          "--allow-running-insecure-content",
+          // https://source.chromium.org/search?q=lang:cpp+symbol:kAllowRunningInsecureContent&ss=chromium
+          "--disable-setuid-sandbox",
+          // Lambda runs as root, so this is required to allow Chromium to run as root
+          "--disable-site-isolation-trials",
+          // https://source.chromium.org/search?q=lang:cpp+symbol:kDisableSiteIsolation&ss=chromium
+          "--disable-web-security"
+          // https://source.chromium.org/search?q=lang:cpp+symbol:kDisableWebSecurity&ss=chromium
+        ];
+        const headlessFlags = [
+          "--headless='shell'",
+          // We only support running chrome-headless-shell
+          "--no-sandbox",
+          // https://source.chromium.org/search?q=lang:cpp+symbol:kNoSandbox&ss=chromium
+          "--no-zygote"
+          // https://source.chromium.org/search?q=lang:cpp+symbol:kNoZygote&ss=chromium
+        ];
+        return [
+          ...chromiumFlags,
+          `--disable-features=${[...chromiumDisableFeatures].join(",")}`,
+          `--enable-features=${[...chromiumEnableFeatures].join(",")}`,
+          ...graphicsFlags,
+          ...insecureFlags,
+          ...headlessFlags
+        ];
+      }
+      /**
+       * Returns whether the graphics stack is enabled or disabled
+       * @returns boolean
+       */
+      static get graphics() {
+        return this.graphicsMode;
+      }
+      /**
+       * Sets whether the graphics stack is enabled or disabled.
+       * @param true means the stack is enabled. WebGL will work.
+       * @param false means that the stack is disabled. WebGL will not work.
+       * @default true
+       */
+      static set setGraphicsMode(value) {
+        if (typeof value !== "boolean") {
+          throw new TypeError(`Graphics mode must be a boolean, you entered '${String(value)}'`);
+        }
+        this.graphicsMode = value;
+      }
+      /**
+       * If true, the graphics stack and webgl is enabled,
+       * If false, webgl will be disabled.
+       * (If false, the swiftshader.tar.br file will also not extract)
+       */
+      static graphicsMode = true;
+      /**
+       * Inflates the included version of Chromium
+       * @param input The location of the `bin` folder
+       * @returns The path to the `chromium` binary
+       */
+      static async executablePath(input2) {
+        if (existsSync4(join6(tmpdir4(), "chromium"))) {
+          return join6(tmpdir4(), "chromium");
+        }
+        if (input2 && isValidUrl(input2)) {
+          return this.executablePath(await downloadAndExtract(input2));
+        }
+        input2 ??= getBinPath();
+        if (!existsSync4(input2)) {
+          throw new Error(`The input directory "${input2}" does not exist. Please provide the location of the brotli files.`);
+        }
+        const promises2 = [
+          inflate(join6(input2, "chromium.br")),
+          inflate(join6(input2, "fonts.tar.br")),
+          inflate(join6(input2, "swiftshader.tar.br"))
+        ];
+        if (isRunningInAmazonLinux2023(nodeMajorVersion)) {
+          promises2.push(inflate(join6(input2, "al2023.tar.br")));
+        }
+        const result = await Promise.all(promises2);
+        return result.shift();
+      }
+    };
+    esm_default2 = Chromium;
+  }
+});
+
+// server/shopify-admin.ts
+function isShopifyAdminConfigured() {
+  return Boolean(STORE_DOMAIN && ADMIN_TOKEN);
+}
+async function adminFetch(query, variables) {
+  if (!isShopifyAdminConfigured()) {
+    throw new Error("Shopify Admin API not configured. Set SHOPIFY_STORE_URL + SHOPIFY_ADMIN_TOKEN.");
+  }
+  const endpoint = `https://${STORE_DOMAIN}/admin/api/${API_VERSION}/graphql.json`;
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": ADMIN_TOKEN
+    },
+    body: JSON.stringify({ query, variables })
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Shopify Admin HTTP ${res.status}: ${body.slice(0, 300)}`);
+  }
+  const json = await res.json();
+  if (json.errors && json.errors.length) {
+    throw new Error("Shopify Admin GraphQL: " + json.errors.map((e) => e.message).join("; "));
+  }
+  if (!json.data) throw new Error("Shopify Admin returned no data");
+  return json.data;
+}
+function moneyToCents(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100);
+}
+async function fetchSupporterOrdersByTag(tag) {
+  if (!tag) return [];
+  const cached = cache.get(tag);
+  if (cached && cached.expires > Date.now()) {
+    return cached.orders;
+  }
+  const queryString = `tag:"${tag.replace(/"/g, "")}"`;
+  const orders2 = [];
+  let after = null;
+  for (let page = 0; page < 20; page++) {
+    const data = await adminFetch(ORDERS_BY_TAG_QUERY, {
+      query: queryString,
+      first: 100,
+      after
+    });
+    for (const node of data.orders.nodes) {
+      if (!node.tags.includes(tag)) continue;
+      const customerName = node.customer ? [node.customer.firstName, node.customer.lastName].filter(Boolean).join(" ") || null : null;
+      orders2.push({
+        id: node.id,
+        number: node.name,
+        name: node.name,
+        customerName,
+        customerEmail: node.customer?.email || null,
+        totalCents: moneyToCents(node.currentTotalPriceSet.shopMoney.amount),
+        currency: node.currentTotalPriceSet.shopMoney.currencyCode,
+        financialStatus: node.displayFinancialStatus,
+        fulfillmentStatus: node.displayFulfillmentStatus,
+        createdAt: node.createdAt,
+        tags: node.tags,
+        lines: node.lineItems.nodes.map((l) => ({
+          title: l.title,
+          quantity: l.quantity,
+          unitPriceCents: moneyToCents(l.originalUnitPriceSet.shopMoney.amount)
+        }))
+      });
+    }
+    if (!data.orders.pageInfo.hasNextPage) break;
+    after = data.orders.pageInfo.endCursor;
+  }
+  cache.set(tag, { expires: Date.now() + TTL_MS, orders: orders2 });
+  return orders2;
+}
+function summarizeSupporterOrders(orders2, profitShareTierBps) {
+  let revenueCents = 0;
+  let unitsSold = 0;
+  const currency = orders2[0]?.currency || "NZD";
+  const bySupporter = /* @__PURE__ */ new Map();
+  for (const o of orders2) {
+    revenueCents += o.totalCents;
+    for (const l of o.lines) unitsSold += l.quantity;
+    const key = (o.customerEmail || o.customerName || o.id).toLowerCase();
+    const prev = bySupporter.get(key);
+    const name = o.customerName || o.customerEmail || "Anonymous";
+    if (prev) {
+      prev.spendCents += o.totalCents;
+    } else {
+      bySupporter.set(key, { name, email: o.customerEmail, spendCents: o.totalCents });
+    }
+  }
+  const topSupporters = Array.from(bySupporter.values()).sort((a, b) => b.spendCents - a.spendCents).slice(0, 5);
+  return {
+    orderCount: orders2.length,
+    unitsSold,
+    revenueCents,
+    currency,
+    profitShareCents: Math.round(revenueCents * profitShareTierBps / 1e4),
+    topSupporters
+  };
+}
+function filterByDateRange(orders2, from2, to) {
+  if (!from2 && !to) return orders2;
+  const fromMs = from2 ? Date.parse(from2) : -Infinity;
+  let toMs = to ? Date.parse(to) : Infinity;
+  if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) toMs += 24 * 60 * 60 * 1e3 - 1;
+  return orders2.filter((o) => {
+    const t = Date.parse(o.createdAt);
+    return t >= fromMs && t <= toMs;
+  });
+}
+var STORE_DOMAIN, ADMIN_TOKEN, API_VERSION, ORDERS_BY_TAG_QUERY, TTL_MS, cache;
+var init_shopify_admin = __esm({
+  "server/shopify-admin.ts"() {
+    "use strict";
+    STORE_DOMAIN = process.env.SHOPIFY_STORE_URL || process.env.VITE_SHOPIFY_STORE_URL || "";
+    ADMIN_TOKEN = process.env.SHOPIFY_ADMIN_TOKEN || "";
+    API_VERSION = process.env.SHOPIFY_ADMIN_API_VERSION || "2024-10";
+    ORDERS_BY_TAG_QUERY = /* GraphQL */
+    `
+  query OrdersByTag($query: String!, $first: Int!, $after: String) {
+    orders(first: $first, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        id
+        name
+        createdAt
+        displayFinancialStatus
+        displayFulfillmentStatus
+        tags
+        currentTotalPriceSet { shopMoney { amount currencyCode } }
+        customer { firstName lastName email }
+        lineItems(first: 50) {
+          nodes {
+            title
+            quantity
+            originalUnitPriceSet { shopMoney { amount } }
+          }
+        }
+      }
+    }
+  }
+`;
+    TTL_MS = 5 * 60 * 1e3;
+    cache = /* @__PURE__ */ new Map();
+  }
+});
+
+// server/reports/drop-summary.ts
+var drop_summary_exports = {};
+__export(drop_summary_exports, {
+  generateDropSummary: () => generateDropSummary
+});
+function esc2(s) {
+  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function fmtMoney(cents, currency) {
+  const symbol = currency === "NZD" ? "$" : currency + " ";
+  return symbol + (cents / 100).toLocaleString("en-NZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtRange(from2, to) {
+  if (!from2 && !to) return "Campaign to date";
+  if (from2 && to) return `${from2} \u2192 ${to}`;
+  if (from2) return `From ${from2}`;
+  return `Up to ${to}`;
+}
+function buildHtml(opts) {
+  const { clubName, range, summary, portalUrl, tier, generatedAt } = opts;
+  const tierPct = (tier / 100).toFixed(tier % 100 === 0 ? 0 : 1);
+  const topRows = summary.topSupporters.length ? summary.topSupporters.map((s, i) => `
+          <tr>
+            <td style="padding:10px 12px;border-bottom:1px solid #1a1a1a;color:#666;font-size:12px;width:32px">${i + 1}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #1a1a1a;color:#fff;font-size:13px">${esc2(s.name)}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #1a1a1a;color:#999;font-size:12px">${esc2(s.email || "")}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #1a1a1a;color:#fff;font-size:13px;text-align:right;font-weight:600">${fmtMoney(s.spendCents, summary.currency)}</td>
+          </tr>`).join("") : `<tr><td colspan="4" style="padding:24px;color:#666;font-size:12px;text-align:center">No supporter orders yet in this range.</td></tr>`;
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Drop Summary \u2014 ${esc2(clubName)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, Segoe UI, Helvetica, Arial, sans-serif; color: #fff; margin: 0; padding: 0; background: #000; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 40px 32px; }
+  .label { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.5); margin-bottom: 6px; }
+  .number { font-size: 32px; font-weight: 700; color: #fff; line-height: 1; letter-spacing: -0.5px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0 32px; }
+  .stat { background: #0c0c0c; border: 1px solid #1f1f1f; border-radius: 6px; padding: 18px 16px; }
+  table { width: 100%; border-collapse: collapse; background: #0c0c0c; border: 1px solid #1f1f1f; border-radius: 6px; overflow: hidden; }
+  thead th { padding: 10px 12px; text-align: left; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.4); background: #111; border-bottom: 1px solid #1f1f1f; font-weight: 600; }
+  thead th:last-child { text-align: right; }
+  .cta { display: inline-block; background: #fff; color: #000; text-decoration: none; padding: 12px 24px; border-radius: 4px; font-weight: 700; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; }
+  .footer { margin-top: 40px; font-size: 11px; color: rgba(255,255,255,0.4); text-align: center; line-height: 1.6; }
+  @page { margin: 0; size: A4; }
+</style></head><body>
+<div class="wrap">
+
+  <!-- Header -->
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:32px;padding-bottom:24px;border-bottom:1px solid #1f1f1f">
+    <div>
+      <div class="label" style="margin-bottom:4px">Sideline NZ \u2014 Drop Summary</div>
+      <h1 style="font-size:28px;font-weight:700;margin:0;letter-spacing:-0.5px;text-transform:uppercase">${esc2(clubName)}</h1>
+      <div style="margin-top:6px;font-size:12px;color:#888">${esc2(range)}</div>
+    </div>
+    <div style="text-align:right;font-size:10px;color:#666;letter-spacing:0.5px">
+      Generated ${esc2(generatedAt)}
+    </div>
+  </div>
+
+  <!-- Headline numbers -->
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="label">Units Sold</div>
+      <div class="number">${summary.unitsSold.toLocaleString("en-NZ")}</div>
+      <div style="margin-top:6px;font-size:11px;color:#666">${summary.orderCount} order${summary.orderCount === 1 ? "" : "s"}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Revenue (incl. GST)</div>
+      <div class="number">${fmtMoney(summary.revenueCents, summary.currency)}</div>
+      <div style="margin-top:6px;font-size:11px;color:#666">${summary.currency}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Profit Share Owed</div>
+      <div class="number" style="color:#22c55e">${fmtMoney(summary.profitShareCents, summary.currency)}</div>
+      <div style="margin-top:6px;font-size:11px;color:#666">${tierPct}% of revenue</div>
+    </div>
+  </div>
+
+  <!-- Top supporters -->
+  <div class="label" style="margin-bottom:10px">Top Supporters by Spend</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:32px">#</th>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Spend</th>
+      </tr>
+    </thead>
+    <tbody>${topRows}</tbody>
+  </table>
+
+  <!-- CTA -->
+  <div style="margin-top:36px;text-align:center">
+    <a href="${esc2(portalUrl)}" class="cta">View live in your portal \u2192</a>
+    <div style="margin-top:12px;font-size:11px;color:#666">Live orders, exports, and revisions update in real time.</div>
+  </div>
+
+  <div class="footer">
+    Sideline NZ (Sideline Custom Goods Ltd) \u2014 Manukau, Auckland<br/>
+    info@sidelinenz.com \xB7 sidelinenz.com
+  </div>
+</div>
+</body></html>`;
+}
+function buildPlainText(opts) {
+  const { clubName, range, summary, portalUrl, tier } = opts;
+  const tierPct = (tier / 100).toFixed(tier % 100 === 0 ? 0 : 1);
+  const lines = [
+    `Drop Summary \u2014 ${clubName}`,
+    range,
+    "",
+    `Units sold:        ${summary.unitsSold} (${summary.orderCount} orders)`,
+    `Revenue:           ${fmtMoney(summary.revenueCents, summary.currency)} ${summary.currency}`,
+    `Profit share:      ${fmtMoney(summary.profitShareCents, summary.currency)} (${tierPct}%)`,
+    "",
+    "Top supporters:",
+    ...summary.topSupporters.map((s, i) => `  ${i + 1}. ${s.name} \u2014 ${fmtMoney(s.spendCents, summary.currency)}`),
+    "",
+    `View live in your portal: ${portalUrl}`,
+    "",
+    "\u2014 Sideline NZ"
+  ];
+  return lines.join("\n");
+}
+async function htmlToPdf(html) {
+  let executablePath2;
+  try {
+    const { execSync: execSync2 } = await import("child_process");
+    const found = execSync2("which chromium 2>/dev/null || which chromium-browser 2>/dev/null || which google-chrome-stable 2>/dev/null", { encoding: "utf-8" }).trim();
+    executablePath2 = found || await esm_default2.executablePath();
+  } catch {
+    executablePath2 = await esm_default2.executablePath();
+  }
+  if (!executablePath2) {
+    console.error("[drop-summary] No Chromium binary found");
+    return null;
+  }
+  let browser;
+  try {
+    browser = await puppeteer_core_default.launch({
+      executablePath: executablePath2,
+      headless: true,
+      args: [...esm_default2.args, "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+    });
+    const page = await browser.newPage();
+    await page.setViewport({ width: 800, height: 1200 });
+    await page.setContent(html, { waitUntil: "networkidle0", timeout: 2e4 });
+    const pdf = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "0mm", right: "0mm", bottom: "0mm", left: "0mm" }
+    });
+    return Buffer.from(pdf);
+  } catch (err) {
+    console.error("[drop-summary] Puppeteer error:", err);
+    return null;
+  } finally {
+    if (browser) await browser.close().catch(() => {
+    });
+  }
+}
+async function generateDropSummary(input2) {
+  const account = await storage.getClubAccount(input2.clubAccountId);
+  if (!account) return { ok: false, error: "Club account not found" };
+  if (!account.shopifyOrderTag) return { ok: false, error: "Club has no shopifyOrderTag configured" };
+  if (!isShopifyAdminConfigured()) return { ok: false, error: "Shopify Admin API not configured" };
+  const all = await fetchSupporterOrdersByTag(account.shopifyOrderTag);
+  const filtered = filterByDateRange(all, input2.from, input2.to);
+  const summary = summarizeSupporterOrders(filtered, account.profitShareTierBps);
+  const baseUrl = process.env.BASE_URL || process.env.VITE_SITE_URL || "https://sidelinenz.com";
+  const portalUrl = `${baseUrl}/club-portal/supporter-dashboard`;
+  const range = fmtRange(input2.from, input2.to);
+  const generatedAt = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const html = buildHtml({
+    clubName: account.clubName,
+    range,
+    summary,
+    portalUrl,
+    tier: account.profitShareTierBps,
+    generatedAt
+  });
+  const pdfBuffer = await htmlToPdf(html);
+  if (input2.previewOnly) {
+    return { ok: true, summary, pdfBytes: pdfBuffer?.length };
+  }
+  const text2 = buildPlainText({
+    clubName: account.clubName,
+    range,
+    summary,
+    portalUrl,
+    tier: account.profitShareTierBps
+  });
+  const result = await emailService.send({
+    to: account.email,
+    subject: `Drop Summary \u2014 ${account.clubName} (${range})`,
+    text: text2,
+    html,
+    replyTo: "info@sidelinenz.com",
+    attachments: pdfBuffer ? [
+      {
+        filename: `${account.clubName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-drop-summary.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf"
+      }
+    ] : void 0
+  });
+  return {
+    ok: result.success,
+    summary,
+    pdfBytes: pdfBuffer?.length,
+    emailMessageId: result.messageId
+  };
+}
+var init_drop_summary = __esm({
+  "server/reports/drop-summary.ts"() {
+    "use strict";
+    init_puppeteer_core();
+    init_esm2();
+    init_storage();
+    init_email();
+    init_shopify_admin();
+  }
+});
+
 // server/mockup/video.ts
 var video_exports = {};
 __export(video_exports, {
@@ -90042,10 +92331,13 @@ var store_default = router2;
 // server/routes/shopify.ts
 import { Router as Router3 } from "express";
 var router3 = Router3();
-var SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL || "sideline-nz-2.myshopify.com";
-var SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN || "53a3ae5ea0eeacac29d10e09646a7cac";
-var shopifyEndpoint = `https://${SHOPIFY_STORE_URL}/api/2025-01/graphql.json`;
+var SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL || process.env.VITE_SHOPIFY_STORE_URL || "";
+var SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN || process.env.VITE_SHOPIFY_TOKEN || "";
+var shopifyEndpoint = SHOPIFY_STORE_URL ? `https://${SHOPIFY_STORE_URL}/api/2025-01/graphql.json` : "";
 async function shopifyFetch(query, variables) {
+  if (!SHOPIFY_STORE_URL || !SHOPIFY_TOKEN) {
+    throw new Error("Shopify Storefront API not configured. Set SHOPIFY_STORE_URL and SHOPIFY_TOKEN.");
+  }
   const queryPreview = query.replace(/\s+/g, " ").substring(0, 60) + "...";
   try {
     const res = await fetch(shopifyEndpoint, {
@@ -90463,6 +92755,7 @@ async function syncGhlTag(email, tag) {
 }
 
 // server/notifications.ts
+init_integration_events();
 async function notifyDesignApproved(opts) {
   await storage.createNotification({
     userId: opts.userId,
@@ -90473,13 +92766,15 @@ async function notifyDesignApproved(opts) {
     designFileId: opts.designFileId
   });
   if (opts.customerEmail) {
-    await sendDesignApprovedEmail(opts.customerEmail, opts.orderNumber, opts.label).catch(
-      (err) => console.error("Failed to send design approved email:", err)
+    await tracked(
+      { system: "resend", action: "sendDesignApprovedEmail", orderId: opts.orderId, userId: opts.userId, context: { label: opts.label } },
+      () => sendDesignApprovedEmail(opts.customerEmail, opts.orderNumber, opts.label)
     );
   }
   if (opts.customerEmail) {
-    await syncGhlTag(opts.customerEmail, "Design Approved").catch(
-      (err) => console.error("Failed to sync GHL tag:", err)
+    await tracked(
+      { system: "ghl", action: "syncTag:DesignApproved", orderId: opts.orderId, userId: opts.userId },
+      () => syncGhlTag(opts.customerEmail, "Design Approved")
     );
   }
 }
@@ -90493,8 +92788,9 @@ async function notifyDesignRejected(opts) {
     designFileId: opts.designFileId
   });
   if (opts.customerEmail) {
-    await sendDesignRejectedEmail(opts.customerEmail, opts.orderNumber, opts.label, opts.comment).catch(
-      (err) => console.error("Failed to send design rejected email:", err)
+    await tracked(
+      { system: "resend", action: "sendDesignRejectedEmail", orderId: opts.orderId, userId: opts.userId, context: { label: opts.label } },
+      () => sendDesignRejectedEmail(opts.customerEmail, opts.orderNumber, opts.label, opts.comment)
     );
   }
 }
@@ -90507,13 +92803,15 @@ async function notifyOrderShipped(opts) {
     orderId: opts.orderId
   });
   if (opts.customerEmail) {
-    await sendOrderShippedEmail(opts.customerEmail, opts.orderNumber).catch(
-      (err) => console.error("Failed to send order shipped email:", err)
+    await tracked(
+      { system: "resend", action: "sendOrderShippedEmail", orderId: opts.orderId, userId: opts.userId },
+      () => sendOrderShippedEmail(opts.customerEmail, opts.orderNumber)
     );
   }
   if (opts.customerEmail) {
-    await syncGhlTag(opts.customerEmail, "Order Shipped").catch(
-      (err) => console.error("Failed to sync GHL tag:", err)
+    await tracked(
+      { system: "ghl", action: "syncTag:OrderShipped", orderId: opts.orderId, userId: opts.userId },
+      () => syncGhlTag(opts.customerEmail, "Order Shipped")
     );
   }
 }
@@ -90949,10 +93247,37 @@ async function mirrorBlobToPoFolder({
   slot,
   subFolderName,
   blobUrl,
-  fileName
+  fileName,
+  orderId
 }) {
+  const { logIntegrationEvent: logIntegrationEvent2 } = await Promise.resolve().then(() => (init_integration_events(), integration_events_exports));
+  const start = Date.now();
+  const logFail = (error, meta) => {
+    void logIntegrationEvent2({
+      system: "drive",
+      action: "mirrorBlob",
+      status: "failed",
+      orderId: orderId ?? null,
+      durationMs: Date.now() - start,
+      error,
+      meta: { poFolderId, slot, fileName: fileName ?? null, ...meta }
+    });
+  };
+  const logOk = (fileId, meta) => {
+    void logIntegrationEvent2({
+      system: "drive",
+      action: "mirrorBlob",
+      status: "success",
+      orderId: orderId ?? null,
+      durationMs: Date.now() - start,
+      meta: { poFolderId, slot, fileName: fileName ?? null, fileId, ...meta }
+    });
+  };
   const token = await getAccessToken2();
-  if (!token) return null;
+  if (!token) {
+    logFail("no-access-token");
+    return null;
+  }
   let targetFolderId = poFolderId;
   if (subFolderName) {
     const sub = await findSubfolderByName(poFolderId, subFolderName);
@@ -90964,6 +93289,7 @@ async function mirrorBlobToPoFolder({
     const blobRes = await fetch(blobUrl);
     if (!blobRes.ok) {
       console.error("[Drive] mirror: blob fetch failed:", blobRes.status);
+      logFail(`blob-fetch-${blobRes.status}`);
       return null;
     }
     const contentType = blobRes.headers.get("content-type") || "application/octet-stream";
@@ -90977,7 +93303,10 @@ async function mirrorBlobToPoFolder({
     const existingRes = await driveFetch(`/files?q=${encodeURIComponent(existingQ)}&fields=files(id)&pageSize=1`);
     if (existingRes?.ok) {
       const existingData = await existingRes.json();
-      if (existingData.files?.[0]?.id) return existingData.files[0].id;
+      if (existingData.files?.[0]?.id) {
+        logOk(existingData.files[0].id, { deduped: true });
+        return existingData.files[0].id;
+      }
     }
     const boundary = `--sideline-${Date.now().toString(36)}`;
     const metadata = { name, parents: [targetFolderId] };
@@ -91011,13 +93340,17 @@ Content-Type: ${contentType}\r
       }
     );
     if (!uploadRes.ok) {
-      console.error("[Drive] multipart upload failed:", uploadRes.status, await uploadRes.text());
+      const body2 = await uploadRes.text();
+      console.error("[Drive] multipart upload failed:", uploadRes.status, body2);
+      logFail(`multipart-upload-${uploadRes.status}`, { bodySnippet: body2.slice(0, 300) });
       return null;
     }
     const out = await uploadRes.json();
+    if (out.id) logOk(out.id);
     return out.id || null;
   } catch (err) {
     console.error("[Drive] mirror error:", err);
+    logFail(err?.message || String(err));
     return null;
   }
 }
@@ -91058,6 +93391,103 @@ async function listFilesRecursive(rootFolderId) {
     return bt.localeCompare(at);
   });
 }
+async function shareFolderWithUser({
+  fileOrFolderId,
+  emailAddress,
+  role = "reader",
+  notify = true,
+  notifyMessage
+}) {
+  if (!emailAddress) return null;
+  const token = await getAccessToken2();
+  if (!token) return null;
+  const listUrl = driveUrl(`/files/${fileOrFolderId}/permissions`, {
+    fields: "permissions(id,emailAddress,role,type)"
+  });
+  const listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${token}` } });
+  if (listRes.ok) {
+    const data = await listRes.json();
+    const existing = (data.permissions || []).find(
+      (p) => (p.emailAddress || "").toLowerCase() === emailAddress.toLowerCase()
+    );
+    if (existing && existing.role === role) return existing.id || null;
+  }
+  const buildShareUrl = (sendNotify) => driveUrl(`/files/${fileOrFolderId}/permissions`, {
+    sendNotificationEmail: sendNotify ? "true" : "false",
+    ...sendNotify && notifyMessage ? { emailMessage: notifyMessage } : {},
+    fields: "id"
+  });
+  const doShare = (sendNotify) => fetch(buildShareUrl(sendNotify), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ role, type: "user", emailAddress })
+  });
+  let res = await doShare(notify);
+  if (!res.ok && res.status === 400 && !notify) {
+    const errBody = await res.text();
+    if (/no Google account|Notify people/i.test(errBody)) {
+      console.warn(`[Drive] ${emailAddress} has no Google account \u2014 retrying share with notification enabled`);
+      res = await doShare(true);
+    } else {
+      console.error("[Drive] shareFolderWithUser failed:", res.status, errBody);
+      return null;
+    }
+  }
+  if (!res.ok) {
+    console.error("[Drive] shareFolderWithUser failed:", res.status, await res.text());
+    return null;
+  }
+  const body = await res.json();
+  return body.id || null;
+}
+async function createDocInFolder({
+  parentFolderId,
+  name,
+  body
+}) {
+  const token = await getAccessToken2();
+  if (!token) return null;
+  const boundary = `--sideline-doc-${Date.now().toString(36)}`;
+  const metadata = {
+    name,
+    parents: [parentFolderId],
+    mimeType: "application/vnd.google-apps.document"
+  };
+  const metadataPart = `--${boundary}\r
+Content-Type: application/json; charset=UTF-8\r
+\r
+${JSON.stringify(metadata)}\r
+`;
+  const mediaHeader = `--${boundary}\r
+Content-Type: text/plain; charset=UTF-8\r
+\r
+`;
+  const closing = `\r
+--${boundary}--`;
+  const payload = Buffer.concat([
+    Buffer.from(metadataPart, "utf-8"),
+    Buffer.from(mediaHeader, "utf-8"),
+    Buffer.from(body, "utf-8"),
+    Buffer.from(closing, "utf-8")
+  ]);
+  const res = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink&supportsAllDrives=true",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`
+      },
+      body: payload
+    }
+  );
+  if (!res.ok) {
+    console.error("[Drive] createDocInFolder failed:", res.status, await res.text());
+    return null;
+  }
+  const data = await res.json();
+  return { id: data.id, webViewLink: data.webViewLink };
+}
 async function listFilesInFolder(folderId) {
   const q = [
     `'${folderId}' in parents`,
@@ -91082,6 +93512,9 @@ async function listFilesInFolder(folderId) {
     size: f.size
   }));
 }
+
+// server/routes/admin.ts
+init_po_milestones();
 
 // server/mockup/color-extract.ts
 var COLOR_EXTRACT_PROMPT = `You are a uniform designer assistant. Look at this design image and identify the main colours used in the garment itself (ignore the background, mannequin, shadows, and tags).
@@ -91242,1578 +93675,9 @@ async function generateDesignBrief(imageUrls) {
   }
 }
 
-// node_modules/puppeteer-core/lib/esm/puppeteer/index.js
-init_index_browser();
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/ChromeLauncher.js
-init_main();
-init_util();
-init_assert();
-import { mkdtemp } from "node:fs/promises";
-import os6 from "node:os";
-import path9 from "node:path";
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/BrowserLauncher.js
-init_main();
-init_rxjs();
-init_Browser2();
-init_Connection();
-init_Errors();
-init_util();
-init_incremental_id_generator();
-init_NodeWebSocketTransport();
-import { existsSync as existsSync2 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join as join2 } from "node:path";
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/PipeTransport.js
-init_EventEmitter();
-init_util();
-init_assert();
-init_disposable();
-var PipeTransport = class {
-  #pipeWrite;
-  #subscriptions = new DisposableStack();
-  #isClosed = false;
-  #pendingMessage = [];
-  onclose;
-  onmessage;
-  constructor(pipeWrite, pipeRead) {
-    this.#pipeWrite = pipeWrite;
-    const pipeReadEmitter = this.#subscriptions.use(
-      // NodeJS event emitters don't support `*` so we need to typecast
-      // As long as we don't use it we should be OK.
-      new EventEmitter(pipeRead)
-    );
-    pipeReadEmitter.on("data", (buffer) => {
-      return this.#dispatch(buffer);
-    });
-    pipeReadEmitter.on("close", () => {
-      if (this.onclose) {
-        this.onclose.call(null);
-      }
-    });
-    pipeReadEmitter.on("error", debugError);
-    const pipeWriteEmitter = this.#subscriptions.use(
-      // NodeJS event emitters don't support `*` so we need to typecast
-      // As long as we don't use it we should be OK.
-      new EventEmitter(pipeWrite)
-    );
-    pipeWriteEmitter.on("error", debugError);
-  }
-  send(message) {
-    assert(!this.#isClosed, "`PipeTransport` is closed.");
-    this.#pipeWrite.write(message);
-    this.#pipeWrite.write("\0");
-  }
-  #dispatch(buffer) {
-    assert(!this.#isClosed, "`PipeTransport` is closed.");
-    this.#pendingMessage.push(buffer);
-    if (buffer.indexOf("\0") === -1) {
-      return;
-    }
-    const concatBuffer = Buffer.concat(this.#pendingMessage);
-    let start = 0;
-    let end = concatBuffer.indexOf("\0");
-    while (end !== -1) {
-      const message = concatBuffer.toString(void 0, start, end);
-      setImmediate(() => {
-        if (this.onmessage) {
-          this.onmessage.call(null, message);
-        }
-      });
-      start = end + 1;
-      end = concatBuffer.indexOf("\0", start);
-    }
-    if (start >= concatBuffer.length) {
-      this.#pendingMessage = [];
-    } else {
-      this.#pendingMessage = [concatBuffer.subarray(start)];
-    }
-  }
-  close() {
-    this.#isClosed = true;
-    this.#subscriptions.dispose();
-  }
-};
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/BrowserLauncher.js
-var BrowserLauncher = class {
-  #browser;
-  /**
-   * @internal
-   */
-  puppeteer;
-  /**
-   * @internal
-   */
-  constructor(puppeteer2, browser) {
-    this.puppeteer = puppeteer2;
-    this.#browser = browser;
-  }
-  get browser() {
-    return this.#browser;
-  }
-  async launch(options = {}) {
-    const { dumpio = false, enableExtensions = false, env: env2 = process.env, handleSIGINT = true, handleSIGTERM = true, handleSIGHUP = true, acceptInsecureCerts = false, networkEnabled = true, issuesEnabled = true, defaultViewport = DEFAULT_VIEWPORT, downloadBehavior, slowMo = 0, timeout: timeout2 = 3e4, waitForInitialPage = true, protocolTimeout, handleDevToolsAsPage, idGenerator = createIncrementalIdGenerator() } = options;
-    let { protocol } = options;
-    if (this.#browser === "firefox" && protocol === void 0) {
-      protocol = "webDriverBiDi";
-    }
-    if (this.#browser === "firefox" && protocol === "cdp") {
-      throw new Error("Connecting to Firefox using CDP is no longer supported");
-    }
-    const launchArgs = await this.computeLaunchArguments({
-      ...options,
-      protocol
-    });
-    if (!existsSync2(launchArgs.executablePath)) {
-      throw new Error(`Browser was not found at the configured executablePath (${launchArgs.executablePath})`);
-    }
-    const usePipe = launchArgs.args.includes("--remote-debugging-pipe");
-    const onProcessExit = async () => {
-      await this.cleanUserDataDir(launchArgs.userDataDir, {
-        isTemp: launchArgs.isTempUserDataDir
-      });
-    };
-    if (this.#browser === "firefox" && protocol === "webDriverBiDi" && usePipe) {
-      throw new Error("Pipe connections are not supported with Firefox and WebDriver BiDi");
-    }
-    const browserProcess = launch({
-      executablePath: launchArgs.executablePath,
-      args: launchArgs.args,
-      handleSIGHUP,
-      handleSIGTERM,
-      handleSIGINT,
-      dumpio,
-      env: env2,
-      pipe: usePipe,
-      onExit: onProcessExit,
-      signal: options.signal
-    });
-    let browser;
-    let cdpConnection;
-    let closing = false;
-    const browserCloseCallback = async () => {
-      if (closing) {
-        return;
-      }
-      closing = true;
-      await this.closeBrowser(browserProcess, cdpConnection);
-    };
-    try {
-      if (this.#browser === "firefox") {
-        browser = await this.createBiDiBrowser(browserProcess, browserCloseCallback, {
-          timeout: timeout2,
-          protocolTimeout,
-          slowMo,
-          defaultViewport,
-          acceptInsecureCerts,
-          networkEnabled,
-          idGenerator
-        });
-      } else {
-        if (usePipe) {
-          cdpConnection = await this.createCdpPipeConnection(browserProcess, {
-            timeout: timeout2,
-            protocolTimeout,
-            slowMo,
-            idGenerator
-          });
-        } else {
-          cdpConnection = await this.createCdpSocketConnection(browserProcess, {
-            timeout: timeout2,
-            protocolTimeout,
-            slowMo,
-            idGenerator
-          });
-        }
-        if (protocol === "webDriverBiDi") {
-          browser = await this.createBiDiOverCdpBrowser(browserProcess, cdpConnection, browserCloseCallback, {
-            defaultViewport,
-            acceptInsecureCerts,
-            networkEnabled,
-            issuesEnabled
-          });
-        } else {
-          browser = await CdpBrowser._create(cdpConnection, [], acceptInsecureCerts, defaultViewport, downloadBehavior, browserProcess.nodeProcess, browserCloseCallback, options.targetFilter, void 0, void 0, networkEnabled, issuesEnabled, handleDevToolsAsPage);
-        }
-      }
-    } catch (error) {
-      void browserCloseCallback();
-      const logs = browserProcess.getRecentLogs().join("\n");
-      if (logs.includes("Failed to create a ProcessSingleton for your profile directory") || // On Windows we will not get logs due to the singleton process
-      // handover. See
-      // https://source.chromium.org/chromium/chromium/src/+/main:chrome/browser/process_singleton_win.cc;l=46;drc=fc7952f0422b5073515a205a04ec9c3a1ae81658
-      process.platform === "win32" && existsSync2(join2(launchArgs.userDataDir, "lockfile"))) {
-        throw new Error(`The browser is already running for ${launchArgs.userDataDir}. Use a different \`userDataDir\` or stop the running browser first.`);
-      }
-      if (logs.includes("Missing X server") && options.headless === false) {
-        throw new Error(`Missing X server to start the headful browser. Either set headless to true or use xvfb-run to run your Puppeteer script.`);
-      }
-      if (error instanceof TimeoutError2) {
-        throw new TimeoutError(error.message);
-      }
-      throw error;
-    }
-    if (Array.isArray(enableExtensions)) {
-      if (this.#browser === "chrome" && !usePipe) {
-        throw new Error("To use `enableExtensions` with a list of paths in Chrome, you must be connected with `--remote-debugging-pipe` (`pipe: true`).");
-      }
-      await Promise.all([
-        enableExtensions.map((path13) => {
-          return browser.installExtension(path13);
-        })
-      ]);
-    }
-    if (waitForInitialPage) {
-      await this.waitForPageTarget(browser, timeout2);
-    }
-    return browser;
-  }
-  /**
-   * @internal
-   */
-  async closeBrowser(browserProcess, cdpConnection) {
-    if (cdpConnection) {
-      try {
-        await cdpConnection.closeBrowser();
-        await browserProcess.hasClosed();
-      } catch (error) {
-        debugError(error);
-        await browserProcess.close();
-      }
-    } else {
-      await firstValueFrom(race(from(browserProcess.hasClosed()), timer(5e3).pipe(map(() => {
-        return from(browserProcess.close());
-      }))));
-    }
-  }
-  /**
-   * @internal
-   */
-  async waitForPageTarget(browser, timeout2) {
-    try {
-      await browser.waitForTarget((t) => {
-        return t.type() === "page";
-      }, { timeout: timeout2 });
-    } catch (error) {
-      await browser.close();
-      throw error;
-    }
-  }
-  /**
-   * @internal
-   */
-  async createCdpSocketConnection(browserProcess, opts) {
-    const browserWSEndpoint = await browserProcess.waitForLineOutput(CDP_WEBSOCKET_ENDPOINT_REGEX, opts.timeout);
-    const transport = await NodeWebSocketTransport.create(browserWSEndpoint);
-    return new Connection(
-      browserWSEndpoint,
-      transport,
-      opts.slowMo,
-      opts.protocolTimeout,
-      /* rawErrors */
-      false,
-      opts.idGenerator
-    );
-  }
-  /**
-   * @internal
-   */
-  async createCdpPipeConnection(browserProcess, opts) {
-    const { 3: pipeWrite, 4: pipeRead } = browserProcess.nodeProcess.stdio;
-    const transport = new PipeTransport(pipeWrite, pipeRead);
-    return new Connection(
-      "",
-      transport,
-      opts.slowMo,
-      opts.protocolTimeout,
-      /* rawErrors */
-      false,
-      opts.idGenerator
-    );
-  }
-  /**
-   * @internal
-   */
-  async createBiDiOverCdpBrowser(browserProcess, cdpConnection, closeCallback, opts) {
-    const bidiOnly = process.env["PUPPETEER_WEBDRIVER_BIDI_ONLY"] === "true";
-    const BiDi = await Promise.resolve().then(() => (init_bidi(), bidi_exports));
-    const bidiConnection = await BiDi.connectBidiOverCdp(cdpConnection);
-    return await BiDi.BidiBrowser.create({
-      connection: bidiConnection,
-      // Do not provide CDP connection to Browser, if BiDi-only mode is enabled. This
-      // would restrict Browser to use only BiDi endpoint.
-      cdpConnection: bidiOnly ? void 0 : cdpConnection,
-      closeCallback,
-      process: browserProcess.nodeProcess,
-      defaultViewport: opts.defaultViewport,
-      acceptInsecureCerts: opts.acceptInsecureCerts,
-      networkEnabled: opts.networkEnabled,
-      issuesEnabled: opts.issuesEnabled
-    });
-  }
-  /**
-   * @internal
-   */
-  async createBiDiBrowser(browserProcess, closeCallback, opts) {
-    const browserWSEndpoint = await browserProcess.waitForLineOutput(WEBDRIVER_BIDI_WEBSOCKET_ENDPOINT_REGEX, opts.timeout) + "/session";
-    const transport = await NodeWebSocketTransport.create(browserWSEndpoint);
-    const BiDi = await Promise.resolve().then(() => (init_bidi(), bidi_exports));
-    const bidiConnection = new BiDi.BidiConnection(browserWSEndpoint, transport, opts.idGenerator, opts.slowMo, opts.protocolTimeout);
-    return await BiDi.BidiBrowser.create({
-      connection: bidiConnection,
-      closeCallback,
-      process: browserProcess.nodeProcess,
-      defaultViewport: opts.defaultViewport,
-      acceptInsecureCerts: opts.acceptInsecureCerts,
-      networkEnabled: opts.networkEnabled ?? true,
-      issuesEnabled: opts.issuesEnabled ?? true
-    });
-  }
-  /**
-   * @internal
-   */
-  getProfilePath() {
-    return join2(this.puppeteer.configuration.temporaryDirectory ?? tmpdir(), `puppeteer_dev_${this.browser}_profile-`);
-  }
-  /**
-   * @internal
-   */
-  resolveExecutablePath(headless, validatePath = true) {
-    let executablePath2 = this.puppeteer.configuration.executablePath;
-    if (executablePath2) {
-      if (validatePath && !existsSync2(executablePath2)) {
-        throw new Error(`Tried to find the browser at the configured path (${executablePath2}), but no executable was found.`);
-      }
-      return executablePath2;
-    }
-    function puppeteerBrowserToInstalledBrowser(browser, headless2) {
-      switch (browser) {
-        case "chrome":
-          if (headless2 === "shell") {
-            return Browser3.CHROMEHEADLESSSHELL;
-          }
-          return Browser3.CHROME;
-        case "firefox":
-          return Browser3.FIREFOX;
-      }
-      return Browser3.CHROME;
-    }
-    const browserType = puppeteerBrowserToInstalledBrowser(this.browser, headless);
-    executablePath2 = computeExecutablePath({
-      cacheDir: this.puppeteer.defaultDownloadPath,
-      browser: browserType,
-      buildId: this.puppeteer.browserVersion
-    });
-    if (validatePath && !existsSync2(executablePath2)) {
-      const configVersion = this.puppeteer.configuration?.[this.browser]?.version;
-      if (configVersion) {
-        throw new Error(`Tried to find the browser at the configured path (${executablePath2}) for version ${configVersion}, but no executable was found.`);
-      }
-      switch (this.browser) {
-        case "chrome":
-          throw new Error(`Could not find Chrome (ver. ${this.puppeteer.browserVersion}). This can occur if either
- 1. you did not perform an installation before running the script (e.g. \`npx puppeteer browsers install ${browserType}\`) or
- 2. your cache path is incorrectly configured (which is: ${this.puppeteer.configuration.cacheDirectory}).
-For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.`);
-        case "firefox":
-          throw new Error(`Could not find Firefox (rev. ${this.puppeteer.browserVersion}). This can occur if either
- 1. you did not perform an installation for Firefox before running the script (e.g. \`npx puppeteer browsers install firefox\`) or
- 2. your cache path is incorrectly configured (which is: ${this.puppeteer.configuration.cacheDirectory}).
-For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.`);
-      }
-    }
-    return executablePath2;
-  }
-};
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/ChromeLauncher.js
-init_LaunchOptions();
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/util/fs.js
-import fs3 from "node:fs";
-var rmOptions = {
-  force: true,
-  recursive: true,
-  maxRetries: 5
-};
-async function rm(path13) {
-  await fs3.promises.rm(path13, rmOptions);
-}
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/ChromeLauncher.js
-var ChromeLauncher = class extends BrowserLauncher {
-  constructor(puppeteer2) {
-    super(puppeteer2, "chrome");
-  }
-  launch(options = {}) {
-    if (this.puppeteer.configuration.logLevel === "warn" && process.platform === "darwin" && process.arch === "x64") {
-      const cpus = os6.cpus();
-      if (cpus[0]?.model.includes("Apple")) {
-        console.warn([
-          "\x1B[1m\x1B[43m\x1B[30m",
-          "Degraded performance warning:\x1B[0m\x1B[33m",
-          "Launching Chrome on Mac Silicon (arm64) from an x64 Node installation results in",
-          "Rosetta translating the Chrome binary, even if Chrome is already arm64. This would",
-          "result in huge performance issues. To resolve this, you must run Puppeteer with",
-          "a version of Node built for arm64."
-        ].join("\n  "));
-      }
-    }
-    return super.launch(options);
-  }
-  /**
-   * @internal
-   */
-  async computeLaunchArguments(options = {}) {
-    const { ignoreDefaultArgs = false, args = [], pipe: pipe2 = false, debuggingPort, channel, executablePath: executablePath2 } = options;
-    const chromeArguments = [];
-    if (!ignoreDefaultArgs) {
-      chromeArguments.push(...this.defaultArgs(options));
-    } else if (Array.isArray(ignoreDefaultArgs)) {
-      chromeArguments.push(...this.defaultArgs(options).filter((arg) => {
-        return !ignoreDefaultArgs.includes(arg);
-      }));
-    } else {
-      chromeArguments.push(...args);
-    }
-    if (!chromeArguments.some((argument) => {
-      return argument.startsWith("--remote-debugging-");
-    })) {
-      if (pipe2) {
-        assert(!debuggingPort, "Browser should be launched with either pipe or debugging port - not both.");
-        chromeArguments.push("--remote-debugging-pipe");
-      } else {
-        chromeArguments.push(`--remote-debugging-port=${debuggingPort || 0}`);
-      }
-    }
-    let isTempUserDataDir = false;
-    let userDataDirIndex = chromeArguments.findIndex((arg) => {
-      return arg.startsWith("--user-data-dir");
-    });
-    if (userDataDirIndex < 0) {
-      isTempUserDataDir = true;
-      chromeArguments.push(`--user-data-dir=${await mkdtemp(this.getProfilePath())}`);
-      userDataDirIndex = chromeArguments.length - 1;
-    }
-    const userDataDir = chromeArguments[userDataDirIndex].split("=", 2)[1];
-    assert(typeof userDataDir === "string", "`--user-data-dir` is malformed");
-    let chromeExecutable = executablePath2;
-    if (!chromeExecutable) {
-      assert(channel || !this.puppeteer._isPuppeteerCore, `An \`executablePath\` or \`channel\` must be specified for \`puppeteer-core\``);
-      chromeExecutable = channel ? this.executablePath(channel) : this.resolveExecutablePath(options.headless ?? true);
-    }
-    return {
-      executablePath: chromeExecutable,
-      args: chromeArguments,
-      isTempUserDataDir,
-      userDataDir
-    };
-  }
-  /**
-   * @internal
-   */
-  async cleanUserDataDir(path13, opts) {
-    if (opts.isTemp) {
-      try {
-        await rm(path13);
-      } catch (error) {
-        debugError(error);
-        throw error;
-      }
-    }
-  }
-  defaultArgs(options = {}) {
-    const userDisabledFeatures = getFeatures("--disable-features", options.args);
-    if (options.args && userDisabledFeatures.length > 0) {
-      removeMatchingFlags(options.args, "--disable-features");
-    }
-    const turnOnExperimentalFeaturesForTesting = process.env["PUPPETEER_TEST_EXPERIMENTAL_CHROME_FEATURES"] === "true";
-    const disabledFeatures = [
-      "Translate",
-      // AcceptCHFrame disabled because of crbug.com/1348106.
-      "AcceptCHFrame",
-      "MediaRouter",
-      "OptimizationHints",
-      "PartitionAllocSchedulerLoopQuarantineTaskControlledPurge",
-      // https://crbug.com/489314676
-      ...turnOnExperimentalFeaturesForTesting ? [] : [
-        // https://crbug.com/1492053
-        "ProcessPerSiteUpToMainFrameThreshold",
-        // https://github.com/puppeteer/puppeteer/issues/10715
-        "IsolateSandboxedIframes"
-      ],
-      ...userDisabledFeatures
-    ].filter((feature) => {
-      return feature !== "";
-    });
-    const userEnabledFeatures = getFeatures("--enable-features", options.args);
-    if (options.args && userEnabledFeatures.length > 0) {
-      removeMatchingFlags(options.args, "--enable-features");
-    }
-    const enabledFeatures = [
-      "PdfOopif",
-      // Add features to enable by default here.
-      ...userEnabledFeatures
-    ].filter((feature) => {
-      return feature !== "";
-    });
-    const chromeArguments = [
-      "--allow-pre-commit-input",
-      "--disable-background-networking",
-      "--disable-background-timer-throttling",
-      "--disable-backgrounding-occluded-windows",
-      "--disable-breakpad",
-      "--disable-client-side-phishing-detection",
-      "--disable-component-extensions-with-background-pages",
-      "--disable-crash-reporter",
-      // No crash reporting in CfT.
-      "--disable-default-apps",
-      "--disable-dev-shm-usage",
-      "--disable-hang-monitor",
-      "--disable-infobars",
-      "--disable-ipc-flooding-protection",
-      "--disable-popup-blocking",
-      "--disable-prompt-on-repost",
-      "--disable-renderer-backgrounding",
-      "--disable-search-engine-choice-screen",
-      "--disable-sync",
-      "--enable-automation",
-      "--export-tagged-pdf",
-      "--force-color-profile=srgb",
-      "--generate-pdf-document-outline",
-      "--metrics-recording-only",
-      "--no-first-run",
-      "--password-store=basic",
-      "--use-mock-keychain",
-      `--disable-features=${disabledFeatures.join(",")}`,
-      `--enable-features=${enabledFeatures.join(",")}`
-    ].filter((arg) => {
-      return arg !== "";
-    });
-    const { devtools = false, headless = !devtools, args = [], userDataDir, enableExtensions = false } = options;
-    if (process.env["PUPPETEER_DANGEROUS_NO_SANDBOX"] === "true" && !args.includes("--no-sandbox")) {
-      chromeArguments.push("--no-sandbox");
-    }
-    if (userDataDir) {
-      chromeArguments.push(`--user-data-dir=${path9.posix.isAbsolute(userDataDir) || path9.win32.isAbsolute(userDataDir) ? userDataDir : path9.resolve(userDataDir)}`);
-    }
-    if (devtools) {
-      chromeArguments.push("--auto-open-devtools-for-tabs");
-    }
-    if (headless) {
-      chromeArguments.push(headless === "shell" ? "--headless" : "--headless=new", "--hide-scrollbars", "--mute-audio");
-    }
-    chromeArguments.push(enableExtensions ? "--enable-unsafe-extension-debugging" : "--disable-extensions");
-    if (args.every((arg) => {
-      return arg.startsWith("-");
-    })) {
-      chromeArguments.push("about:blank");
-    }
-    chromeArguments.push(...args);
-    return chromeArguments;
-  }
-  executablePath(channel, validatePath = true) {
-    if (channel) {
-      return computeSystemExecutablePath({
-        browser: Browser3.CHROME,
-        channel: convertPuppeteerChannelToBrowsersChannel(channel)
-      });
-    } else {
-      return this.resolveExecutablePath(void 0, validatePath);
-    }
-  }
-};
-function getFeatures(flag, options = []) {
-  return options.filter((s) => {
-    return s.startsWith(flag.endsWith("=") ? flag : `${flag}=`);
-  }).map((s) => {
-    return s.split(new RegExp(`${flag}=\\s*`))[1]?.trim();
-  }).filter((s) => {
-    return s;
-  });
-}
-function removeMatchingFlags(array, flag) {
-  const regex = new RegExp(`^${flag}=.*`);
-  let i = 0;
-  while (i < array.length) {
-    if (regex.test(array[i])) {
-      array.splice(i, 1);
-    } else {
-      i++;
-    }
-  }
-  return array;
-}
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/FirefoxLauncher.js
-init_main();
-init_util();
-init_assert();
-import fs4 from "node:fs";
-import { rename, unlink as unlink2, mkdtemp as mkdtemp2 } from "node:fs/promises";
-import os7 from "node:os";
-import path10 from "node:path";
-var FirefoxLauncher = class _FirefoxLauncher extends BrowserLauncher {
-  constructor(puppeteer2) {
-    super(puppeteer2, "firefox");
-  }
-  static getPreferences(extraPrefsFirefox) {
-    return {
-      ...extraPrefsFirefox,
-      // Force all web content to use a single content process. TODO: remove
-      // this once Firefox supports mouse event dispatch from the main frame
-      // context. See https://bugzilla.mozilla.org/show_bug.cgi?id=1773393.
-      "fission.webContentIsolationStrategy": 0
-    };
-  }
-  /**
-   * @internal
-   */
-  async computeLaunchArguments(options = {}) {
-    const { ignoreDefaultArgs = false, args = [], executablePath: executablePath2, pipe: pipe2 = false, extraPrefsFirefox = {}, debuggingPort = null } = options;
-    const firefoxArguments = [];
-    if (!ignoreDefaultArgs) {
-      firefoxArguments.push(...this.defaultArgs(options));
-    } else if (Array.isArray(ignoreDefaultArgs)) {
-      firefoxArguments.push(...this.defaultArgs(options).filter((arg) => {
-        return !ignoreDefaultArgs.includes(arg);
-      }));
-    } else {
-      firefoxArguments.push(...args);
-    }
-    if (!firefoxArguments.some((argument) => {
-      return argument.startsWith("--remote-debugging-");
-    })) {
-      if (pipe2) {
-        assert(debuggingPort === null, "Browser should be launched with either pipe or debugging port - not both.");
-      }
-      firefoxArguments.push(`--remote-debugging-port=${debuggingPort || 0}`);
-    }
-    let userDataDir;
-    let isTempUserDataDir = true;
-    const profileArgIndex = firefoxArguments.findIndex((arg) => {
-      return ["-profile", "--profile"].includes(arg);
-    });
-    if (profileArgIndex !== -1) {
-      userDataDir = firefoxArguments[profileArgIndex + 1];
-      if (!userDataDir) {
-        throw new Error(`Missing value for profile command line argument`);
-      }
-      isTempUserDataDir = false;
-    } else {
-      userDataDir = await mkdtemp2(this.getProfilePath());
-      firefoxArguments.push("--profile");
-      firefoxArguments.push(userDataDir);
-    }
-    await createProfile2(Browser3.FIREFOX, {
-      path: userDataDir,
-      preferences: _FirefoxLauncher.getPreferences(extraPrefsFirefox)
-    });
-    let firefoxExecutable;
-    if (this.puppeteer._isPuppeteerCore || executablePath2) {
-      assert(executablePath2, `An \`executablePath\` must be specified for \`puppeteer-core\``);
-      firefoxExecutable = executablePath2;
-    } else {
-      firefoxExecutable = this.executablePath(void 0);
-    }
-    return {
-      isTempUserDataDir,
-      userDataDir,
-      args: firefoxArguments,
-      executablePath: firefoxExecutable
-    };
-  }
-  /**
-   * @internal
-   */
-  async cleanUserDataDir(userDataDir, opts) {
-    if (opts.isTemp) {
-      try {
-        await rm(userDataDir);
-      } catch (error) {
-        debugError(error);
-        throw error;
-      }
-    } else {
-      try {
-        const backupSuffix = ".puppeteer";
-        const backupFiles = ["prefs.js", "user.js"];
-        const results = await Promise.allSettled(backupFiles.map(async (file) => {
-          const prefsBackupPath = path10.join(userDataDir, file + backupSuffix);
-          if (fs4.existsSync(prefsBackupPath)) {
-            const prefsPath = path10.join(userDataDir, file);
-            await unlink2(prefsPath);
-            await rename(prefsBackupPath, prefsPath);
-          }
-        }));
-        for (const result of results) {
-          if (result.status === "rejected") {
-            throw result.reason;
-          }
-        }
-      } catch (error) {
-        debugError(error);
-      }
-    }
-  }
-  executablePath(_, validatePath = true) {
-    return this.resolveExecutablePath(
-      void 0,
-      /* validatePath=*/
-      validatePath
-    );
-  }
-  defaultArgs(options = {}) {
-    const { devtools = false, headless = !devtools, args = [], userDataDir = null } = options;
-    const firefoxArguments = [];
-    switch (os7.platform()) {
-      case "darwin":
-        firefoxArguments.push("--foreground");
-        break;
-      case "win32":
-        firefoxArguments.push("--wait-for-browser");
-        break;
-    }
-    if (userDataDir) {
-      firefoxArguments.push("--profile");
-      firefoxArguments.push(userDataDir);
-    }
-    if (headless) {
-      firefoxArguments.push("--headless");
-    }
-    if (devtools) {
-      firefoxArguments.push("--devtools");
-    }
-    if (args.every((arg) => {
-      return arg.startsWith("-");
-    })) {
-      firefoxArguments.push("about:blank");
-    }
-    firefoxArguments.push(...args);
-    return firefoxArguments;
-  }
-};
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/PuppeteerNode.js
-init_main();
-init_Puppeteer();
-init_revisions();
-var PuppeteerNode = class extends Puppeteer {
-  #launcher;
-  #lastLaunchedBrowser;
-  /**
-   * @internal
-   */
-  defaultBrowserRevision;
-  /**
-   * @internal
-   */
-  configuration = {};
-  /**
-   * @internal
-   */
-  constructor(settings) {
-    const { configuration, ...commonSettings } = settings;
-    super(commonSettings);
-    if (configuration) {
-      this.configuration = configuration;
-    }
-    switch (this.configuration.defaultBrowser) {
-      case "firefox":
-        this.defaultBrowserRevision = PUPPETEER_REVISIONS.firefox;
-        break;
-      default:
-        this.configuration.defaultBrowser = "chrome";
-        this.defaultBrowserRevision = PUPPETEER_REVISIONS.chrome;
-        break;
-    }
-    this.connect = this.connect.bind(this);
-    this.launch = this.launch.bind(this);
-    this.executablePath = this.executablePath.bind(this);
-    this.defaultArgs = this.defaultArgs.bind(this);
-    this.trimCache = this.trimCache.bind(this);
-  }
-  /**
-   * This method attaches Puppeteer to an existing browser instance.
-   *
-   * @param options - Set of configurable options to set on the browser.
-   * @returns Promise which resolves to browser instance.
-   */
-  connect(options) {
-    return super.connect(options);
-  }
-  /**
-   * Launches a browser instance with given arguments and options when
-   * specified.
-   *
-   * When using with `puppeteer-core`,
-   * {@link LaunchOptions.executablePath | options.executablePath} or
-   * {@link LaunchOptions.channel | options.channel} must be provided.
-   *
-   * @example
-   * You can use {@link LaunchOptions.ignoreDefaultArgs | options.ignoreDefaultArgs}
-   * to filter out `--mute-audio` from default arguments:
-   *
-   * ```ts
-   * const browser = await puppeteer.launch({
-   *   ignoreDefaultArgs: ['--mute-audio'],
-   * });
-   * ```
-   *
-   * @remarks
-   * Puppeteer can also be used to control the Chrome browser, but it works best
-   * with the version of Chrome for Testing downloaded by default.
-   * There is no guarantee it will work with any other version. If Google Chrome
-   * (rather than Chrome for Testing) is preferred, a
-   * {@link https://www.google.com/chrome/browser/canary.html | Chrome Canary}
-   * or
-   * {@link https://www.chromium.org/getting-involved/dev-channel | Dev Channel}
-   * build is suggested. See
-   * {@link https://www.howtogeek.com/202825/what%E2%80%99s-the-difference-between-chromium-and-chrome/ | this article}
-   * for a description of the differences between Chromium and Chrome.
-   * {@link https://chromium.googlesource.com/chromium/src/+/lkgr/docs/chromium_browser_vs_google_chrome.md | This article}
-   * describes some differences for Linux users. See
-   * {@link https://developer.chrome.com/blog/chrome-for-testing/ | this doc} for the description
-   * of Chrome for Testing.
-   *
-   * @param options - Options to configure launching behavior.
-   */
-  launch(options = {}) {
-    const { browser = this.defaultBrowser } = options;
-    this.#lastLaunchedBrowser = browser;
-    switch (browser) {
-      case "chrome":
-        this.defaultBrowserRevision = PUPPETEER_REVISIONS.chrome;
-        break;
-      case "firefox":
-        this.defaultBrowserRevision = PUPPETEER_REVISIONS.firefox;
-        break;
-      default:
-        throw new Error(`Unknown product: ${browser}`);
-    }
-    this.#launcher = this.#getLauncher(browser);
-    return this.#launcher.launch(options);
-  }
-  /**
-   * @internal
-   */
-  #getLauncher(browser) {
-    if (this.#launcher && this.#launcher.browser === browser) {
-      return this.#launcher;
-    }
-    switch (browser) {
-      case "chrome":
-        return new ChromeLauncher(this);
-      case "firefox":
-        return new FirefoxLauncher(this);
-      default:
-        throw new Error(`Unknown product: ${browser}`);
-    }
-  }
-  executablePath(optsOrChannel) {
-    if (optsOrChannel === void 0) {
-      return this.#getLauncher(this.lastLaunchedBrowser).executablePath(
-        void 0,
-        /* validatePath= */
-        false
-      );
-    }
-    if (typeof optsOrChannel === "string") {
-      return this.#getLauncher("chrome").executablePath(
-        optsOrChannel,
-        /* validatePath= */
-        false
-      );
-    }
-    return this.#getLauncher(optsOrChannel.browser ?? this.lastLaunchedBrowser).resolveExecutablePath(
-      optsOrChannel.headless,
-      /* validatePath= */
-      false
-    );
-  }
-  /**
-   * @internal
-   */
-  get browserVersion() {
-    return this.configuration?.[this.lastLaunchedBrowser]?.version ?? this.defaultBrowserRevision;
-  }
-  /**
-   * The default download path for puppeteer. For puppeteer-core, this
-   * code should never be called as it is never defined.
-   *
-   * @internal
-   */
-  get defaultDownloadPath() {
-    return this.configuration.cacheDirectory;
-  }
-  /**
-   * The name of the browser that was last launched.
-   */
-  get lastLaunchedBrowser() {
-    return this.#lastLaunchedBrowser ?? this.defaultBrowser;
-  }
-  /**
-   * The name of the browser that will be launched by default. For
-   * `puppeteer`, this is influenced by your configuration. Otherwise, it's
-   * `chrome`.
-   */
-  get defaultBrowser() {
-    return this.configuration.defaultBrowser ?? "chrome";
-  }
-  /**
-   * @deprecated Do not use as this field as it does not take into account
-   * multiple browsers of different types. Use
-   * {@link PuppeteerNode.defaultBrowser | defaultBrowser} or
-   * {@link PuppeteerNode.lastLaunchedBrowser | lastLaunchedBrowser}.
-   *
-   * @returns The name of the browser that is under automation.
-   */
-  get product() {
-    return this.lastLaunchedBrowser;
-  }
-  /**
-   * @param options - Set of configurable options to set on the browser.
-   *
-   * @returns The default arguments that the browser will be launched with.
-   */
-  defaultArgs(options = {}) {
-    return this.#getLauncher(options.browser ?? this.lastLaunchedBrowser).defaultArgs(options);
-  }
-  /**
-   * Removes all non-current Firefox and Chrome binaries in the cache directory
-   * identified by the provided Puppeteer configuration. The current browser
-   * version is determined by resolving PUPPETEER_REVISIONS from Puppeteer
-   * unless `configuration.browserRevision` is provided.
-   *
-   * @remarks
-   *
-   * Note that the method does not check if any other Puppeteer versions
-   * installed on the host that use the same cache directory require the
-   * non-current binaries.
-   *
-   * @public
-   */
-  async trimCache() {
-    const platform = detectBrowserPlatform();
-    if (!platform) {
-      throw new Error("The current platform is not supported.");
-    }
-    const cacheDir = this.configuration.cacheDirectory;
-    const installedBrowsers = await getInstalledBrowsers({
-      cacheDir
-    });
-    const puppeteerBrowsers = [
-      {
-        product: "chrome",
-        browser: Browser3.CHROME,
-        currentBuildId: ""
-      },
-      {
-        product: "firefox",
-        browser: Browser3.FIREFOX,
-        currentBuildId: ""
-      }
-    ];
-    await Promise.all(puppeteerBrowsers.map(async (item) => {
-      const tag = this.configuration?.[item.product]?.version ?? PUPPETEER_REVISIONS[item.product];
-      item.currentBuildId = await resolveBuildId4(item.browser, platform, tag);
-    }));
-    const currentBrowserBuilds = new Set(puppeteerBrowsers.map((browser) => {
-      return `${browser.browser}_${browser.currentBuildId}`;
-    }));
-    const currentBrowsers = new Set(puppeteerBrowsers.map((browser) => {
-      return browser.browser;
-    }));
-    for (const installedBrowser of installedBrowsers) {
-      if (!currentBrowsers.has(installedBrowser.browser)) {
-        continue;
-      }
-      if (currentBrowserBuilds.has(`${installedBrowser.browser}_${installedBrowser.buildId}`)) {
-        continue;
-      }
-      await uninstall({
-        browser: installedBrowser.browser,
-        platform,
-        cacheDir,
-        buildId: installedBrowser.buildId
-      });
-    }
-  }
-};
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/node/ScreenRecorder.js
-var import_debug6 = __toESM(require_src(), 1);
-init_rxjs();
-init_CDPSession();
-init_util();
-init_decorators();
-init_disposable();
-import { spawn as spawn2, spawnSync as spawnSync3 } from "node:child_process";
-import fs5 from "node:fs";
-import os8 from "node:os";
-import { dirname as dirname3 } from "node:path";
-import { PassThrough } from "node:stream";
-var __runInitializers23 = function(thisArg, initializers, value) {
-  var useValue = arguments.length > 2;
-  for (var i = 0; i < initializers.length; i++) {
-    value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);
-  }
-  return useValue ? value : void 0;
-};
-var __esDecorate23 = function(ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {
-  function accept(f) {
-    if (f !== void 0 && typeof f !== "function") throw new TypeError("Function expected");
-    return f;
-  }
-  var kind = contextIn.kind, key = kind === "getter" ? "get" : kind === "setter" ? "set" : "value";
-  var target = !descriptorIn && ctor ? contextIn["static"] ? ctor : ctor.prototype : null;
-  var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});
-  var _, done = false;
-  for (var i = decorators.length - 1; i >= 0; i--) {
-    var context2 = {};
-    for (var p in contextIn) context2[p] = p === "access" ? {} : contextIn[p];
-    for (var p in contextIn.access) context2.access[p] = contextIn.access[p];
-    context2.addInitializer = function(f) {
-      if (done) throw new TypeError("Cannot add initializers after decoration has completed");
-      extraInitializers.push(accept(f || null));
-    };
-    var result = (0, decorators[i])(kind === "accessor" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context2);
-    if (kind === "accessor") {
-      if (result === void 0) continue;
-      if (result === null || typeof result !== "object") throw new TypeError("Object expected");
-      if (_ = accept(result.get)) descriptor.get = _;
-      if (_ = accept(result.set)) descriptor.set = _;
-      if (_ = accept(result.init)) initializers.unshift(_);
-    } else if (_ = accept(result)) {
-      if (kind === "field") initializers.unshift(_);
-      else descriptor[key] = _;
-    }
-  }
-  if (target) Object.defineProperty(target, contextIn.name, descriptor);
-  done = true;
-};
-var __setFunctionName6 = function(f, name, prefix) {
-  if (typeof name === "symbol") name = name.description ? "[".concat(name.description, "]") : "";
-  return Object.defineProperty(f, "name", { configurable: true, value: prefix ? "".concat(prefix, " ", name) : name });
-};
-var CRF_VALUE = 30;
-var DEFAULT_FPS = 30;
-var debugFfmpeg = (0, import_debug6.default)("puppeteer:ffmpeg");
-var ScreenRecorder = (() => {
-  let _classSuper = PassThrough;
-  let _instanceExtraInitializers = [];
-  let _private_writeFrame_decorators;
-  let _private_writeFrame_descriptor;
-  let _stop_decorators;
-  return class ScreenRecorder extends _classSuper {
-    static {
-      const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
-      __esDecorate23(this, _private_writeFrame_descriptor = { value: __setFunctionName6(async function(buffer) {
-        const error = await new Promise((resolve6) => {
-          this.#process.stdin.write(buffer, resolve6);
-        });
-        if (error) {
-          console.log(`ffmpeg failed to write: ${error.message}.`);
-        }
-      }, "#writeFrame") }, _private_writeFrame_decorators, { kind: "method", name: "#writeFrame", static: false, private: true, access: { has: (obj) => #writeFrame in obj, get: (obj) => obj.#writeFrame }, metadata: _metadata }, null, _instanceExtraInitializers);
-      __esDecorate23(this, null, _stop_decorators, { kind: "method", name: "stop", static: false, private: false, access: { has: (obj) => "stop" in obj, get: (obj) => obj.stop }, metadata: _metadata }, null, _instanceExtraInitializers);
-      if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
-    }
-    #page = __runInitializers23(this, _instanceExtraInitializers);
-    #process;
-    #controller = new AbortController();
-    #lastFrame;
-    #fps;
-    /**
-     * @internal
-     */
-    constructor(page, width, height, { ffmpegPath, speed, scale, crop, format: format3, fps, loop, delay, quality, colors, path: path13, overwrite } = {}) {
-      super({ allowHalfOpen: false });
-      ffmpegPath ??= "ffmpeg";
-      format3 ??= "webm";
-      fps ??= DEFAULT_FPS;
-      loop ||= -1;
-      delay ??= -1;
-      quality ??= CRF_VALUE;
-      colors ??= 256;
-      overwrite ??= true;
-      this.#fps = fps;
-      const { error } = spawnSync3(ffmpegPath);
-      if (error) {
-        throw error;
-      }
-      const filters = [
-        `crop='min(${width},iw):min(${height},ih):0:0'`,
-        `pad=${width}:${height}:0:0`
-      ];
-      if (speed) {
-        filters.push(`setpts=${1 / speed}*PTS`);
-      }
-      if (crop) {
-        filters.push(`crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}`);
-      }
-      if (scale) {
-        filters.push(`scale=iw*${scale}:-1:flags=lanczos`);
-      }
-      const formatArgs = this.#getFormatArgs(format3, fps, loop, delay, quality, colors);
-      const vf = formatArgs.indexOf("-vf");
-      if (vf !== -1) {
-        filters.push(formatArgs.splice(vf, 2).at(-1) ?? "");
-      }
-      if (path13) {
-        fs5.mkdirSync(dirname3(path13), { recursive: overwrite });
-      }
-      this.#process = spawn2(
-        ffmpegPath,
-        // See https://trac.ffmpeg.org/wiki/Encode/VP9 for more information on flags.
-        [
-          ["-loglevel", "error"],
-          // Reduces general buffering.
-          ["-avioflags", "direct"],
-          // Reduces initial buffering while analyzing input fps and other stats.
-          [
-            "-fpsprobesize",
-            "0",
-            "-probesize",
-            "32",
-            "-analyzeduration",
-            "0",
-            "-fflags",
-            "nobuffer"
-          ],
-          // Forces input to be read from standard input, and forces png input
-          // image format.
-          ["-f", "image2pipe", "-vcodec", "png", "-i", "pipe:0"],
-          // No audio
-          ["-an"],
-          // This drastically reduces stalling when cpu is overbooked. By default
-          // VP9 tries to use all available threads?
-          ["-threads", "1"],
-          // Specifies the frame rate we are giving ffmpeg.
-          ["-framerate", `${fps}`],
-          // Disable bitrate.
-          ["-b:v", "0"],
-          // Specifies the encoding and format we are using.
-          formatArgs,
-          // Filters to ensure the images are piped correctly,
-          // combined with any format-specific filters.
-          ["-vf", filters.join()],
-          // Overwrite output, or exit immediately if file already exists.
-          [overwrite ? "-y" : "-n"],
-          "pipe:1"
-        ].flat(),
-        { stdio: ["pipe", "pipe", "pipe"] }
-      );
-      this.#process.stdout.pipe(this);
-      this.#process.stderr.on("data", (data) => {
-        debugFfmpeg(data.toString("utf8"));
-      });
-      this.#page = page;
-      const { client } = this.#page.mainFrame();
-      client.once(CDPSessionEvent.Disconnected, () => {
-        void this.stop().catch(debugError);
-      });
-      this.#lastFrame = lastValueFrom(fromEmitterEvent(client, "Page.screencastFrame").pipe(tap((event) => {
-        void client.send("Page.screencastFrameAck", {
-          sessionId: event.sessionId
-        });
-      }), filter((event) => {
-        return event.metadata.timestamp !== void 0;
-      }), map((event) => {
-        return {
-          buffer: Buffer.from(event.data, "base64"),
-          timestamp: event.metadata.timestamp
-        };
-      }), bufferCount(2, 1), concatMap(([{ timestamp: previousTimestamp, buffer }, { timestamp: timestamp2 }]) => {
-        return from(Array(Math.round(fps * Math.max(timestamp2 - previousTimestamp, 0))).fill(buffer));
-      }), map((buffer) => {
-        void this.#writeFrame(buffer);
-        return [buffer, performance.now()];
-      }), takeUntil(fromEvent(this.#controller.signal, "abort"))), { defaultValue: [Buffer.from([]), performance.now()] });
-    }
-    #getFormatArgs(format3, fps, loop, delay, quality, colors) {
-      const libvpx = [
-        ["-vcodec", "vp9"],
-        // Sets the quality. Lower the better.
-        ["-crf", `${quality}`],
-        // Sets the quality and how efficient the compression will be.
-        [
-          "-deadline",
-          "realtime",
-          "-cpu-used",
-          `${Math.min(os8.cpus().length / 2, 8)}`
-        ]
-      ];
-      switch (format3) {
-        case "webm":
-          return [
-            ...libvpx,
-            // Sets the format
-            ["-f", "webm"]
-          ].flat();
-        case "gif":
-          fps = DEFAULT_FPS === fps ? 20 : "source_fps";
-          if (loop === Infinity) {
-            loop = 0;
-          }
-          if (delay !== -1) {
-            delay /= 10;
-          }
-          return [
-            // Sets the frame rate and uses a custom palette generated from the
-            // input.
-            [
-              "-vf",
-              `fps=${fps},split[s0][s1];[s0]palettegen=stats_mode=diff:max_colors=${colors}[p];[s1][p]paletteuse=dither=bayer`
-            ],
-            // Sets the number of times to loop playback.
-            ["-loop", `${loop}`],
-            // Sets the delay between iterations of a loop.
-            ["-final_delay", `${delay}`],
-            // Sets the format
-            ["-f", "gif"]
-          ].flat();
-        case "mp4":
-          return [
-            ...libvpx,
-            // Fragment file during stream to avoid errors.
-            ["-movflags", "hybrid_fragmented"],
-            // Sets the format
-            ["-f", "mp4"]
-          ].flat();
-      }
-    }
-    get #writeFrame() {
-      return _private_writeFrame_descriptor.value;
-    }
-    /**
-     * Stops the recorder.
-     *
-     * @public
-     */
-    async stop() {
-      if (this.#controller.signal.aborted) {
-        return;
-      }
-      await this.#page._stopScreencast().catch(debugError);
-      this.#controller.abort();
-      const [buffer, timestamp2] = await this.#lastFrame;
-      await Promise.all(Array(Math.max(1, Math.round(this.#fps * (performance.now() - timestamp2) / 1e3))).fill(buffer).map(this.#writeFrame.bind(this)));
-      this.#process.stdin.end();
-      await new Promise((resolve6) => {
-        this.#process.once("close", resolve6);
-      });
-    }
-    /**
-     * @internal
-     */
-    async [(_private_writeFrame_decorators = [guarded()], _stop_decorators = [guarded()], asyncDisposeSymbol)]() {
-      await this.stop();
-    }
-  };
-})();
-
-// node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js
-init_environment();
-import fs6 from "node:fs";
-import path11 from "node:path";
-environment.value = {
-  fs: fs6,
-  path: path11,
-  ScreenRecorder
-};
-var puppeteer = new PuppeteerNode({
-  isPuppeteerCore: true
-});
-var {
-  /**
-   * @public
-   */
-  connect,
-  /**
-   * @public
-   */
-  defaultArgs,
-  /**
-   * @public
-   */
-  executablePath,
-  /**
-   * @public
-   */
-  launch: launch2
-} = puppeteer;
-var puppeteer_core_default = puppeteer;
-
-// node_modules/@sparticuz/chromium/build/esm/index.js
-import { existsSync as existsSync4 } from "node:fs";
-import { tmpdir as tmpdir4 } from "node:os";
-import { join as join6 } from "node:path";
-
-// node_modules/@sparticuz/chromium/build/esm/helper.js
-var import_follow_redirects = __toESM(require_follow_redirects(), 1);
-var import_tar_fs = __toESM(require_tar_fs(), 1);
-import { access, createWriteStream as createWriteStream2, rm as rm2, symlink } from "node:fs";
-import { tmpdir as tmpdir2 } from "node:os";
-import { join as join3 } from "node:path";
-var setupLambdaEnvironment = (baseLibPath) => {
-  process.env["FONTCONFIG_PATH"] ??= join3(tmpdir2(), "fonts");
-  process.env["HOME"] ??= tmpdir2();
-  if (process.env["LD_LIBRARY_PATH"] === void 0) {
-    process.env["LD_LIBRARY_PATH"] = baseLibPath;
-  } else if (!process.env["LD_LIBRARY_PATH"].startsWith(baseLibPath)) {
-    process.env["LD_LIBRARY_PATH"] = [
-      baseLibPath,
-      ...new Set(process.env["LD_LIBRARY_PATH"].split(":"))
-    ].join(":");
-  }
-};
-var isValidUrl = (input2) => {
-  try {
-    return Boolean(new URL(input2));
-  } catch {
-    return false;
-  }
-};
-var isRunningInAmazonLinux2023 = (nodeMajorVersion2) => {
-  const awsExecEnv = process.env["AWS_EXECUTION_ENV"] ?? "";
-  const awsLambdaJsRuntime = process.env["AWS_LAMBDA_JS_RUNTIME"] ?? "";
-  const codebuildImage = process.env["CODEBUILD_BUILD_IMAGE"] ?? "";
-  if (awsExecEnv.includes("20.x") || awsExecEnv.includes("22.x") || awsExecEnv.includes("24.x") || awsLambdaJsRuntime.includes("20.x") || awsLambdaJsRuntime.includes("22.x") || awsLambdaJsRuntime.includes("24.x") || codebuildImage.includes("nodejs20") || codebuildImage.includes("nodejs22") || codebuildImage.includes("nodejs24")) {
-    return true;
-  }
-  if (process.env["VERCEL"] && nodeMajorVersion2 >= 20) {
-    return true;
-  }
-  return false;
-};
-var downloadAndExtract = async (url) => {
-  const getOptions = new URL(url);
-  getOptions.maxBodyLength = 60 * 1024 * 1024;
-  const destDir = join3(tmpdir2(), "chromium-pack");
-  return new Promise((resolve6, reject) => {
-    const extractObj = (0, import_tar_fs.extract)(destDir);
-    const cleanupOnError = (err) => {
-      rm2(destDir, { force: true, recursive: true }, () => {
-        reject(err);
-      });
-    };
-    extractObj.once("error", cleanupOnError);
-    extractObj.once("finish", () => {
-      resolve6(destDir);
-    });
-    const req = import_follow_redirects.default.https.get(url, (response) => {
-      if (response.statusCode !== 200) {
-        reject(new Error(`Unexpected status code: ${response.statusCode?.toFixed(0) ?? "UNK"}.`));
-        return;
-      }
-      response.pipe(extractObj);
-      response.once("error", cleanupOnError);
-    });
-    req.once("error", cleanupOnError);
-    req.setTimeout(60 * 1e3, () => {
-      req.destroy();
-      cleanupOnError(new Error("Request timeout"));
-    });
-  });
-};
-
-// node_modules/@sparticuz/chromium/build/esm/lambdafs.js
-var import_tar_fs2 = __toESM(require_tar_fs(), 1);
-import { createReadStream as createReadStream2, createWriteStream as createWriteStream3, existsSync as existsSync3 } from "node:fs";
-import { tmpdir as tmpdir3 } from "node:os";
-import { basename as basename2, join as join4 } from "node:path";
-import { createBrotliDecompress, createUnzip } from "node:zlib";
-var inflate = (filePath) => {
-  const output2 = filePath.includes("swiftshader") ? tmpdir3() : join4(tmpdir3(), basename2(filePath).replace(/\.(?:t(?:ar(?:\.(?:br|gz))?|br|gz)|br|gz)$/i, ""));
-  return new Promise((resolve6, reject) => {
-    if (filePath.includes("swiftshader")) {
-      if (existsSync3(`${output2}/libGLESv2.so`)) {
-        resolve6(output2);
-        return;
-      }
-    } else if (existsSync3(output2)) {
-      resolve6(output2);
-      return;
-    }
-    const isBrotli = /br$/i.test(filePath);
-    const isGzip = /gz$/i.test(filePath);
-    const isTar = /\.t(?:ar(?:\.(?:br|gz))?|br|gz)$/i.test(filePath);
-    const highWaterMark = 2 ** 22;
-    const source2 = createReadStream2(filePath, { highWaterMark });
-    let target;
-    const handleError2 = (error) => {
-      reject(error);
-    };
-    source2.once("error", handleError2);
-    if (isTar) {
-      target = (0, import_tar_fs2.extract)(output2);
-      target.once("finish", () => {
-        resolve6(output2);
-      });
-    } else {
-      target = createWriteStream3(output2, { mode: 448 });
-      target.once("close", () => {
-        resolve6(output2);
-      });
-    }
-    target.once("error", handleError2);
-    if (isBrotli || isGzip) {
-      const decompressor = isBrotli ? createBrotliDecompress({ chunkSize: 2 ** 21 }) : createUnzip({ chunkSize: 2 ** 21 });
-      decompressor.once("error", handleError2);
-      source2.pipe(decompressor).pipe(target);
-    } else {
-      source2.pipe(target);
-    }
-  });
-};
-
-// node_modules/@sparticuz/chromium/build/esm/paths.esm.js
-import { dirname as dirname4, join as join5 } from "node:path";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
-function getBinPath() {
-  return join5(dirname4(fileURLToPath2(import.meta.url)), "..", "..", "bin");
-}
-
-// node_modules/@sparticuz/chromium/build/esm/index.js
-var nodeMajorVersion = Number.parseInt(process.versions.node.split(".")[0] ?? "");
-if (isRunningInAmazonLinux2023(nodeMajorVersion)) {
-  setupLambdaEnvironment(join6(tmpdir4(), "al2023", "lib"));
-}
-var Chromium = class {
-  /**
-   * Returns a list of additional Chromium flags recommended for serverless environments.
-   * The canonical list of flags can be found on https://peter.sh/experiments/chromium-command-line-switches/.
-   * Most of below can be found here: https://github.com/GoogleChrome/chrome-launcher/blob/main/docs/chrome-flags-for-tools.md
-   */
-  static get args() {
-    const chromiumFlags = [
-      "--ash-no-nudges",
-      // Avoids blue bubble "user education" nudges (eg., "… give your browser a new look", Memory Saver)
-      "--disable-domain-reliability",
-      // Disables Domain Reliability Monitoring, which tracks whether the browser has difficulty contacting Google-owned sites and uploads reports to Google.
-      "--disable-print-preview",
-      // https://source.chromium.org/search?q=lang:cpp+symbol:kDisablePrintPreview&ss=chromium
-      "--disk-cache-size=33554432",
-      // https://source.chromium.org/search?q=lang:cpp+symbol:kDiskCacheSize&ss=chromium Forces the maximum disk space to be used by the disk cache, in bytes.
-      "--no-default-browser-check",
-      // Disable the default browser check, do not prompt to set it as such. (This is already set by Playwright, but not Puppeteer)
-      "--no-pings",
-      // Don't send hyperlink auditing pings
-      "--single-process",
-      // Runs the renderer and plugins in the same process as the browser. NOTES: Needs to be single-process to avoid `prctl(PR_SET_NO_NEW_PRIVS) failed` error
-      "--font-render-hinting=none"
-      // https://github.com/puppeteer/puppeteer/issues/2410#issuecomment-560573612
-    ];
-    const chromiumDisableFeatures = [
-      "AudioServiceOutOfProcess",
-      "IsolateOrigins",
-      "site-per-process"
-      // Disables OOPIF. https://www.chromium.org/Home/chromium-security/site-isolation
-    ];
-    const chromiumEnableFeatures = ["SharedArrayBuffer"];
-    const graphicsFlags = [
-      "--ignore-gpu-blocklist",
-      // https://source.chromium.org/search?q=lang:cpp+symbol:kIgnoreGpuBlocklist&ss=chromium
-      "--in-process-gpu"
-      // Saves some memory by moving GPU process into a browser process thread
-    ];
-    if (this.graphics) {
-      graphicsFlags.push(
-        // As the unsafe WebGL fallback, SwANGLE (ANGLE + SwiftShader Vulkan)
-        "--use-gl=angle",
-        "--use-angle=swiftshader",
-        "--enable-unsafe-swiftshader"
-      );
-    } else {
-      graphicsFlags.push("--disable-webgl");
-    }
-    const insecureFlags = [
-      "--allow-running-insecure-content",
-      // https://source.chromium.org/search?q=lang:cpp+symbol:kAllowRunningInsecureContent&ss=chromium
-      "--disable-setuid-sandbox",
-      // Lambda runs as root, so this is required to allow Chromium to run as root
-      "--disable-site-isolation-trials",
-      // https://source.chromium.org/search?q=lang:cpp+symbol:kDisableSiteIsolation&ss=chromium
-      "--disable-web-security"
-      // https://source.chromium.org/search?q=lang:cpp+symbol:kDisableWebSecurity&ss=chromium
-    ];
-    const headlessFlags = [
-      "--headless='shell'",
-      // We only support running chrome-headless-shell
-      "--no-sandbox",
-      // https://source.chromium.org/search?q=lang:cpp+symbol:kNoSandbox&ss=chromium
-      "--no-zygote"
-      // https://source.chromium.org/search?q=lang:cpp+symbol:kNoZygote&ss=chromium
-    ];
-    return [
-      ...chromiumFlags,
-      `--disable-features=${[...chromiumDisableFeatures].join(",")}`,
-      `--enable-features=${[...chromiumEnableFeatures].join(",")}`,
-      ...graphicsFlags,
-      ...insecureFlags,
-      ...headlessFlags
-    ];
-  }
-  /**
-   * Returns whether the graphics stack is enabled or disabled
-   * @returns boolean
-   */
-  static get graphics() {
-    return this.graphicsMode;
-  }
-  /**
-   * Sets whether the graphics stack is enabled or disabled.
-   * @param true means the stack is enabled. WebGL will work.
-   * @param false means that the stack is disabled. WebGL will not work.
-   * @default true
-   */
-  static set setGraphicsMode(value) {
-    if (typeof value !== "boolean") {
-      throw new TypeError(`Graphics mode must be a boolean, you entered '${String(value)}'`);
-    }
-    this.graphicsMode = value;
-  }
-  /**
-   * If true, the graphics stack and webgl is enabled,
-   * If false, webgl will be disabled.
-   * (If false, the swiftshader.tar.br file will also not extract)
-   */
-  static graphicsMode = true;
-  /**
-   * Inflates the included version of Chromium
-   * @param input The location of the `bin` folder
-   * @returns The path to the `chromium` binary
-   */
-  static async executablePath(input2) {
-    if (existsSync4(join6(tmpdir4(), "chromium"))) {
-      return join6(tmpdir4(), "chromium");
-    }
-    if (input2 && isValidUrl(input2)) {
-      return this.executablePath(await downloadAndExtract(input2));
-    }
-    input2 ??= getBinPath();
-    if (!existsSync4(input2)) {
-      throw new Error(`The input directory "${input2}" does not exist. Please provide the location of the brotli files.`);
-    }
-    const promises2 = [
-      inflate(join6(input2, "chromium.br")),
-      inflate(join6(input2, "fonts.tar.br")),
-      inflate(join6(input2, "swiftshader.tar.br"))
-    ];
-    if (isRunningInAmazonLinux2023(nodeMajorVersion)) {
-      promises2.push(inflate(join6(input2, "al2023.tar.br")));
-    }
-    const result = await Promise.all(promises2);
-    return result.shift();
-  }
-};
-var esm_default2 = Chromium;
-
 // server/po-pdf.ts
+init_puppeteer_core();
+init_esm2();
 init_storage();
 init_po_milestones();
 
@@ -92829,7 +93693,8 @@ var SIZE_CHART_LABELS = {
   "baseball-jersey": "Baseball Jersey",
   "rugby-jersey": "Rugby Jersey + Shorts",
   socks: "Socks",
-  beanie: "Beanie (Pom-Pom)"
+  beanie: "Beanie (Pom-Pom)",
+  none: ""
 };
 var SIZE_CHART_DATA = {
   tshirt: [
@@ -93064,11 +93929,12 @@ var SIZE_CHART_DATA = {
       ],
       tolerance: "\xB1 2.0cm"
     }
-  ]
+  ],
+  none: []
 };
 var PRODUCT_TO_CHART = {
   "rugby-match-jersey": "rugby-jersey",
-  "rugby-training-jersey": "tshirt",
+  "rugby-long-sleeve": "tshirt",
   "rugby-shorts": "rugby-jersey",
   // rugby shorts table is inside the rugby-jersey entry
   "rugby-socks": "socks",
@@ -93078,6 +93944,14 @@ var PRODUCT_TO_CHART = {
   "netball-singlet": "singlet",
   "netball-skirt": "shorts",
   "netball-bike-shorts": "shorts",
+  "netball-spanks": "none",
+  // no verified chart — Sizing Guide omitted on PO until one is added
+  "tag-reversible-singlet": "none",
+  // no verified chart
+  "tag-dri-fit-tee": "none",
+  // no verified chart
+  "tag-shorts": "none",
+  // no verified chart
   "football-jersey": "tshirt",
   "football-shorts": "shorts",
   "football-socks": "socks",
@@ -93087,10 +93961,11 @@ var PRODUCT_TO_CHART = {
   "cricket-trousers": "trackpants",
   "hockey-jersey": "tshirt",
   "hockey-skort": "shorts",
-  "training-tee": "tshirt",
-  "training-polo": "tshirt",
+  "dri-fit-shirt": "tshirt",
+  "dri-fit-polo": "tshirt",
+  "cotton-tee": "tshirt",
   "training-singlet": "singlet",
-  "training-shorts": "shorts",
+  "gym-shorts": "shorts",
   "track-pants": "trackpants",
   "hoodie": "hoodie",
   "zip-hoodie": "hoodie",
@@ -93100,6 +93975,16 @@ var PRODUCT_TO_CHART = {
   "puffer-jacket": "rain-jacket",
   "wet-weather-jacket": "rain-jacket",
   "gameday-jacket": "tracksuit-jacket",
+  "anthem-jacket": "tracksuit-jacket",
+  "rugby-shell-jacket": "rain-jacket",
+  "windbreaker-jacket": "rain-jacket",
+  "stadium-jacket": "tracksuit-jacket",
+  "tracksuit": "tracksuit-jacket",
+  "rugby-set": "rugby-jersey",
+  "basketball-socks": "socks",
+  "scarf": "tshirt",
+  "shoe-bag": "tshirt",
+  "american-football-jersey": "tshirt",
   "supporters-tee": "tshirt",
   "supporters-polo": "tshirt",
   "supporters-singlet": "singlet",
@@ -93124,14 +94009,60 @@ var SIZE_CHART_DIAGRAMS = {
   "baseball-jersey": "/size-charts/baseball-jersey-diagram.png",
   "rugby-jersey": "/size-charts/rugby-jersey-diagram.png",
   socks: "/size-charts/socks-diagram.png",
-  beanie: "/size-charts/beanie-diagram.png"
+  beanie: "/size-charts/beanie-diagram.png",
+  none: ""
 };
 function suggestSizeChart(productType) {
-  if (!productType) return "tshirt";
-  return PRODUCT_TO_CHART[productType] || "tshirt";
+  if (!productType) return "none";
+  return PRODUCT_TO_CHART[productType] || "none";
 }
 function getSizeChartTables(chartType) {
-  return SIZE_CHART_DATA[chartType] || SIZE_CHART_DATA.tshirt;
+  if (chartType === "none") return [];
+  return SIZE_CHART_DATA[chartType] || [];
+}
+
+// server/po-pdf.ts
+init_schema();
+
+// shared/design-assets.ts
+function asArray(v) {
+  if (!Array.isArray(v)) return [];
+  return v.filter((x) => x && typeof x === "object" && typeof x.url === "string" && x.url).map((x) => ({ label: String(x.label ?? ""), url: String(x.url) }));
+}
+function getDesignPrints(item) {
+  if (!item) return [];
+  return asArray(item.designPrints);
+}
+function getMockups(item) {
+  if (!item) return [];
+  const fresh = asArray(item.mockupImages);
+  if (fresh.length > 0) return fresh;
+  const legacy = [];
+  if (item.frontDesignUrl) legacy.push({ label: "Front", url: item.frontDesignUrl });
+  if (item.backDesignUrl) legacy.push({ label: "Back", url: item.backDesignUrl });
+  return legacy;
+}
+
+// shared/po-filename.ts
+function safe(s) {
+  return s.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, " ").trim();
+}
+function toDateOnly(v) {
+  if (!v) return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const d = typeof v === "string" ? new Date(v) : v;
+  if (isNaN(d.getTime())) return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  return d.toISOString().slice(0, 10);
+}
+function poBaseName(input2) {
+  const date = toDateOnly(input2.createdAt);
+  const ref = safe(input2.poReference || input2.orderNumber || "NO-REF");
+  const account = safe(input2.accountName || input2.customerName || "");
+  const parts = [date, ref];
+  if (account) parts.push(account);
+  return parts.join(" - ");
+}
+function poFilename(input2) {
+  return `${poBaseName(input2)}.pdf`;
 }
 
 // server/po-pdf.ts
@@ -93154,11 +94085,142 @@ async function getAccessToken3() {
 function esc(s) {
   return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+function renderAssetStrip(title, assets, headerBg = "#000") {
+  if (!assets.length) return "";
+  const col = `${100 / assets.length}%`;
+  return `
+  <div style="page-break-inside:avoid">
+    <div style="background:${headerBg};color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center;letter-spacing:0.3px">${esc(title)}</div>
+    <div style="display:flex;border:1px solid #eee;border-top:none;min-height:240px">
+      ${assets.map((a) => `
+        <div style="width:${col};padding:14px 10px;text-align:center;display:flex;flex-direction:column;border-right:1px solid #eee">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px;color:#555">${esc(a.label || "\u2014")}</div>
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;min-height:0">
+            <img src="${a.url}" style="max-width:100%;max-height:260px;object-fit:contain" />
+          </div>
+        </div>`).join("")}
+    </div>
+  </div>`;
+}
+function renderLogoGrid(elements) {
+  const presetSet = new Set(LOGO_POSITIONS);
+  const byPosition = /* @__PURE__ */ new Map();
+  const custom = [];
+  const unassigned = [];
+  for (const el of elements) {
+    if (!el.position) {
+      if (el.url) unassigned.push(el);
+    } else if (presetSet.has(el.position)) {
+      const key = el.position;
+      const list = byPosition.get(key) || [];
+      list.push(el);
+      byPosition.set(key, list);
+    } else {
+      custom.push(el);
+    }
+  }
+  const th = (label, isFirst = false) => `<th style="padding:6px 4px;background:#000;color:#fff;font-size:8.5px;font-weight:700;text-align:${isFirst ? "left" : "center"};letter-spacing:0.2px;border:1px solid #000;line-height:1.2">${label}</th>`;
+  const td = (content) => `<td style="padding:6px 4px;font-size:9.5px;text-align:center;border:1px solid #ccc;vertical-align:middle">${content}</td>`;
+  const lblCell = (label) => `<td style="padding:6px 8px;font-size:9px;font-weight:700;background:#f3f3f3;text-align:left;letter-spacing:0.2px;border:1px solid #ccc">${label}</td>`;
+  const colgroup = `<colgroup><col style="width:13%" />${LOGO_POSITIONS.map(() => `<col style="width:9.67%" />`).join("")}</colgroup>`;
+  const empty = `<span style="color:#ccc;font-size:16px">\u2014</span>`;
+  const unassignedStrip = unassigned.length ? `
+    <div style="background:#fff7ed;border:1px solid #fed7aa;border-bottom:none;padding:8px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:9px;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:0.4px;margin-right:4px">Unassigned (${unassigned.length}) \u2014 set position in admin</span>
+      ${unassigned.map((el) => `
+        <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px 3px 3px;background:#fff;border:1px solid #fdba74;border-radius:4px">
+          <img src="${el.url}" style="height:22px;max-width:40px;object-fit:contain" />
+          <span style="font-size:10px;color:#555">${esc(el.name || "Logo")}</span>
+        </div>`).join("")}
+    </div>` : "";
+  return `
+  <div style="margin-top:0">
+    <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center;letter-spacing:0.3px">Logo Placement Grid</div>
+    ${unassignedStrip}
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed">
+      ${colgroup}
+      <thead>
+        <tr>
+          ${th("POSITION", true)}
+          ${LOGO_POSITIONS.map((p) => th(p.toUpperCase())).join("")}
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="height:90px">
+          ${lblCell("LOGO")}
+          ${LOGO_POSITIONS.map((p) => {
+    const specs = byPosition.get(p) || [];
+    if (!specs.length) return td(empty);
+    const maxH = specs.length === 1 ? 76 : 36;
+    const stacked = specs.map((s) => `<img src="${s.url}" style="max-width:88%;max-height:${maxH}px;object-fit:contain;margin:1px 0" />`).join("<br/>");
+    return td(stacked);
+  }).join("")}
+        </tr>
+        <tr>
+          ${lblCell("APPLICATION")}
+          ${LOGO_POSITIONS.map((p) => {
+    const specs = byPosition.get(p) || [];
+    if (!specs.length) return td("");
+    return td(specs.map((s) => s.application ? `<strong>${esc(s.application).toUpperCase()}</strong>` : "\u2014").join("<br/>"));
+  }).join("")}
+        </tr>
+        <tr>
+          ${lblCell("SIZE")}
+          ${LOGO_POSITIONS.map((p) => {
+    const specs = byPosition.get(p) || [];
+    if (!specs.length) return td("");
+    return td(specs.map((s) => esc(s.sizeMm || "\u2014")).join("<br/>"));
+  }).join("")}
+        </tr>
+        <tr>
+          ${lblCell("THREAD / PMS")}
+          ${LOGO_POSITIONS.map((p) => {
+    const specs = byPosition.get(p) || [];
+    if (!specs.length) return td("");
+    return td(specs.map((s) => s.threadColours?.length ? s.threadColours.map((c) => `<div style="font-size:9px;line-height:1.4">${esc(c)}</div>`).join("") : "\u2014").join('<div style="height:4px"></div>'));
+  }).join("")}
+        </tr>
+        <tr>
+          ${lblCell("ARTWORK FILE")}
+          ${LOGO_POSITIONS.map((p) => {
+    const specs = byPosition.get(p) || [];
+    if (!specs.length) return td("");
+    return td(specs.map((s) => s.artworkFile ? `<span style="font-family:monospace;font-size:9px">${esc(s.artworkFile)}</span>` : "\u2014").join("<br/>"));
+  }).join("")}
+        </tr>
+      </tbody>
+    </table>
+    ${custom.length ? `
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-top:none;padding:10px 12px">
+        <div style="font-size:9px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Custom Placements (${custom.length})</div>
+        <table style="width:100%;border-collapse:collapse;font-size:9.5px">
+          <thead>
+            <tr>
+              ${["POSITION", "LOGO", "APPLICATION", "SIZE", "THREAD / PMS", "ARTWORK"].map((h, i) => `<th style="padding:4px 6px;background:#dbeafe;text-align:${i < 2 ? "left" : "center"};font-size:8.5px;font-weight:700;letter-spacing:0.3px;border:1px solid #bfdbfe">${h}</th>`).join("")}
+            </tr>
+          </thead>
+          <tbody>
+            ${custom.map((s) => `
+              <tr>
+                <td style="padding:5px 6px;font-weight:700;color:#1d4ed8;border:1px solid #bfdbfe">${esc(s.position || "")}</td>
+                <td style="padding:5px 6px;border:1px solid #bfdbfe">${s.url ? `<img src="${s.url}" style="max-height:32px;max-width:56px;object-fit:contain" />` : ""}</td>
+                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe"><strong>${esc((s.application || "\u2014").toUpperCase())}</strong></td>
+                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe">${esc(s.sizeMm || "\u2014")}</td>
+                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe">${s.threadColours?.length ? s.threadColours.map((c) => esc(c)).join(", ") : "\u2014"}</td>
+                <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe;font-family:monospace">${esc(s.artworkFile || "\u2014")}</td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>` : ""}
+  </div>`;
+}
 async function generatePoHtml(orderId) {
   const data = await storage.getOrderWithDetails(orderId);
   if (!data) return null;
   const { order, items, sizeBreakdowns } = data;
   const siteUrl = process.env.VITE_SITE_URL || process.env.BASE_URL || "https://sidelinenz.com";
+  const portalUrl = `${siteUrl}/admin/orders/${order.id}`;
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&margin=2&data=${encodeURIComponent(portalUrl)}`;
   const date = new Date(order.createdAt);
   const dateStr = `${date.getDate().toString().padStart(2, "0")}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getFullYear().toString().slice(2)}`;
   const contact = [order.customerFirstName, order.customerLastName].filter(Boolean).join(" ") || order.customerName || "";
@@ -93172,6 +94234,8 @@ async function generatePoHtml(orderId) {
   const itemsHtml = items.map((item) => {
     const colors = item.productColors || [];
     const elements = item.elementUrls || [];
+    const designPrints = getDesignPrints(item);
+    const mockups = getMockups(item);
     const bds = bdByItem.get(item.id) || [];
     const totalQty = bds.length ? bds.reduce((s, b) => s + b.quantity, 0) : item.quantity;
     const chartType = item.sizeChartType || suggestSizeChart(item.productType);
@@ -93179,15 +94243,12 @@ async function generatePoHtml(orderId) {
     const diagramSrc = SIZE_CHART_DIAGRAMS[chartType];
     return `
     <div style="page-break-inside:avoid;margin-bottom:20px">
-      <!-- Product header -->
       <div style="background:#000;color:#fff;padding:8px 16px;font-size:13px;font-weight:700;text-align:center;letter-spacing:0.3px">
         ${esc(item.productName)}
       </div>
 
-      <!-- Product info row -->
       <div style="display:flex;border:1px solid #eee;border-top:none">
-        <!-- Left: specs -->
-        <div style="width:240px;padding:14px 16px;font-size:12px;color:#000">
+        <div style="flex:1;padding:14px 18px;font-size:12px;color:#000">
           <div style="margin-bottom:10px"><div style="font-weight:700;margin-bottom:2px">Product</div><div>${esc(item.productName)}</div></div>
           ${item.material ? `<div style="margin-bottom:10px"><div style="font-weight:700;margin-bottom:2px">Material / Spec</div><div>${esc(item.material)}</div></div>` : ""}
           ${item.brandingMethod ? `<div style="margin-bottom:10px"><div style="font-weight:700;margin-bottom:2px">Branding Application</div><div style="color:#0ea5e9">${esc(item.brandingMethod)}</div></div>` : ""}
@@ -93203,93 +94264,113 @@ async function generatePoHtml(orderId) {
           ${item.designNotes ? `<div><div style="font-weight:700;margin-bottom:2px">Notes</div><div style="font-size:11px;color:#555">${esc(item.designNotes)}</div></div>` : ""}
         </div>
 
-        <!-- Center: mockups -->
-        <div style="flex:1;display:flex;justify-content:center;align-items:center;gap:20px;padding:16px 12px;min-height:260px">
-          ${item.frontDesignUrl ? `<img src="${item.frontDesignUrl}" style="max-height:280px;flex:1;min-width:0;object-fit:contain" />` : ""}
-          ${item.backDesignUrl ? `<img src="${item.backDesignUrl}" style="max-height:280px;flex:1;min-width:0;object-fit:contain" />` : ""}
-        </div>
-
-        <!-- Right: sizes -->
-        <div style="width:200px;padding:14px 16px;border-left:1px solid #eee">
+        <div style="width:220px;padding:14px 16px;border-left:1px solid #eee">
           <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:6px"><span>Size</span><span>Count</span></div>
           ${bds.map((b) => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">${esc(b.size)}<span>${b.quantity}</span></div>`).join("")}
           ${bds.length ? `<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-top:10px"><span>Total</span><span>${totalQty}</span></div>` : `<div style="font-size:12px;color:#999">Qty: ${totalQty}</div>`}
         </div>
       </div>
 
-      <!-- Design Specifications -->
-      ${item.frontDesignUrl || item.backDesignUrl || elements.length ? `
-        <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">Design Specifications</div>
-        <div style="display:flex;min-height:300px;align-items:stretch;border:1px solid #eee;border-top:none">
-          ${item.frontDesignUrl ? `<div style="flex:1;padding:16px 12px;text-align:center;display:flex;flex-direction:column"><p style="font-size:11px;font-weight:700;margin-bottom:8px">Front Design</p><img src="${item.frontDesignUrl}" style="flex:1;min-height:0;object-fit:contain;width:100%" /></div>` : ""}
-          ${item.backDesignUrl ? `<div style="flex:1;padding:16px 12px;text-align:center;display:flex;flex-direction:column"><p style="font-size:11px;font-weight:700;margin-bottom:8px">Back Design</p><img src="${item.backDesignUrl}" style="flex:1;min-height:0;object-fit:contain;width:100%" /></div>` : ""}
-          ${elements.length ? `<div style="width:200px;padding:12px 8px;text-align:center;border-left:1px solid #eee"><p style="font-size:11px;font-weight:700;margin-bottom:8px">Elements</p>${elements.map((el) => `<img src="${el.url}" title="${esc(el.name)}" style="max-height:55px;max-width:170px;object-fit:contain;margin-bottom:8px" /><br/>`).join("")}</div>` : ""}
-        </div>` : ""}
+      ${renderAssetStrip("2D Design Print \u2014 Factory Artwork (true colours)", designPrints, "#0a0a0a")}
+      ${renderAssetStrip("3D Mockup \u2014 Vendor Render", mockups, "#0a0a0a")}
+      ${elements.length ? renderLogoGrid(elements) : ""}
 
-      <!-- Design Brief -->
-      ${item.designBrief ? `
+      ${sizeTables.length ? `
         <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">
-          Design Brief <span style="font-weight:400;font-size:9px;opacity:0.6">powered by AI</span>
+          Sizing Guide \u2014 ${esc(SIZE_CHART_LABELS[chartType] || String(chartType))}
         </div>
-        <div style="padding:12px 16px;font-size:11px;line-height:1.6;color:#333;white-space:pre-wrap;border:1px solid #eee;border-top:none">${esc(item.designBrief)}</div>` : ""}
-
-      <!-- Sizing Guide -->
-      <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">
-        Sizing Guide \u2014 ${esc(SIZE_CHART_LABELS[chartType] || String(chartType))}
-      </div>
-      <div style="display:flex;align-items:flex-start;gap:16px;padding:12px 16px;border:1px solid #eee;border-top:none">
-        ${diagramSrc ? `<div style="width:220px;flex-shrink:0;text-align:center"><img src="${siteUrl}${diagramSrc}" style="width:100%;max-height:280px;object-fit:contain" /><p style="font-size:9px;color:#888;margin-top:4px">Measurement reference</p></div>` : ""}
-        <div style="flex:1;overflow-x:auto">
-          ${sizeTables.map((t) => `
-            <p style="font-size:12px;font-weight:800;margin:6px 0 3px">${esc(t.title)}</p>
-            <table style="width:100%;border-collapse:collapse;font-size:10px">
-              <thead><tr>${t.headers.map((h, i) => `<th style="padding:4px;background:${i === 0 ? "#fff" : "#c9d9ea"};text-align:${i === 0 ? "left" : "center"};font-weight:700;border:1px solid #ddd">${esc(h)}</th>`).join("")}</tr></thead>
-              <tbody>${t.rows.map((row) => `<tr><td style="padding:3px 8px;font-weight:600;white-space:nowrap;border:1px solid #ddd">${esc(row.label)}</td>${row.values.map((v) => `<td style="padding:3px 4px;text-align:center;border:1px solid #ddd">${v}</td>`).join("")}</tr>`).join("")}</tbody>
-            </table>
-            <div style="display:flex;justify-content:space-between;font-size:9px;color:#666;padding:3px 0"><span>Measurements in cm</span><span>Tolerance ${esc(t.tolerance)}</span></div>
-          `).join("")}
-        </div>
-      </div>
+        <div style="display:flex;align-items:flex-start;gap:16px;padding:12px 16px;border:1px solid #eee;border-top:none">
+          ${diagramSrc ? `<div style="width:220px;flex-shrink:0;text-align:center"><img src="${siteUrl}${diagramSrc}" style="width:100%;max-height:280px;object-fit:contain" /><p style="font-size:9px;color:#888;margin-top:4px">Measurement reference</p></div>` : ""}
+          <div style="flex:1;overflow-x:auto">
+            ${sizeTables.map((t) => `
+              <p style="font-size:12px;font-weight:800;margin:6px 0 3px">${esc(t.title)}</p>
+              <table style="width:100%;border-collapse:collapse;font-size:10px">
+                <thead><tr>${t.headers.map((h, i) => `<th style="padding:4px;background:${i === 0 ? "#fff" : "#c9d9ea"};text-align:${i === 0 ? "left" : "center"};font-weight:700;border:1px solid #ddd">${esc(h)}</th>`).join("")}</tr></thead>
+                <tbody>${t.rows.map((row) => `<tr><td style="padding:3px 8px;font-weight:600;white-space:nowrap;border:1px solid #ddd">${esc(row.label)}</td>${row.values.map((v) => `<td style="padding:3px 4px;text-align:center;border:1px solid #ddd">${v}</td>`).join("")}</tr>`).join("")}</tbody>
+              </table>
+              <div style="display:flex;justify-content:space-between;font-size:9px;color:#666;padding:3px 0"><span>Measurements in cm</span><span>Tolerance ${esc(t.tolerance)}</span></div>
+            `).join("")}
+          </div>
+        </div>` : ""}
     </div>`;
   }).join("\n");
   const milestonesHtml = milestones ? `
-    <div style="margin-bottom:20px">
+    <div style="margin-bottom:18px">
       <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">Production Schedule \u2014 35-Day Build</div>
       <div style="display:flex;border:1px solid #eee;border-top:none">
         ${milestones.map((m) => `<div style="flex:1;text-align:center;padding:10px 6px;border-right:1px solid #eee;font-size:10px"><div style="font-weight:700">Day ${m.dayNumber}</div><div style="font-weight:600;font-size:9px;margin:2px 0">${esc(m.label)}</div><div style="font-family:monospace;color:#555">${m.date}</div></div>`).join("")}
       </div>
     </div>` : "";
+  const approved = order.artworkApproved === true;
+  const approvedBy = order.artworkApprovedBy || contact;
+  const approvedDate = order.artworkApprovedAt ? new Date(order.artworkApprovedAt).toISOString().slice(0, 10) : dateStr;
+  const approvalBand = `
+    <div style="margin-bottom:18px">
+      <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center;letter-spacing:0.3px">Artwork Approval</div>
+      <div style="display:flex;border:1px solid #eee;border-top:none;font-size:11px">
+        <div style="flex:1;padding:10px 14px;border-right:1px solid #eee">
+          <div style="font-weight:700;font-size:10px;color:#555;letter-spacing:0.4px;margin-bottom:3px">STATUS</div>
+          <div><span style="display:inline-block;padding:3px 10px;background:${approved ? "#16a34a" : "#f59e0b"};color:#fff;border-radius:3px;font-weight:700;font-size:10px;letter-spacing:0.3px">${approved ? "APPROVED" : "PENDING"}</span></div>
+        </div>
+        <div style="flex:1;padding:10px 14px;border-right:1px solid #eee">
+          <div style="font-weight:700;font-size:10px;color:#555;letter-spacing:0.4px;margin-bottom:3px">APPROVED BY</div>
+          <div>${esc(approved ? approvedBy : "\u2014")}</div>
+        </div>
+        <div style="flex:1;padding:10px 14px;border-right:1px solid #eee">
+          <div style="font-weight:700;font-size:10px;color:#555;letter-spacing:0.4px;margin-bottom:3px">DATE</div>
+          <div style="font-family:monospace">${approved ? approvedDate : "\u2014"}</div>
+        </div>
+        <div style="flex:1.3;padding:10px 14px">
+          <div style="font-weight:700;font-size:10px;color:#555;letter-spacing:0.4px;margin-bottom:3px">REFERENCE</div>
+          <div style="font-family:monospace;font-size:10px">${esc(order.poReference || order.orderNumber || "")}</div>
+        </div>
+      </div>
+    </div>`;
+  const docTitle = poBaseName({
+    poReference: order.poReference,
+    orderNumber: order.orderNumber,
+    accountName: order.accountName,
+    customerName: order.customerName,
+    createdAt: order.createdAt
+  });
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>PO ${esc(order.poReference || order.orderNumber)}</title>
+<html><head><meta charset="utf-8"><title>${esc(docTitle)}</title>
 <style>
-  body { font-family: 'Segoe UI', Arial, sans-serif; color: #000; margin: 0; padding: 32px 40px; max-width: 900px; margin: 0 auto; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #000; margin: 0; padding: 28px 36px; max-width: 900px; margin: 0 auto; }
   img { max-width: 100%; }
-  @page { margin: 10mm; }
+  @page { margin: 8mm; }
   @media print { body { padding: 0; } }
 </style></head><body>
 
 <!-- Header -->
-<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
   <div>
-    <div style="margin-bottom:12px"><img src="${siteUrl}/sideline-logo-vertical.png" style="height:60px;object-fit:contain" /></div>
+    <div style="margin-bottom:10px"><img src="${siteUrl}/sideline-logo-vertical.png" style="height:56px;object-fit:contain" /></div>
     <div style="font-size:11px;color:#333;line-height:1.6">
       Sideline NZ (Sideline Custom Goods Ltd)<br/>Unit 2, 66 Cavendish Drive Manukau<br/>Auckland, 2104<br/>022 412 7205<br/>info@sidelinenz.com<br/><span style="color:#0ea5e9">www.sidelinenz.com</span>
     </div>
   </div>
-  <div style="text-align:right;min-width:360px">
-    <h2 style="font-size:15px;font-weight:800;margin:0 0 16px;letter-spacing:0.5px">PURCHASE ORDER</h2>
-    <table style="font-size:12px;margin-left:auto;border-collapse:collapse">
-      <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">DATE</td><td style="background:#f2f2f2;padding:4px 10px;min-width:200px">${dateStr}</td></tr>
-      <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">PO/Order Reference:</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.poReference || order.orderNumber)}</td></tr>
-      <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">Account</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.accountName || "")}</td></tr>
-      <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">New or Repeat Order:</td><td style="background:#f2f2f2;padding:4px 10px">${order.isRepeatOrder ? "Repeat" : "New"}</td></tr>
-      ${order.poComments ? `<tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">Comments:</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.poComments)}</td></tr>` : ""}
-    </table>
+  <div style="text-align:right;min-width:420px;display:flex;gap:14px;align-items:flex-start;justify-content:flex-end">
+    <div>
+      <h2 style="font-size:15px;font-weight:800;margin:0 0 12px;letter-spacing:0.5px">PRODUCTION SHEET</h2>
+      <table style="font-size:12px;margin-left:auto;border-collapse:collapse">
+        <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">DATE</td><td style="background:#f2f2f2;padding:4px 10px;min-width:180px">${dateStr}</td></tr>
+        <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">ORDER REF</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.poReference || order.orderNumber)}</td></tr>
+        <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">ACCOUNT</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.accountName || "")}</td></tr>
+        <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">TYPE</td><td style="background:#f2f2f2;padding:4px 10px">${order.isRepeatOrder ? "Repeat" : "New"}</td></tr>
+        ${order.dueDate ? `<tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">DUE</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.dueDate)}</td></tr>` : ""}
+        ${order.poComments ? `<tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">COMMENTS</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.poComments)}</td></tr>` : ""}
+      </table>
+    </div>
+    <div style="text-align:center">
+      <img src="${qrSrc}" style="width:88px;height:88px;border:1px solid #ddd;padding:4px;background:#fff" />
+      <div style="font-size:8px;color:#888;margin-top:4px;letter-spacing:0.3px">SCAN FOR LIVE ORDER</div>
+    </div>
   </div>
 </div>
 
 <!-- Customer / Delivery -->
-<div style="margin-bottom:20px">
+<div style="margin-bottom:18px">
   <div style="display:flex">
     <div style="flex:1;background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700">Customer</div>
     <div style="flex:1;background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700">Delivery Address</div>
@@ -93309,17 +94390,17 @@ async function generatePoHtml(orderId) {
   </div>
 </div>
 
+${approvalBand}
 ${milestonesHtml}
 ${itemsHtml}
 
 <!-- Disclaimer -->
-<div style="margin-top:32px;border-top:3px solid #1a1a1a;padding-top:16px">
-  <p style="font-size:11px;font-weight:700;text-align:center;margin-bottom:12px">Disclaimer: Final Design Proof Approval</p>
+<div style="margin-top:28px;border-top:3px solid #1a1a1a;padding-top:14px">
+  <p style="font-size:11px;font-weight:700;text-align:center;margin-bottom:10px">Disclaimer: Final Design Proof Approval</p>
   <div style="font-size:10px;color:#555;line-height:1.6;text-align:center">
-    <p>This design proof is the intellectual property of Sideline NZ (Sideline Custom Goods Ltd) and is provided solely for the purpose of final client approval. By approving this proof, the customer confirms that all design elements \u2014 including colors, logos, placement, spelling, and sizing \u2014 are correct. Once approved, this version is final.</p>
+    <p>This production sheet is the intellectual property of Sideline NZ (Sideline Custom Goods Ltd). By approving, the customer confirms all design elements \u2014 colours, logos, placement, spelling, sizing \u2014 are correct. Once approved, this version is final.</p>
     <p style="margin-top:8px">The customer is fully responsible for the approved design. Sideline NZ will not be liable for any errors after approval, nor for delays caused by external factors.</p>
-    <p style="margin-top:8px">All designs, mockups, and associated materials remain the exclusive property of Sideline NZ (Sideline Custom Goods Ltd). No part of this design may be copied, reproduced, distributed, or repurposed without prior written consent.</p>
-    <p style="margin-top:12px;font-weight:600">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Sideline NZ (Sideline Custom Goods Ltd). All rights reserved.</p>
+    <p style="margin-top:10px;font-weight:600">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Sideline NZ (Sideline Custom Goods Ltd). All rights reserved.</p>
   </div>
 </div>
 
@@ -93390,7 +94471,13 @@ async function uploadPoPdfToDrive(orderId, poFolderId) {
     return null;
   }
   const order = await storage.getOrder(orderId);
-  const fileName = `PO ${order?.poReference || order?.orderNumber || orderId}.pdf`;
+  const fileName = poFilename({
+    poReference: order?.poReference,
+    orderNumber: order?.orderNumber,
+    accountName: order?.accountName,
+    customerName: order?.customerName,
+    createdAt: order?.createdAt
+  });
   try {
     let targetFolder = poFolderId;
     const foldersQ = `'${poFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
@@ -93431,6 +94518,9 @@ Content-Type: application/pdf\r
     return null;
   }
 }
+
+// server/routes/admin.ts
+init_integration_events();
 
 // server/ghl-contacts.ts
 var GHL_API_BASE3 = "https://services.leadconnectorhq.com";
@@ -93586,11 +94676,119 @@ async function createGhlOpportunity2(input2) {
     return { opportunityId: null, error: err.message || "unknown" };
   }
 }
+async function findOpenOpportunityForContact(contactId, pipelineId) {
+  const c = creds3();
+  if (!c) return null;
+  try {
+    const url = `${GHL_API_BASE3}/opportunities/search?location_id=${c.locationId}&pipeline_id=${pipelineId}&contact_id=${contactId}&limit=20`;
+    const res = await fetch(url, { headers: authHeaders(c.apiKey) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const open = (data.opportunities || []).filter(
+      (o) => !["won", "lost", "abandoned"].includes((o.status || "").toLowerCase())
+    );
+    if (!open.length) return null;
+    open.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+    return { id: open[0].id, name: open[0].name, pipelineStageId: open[0].pipelineStageId };
+  } catch (err) {
+    console.error("[GHL contacts] find open opportunity error:", err);
+    return null;
+  }
+}
+async function advanceGhlOpportunity(opportunityId, updates) {
+  const c = creds3();
+  if (!c) return { success: false, error: "ghl_not_configured" };
+  const FIELD_IDS = {
+    po_reference: "OJ7LXbQTrA4jX5hGEEZ3",
+    customer_name: "qwmFWayjtm9HRTzVI3fi",
+    order_total: "JraLLVKiFZ7OWkZNUgiS",
+    project_description: "Y570dpLa3S77UZmdn2qQ"
+  };
+  const body = {};
+  if (updates.pipelineStageId) body.pipelineStageId = updates.pipelineStageId;
+  if (updates.name) body.name = updates.name;
+  if (typeof updates.monetaryValue === "number") body.monetaryValue = updates.monetaryValue;
+  const customFields = [];
+  if (updates.poReference) customFields.push({ id: FIELD_IDS.po_reference, key: "po_reference", field_value: updates.poReference });
+  if (updates.customerName) customFields.push({ id: FIELD_IDS.customer_name, key: "customer_name", field_value: updates.customerName });
+  if (updates.projectDescription) customFields.push({ id: FIELD_IDS.project_description, key: "project_description", field_value: updates.projectDescription });
+  if (typeof updates.monetaryValue === "number") customFields.push({ id: FIELD_IDS.order_total, key: "order_total", field_value: `$${updates.monetaryValue.toFixed(2)}` });
+  if (customFields.length) body.customFields = customFields;
+  try {
+    const res = await fetch(`${GHL_API_BASE3}/opportunities/${opportunityId}`, {
+      method: "PUT",
+      headers: authHeaders(c.apiKey),
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const text2 = await res.text();
+      console.error("[GHL contacts] advance opportunity failed:", res.status, text2);
+      return { success: false, error: text2 };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error("[GHL contacts] advance opportunity error:", err);
+    return { success: false, error: err.message || "unknown" };
+  }
+}
 
 // server/routes/admin.ts
 init_ghl_config();
+
+// shared/order-stages.ts
+init_pipeline();
+var TERMINAL_STAGES = ["Completed", "Cancelled"];
+var ALL_ORDER_STAGES = [
+  ...SIDELINE_PIPELINE_STAGES,
+  ...TERMINAL_STAGES
+];
+function isOrderStage(value) {
+  return typeof value === "string" && ALL_ORDER_STAGES.includes(value);
+}
+function isPushableToGhl(stage) {
+  return isSidelinePipelineStage(stage);
+}
+function legacyStatusForStage(stage) {
+  switch (stage) {
+    case "Lead Received":
+    case "Brief Sent":
+    case "Mockup In Progress":
+    case "Mockup Sent":
+      return "pending";
+    case "Deposit Paid":
+      return "paid";
+    case "PO Raised":
+      return "processing";
+    case "Delivered":
+    case "Invoice Sent":
+    case "Paid":
+    case "Completed":
+      return "delivered";
+    case "Cancelled":
+      return "cancelled";
+  }
+}
+
+// server/routes/admin.ts
 var router5 = Router6();
 router5.use(requireAdmin);
+router5.get("/integration-events", async (req, res) => {
+  try {
+    const { system, status, orderId } = req.query;
+    const limit = Math.min(parseInt(req.query.limit || "100", 10) || 100, 500);
+    const { integrationEvents: integrationEvents2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+    const { eq: eqOp, and: and4, desc: desc4 } = await import("drizzle-orm");
+    const conds = [];
+    if (system) conds.push(eqOp(integrationEvents2.system, system));
+    if (status) conds.push(eqOp(integrationEvents2.status, status));
+    if (orderId) conds.push(eqOp(integrationEvents2.orderId, orderId));
+    const rows = await db.select().from(integrationEvents2).where(conds.length ? and4(...conds) : void 0).orderBy(desc4(integrationEvents2.createdAt)).limit(limit);
+    res.json({ events: rows, total: rows.length });
+  } catch (err) {
+    console.error("Admin integration-events error:", err);
+    res.status(500).json({ error: "Failed to fetch integration events" });
+  }
+});
 router5.get("/dashboard", async (_req, res) => {
   try {
     const stats = await storage.getDashboardStats();
@@ -93602,11 +94800,33 @@ router5.get("/dashboard", async (_req, res) => {
 });
 router5.get("/orders", async (req, res) => {
   try {
-    const { status, designStatus, search, limit, offset } = req.query;
-    const result = await storage.getAllOrders({
+    const {
       status,
+      stage,
       designStatus,
       search,
+      createdFrom,
+      createdTo,
+      dueFrom,
+      dueTo,
+      overdue,
+      sortBy,
+      sortDir,
+      limit,
+      offset
+    } = req.query;
+    const result = await storage.getAllOrders({
+      status,
+      stage,
+      designStatus,
+      search,
+      createdFrom,
+      createdTo,
+      dueFrom,
+      dueTo,
+      overdue: overdue === "true" || overdue === "1",
+      sortBy: sortBy === "dueDate" ? "dueDate" : sortBy === "createdAt" ? "createdAt" : void 0,
+      sortDir: sortDir === "asc" ? "asc" : sortDir === "desc" ? "desc" : void 0,
       limit: limit ? parseInt(limit) : void 0,
       offset: offset ? parseInt(offset) : void 0
     });
@@ -93649,20 +94869,93 @@ var updateOrderSchema = z6.object({
   deliveryEmail: z6.string().optional(),
   deliveryPhone: z6.string().optional(),
   dueDate: z6.union([z6.string().regex(/^\d{4}-\d{2}-\d{2}$/), z6.null()]).optional(),
-  orderType: z6.enum(["team-store", "bulk-order", "sample-run"]).optional()
+  orderType: z6.enum(["team-store", "bulk-order", "sample-run"]).optional(),
+  artworkApproved: z6.boolean().optional(),
+  artworkApprovedBy: z6.union([z6.string(), z6.null()]).optional(),
+  artworkApprovedAt: z6.union([z6.string().transform((v) => v ? new Date(v) : null), z6.null()]).optional(),
+  // Unified Stage picker — accepts any of the 9 GHL pipeline stages plus
+  // Completed / Cancelled. PATCH derives legacy `status` from this and
+  // pushes the GHL stage when applicable. See shared/order-stages.ts.
+  pipelineStage: z6.string().refine(isOrderStage, { message: "Invalid stage" }).optional()
+});
+router5.delete("/orders/:id", async (req, res) => {
+  try {
+    const ok = await storage.deleteOrder(req.params.id);
+    if (!ok) return res.status(404).json({ error: "Order not found" });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Admin delete order error:", err);
+    res.status(500).json({ error: "Failed to delete order" });
+  }
+});
+router5.post("/orders/:id/duplicate", async (req, res) => {
+  try {
+    const source2 = await storage.getOrderWithDetails(req.params.id);
+    if (!source2) return res.status(404).json({ error: "Order not found" });
+    const { order: src, items: srcItems } = source2;
+    const {
+      id: _id,
+      orderNumber: _n,
+      createdAt: _c2,
+      updatedAt: _u,
+      paidAt: _p,
+      poReference: _po,
+      driveFolderId: _df,
+      driveFolderUrl: _du,
+      driveFolderName: _dn,
+      ghlOpportunityId: _gh,
+      pipelineStage: _ps,
+      assignedSupplierId: _as,
+      artworkApproved: _aa,
+      artworkApprovedBy: _ab,
+      artworkApprovedAt: _at,
+      ...orderCopy
+    } = src;
+    const newOrderNumber = `SNZ-DUP-${Date.now().toString(36).toUpperCase()}`;
+    const newOrder = await storage.createOrder({
+      ...orderCopy,
+      orderNumber: newOrderNumber,
+      status: "pending",
+      designStatus: null,
+      isRepeatOrder: true
+    });
+    for (const it of srcItems) {
+      const { id: _iid, orderId: _oid, ...itemCopy } = it;
+      await storage.createOrderItem({ ...itemCopy, orderId: newOrder.id });
+    }
+    res.json({ ok: true, order: newOrder });
+  } catch (err) {
+    console.error("Admin duplicate order error:", err);
+    res.status(500).json({ error: "Failed to duplicate order" });
+  }
 });
 router5.patch("/orders/:id", async (req, res) => {
   try {
     const data = updateOrderSchema.parse(req.body);
     const oldOrder = await storage.getOrder(req.params.id);
-    const order = await storage.updateOrder(req.params.id, data);
+    const updates = { ...data };
+    if (data.pipelineStage && data.status === void 0) {
+      updates.status = legacyStatusForStage(data.pipelineStage);
+    }
+    const order = await storage.updateOrder(req.params.id, updates);
     if (!order) return res.status(404).json({ error: "Order not found" });
-    if (data.status && data.status !== oldOrder?.status && order.userId) {
+    if (data.pipelineStage && data.pipelineStage !== oldOrder?.pipelineStage && order.ghlOpportunityId && isPushableToGhl(data.pipelineStage)) {
+      updateGhlOpportunityStage(order.ghlOpportunityId, data.pipelineStage).catch((err) => console.error("[patch order] GHL stage push failed:", err));
+    }
+    if (data.pipelineStage && data.pipelineStage !== oldOrder?.pipelineStage) {
+      db.insert(orderActivity).values({
+        orderId: order.id,
+        userId: req.user?.userId,
+        action: "stage_changed",
+        details: { from: oldOrder?.pipelineStage || null, to: data.pipelineStage }
+      }).catch((err) => console.error("[patch order] activity log failed:", err));
+    }
+    if (updates.status && updates.status !== oldOrder?.status && order.userId) {
       notifyOrderStatusChange({
         userId: order.userId,
         orderId: order.id,
         orderNumber: order.orderNumber,
-        newStatus: data.status,
+        newStatus: updates.status,
         customerEmail: order.customerEmail
       }).catch((err) => console.error("Notify order status error:", err));
     }
@@ -93950,15 +95243,20 @@ router5.patch("/customers/:id", async (req, res) => {
     const customer = await storage.updateCustomer(req.params.id, data);
     if (!customer) return res.status(404).json({ error: "Customer not found" });
     if (customer.email) {
-      upsertGhlContact({
-        email: customer.email,
-        phone: data.contactPhone ?? customer.contactPhone ?? void 0,
-        companyName: data.teamName ?? customer.teamName ?? void 0
-      }).then(async (result) => {
-        if (result.contactId && !customer.ghlContactId) {
-          await storage.updateCustomer(customer.id, { ghlContactId: result.contactId });
+      void tracked(
+        { system: "ghl", action: "upsertContact", userId: customer.id, context: { email: customer.email } },
+        async () => {
+          const result = await upsertGhlContact({
+            email: customer.email,
+            phone: data.contactPhone ?? customer.contactPhone ?? void 0,
+            companyName: data.teamName ?? customer.teamName ?? void 0
+          });
+          if (result.contactId && !customer.ghlContactId) {
+            await storage.updateCustomer(customer.id, { ghlContactId: result.contactId });
+          }
+          return result;
         }
-      }).catch((err) => console.error("[admin PATCH customer] GHL sync failed:", err));
+      );
     }
     res.json(customer);
   } catch (err) {
@@ -94073,13 +95371,33 @@ var updateItemSchema = z6.object({
   productType: z6.string().optional(),
   material: z6.string().optional(),
   productName: z6.string().optional(),
-  frontDesignUrl: z6.string().optional(),
-  backDesignUrl: z6.string().optional(),
-  elementUrls: z6.array(z6.object({ name: z6.string(), url: z6.string() })).optional(),
+  frontDesignUrl: z6.union([z6.string(), z6.null()]).optional(),
+  backDesignUrl: z6.union([z6.string(), z6.null()]).optional(),
+  elementUrls: z6.array(z6.object({
+    name: z6.string(),
+    url: z6.string(),
+    position: z6.string().optional(),
+    application: z6.string().optional(),
+    sizeMm: z6.string().optional(),
+    threadColours: z6.array(z6.string()).optional(),
+    artworkFile: z6.string().optional()
+  })).optional(),
+  designPrints: z6.array(z6.object({ label: z6.string(), url: z6.string() })).optional(),
+  mockupImages: z6.array(z6.object({ label: z6.string(), url: z6.string() })).optional(),
   gradeGroup: z6.string().optional(),
   designNotes: z6.string().optional(),
   designBrief: z6.string().optional(),
   sizeChartType: z6.string().optional()
+});
+router5.delete("/orders/:id/items/:itemId", async (req, res) => {
+  try {
+    const ok = await storage.deleteOrderItem(req.params.itemId);
+    if (!ok) return res.status(404).json({ error: "Item not found" });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Admin delete order item error:", err);
+    res.status(500).json({ error: "Failed to delete item" });
+  }
 });
 router5.patch("/orders/:id/items/:itemId", async (req, res) => {
   try {
@@ -94090,6 +95408,12 @@ router5.patch("/orders/:id/items/:itemId", async (req, res) => {
     const mirrorJobs = [];
     if (data.frontDesignUrl) mirrorJobs.push({ url: data.frontDesignUrl, slot: "mockups" });
     if (data.backDesignUrl) mirrorJobs.push({ url: data.backDesignUrl, slot: "mockups" });
+    if (data.mockupImages?.length) {
+      for (const m of data.mockupImages) mirrorJobs.push({ url: m.url, slot: "mockups" });
+    }
+    if (data.designPrints?.length) {
+      for (const p of data.designPrints) mirrorJobs.push({ url: p.url, slot: "mockups" });
+    }
     if (data.elementUrls?.length) {
       for (const el of data.elementUrls) mirrorJobs.push({ url: el.url, slot: "logos" });
     }
@@ -94317,19 +95641,44 @@ router5.post("/orders/create-po", async (req, res) => {
       }
     }
     if (ghlContactId) {
-      const opp = await createGhlOpportunity2({
-        contactId: ghlContactId,
-        pipelineId: SIDELINE_PIPELINE_ID,
-        stageId: SIDELINE_STAGE_IDS["Lead Received"],
-        name: poReference || data.accountName || order.orderNumber || "Sideline Order",
-        monetaryValue: Math.round(subtotal / 100),
-        status: "open"
-      });
-      if (opp.opportunityId) {
+      const projectDescription = data.items?.length ? data.items.length === 1 ? `${data.items[0].quantity}\xD7 ${data.items[0].productName}` : `${data.items.reduce((s, i) => s + (i.quantity || 1), 0)} units across ${data.items.length} lines` : void 0;
+      const properName = `${data.accountName || data.customerName || "Sideline Order"}${projectDescription ? ` \u2014 ${projectDescription}` : ""}`;
+      const existing = await findOpenOpportunityForContact(ghlContactId, SIDELINE_PIPELINE_ID);
+      if (existing) {
+        const isPlaceholder = /Initial Enquiry$|^Website Lead|^Free Mockup|^Contact Enquiry|^PO-\d/.test(existing.name);
+        await advanceGhlOpportunity(existing.id, {
+          pipelineStageId: SIDELINE_STAGE_IDS["Lead Received"],
+          name: isPlaceholder ? properName : void 0,
+          monetaryValue: Math.round(subtotal / 100),
+          poReference,
+          customerName: data.customerName,
+          projectDescription
+        });
         await storage.updateOrder(order.id, {
-          ghlOpportunityId: opp.opportunityId,
+          ghlOpportunityId: existing.id,
           pipelineStage: "Lead Received"
         });
+      } else {
+        const opp = await createGhlOpportunity2({
+          contactId: ghlContactId,
+          pipelineId: SIDELINE_PIPELINE_ID,
+          stageId: SIDELINE_STAGE_IDS["Lead Received"],
+          name: properName,
+          monetaryValue: Math.round(subtotal / 100),
+          status: "open"
+        });
+        if (opp.opportunityId) {
+          await storage.updateOrder(order.id, {
+            ghlOpportunityId: opp.opportunityId,
+            pipelineStage: "Lead Received"
+          });
+          await advanceGhlOpportunity(opp.opportunityId, {
+            poReference,
+            customerName: data.customerName,
+            projectDescription,
+            monetaryValue: Math.round(subtotal / 100)
+          });
+        }
       }
     }
     await storage.initializeProductionPipeline(order.id);
@@ -94343,7 +95692,7 @@ router5.post("/orders/create-po", async (req, res) => {
   } catch (err) {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin create PO error:", err);
-    res.status(500).json({ error: "Failed to create purchase order" });
+    res.status(500).json({ error: "Failed to create production sheet" });
   }
 });
 var addItemSchema = z6.object({
@@ -94715,6 +96064,50 @@ router5.post("/orders/:id/generate-pdf", async (req, res) => {
     res.status(500).json({ error: "Failed to generate PDF" });
   }
 });
+function buildSupplierInstructions(input2) {
+  const milestones = input2.dueDate ? computeMilestones(input2.dueDate) : null;
+  const ref = input2.poReference || input2.orderNumber;
+  const lines = [];
+  lines.push(`SIDELINE NZ \u2014 SUPPLIER INSTRUCTIONS`);
+  lines.push(``);
+  lines.push(`PO: ${ref}${input2.accountName ? `  \xB7  ${input2.accountName}` : ""}`);
+  if (input2.supplierName) lines.push(`Supplier: ${input2.supplierName}`);
+  lines.push(``);
+  lines.push(`WHAT'S IN THIS FOLDER`);
+  lines.push(`  \u2022 Production sheet (PDF) \u2014 every spec, size, and quantity`);
+  lines.push(`  \u2022 Mockups \u2014 3D vendor renders for visual reference`);
+  lines.push(`  \u2022 Artwork \u2014 2D vector flats (production-ready files)`);
+  lines.push(`  \u2022 Logos \u2014 sponsor + club marks with placement notes`);
+  lines.push(``);
+  if (milestones) {
+    lines.push(`SCHEDULE (35-day cycle, working back from customer delivery)`);
+    for (const m of milestones) {
+      const flag = m.key === "ship_production" ? "  \u2190 YOUR DEADLINE" : "";
+      lines.push(`  Day ${String(m.dayNumber).padStart(2, " ")}  ${m.date}  ${m.label}${flag}`);
+    }
+    lines.push(``);
+  } else {
+    lines.push(`SCHEDULE`);
+    lines.push(`  Customer due date not yet set \u2014 we'll send revised dates once locked.`);
+    lines.push(``);
+  }
+  if (input2.deliveryAddress) {
+    lines.push(`DELIVERY`);
+    if (input2.deliveryAttention) lines.push(`  Attn: ${input2.deliveryAttention}`);
+    for (const ln of input2.deliveryAddress.split("\n")) lines.push(`  ${ln}`);
+    lines.push(``);
+  }
+  lines.push(`CHECKLIST \u2014 REPLY TO orders@sidelinenz.com`);
+  lines.push(`  [ ] Confirm receipt of this pack within 2 business days`);
+  lines.push(`  [ ] Confirm production timeline + flag any blockers`);
+  lines.push(`  [ ] Send a sample photo before bulk run starts`);
+  lines.push(`  [ ] Provide tracking once shipped from production`);
+  lines.push(``);
+  lines.push(`Anything unclear in spec or dates \u2014 reply to the dispatch email and we'll sort it before production starts.`);
+  lines.push(``);
+  lines.push(`\u2014 Sideline NZ`);
+  return lines.join("\n");
+}
 var raisePoSchema = z6.object({
   supplierId: z6.string().optional()
   // optional if already assigned
@@ -94738,6 +96131,44 @@ router5.post("/orders/:id/raise-po", async (req, res) => {
     let ghlPushResult = { success: false, reason: "no_ghl_link" };
     if (order.ghlOpportunityId) {
       ghlPushResult = await updateGhlOpportunityStage(order.ghlOpportunityId, "PO Raised");
+    }
+    let instructionsDocId = null;
+    if (order.driveFolderId) {
+      const instructionsBody = buildSupplierInstructions({
+        orderNumber: order.orderNumber,
+        poReference: order.poReference,
+        accountName: order.accountName,
+        supplierName: supplier.teamName,
+        dueDate: order.dueDate,
+        deliveryAddress: order.deliveryAddress,
+        deliveryAttention: order.deliveryAttention
+      });
+      const doc = await createDocInFolder({
+        parentFolderId: order.driveFolderId,
+        name: `${order.poReference || order.orderNumber} \u2014 Supplier Instructions`,
+        body: instructionsBody
+      }).catch((err) => {
+        console.error("[raise-po] instructions doc create failed:", err);
+        return null;
+      });
+      if (doc) instructionsDocId = doc.id;
+    }
+    const driveShareResults = [];
+    if (order.driveFolderId && supplier.email) {
+      const targets = [supplier.email];
+      if (supplier.ccEmail) targets.push(supplier.ccEmail);
+      for (const email of targets) {
+        const permissionId = await shareFolderWithUser({
+          fileOrFolderId: order.driveFolderId,
+          emailAddress: email,
+          role: "reader",
+          notify: false
+        }).catch((err) => {
+          console.error(`[raise-po] Drive share failed for ${email}:`, err);
+          return null;
+        });
+        driveShareResults.push({ email, permissionId });
+      }
     }
     let gmailMessageId = null;
     if (supplier.email) {
@@ -94783,6 +96214,8 @@ router5.post("/orders/:id/raise-po", async (req, res) => {
         supplierCcEmail: supplier.ccEmail || null,
         gmailMessageId,
         poPdfId: poPdfResult?.pdfId || null,
+        instructionsDocId,
+        driveShares: driveShareResults,
         ghlPushed: ghlPushResult.success,
         ghlPushReason: ghlPushResult.reason
       }
@@ -94796,6 +96229,8 @@ router5.post("/orders/:id/raise-po", async (req, res) => {
       gmailMessageId,
       poPdfUploaded: !!poPdfResult,
       poPdfUrl: poPdfResult?.pdfUrl || null,
+      instructionsDocId,
+      driveSharedWith: driveShareResults.filter((r) => r.permissionId).map((r) => r.email),
       ghlPushed: ghlPushResult.success,
       ghlPushReason: ghlPushResult.reason
     });
@@ -94919,6 +96354,92 @@ router5.post("/orders/:id/send-for-approval", async (req, res) => {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin send-for-approval error:", err);
     res.status(500).json({ error: "Failed to send approval link" });
+  }
+});
+var createClubManagerSchema = z6.object({
+  email: z6.string().email(),
+  clubName: z6.string().min(1).max(100),
+  shopifyOrderTag: z6.string().min(1).max(80).regex(/^[a-zA-Z0-9:_-]+$/, "Invalid tag \u2014 alphanumerics, colon, dash, underscore only"),
+  shopifyStoreUrl: z6.string().url().optional(),
+  contactId: z6.string().optional(),
+  profitShareTierBps: z6.number().int().min(0).max(1e4).optional(),
+  password: z6.string().min(8).optional()
+  // optional — auto-generated if absent
+});
+function generatePassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  let out = "";
+  for (let i = 0; i < bytes.length; i++) out += alphabet[bytes[i] % alphabet.length];
+  return out;
+}
+router5.post("/club-managers", async (req, res) => {
+  try {
+    const parsed = createClubManagerSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.errors });
+    const { email, clubName, shopifyOrderTag, shopifyStoreUrl, contactId, profitShareTierBps, password } = parsed.data;
+    const existing = await storage.getClubAccountByEmail(email);
+    if (existing) return res.status(409).json({ error: "A club account already exists with that email" });
+    const initialPassword = password || generatePassword();
+    const passwordHash = await hashPassword(initialPassword);
+    const account = await storage.createClubAccount({
+      email,
+      clubName,
+      passwordHash,
+      shopifyOrderTag,
+      shopifyStoreUrl,
+      contactId,
+      profitShareTierBps: profitShareTierBps ?? 800
+    });
+    res.json({
+      id: account.id,
+      email: account.email,
+      clubName: account.clubName,
+      shopifyOrderTag: account.shopifyOrderTag,
+      profitShareTierBps: account.profitShareTierBps,
+      // Returned ONCE — share via WhatsApp/Telegram then forget.
+      initialPassword
+    });
+  } catch (err) {
+    console.error("Create club manager error:", err);
+    res.status(500).json({ error: "Failed to create club manager" });
+  }
+});
+router5.get("/club-managers", async (_req, res) => {
+  try {
+    const accounts = await storage.getAllClubAccounts();
+    res.json(accounts.map((a) => ({
+      id: a.id,
+      email: a.email,
+      clubName: a.clubName,
+      shopifyOrderTag: a.shopifyOrderTag,
+      shopifyStoreUrl: a.shopifyStoreUrl,
+      profitShareTierBps: a.profitShareTierBps,
+      contactId: a.contactId,
+      createdAt: a.createdAt
+    })));
+  } catch (err) {
+    console.error("List club managers error:", err);
+    res.status(500).json({ error: "Failed to list club managers" });
+  }
+});
+var reportRequestSchema = z6.object({
+  clubAccountId: z6.string().min(1),
+  from: z6.string().optional(),
+  to: z6.string().optional(),
+  previewOnly: z6.boolean().optional()
+});
+router5.post("/reports/club-drop-summary", async (req, res) => {
+  try {
+    const parsed = reportRequestSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.errors });
+    const { generateDropSummary: generateDropSummary2 } = await Promise.resolve().then(() => (init_drop_summary(), drop_summary_exports));
+    const result = await generateDropSummary2(parsed.data);
+    if (!result.ok) return res.status(400).json(result);
+    res.json(result);
+  } catch (err) {
+    console.error("Drop summary error:", err);
+    res.status(500).json({ error: "Failed to generate drop summary", message: String(err?.message || err) });
   }
 });
 var admin_default = router5;
@@ -95107,8 +96628,8 @@ router6.get("/profile", async (req, res) => {
     const user = req.user;
     const profile = await storage.getUser(user.userId);
     if (!profile) return res.status(404).json({ error: "User not found" });
-    const { password, ...safe } = profile;
-    res.json(safe);
+    const { password, ...safe2 } = profile;
+    res.json(safe2);
   } catch (err) {
     console.error("Portal profile error:", err);
     res.status(500).json({ error: "Failed to load profile" });
@@ -95124,8 +96645,8 @@ router6.patch("/profile", async (req, res) => {
     const data = updateProfileSchema.parse(req.body);
     const updated = await storage.updateCustomer(user.userId, data);
     if (!updated) return res.status(404).json({ error: "User not found" });
-    const { password, ...safe } = updated;
-    res.json(safe);
+    const { password, ...safe2 } = updated;
+    res.json(safe2);
   } catch (err) {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Portal update profile error:", err);
@@ -95185,6 +96706,46 @@ router7.post("/token", async (req, res) => {
   } catch (err) {
     console.error("Upload token error:", err);
     res.status(400).json({ error: err.message || "Upload failed" });
+  }
+});
+router7.post("/from-url", async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url || typeof url !== "string") return res.status(400).json({ error: "url required" });
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return res.status(400).json({ error: "Not a valid URL" });
+    }
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return res.status(400).json({ error: "Only http(s) URLs are supported" });
+    }
+    const fetchRes = await fetch(url, { redirect: "follow" });
+    if (!fetchRes.ok) return res.status(400).json({ error: `Source fetch failed: ${fetchRes.status}` });
+    const contentType = (fetchRes.headers.get("content-type") || "").split(";")[0].trim();
+    const allowed = ["image/png", "image/jpeg", "image/svg+xml", "image/webp", "image/gif"];
+    if (!allowed.includes(contentType)) {
+      return res.status(400).json({ error: `Not a supported image type: ${contentType || "unknown"}` });
+    }
+    const arrayBuf = await fetchRes.arrayBuffer();
+    if (arrayBuf.byteLength > 50 * 1024 * 1024) return res.status(400).json({ error: "Image > 50MB" });
+    const buffer = Buffer.from(arrayBuf);
+    const ext = contentType.split("/")[1] === "svg+xml" ? "svg" : contentType.split("/")[1];
+    const filename = `pasted-url-${Date.now()}.${ext}`;
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!blobToken) return res.status(500).json({ error: "BLOB_READ_WRITE_TOKEN missing" });
+    const { put } = await import("@vercel/blob");
+    const blob = await put(filename, buffer, {
+      access: "public",
+      contentType,
+      token: blobToken,
+      addRandomSuffix: true
+    });
+    res.json({ url: blob.url });
+  } catch (err) {
+    console.error("Upload from URL error:", err);
+    res.status(500).json({ error: err.message || "Upload from URL failed" });
   }
 });
 var uploads_default = router7;
@@ -96255,6 +97816,7 @@ import { Router as Router11 } from "express";
 import jwt2 from "jsonwebtoken";
 import { z as z10 } from "zod";
 init_email();
+init_shopify_admin();
 var router8 = Router11();
 var JWT_SECRET2 = process.env.JWT_SECRET || "dev-secret-change-in-production";
 var COOKIE_NAME2 = "snz_token";
@@ -96277,11 +97839,30 @@ function requireClubAuth(req, res, next) {
     return res.status(401).json({ error: "Invalid token" });
   }
 }
+var LOGIN_WINDOW_MS = 15 * 60 * 1e3;
+var LOGIN_MAX = 5;
+var loginAttempts = /* @__PURE__ */ new Map();
+function loginRateLimiter(req, res, next) {
+  const ip = (req.ip || req.headers["x-forwarded-for"] || "unknown").toString();
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || entry.resetAt < now) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return next();
+  }
+  if (entry.count >= LOGIN_MAX) {
+    const retryInSec = Math.ceil((entry.resetAt - now) / 1e3);
+    res.setHeader("Retry-After", String(retryInSec));
+    return res.status(429).json({ error: "Too many login attempts. Try again later." });
+  }
+  entry.count += 1;
+  next();
+}
 var clubLoginSchema = z10.object({
   email: z10.string().email(),
   password: z10.string().min(1)
 });
-router8.post("/login", async (req, res) => {
+router8.post("/login", loginRateLimiter, async (req, res) => {
   try {
     const parsed = clubLoginSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -96321,6 +97902,9 @@ router8.get("/me", requireClubAuth, async (req, res) => {
       clubName: account.clubName,
       email: account.email,
       shopifyStoreUrl: account.shopifyStoreUrl,
+      shopifyOrderTag: account.shopifyOrderTag,
+      profitShareTierBps: account.profitShareTierBps,
+      hasSupporterCampaign: Boolean(account.shopifyOrderTag),
       currentOrderStatus: order?.clubPortalStatus || null,
       currentOrderId: order?.id || null,
       contactId: account.contactId
@@ -96422,6 +98006,102 @@ router8.post("/request-revision", requireClubAuth, async (req, res) => {
     res.status(500).json({ error: "Failed to request revision" });
   }
 });
+var dateRangeSchema = z10.object({
+  from: z10.string().optional(),
+  to: z10.string().optional()
+});
+async function loadSupporterOrdersForClub(clubId, from2, to) {
+  const account = await storage.getClubAccount(clubId);
+  if (!account) return { ok: false, status: 401, body: { error: "Account not found" } };
+  if (!account.shopifyOrderTag) return { ok: false, status: 409, body: { error: "Supporter campaign not configured for this club. Contact Sideline." } };
+  if (!isShopifyAdminConfigured()) return { ok: false, status: 503, body: { error: "Shopify Admin API not configured" } };
+  const all = await fetchSupporterOrdersByTag(account.shopifyOrderTag);
+  const filtered = filterByDateRange(all, from2, to);
+  return { ok: true, account, all, filtered };
+}
+router8.get("/supporter-orders", requireClubAuth, async (req, res) => {
+  try {
+    const clubId = req.clubId;
+    const parsed = dateRangeSchema.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid date range" });
+    const result = await loadSupporterOrdersForClub(clubId, parsed.data.from, parsed.data.to);
+    if (!result.ok) return res.status(result.status).json(result.body);
+    res.json({
+      orders: result.filtered.map(serializeSupporterOrder),
+      summary: summarizeSupporterOrders(result.filtered, result.account.profitShareTierBps)
+    });
+  } catch (e) {
+    console.error("Supporter orders error:", e);
+    res.status(500).json({ error: "Failed to load supporter orders" });
+  }
+});
+router8.get("/supporter-summary", requireClubAuth, async (req, res) => {
+  try {
+    const clubId = req.clubId;
+    const parsed = dateRangeSchema.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid date range" });
+    const result = await loadSupporterOrdersForClub(clubId, parsed.data.from, parsed.data.to);
+    if (!result.ok) return res.status(result.status).json(result.body);
+    res.json(summarizeSupporterOrders(result.filtered, result.account.profitShareTierBps));
+  } catch (e) {
+    console.error("Supporter summary error:", e);
+    res.status(500).json({ error: "Failed to load summary" });
+  }
+});
+router8.get("/supporter-orders.csv", requireClubAuth, async (req, res) => {
+  try {
+    const clubId = req.clubId;
+    const parsed = dateRangeSchema.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid date range" });
+    const result = await loadSupporterOrdersForClub(clubId, parsed.data.from, parsed.data.to);
+    if (!result.ok) return res.status(result.status).json(result.body);
+    const csv = ordersToCsv(result.filtered);
+    const filename = `${result.account.clubName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-supporter-orders.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (e) {
+    console.error("Supporter CSV error:", e);
+    res.status(500).json({ error: "Failed to export CSV" });
+  }
+});
+function serializeSupporterOrder(o) {
+  return {
+    id: o.id,
+    number: o.number,
+    customerName: o.customerName,
+    customerEmail: o.customerEmail,
+    totalCents: o.totalCents,
+    currency: o.currency,
+    financialStatus: o.financialStatus,
+    fulfillmentStatus: o.fulfillmentStatus,
+    createdAt: o.createdAt,
+    items: o.lines.map((l) => `${l.quantity}\xD7 ${l.title}`).join(", "),
+    unitCount: o.lines.reduce((n, l) => n + l.quantity, 0)
+  };
+}
+function csvEscape(v) {
+  if (v === null || v === void 0) return "";
+  const s = String(v);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+function ordersToCsv(orders2) {
+  const header = ["Order", "Date", "Supporter", "Email", "Items", "Units", "Total", "Currency", "Financial Status", "Fulfillment Status"];
+  const rows = orders2.map((o) => [
+    o.number,
+    o.createdAt,
+    o.customerName ?? "",
+    o.customerEmail ?? "",
+    o.lines.map((l) => `${l.quantity}\xD7 ${l.title}`).join(" | "),
+    o.lines.reduce((n, l) => n + l.quantity, 0),
+    (o.totalCents / 100).toFixed(2),
+    o.currency,
+    o.financialStatus ?? "",
+    o.fulfillmentStatus ?? ""
+  ].map(csvEscape).join(","));
+  return [header.join(","), ...rows].join("\n");
+}
 router8.post("/logout", (req, res) => {
   clearAuthCookie(res);
   res.json({ success: true });
@@ -96462,7 +98142,7 @@ router9.get("/orders", async (req, res) => {
   try {
     const { userId } = req.user;
     const orders2 = await storage.getOrdersByAssignedSupplier(userId);
-    const safe = orders2.map((o) => ({
+    const safe2 = orders2.map((o) => ({
       id: o.id,
       orderNumber: o.orderNumber,
       poReference: o.poReference,
@@ -96474,7 +98154,7 @@ router9.get("/orders", async (req, res) => {
       createdAt: o.createdAt,
       updatedAt: o.updatedAt
     }));
-    res.json({ orders: safe });
+    res.json({ orders: safe2 });
   } catch (e) {
     console.error("Supplier orders list error:", e);
     res.status(500).json({ error: "Failed to load orders" });

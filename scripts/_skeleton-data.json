@@ -1,0 +1,92 @@
+{
+  "_note": "Staged from Shopify Admin MCP on 2026-05-11. Feeds bulk-create-collection-pos.ts when SHOPIFY_STORE_URL/TOKEN aren't set in .env. Each products entry → one line item in the PO skeleton (qty 1).",
+  "collections": [
+    {
+      "handle": "2026-wesley-college-rugby-supporters-merch-range",
+      "title": "2026 Wesley College Rugby Supporters Merch Range",
+      "club": "Wesley College Rugby",
+      "slug": "wesley-college-rugby",
+      "products": [
+        { "title": "2026 Wesley College Rugby Supporters Pompom Beanie",       "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Wesley_College_Rugby_Supporters_Pompom_Beanie_1060531a-6713-49c0-b524-98fc8bcf36cc.png?v=1778065154" },
+        { "title": "2026 Wesley College Rugby Supporters Windbreaker Jacket",  "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Wesley_College_Rugby_Supporters_Windbreaker_Jacket_-_Front_2bf5ecf1-1032-4f8d-b42e-fcfe5c226955.png?v=1778065219" },
+        { "title": "2026 Wesley College Rugby Supporters Dri fit tee",         "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Wesley_College_Rugby_Supporters_Dri_fit_tee_-_Front_51ee8cfe-ac89-40d1-af44-2e15ae538a03.png?v=1778065012" },
+        { "title": "2026 Wesley College Rugby Supporters 5 Panel Bucket hat",  "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Wesley_College_Rugby_Supporters_5_Panel_Bucket_hat_fa1ae1d4-dfd5-42d0-9d33-98f8bd45c28b.png?v=1778064955" },
+        { "title": "2026 Wesley College Rugby Supporters Hoodie",              "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Wesley_College_Rugby_Supporters_Hoodie_-_Front_304696b2-72f0-4366-8840-0fd8a37f8a8a.png?v=1778065062" },
+        { "title": "2026 Wesley College Rugby Supporters 5 Panel Cap",         "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Wesley_College_Rugby_Supporters_5_Panel_Cap_bff1ff82-fee4-48ef-b146-7b70c7d6ad28.png?v=1778065248" },
+        { "title": "2026 Wesley College Rugby Supporters Long Sleeve Rugby Polo", "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Wesley_College_Rugby_Supporters_Long_Sleeve_Rugby_Polo_-_Front_7e599402-3747-470c-9d3d-d440c6a96a83.png?v=1778065121" }
+      ]
+    },
+    {
+      "handle": "2026-onewhero-rugby-supporters-merch-range",
+      "title": "2026 Onewhero Rugby Supporters Merch Range",
+      "club": "Onewhero Rugby",
+      "slug": "onewhero-rugby",
+      "products": [
+        { "title": "2026 Onewhero Rugby Hoodie",              "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Onewhero_Rugby_Hoodie_-_Front_5abd617b-71a7-4b4d-9d75-77a44b14f7e5.png?v=1777355731" },
+        { "title": "2026 Onewhero Rugby Tee",                 "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Onewhero_Rugby_Tee_-_Front_72938eef-ba9f-400d-91f6-3e9d7c59e3d0.png?v=1777355827" },
+        { "title": "2026 Onewhero Rugby Pompom Beanie",       "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Onewhero_Rugby_Pompom_Beanie_-_Front_9ce0de93-a88c-43eb-a8da-685509eaf446.png?v=1777355779" },
+        { "title": "2026 Onewhero Rugby Windbreaker Jacket",  "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/D8C93CF0-9569-46F3-BC99-23D7BDAA4D52.png?v=1777526370" },
+        { "title": "2026 Onewhero Rugby 5 Panel Bucket Hat",  "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Onewhero_Rugby_5_Panel_Bucket_Hat_e92e4709-d445-4f37-9140-3c952a01d9ba.png?v=1777355682" },
+        { "title": "2026 Onewhero Rugby Long Sleeve Polo",    "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Onewhero_Rugby_Long_Sleeve_Polo_-_Front_5c2a8990-3355-43d7-8d50-570d666e5d4b.png?v=1777355755" },
+        { "title": "2026 Onewhero Rugby 5 Panel cap",         "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Onewhero_Rugby_5_Panel_cap_58b48ecf-ab55-42a8-9dfa-0192ab4c2478.png?v=1777355706" },
+        { "title": "2026 Onewhero Rugby Rugby Shell Jacket",  "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Onewhero_Rugby_Rugby_Shell_Jacket_-_Front_5a69d6fa-25f7-42a5-b78f-7d40222bf74a.png?v=1777355803" }
+      ]
+    },
+    {
+      "handle": "otahuhu-rfc-2026",
+      "title": "Otahuhu RFC 2026",
+      "club": "Otahuhu RFC",
+      "slug": "otahuhu-rfc",
+      "products": [
+        { "title": "2026 ORFC Basketball Singlet",              "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_ORFC_Basketball_Singlet_-_Front_d42db6b4-b9f0-4145-a3c2-e9e7644732ec.png?v=1776242706" },
+        { "title": "2026 ORFC Heritage Rugby Long Sleeve Polo", "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_ORFC_Rugby_Long_Sleeve_Polo_-_Front_e4c5ff77-8efb-450b-8ebd-16426ce514ed.png?v=1776242686" },
+        { "title": "2026 ORFC 5 Panel Cap",                     "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_ORFC_5_Panel_Cap_8347e0b0-6a30-45e2-b4a8-1c23aa293899.png?v=1776242673" },
+        { "title": "2026 ORFC Club Tee",                        "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_ORFC_Dri_Fit_Tee_-_Front_bc060c11-8d36-4c73-aeb7-3eedabccb8b8.png?v=1776242680" },
+        { "title": "2026 ORFC Rugby Shell Jacket",              "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_ORFC_Rugby_Shell_Jacket_-_Front_fdd48e15-0b99-4c28-a8ea-30537df25d97.png?v=1776242700" },
+        { "title": "2026 ORFC 5 Panel Bucket Hat",              "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_ORFC_5_Panel_Bucket_Hat_bb7376e0-c953-482e-a72b-f7cca2936b2e.png?v=1776242666" },
+        { "title": "2026 ORFC Beanie",                          "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_ORFC_Pompom_Beanie_4298c3d6-3370-4132-9414-37903440e575.png?v=1776242693" }
+      ]
+    },
+    {
+      "handle": "2026-dalestate-girls-rugby-supporters-merch-range",
+      "title": "2026 Dalestate Girls Rugby Supporters Merch Range",
+      "club": "Dalestate Girls Rugby",
+      "slug": "dalestate-girls-rugby",
+      "products": [
+        { "title": "2026 Dalestate Girls Rugby 5 Panel Cap",        "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Dalestate_Girls_Rugby_5_Panel_Cap_22fac267-0c28-438d-9a45-776d4086a30d.png?v=1776922732" },
+        { "title": "2026 Dalestate Girls Rugby Dri fit tee",        "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Dalestate_Girls_Rugby_Dri_fit_tee_-_Front_22e83c10-653e-4847-89e5-565262995ded.png?v=1776921991" },
+        { "title": "2026 Dalestate Girls Rugby 5 Panel Bucket Hat", "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Dalestate_Girls_Rugby_5_Panel_Bucket_Hat_2b98fc18-ba8a-40d1-a7ac-d12559dd50a4.png?v=1776921213" }
+      ]
+    },
+    {
+      "handle": "2026-aorere-college-supporters-merch-range",
+      "title": "2026 Aorere College Supporters Merch Range",
+      "club": "Aorere College",
+      "slug": "aorere-college",
+      "products": [
+        { "title": "2026 Aorere College Hoodie",              "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/Screenshot_2026-04-23_163332.png?v=1777005095" },
+        { "title": "2026 Aorere College Shell Jacket",        "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026AorereRugbyShellJacket-Front.png?v=1776387153" },
+        { "title": "2026 Aorere College Pompom Beanie",       "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Aorere_Rugby_Pompom_Beanie_deefcf7f-36d5-4019-aec9-79bbaed3e72c.png?v=1776311424" },
+        { "title": "2026 Aorere College Dri Fit Tee",         "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Aorere_Rugby_Dri_Fit_Tee_-_Front_5c5aa9ca-e1c9-4cd3-aa6a-a821048a31cd.png?v=1776311417" },
+        { "title": "2026 Aorere College 5 Panel Cap",         "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026AorereRugby5PanelCap.png?v=1776387194" },
+        { "title": "2026 Aorere College 5 Panel Bucket Hat",  "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026AorereRugby5PanelBucketHat.png?v=1776387222" }
+      ]
+    },
+    {
+      "handle": "2026-weymouth-rugby-supporters-merch-range",
+      "title": "2026 Weymouth Rugby Supporters Merch Range",
+      "club": "Weymouth Rugby",
+      "slug": "weymouth-rugby",
+      "products": [
+        { "title": "2026 Weymouth Rugby Hoodie",              "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/C3327EE6-170D-4A82-AAC4-81C2EE0131F0.jpg?v=1776751499" },
+        { "title": "2026 Weymouth Rugby Pompom Beanie",       "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Weymouth_Rugby_Pompom_Beanie_a8db69b7-2a27-4207-9abf-4a21b139f204.png?v=1776145844" },
+        { "title": "2026 Weymouth Rugby 5 Panel Cap",         "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Weymouth_Rugby_5_Panel_Cap_0f15a3f9-ded5-454b-b77b-d137aab0a066.png?v=1776145718" },
+        { "title": "2026 Weymouth Rugby Long Sleeve Polo",    "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Weymouth_Rugby_Long_Sleeve_Polo_-_Front_2b521648-6612-4cc9-b146-5eb33800781e.png?v=1776138749" },
+        { "title": "2026 Weymouth Rugby Dri Fit Tee",         "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Weymouth_Rugby_Dri_Fit_Tee_-_Front_0e728ccb-b159-4dee-a866-fbb02e12ed8c.png?v=1776145707" },
+        { "title": "2026 Weymouth Rugby 5 Panel Bucket Hat",  "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Weymouth_Rugby_5_Panel_Bucket_Hat_9b81458b-fa4d-488b-9b69-f6cb8ca20ebf.png?v=1776138752" },
+        { "title": "2026 Weymouth Rugby Basketball Singlet",  "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Weymouth_Rugby_Basketball_Singlet_-_Front_776c6b35-82a9-48f8-9ad0-79c4abcdba8f.png?v=1776138746" },
+        { "title": "2026 Weymouth Rugby Shell Jacket",        "imageUrl": "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/2026_Weymouth_Rugby_Shell_Jacket_-_Front_cd04a7c2-c9ee-45a3-b506-a00247452180.png?v=1776145854" }
+      ]
+    }
+  ]
+}

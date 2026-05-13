@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
-import { LayoutDashboard, Palette, Package, ShoppingBag, LogOut, Menu, X } from "lucide-react";
+import { LayoutDashboard, Palette, Package, ShoppingBag, LogOut, Menu, X, TrendingUp } from "lucide-react";
 import { SidelineLogo } from "./sideline-logo";
 import "../styles/horizon-theme-override.css";
 import "../styles/horizon-components.css";
@@ -15,6 +15,7 @@ interface ClubPortalLayoutProps {
 
 const NAV_ITEMS = [
   { href: "/club-portal/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/club-portal/supporter-dashboard", label: "Supporter Drop", icon: TrendingUp },
   { href: "/club-portal/mockup-review", label: "My Mockup", icon: Palette },
   { href: "/club-portal/order-tracking", label: "Order Tracking", icon: Package },
 ];

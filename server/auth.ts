@@ -43,8 +43,25 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
   next();
 }
 
-// Middleware: require authentication
+// Middleware: require authentication.
+//
+// Two paths:
+//   1. snz_token cookie (browser sessions — admins, suppliers, customers)
+//   2. X-Service-Token header matched against SERVICE_TOKEN env. Used by
+//      back-of-house automation that doesn't carry a browser cookie —
+//      e.g. the mission-control Telegram bridge POSTing /po-decision when
+//      Romero taps Send/Hold on a sample/bulk approval card.
+//
+// Service token is rejected unless SERVICE_TOKEN is configured server-side
+// (so dev/test deployments don't accidentally accept anything).
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const serviceToken = req.headers["x-service-token"];
+  const expectedServiceToken = process.env.SERVICE_TOKEN;
+  if (serviceToken && expectedServiceToken && serviceToken === expectedServiceToken) {
+    (req as any).user = { userId: "service:telegram-bridge", role: "admin" } as JwtPayload;
+    return next();
+  }
+
   const token = req.cookies?.[COOKIE_NAME];
   if (!token) return res.status(401).json({ error: "Not authenticated" });
   try {

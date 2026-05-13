@@ -8,6 +8,42 @@ import { suggestSizeChart, getSizeChartTables, SIZE_CHART_LABELS, SIZE_CHART_DIA
 import { LOGO_POSITIONS, type LogoElement, type LogoPosition } from "@shared/schema";
 import { getDesignPrints, getMockups, type DesignAsset } from "@shared/design-assets";
 
+// Pull a sensible filename out of a Vercel-Blob / Drive / CDN URL when the
+// admin hasn't typed an explicit artworkFile reference. Falls back to the
+// last path segment, URL-decoded, with any random-suffix trimmed off if it
+// looks like Vercel Blob's `name-AbCdEfG123.ext` pattern.
+function filenameFromUrl(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const seg = decodeURIComponent(u.pathname.split("/").filter(Boolean).pop() || "");
+    if (!seg) return null;
+    // Vercel Blob: <name>-<random>.<ext>  →  <name>.<ext>
+    const m = seg.match(/^(.+)-[A-Za-z0-9]{10,}(\.[a-zA-Z0-9]+)$/);
+    return m ? `${m[1]}${m[2]}` : seg;
+  } catch {
+    return null;
+  }
+}
+
+// Checkerboard background so white/light logos stay visible against the
+// PO's white paper. Same pattern Photoshop/Figma use for transparency.
+const CHECKERBOARD_STYLE: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "2px 3px",
+  borderRadius: "3px",
+  backgroundColor: "#e5e5e5",
+  backgroundImage:
+    "linear-gradient(45deg, #d4d4d4 25%, transparent 25%)," +
+    "linear-gradient(-45deg, #d4d4d4 25%, transparent 25%)," +
+    "linear-gradient(45deg, transparent 75%, #d4d4d4 75%)," +
+    "linear-gradient(-45deg, transparent 75%, #d4d4d4 75%)",
+  backgroundSize: "8px 8px",
+  backgroundPosition: "0 0, 0 4px, 4px -4px, -4px 0px",
+};
+
 interface OrderItem {
   id: string;
   productName: string;
@@ -37,6 +73,7 @@ interface OrderSizeBreakdown {
   quantity: number;
   playerName: string | null;
   playerNumber: string | null;
+  namePlacement: string | null;
 }
 
 interface Order {
@@ -177,7 +214,9 @@ function LogoPlacementGrid({ elements }: { elements: LogoElement[] }) {
           </span>
           {unassigned.map((el, i) => (
             <div key={i} style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "3px 8px 3px 3px", background: "#fff", border: "1px solid #fdba74", borderRadius: "4px" }}>
-              <img src={el.url} alt={el.name} style={{ height: "22px", maxWidth: "40px", objectFit: "contain" }} />
+              <span style={CHECKERBOARD_STYLE}>
+                <img src={el.url} alt={el.name} style={{ height: "22px", maxWidth: "40px", objectFit: "contain", display: "block" }} />
+              </span>
               <span style={{ fontSize: "10px", color: "#555" }}>{el.name || "Logo"}</span>
             </div>
           ))}
@@ -200,9 +239,16 @@ function LogoPlacementGrid({ elements }: { elements: LogoElement[] }) {
             {LOGO_POSITIONS.map((p) => {
               const specs = byPosition.get(p) || [];
               if (!specs.length) return <td key={p} style={tdStyle}><span style={{ color: "#ccc", fontSize: "16px" }}>—</span></td>;
-              const maxH = specs.length === 1 ? 76 : 36;
+              const maxH = specs.length === 1 ? 70 : 32;
               return <td key={p} style={tdStyle}>
-                {specs.map((s, i) => <div key={i} style={{ margin: "1px 0" }}><img src={s.url} alt={s.name} style={{ maxWidth: "88%", maxHeight: `${maxH}px`, objectFit: "contain" }} /></div>)}
+                {specs.map((s, i) => (
+                  <div key={i} style={{ margin: "1px 0", display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
+                    <span style={{ ...CHECKERBOARD_STYLE, padding: "3px 4px" }}>
+                      <img src={s.url} alt={s.name} style={{ maxWidth: "88%", maxHeight: `${maxH}px`, objectFit: "contain", display: "block" }} />
+                    </span>
+                    {s.name && <span style={{ fontSize: "8px", color: "#555", textAlign: "center", lineHeight: 1.2, fontWeight: 600 }}>{s.name}</span>}
+                  </div>
+                ))}
               </td>;
             })}
           </tr>
@@ -230,7 +276,11 @@ function LogoPlacementGrid({ elements }: { elements: LogoElement[] }) {
               return <td key={p} style={tdStyle}>
                 {specs.map((s, si) => (
                   <div key={si} style={{ marginBottom: si < specs.length - 1 ? "4px" : 0 }}>
-                    {s.threadColours?.length ? s.threadColours.map((c, i) => <div key={i} style={{ fontSize: "9px", lineHeight: 1.4 }}>{c}</div>) : "—"}
+                    {s.threadColours?.length
+                      ? s.threadColours.map((c, i) => (
+                          <span key={i} style={{ display: "inline-block", fontSize: "8.5px", fontWeight: 700, color: "#b8932f", background: "#fdf6e3", border: "1px solid #e6d59a", borderRadius: "2px", padding: "0 4px", margin: "1px 1px", lineHeight: 1.4 }}>{c}</span>
+                        ))
+                      : "—"}
                   </div>
                 ))}
               </td>;
@@ -241,7 +291,26 @@ function LogoPlacementGrid({ elements }: { elements: LogoElement[] }) {
             {LOGO_POSITIONS.map((p) => {
               const specs = byPosition.get(p) || [];
               if (!specs.length) return <td key={p} style={tdStyle}></td>;
-              return <td key={p} style={tdStyle}>{specs.map((s, i) => <div key={i}>{s.artworkFile ? <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: "9px" }}>{s.artworkFile}</span> : "—"}</div>)}</td>;
+              return <td key={p} style={tdStyle}>{specs.map((s, i) => {
+                const label = s.artworkFile || filenameFromUrl(s.url) || null;
+                if (!label && !s.url) return <div key={i}>—</div>;
+                return (
+                  <div key={i}>
+                    {s.url ? (
+                      <a
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: "9px", color: "#0ea5e9", textDecoration: "underline", wordBreak: "break-all" }}
+                      >
+                        {label || "View file ↗"}
+                      </a>
+                    ) : (
+                      <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: "9px" }}>{label}</span>
+                    )}
+                  </div>
+                );
+              })}</td>;
             })}
           </tr>
         </tbody>
@@ -266,8 +335,24 @@ function LogoPlacementGrid({ elements }: { elements: LogoElement[] }) {
                   </td>
                   <td style={{ padding: "5px 6px", textAlign: "center", border: "1px solid #bfdbfe" }}><strong>{(s.application || "—").toUpperCase()}</strong></td>
                   <td style={{ padding: "5px 6px", textAlign: "center", border: "1px solid #bfdbfe" }}>{s.sizeMm || "—"}</td>
-                  <td style={{ padding: "5px 6px", textAlign: "center", border: "1px solid #bfdbfe" }}>{s.threadColours?.length ? s.threadColours.join(", ") : "—"}</td>
-                  <td style={{ padding: "5px 6px", textAlign: "center", border: "1px solid #bfdbfe", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.artworkFile || "—"}</td>
+                  <td style={{ padding: "5px 6px", textAlign: "center", border: "1px solid #bfdbfe" }}>
+                    {s.threadColours?.length
+                      ? s.threadColours.map((c, j) => (
+                          <span key={j} style={{ display: "inline-block", fontSize: "8.5px", fontWeight: 700, color: "#b8932f", background: "#fdf6e3", border: "1px solid #e6d59a", borderRadius: "2px", padding: "0 4px", margin: "1px 2px" }}>{c}</span>
+                        ))
+                      : "—"}
+                  </td>
+                  <td style={{ padding: "5px 6px", textAlign: "center", border: "1px solid #bfdbfe", fontFamily: "ui-monospace, Menlo, monospace" }}>
+                    {(() => {
+                      const label = s.artworkFile || filenameFromUrl(s.url) || null;
+                      if (!label && !s.url) return "—";
+                      return s.url ? (
+                        <a href={s.url} target="_blank" rel="noopener noreferrer" style={{ color: "#0ea5e9", textDecoration: "underline", fontSize: "9px", wordBreak: "break-all" }}>{label || "View file ↗"}</a>
+                      ) : (
+                        <span style={{ fontSize: "9px" }}>{label}</span>
+                      );
+                    })()}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -322,16 +407,23 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
             <div style={{ marginBottom: "10px" }}>
               <div style={{ fontWeight: 700, marginBottom: "4px" }}>Colour Palette</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-                {(item.productColors as { hex: string; name?: string }[]).map((c, i) => (
+                {(item.productColors as { hex: string; name?: string; pms?: string }[]).map((c, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <span style={{ width: "28px", height: "16px", background: c.hex, border: "1px solid #bbb", borderRadius: "2px", display: "inline-block" }} />
                     <span style={{ fontSize: "11px" }}>
                       <strong>{c.name || "Unnamed"}</strong>
                       <span style={{ color: "#888", marginLeft: "4px" }}>{c.hex}</span>
+                      {c.pms && <span style={{ fontWeight: 700, color: "#b8932f", marginLeft: "6px" }}>{c.pms}</span>}
                     </span>
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+          {item.designBrief && (
+            <div style={{ marginBottom: "8px" }}>
+              <div style={{ fontWeight: 700, marginBottom: "2px" }}>Design Brief</div>
+              <div style={{ fontSize: "10px", color: "#666", lineHeight: "1.4" }}>{item.designBrief}</div>
             </div>
           )}
           {item.designNotes && (
@@ -359,6 +451,81 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
           </div>
         </div>
       </div>
+
+      {/* Customisation roster — only when any breakdown carries a name or
+          number. Groups by size, lists names inline. Placement stated once
+          at the top (it's almost always the same across the whole item). */}
+      {(() => {
+        const named = breakdowns.filter((b) => b.playerName || b.playerNumber);
+        if (named.length === 0) return null;
+        // Group by size, preserve first-seen size order
+        const bySize = new Map<string, typeof breakdowns>();
+        for (const b of named) {
+          const list = bySize.get(b.size) || [];
+          list.push(b);
+          bySize.set(b.size, list);
+        }
+        // Placement: pick the most common one (usually one)
+        const placementCounts = new Map<string, number>();
+        for (const b of named) {
+          if (b.namePlacement) placementCounts.set(b.namePlacement, (placementCounts.get(b.namePlacement) || 0) + 1);
+        }
+        let dominantPlacement: string | null = null;
+        let bestCount = 0;
+        Array.from(placementCounts.entries()).forEach(([p, c]) => {
+          if (c > bestCount) { dominantPlacement = p; bestCount = c; }
+        });
+        // Surface any minority placements as a footnote
+        const minoritySet = new Set<string>();
+        for (const b of named) {
+          if (b.namePlacement && b.namePlacement !== dominantPlacement) minoritySet.add(b.namePlacement);
+        }
+        return (
+          <div style={{ pageBreakInside: "avoid", borderTop: "1px solid #eee", padding: "12px 18px", background: "#fafafa" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "8px", flexWrap: "wrap", gap: "8px" }}>
+              <div style={{ fontSize: "12px", fontWeight: 700, color: "#000" }}>
+                Customisation Roster ({named.length} {named.length === 1 ? "name" : "names"})
+              </div>
+              {dominantPlacement && (
+                <div style={{ fontSize: "11px", color: "#444" }}>
+                  Placement: <strong>{dominantPlacement}</strong>
+                </div>
+              )}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 24px" }}>
+              {Array.from(bySize.entries()).map(([size, rows]) => {
+                // Count duplicates of the same name within a size (e.g. Addenbrooke ×2)
+                const tally = new Map<string, { row: typeof rows[number]; count: number }>();
+                for (const r of rows) {
+                  const key = `${r.playerName || ""}|${r.playerNumber || ""}`;
+                  if (tally.has(key)) tally.get(key)!.count++;
+                  else tally.set(key, { row: r, count: 1 });
+                }
+                const items = Array.from(tally.values()).map(({ row, count }) => {
+                  const name = row.playerName || "(no name)";
+                  const num = row.playerNumber ? ` #${row.playerNumber}` : "";
+                  const mult = count > 1 ? ` ×${count}` : "";
+                  return `${name}${num}${mult}`;
+                });
+                return (
+                  <div key={size} style={{ fontSize: "11px", color: "#000", padding: "3px 0", breakInside: "avoid" }}>
+                    <div>
+                      <strong>{size}</strong>
+                      <span style={{ color: "#888" }}> ({rows.length})</span>
+                      <span style={{ color: "#222", marginLeft: "8px" }}>{items.join(" · ")}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {minoritySet.size > 0 && (
+              <div style={{ fontSize: "10px", color: "#888", marginTop: "8px", fontStyle: "italic" }}>
+                Mixed placements present: {Array.from(minoritySet).join(", ")} — see per-size detail in the order if precise location needed.
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 2D Design Print — factory artwork, true colours */}
       <AssetStrip title="2D Design Print — Factory Artwork (true colours)" assets={designPrints} />
@@ -717,3 +884,4 @@ export default function PurchaseOrderView() {
     </div>
   );
 }
+

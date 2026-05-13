@@ -6,7 +6,7 @@
   "scripts": {
     "dev:client": "vite dev --port 3000",
     "dev:server": "NODE_ENV=development tsx server/index.ts",
-    "dev": "NODE_ENV=development tsx server/index.ts",
+    "dev": "NODE_ENV=development NODE_OPTIONS='--dns-result-order=ipv4first --network-family-autoselection=false' tsx server/index.ts",
     "build": "node script/build.mjs",
     "build:vercel": "vite build && node scripts/bundle-api.mjs",
     "start": "NODE_ENV=production node dist/index.cjs",

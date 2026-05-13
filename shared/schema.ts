@@ -127,6 +127,25 @@ export const orders = pgTable("orders", {
   artworkApproved: boolean("artwork_approved").default(false),
   artworkApprovedBy: text("artwork_approved_by"),
   artworkApprovedAt: timestamp("artwork_approved_at"),
+  // Sample/Bulk PO split — see migrations/po-sample-bulk-split.sql.
+  // poKind defaults to "single" so legacy orders flow through the original
+  // raise-po path unchanged. "sample" = qty-1 sample run; "bulk" = the
+  // production run that was duplicated from the sample.
+  poKind: text("po_kind").notNull().default("single"), // "single" | "sample" | "bulk"
+  parentOrderId: varchar("parent_order_id"), // bulk → its sample
+  poDispatchedAt: timestamp("po_dispatched_at"),
+  poHeldAt: timestamp("po_held_at"),
+  poHoldReason: text("po_hold_reason"),
+  poHeldBy: varchar("po_held_by").references(() => users.id),
+  sampleApprovedByClientAt: timestamp("sample_approved_by_client_at"),
+  depositPaidAt: timestamp("deposit_paid_at"),
+  // Pre-computed bulk size totals stashed when a sample PO is built from a
+  // closed Shopify supporter drop. Shape: { [orderItemId]: { [size]: qty } }.
+  // ensureBulkPoFromSample reads this when fanning out the bulk so qtys land
+  // populated instead of blank. Only set on sample rows.
+  bulkSizeBreakdown: jsonb("bulk_size_breakdown"),
+  // Source Shopify collection handle this PO was built from (closed-drop flow).
+  sourceCollectionHandle: text("source_collection_handle"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   paidAt: timestamp("paid_at"),
@@ -236,6 +255,11 @@ export const designFiles = pgTable("design_files", {
   status: text("status").notNull().default("pending"), // pending, approved, rejected
   version: integer("version").notNull().default(1),
   parentFileId: varchar("parent_file_id"), // Links re-uploads to original
+  // AI-suggested canonical name (in-app AI worker output, accepted by admin).
+  // Format: "<year> <club> <product> [- <side>]". Used by Drive folder builder
+  // and supplier PO email so filenames stay consistent regardless of the raw
+  // Vercel Blob URL (which has a random suffix and can't be renamed).
+  canonicalName: text("canonical_name"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -266,9 +290,27 @@ export const orderSizeBreakdowns = pgTable("order_size_breakdowns", {
   quantity: integer("quantity").notNull().default(1),
   playerName: text("player_name"),
   playerNumber: text("player_number"),
+  // Where on the garment the player's name goes. Free-text so we accept any
+  // value, but the UI picker offers a canonical set (NAME_PLACEMENT_OPTIONS).
+  namePlacement: text("name_placement"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// Canonical placement options for the size-row UI picker. Free-text "Other"
+// is supported by storing whatever the admin types.
+export const NAME_PLACEMENT_OPTIONS = [
+  "Back Upper",
+  "Back Mid",
+  "Back Below Number",
+  "Left Chest",
+  "Right Chest",
+  "Front Center",
+  "Left Sleeve",
+  "Right Sleeve",
+  "None",
+] as const;
+export type NamePlacement = (typeof NAME_PLACEMENT_OPTIONS)[number] | string;
 
 export const insertOrderSizeBreakdownSchema = createInsertSchema(orderSizeBreakdowns).omit({ id: true, createdAt: true });
 export type InsertOrderSizeBreakdown = z.infer<typeof insertOrderSizeBreakdownSchema>;
@@ -376,6 +418,18 @@ export const clubAccounts = pgTable("club_accounts", {
   // Supporter campaign — Shopify order tag this club's orders carry (e.g. "club:onewhero-rfc").
   // Set via Shopify Flow on order creation; used server-side to filter Admin API queries.
   shopifyOrderTag: text("shopify_order_tag").unique(),
+  // Shopify collection handle (e.g. "onewhero-rfc-supporters") for the
+  // supporter drop. The poll-supporter-collections cron watches this — when
+  // it flips to unpublished, the closed-drop PO build fires.
+  supporterCollectionHandle: text("supporter_collection_handle"),
+  // Last-seen published state of the supporter collection. The cron uses the
+  // published→unpublished transition (not the absolute state) to fire, so it
+  // doesn't keep building POs for collections that were never published.
+  supporterCollectionPublished: boolean("supporter_collection_published"),
+  // Set when the closed-drop build fires so re-publishing then re-closing
+  // doesn't auto-fire a duplicate. Cleared manually if a fresh drop reuses
+  // the same handle.
+  supporterDropClosedAt: timestamp("supporter_drop_closed_at"),
   // Profit share in basis points (800 = 8%). Avoids pg numeric quirks.
   profitShareTierBps: integer("profit_share_tier_bps").notNull().default(800),
   createdAt: timestamp("created_at").defaultNow(),
@@ -556,3 +610,47 @@ export const approvalTokens = pgTable("approval_tokens", {
 export const insertApprovalTokenSchema = createInsertSchema(approvalTokens).omit({ id: true, createdAt: true });
 export type InsertApprovalToken = z.infer<typeof insertApprovalTokenSchema>;
 export type ApprovalToken = typeof approvalTokens.$inferSelect;
+
+// ─── Ezra (in-app copilot) ───────────────────────────────────────────
+//
+// Phase A foundation. One conversation per (user, optional context anchor).
+// Messages cover every turn including tool calls — the conversation IS the
+// audit trail. Phase E (Telegram bridge) reuses the same tables; conversations
+// from Telegram carry channel='telegram' and channel_ref=<chat_id>.
+
+export const ezraConversations = pgTable("ezra_conversations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(), // not FK so service-token sessions don't break
+  title: text("title"),
+  scopeKind: text("scope_kind"),    // 'order' | 'club' | 'global' | 'telegram'
+  scopeId: text("scope_id"),        // orderId / clubAccountId / null
+  channel: text("channel"),         // 'web' | 'telegram'
+  channelRef: text("channel_ref"),  // telegram chat_id
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertEzraConversationSchema = createInsertSchema(ezraConversations).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertEzraConversation = z.infer<typeof insertEzraConversationSchema>;
+export type EzraConversation = typeof ezraConversations.$inferSelect;
+
+export const EZRA_MESSAGE_ROLES = ["user", "assistant", "tool_call", "tool_result", "system"] as const;
+export type EzraMessageRole = (typeof EZRA_MESSAGE_ROLES)[number];
+
+export const ezraMessages = pgTable("ezra_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").notNull().references(() => ezraConversations.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),                  // EzraMessageRole
+  content: text("content"),
+  toolName: text("tool_name"),
+  toolArgs: jsonb("tool_args"),
+  toolResult: jsonb("tool_result"),
+  toolCallId: text("tool_call_id"),
+  finishReason: text("finish_reason"),           // 'stop' | 'tool_calls' | 'error' | null
+  error: text("error"),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertEzraMessageSchema = createInsertSchema(ezraMessages).omit({ id: true, createdAt: true });
+export type InsertEzraMessage = z.infer<typeof insertEzraMessageSchema>;
+export type EzraMessage = typeof ezraMessages.$inferSelect;

@@ -50,6 +50,12 @@ app.post(
   }
 );
 
+// Pre-mount a larger JSON parser for the base64 image upload route. Has to
+// run BEFORE the global express.json() — once a 100KB body fails parsing
+// upstream, the route-scoped middleware never gets to retry with a higher
+// limit. Same pattern as the Stripe webhook's express.raw() above.
+app.use("/api/uploads/blob", express.json({ limit: "60mb" }));
+
 // JSON middleware for all other routes
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));

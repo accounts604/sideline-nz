@@ -6,8 +6,19 @@ import { z } from "zod";
 import { notifyDesignApproved, notifyDesignRejected, notifyOrderStatusChange } from "../notifications";
 import { sendInviteEmail, sendSupplierPoRaisedEmail, sendSupplierPoDispatchGmail } from "../email";
 import { db } from "../db";
-import { orders, orderActivity, designFiles, orderItems } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { orders, orderActivity, designFiles, orderItems, orderSizeBreakdowns, clubAccounts } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
+import {
+  fetchSupporterOrdersByTag,
+  fetchCollectionStatus,
+  fetchProductsInCollection,
+  isShopifyAdminConfigured,
+  type SupporterOrder,
+  type ShopifyProductLite,
+} from "../shopify-admin";
+import { matchSupporterProduct, extractSizeFromVariant } from "@shared/supporter-range-mapping";
+import { SIDELINE_PRODUCTS } from "@shared/product-catalog";
+import { suggestSizeChart } from "@shared/size-charts";
 import { updateGhlOpportunityStage } from "./ghl";
 import { createApprovalToken } from "./approvals";
 import { withPoNumberRetry, buildPoReference } from "../po-number";
@@ -45,6 +56,9 @@ import {
   legacyStatusForStage,
   type OrderStage,
 } from "@shared/order-stages";
+import { sendTelegramCard, buildPoApprovalCard, isTelegramConfigured } from "../telegram";
+import { runTask as runAiTask } from "../ai";
+import { runChatTurn, getOrCreateConversation, listConversations, listMessages, EZRA_TOOLS_AVAILABLE } from "../ezra";
 
 const router = Router();
 
@@ -806,6 +820,13 @@ router.get("/orders/:id/invoice", async (req, res) => {
 
 // PATCH /orders/:id/items/:itemId — update product-line design details
 const updateItemSchema = z.object({
+  // Quantity / size / cost — editable from the PO grid. Identical shape to
+  // Shopify variant fields so the two stay in sync. Cost flows back to
+  // Shopify via scripts/sync-po-costs-to-shopify.js (Chrome bridge).
+  unitAmount: z.number().int().min(0).optional(),     // cents, matches Shopify inventoryItem.unitCost
+  quantity: z.number().int().min(1).optional(),
+  size: z.union([z.string(), z.null()]).optional(),
+  productImage: z.union([z.string(), z.null()]).optional(),
   productColors: z.array(z.object({ hex: z.string(), name: z.string().optional() })).optional(),
   brandingMethod: z.string().optional(),
   productType: z.string().optional(),
@@ -885,11 +906,24 @@ router.patch("/orders/:id/items/:itemId", async (req, res) => {
       })().catch((err) => console.error("[item-patch] Drive mirror failed:", err));
     }
 
+    // If unitAmount or quantity changed, recompute order subtotal/total from
+    // the latest order_items rows. Keeps the PO header total in sync with line edits.
+    let recomputed = false;
+    if (data.unitAmount !== undefined || data.quantity !== undefined) {
+      const items = await db
+        .select({ unitAmount: orderItems.unitAmount, quantity: orderItems.quantity })
+        .from(orderItems)
+        .where(eq(orderItems.orderId, req.params.id));
+      const subtotal = items.reduce((sum, it) => sum + (it.unitAmount * it.quantity), 0);
+      await storage.updateOrder(req.params.id, { subtotal, total: subtotal });
+      recomputed = true;
+    }
+
     await storage.logOrderActivity({
       orderId: req.params.id,
       userId: user.userId,
       action: "item_updated",
-      details: { itemId: req.params.itemId, fields: Object.keys(data), mirroredCount: mirrorJobs.length },
+      details: { itemId: req.params.itemId, fields: Object.keys(data), mirroredCount: mirrorJobs.length, recomputedTotal: recomputed },
     });
 
     res.json(updated);
@@ -925,13 +959,33 @@ router.post("/orders/:id/items/:itemId/extract-colors", async (req, res) => {
 
     if (!item) return res.status(404).json({ error: "Item not found" });
 
+    // Fallback chain: explicit imageUrl > side-specified design URL > any
+    // design URL > any mockup image. Mockup images often carry the truest
+    // colourway (3D vendor renders show the production result), so they're
+    // a strong default when no factory artwork is uploaded yet.
+    //
+    // mockupImages may be either an array of URL strings (legacy) or an
+    // array of { url, label } objects (current). Prefer the side-matching
+    // label when a side hint was supplied so a "back" scan reads the back
+    // mockup.
+    const mockupsRaw = (item as any).mockupImages;
+    const mockupUrls: Array<{ url: string; label?: string }> = Array.isArray(mockupsRaw)
+      ? mockupsRaw
+          .map((m: any) => (typeof m === "string" ? { url: m } : m && typeof m.url === "string" ? { url: m.url, label: m.label } : null))
+          .filter((m: any) => m && m.url.startsWith("http"))
+      : [];
+    const sideMatchedMockup = side
+      ? mockupUrls.find((m) => (m.label || "").toLowerCase().includes(side))?.url
+      : undefined;
     const sourceUrl =
       imageUrl ||
       (side === "back" ? item.backDesignUrl : side === "front" ? item.frontDesignUrl : null) ||
+      sideMatchedMockup ||
       item.frontDesignUrl ||
-      item.backDesignUrl;
+      item.backDesignUrl ||
+      mockupUrls[0]?.url;
 
-    if (!sourceUrl) return res.status(400).json({ error: "No design image on this item to analyse" });
+    if (!sourceUrl) return res.status(400).json({ error: "No design or mockup image on this item to analyse" });
 
     const colors = await extractColorsFromImage(sourceUrl);
     if (!colors) {
@@ -968,7 +1022,19 @@ router.post("/orders/:id/items/:itemId/generate-brief", async (req, res) => {
     const imageUrls: string[] = [];
     if (item.frontDesignUrl) imageUrls.push(item.frontDesignUrl);
     if (item.backDesignUrl) imageUrls.push(item.backDesignUrl);
-    if (!imageUrls.length) return res.status(400).json({ error: "Upload front or back design first" });
+    // Fall back to mockup images when no factory artwork is uploaded — same
+    // pattern as extract-colors. mockupImages can be string[] (legacy) or
+    // [{url,label}] (current).
+    if (!imageUrls.length) {
+      const mockupsRaw = (item as any).mockupImages;
+      if (Array.isArray(mockupsRaw)) {
+        for (const m of mockupsRaw) {
+          const u = typeof m === "string" ? m : (m && typeof m.url === "string" ? m.url : null);
+          if (u && u.startsWith("http")) imageUrls.push(u);
+        }
+      }
+    }
+    if (!imageUrls.length) return res.status(400).json({ error: "Upload a design or mockup image first" });
 
     const brief = await generateDesignBrief(imageUrls);
     if (!brief) return res.status(502).json({ error: "Design brief generation failed — check GEMINI_API_KEY" });
@@ -1288,6 +1354,7 @@ const sizeBreakdownSchema = z.object({
   quantity: z.number().int().min(1),
   playerName: z.string().optional(),
   playerNumber: z.string().optional(),
+  namePlacement: z.string().max(50).optional(),
   notes: z.string().optional(),
 });
 
@@ -1300,6 +1367,7 @@ router.post("/orders/:id/size-breakdowns", async (req, res) => {
       orderId: req.params.id,
       playerName: data.playerName ?? null,
       playerNumber: data.playerNumber ?? null,
+      namePlacement: data.namePlacement ?? null,
       notes: data.notes ?? null,
     });
 
@@ -1776,170 +1844,616 @@ const raisePoSchema = z.object({
   supplierId: z.string().optional(), // optional if already assigned
 });
 
-router.post("/orders/:id/raise-po", async (req, res) => {
-  try {
-    const { supplierId: bodySupplierId } = raisePoSchema.parse(req.body ?? {});
-
-    const order = await storage.getOrder(req.params.id);
-    if (!order) return res.status(404).json({ error: "Order not found" });
-
-    const supplierId = bodySupplierId || order.assignedSupplierId;
-    if (!supplierId) {
-      return res.status(400).json({ error: "No supplier assigned — pass supplierId in the body or assign first" });
+// Shared dispatch helper — used by /raise-po (legacy single-PO path) AND
+// /po-decision (new sample+bulk approval-card path). Does the heavy lifting:
+// supplier assign + GHL push + Drive Instructions doc + folder share +
+// Gmail dispatch + PO PDF gen + Drive upload + activity log + sets
+// po_dispatched_at on the order. Returns the same shape the routes respond
+// with so they stay one-liners.
+//
+// The PDF is regenerated every dispatch — that's intentional, since admins
+// often edit qty/sizes after raising the sample card and tapping Send is
+// what locks it in.
+async function dispatchPoToSupplier(
+  orderId: string,
+  opts: { supplierId?: string; userId?: string },
+): Promise<
+  | {
+      ok: true;
+      supplierId: string;
+      supplierEmail: string;
+      supplierCcEmail: string | null;
+      emailSent: boolean;
+      gmailMessageId: string | null;
+      poPdfUploaded: boolean;
+      poPdfUrl: string | null;
+      instructionsDocId: string | null;
+      driveSharedWith: string[];
+      ghlPushed: boolean;
+      ghlPushReason: string | undefined;
     }
+  | { ok: false; status: number; error: string }
+> {
+  const order = await storage.getOrder(orderId);
+  if (!order) return { ok: false, status: 404, error: "Order not found" };
 
-    const supplier = await storage.getUser(supplierId);
-    if (!supplier || supplier.role !== "supplier") {
-      return res.status(400).json({ error: "Invalid supplier ID" });
+  const supplierId = opts.supplierId || order.assignedSupplierId;
+  if (!supplierId) {
+    return {
+      ok: false,
+      status: 400,
+      error: "No supplier assigned — pass supplierId or assign first",
+    };
+  }
+
+  const supplier = await storage.getUser(supplierId);
+  if (!supplier || supplier.role !== "supplier") {
+    return { ok: false, status: 400, error: "Invalid supplier ID" };
+  }
+
+  // 1. Assign if not already
+  if (order.assignedSupplierId !== supplierId) {
+    await db.update(orders)
+      .set({ assignedSupplierId: supplierId, updatedAt: new Date() })
+      .where(eq(orders.id, order.id));
+  }
+
+  // 2. Push GHL to PO Raised (if the order is linked to a GHL opportunity)
+  let ghlPushResult: { success: boolean; reason?: string } = { success: false, reason: "no_ghl_link" };
+  if (order.ghlOpportunityId) {
+    ghlPushResult = await updateGhlOpportunityStage(order.ghlOpportunityId, "PO Raised");
+  }
+
+  // 3. Drop an Instructions doc into the Drive folder so the supplier sees
+  // dates + checklist alongside the artwork. Best-effort — Gmail still goes
+  // out even if Drive is down or the folder is missing.
+  let instructionsDocId: string | null = null;
+  if (order.driveFolderId) {
+    const instructionsBody = buildSupplierInstructions({
+      orderNumber: order.orderNumber,
+      poReference: order.poReference,
+      accountName: order.accountName,
+      supplierName: supplier.teamName,
+      dueDate: order.dueDate,
+      deliveryAddress: order.deliveryAddress,
+      deliveryAttention: order.deliveryAttention,
+    });
+    const doc = await createDocInFolder({
+      parentFolderId: order.driveFolderId,
+      name: `${order.poReference || order.orderNumber} — Supplier Instructions`,
+      body: instructionsBody,
+    }).catch((err) => {
+      console.error("[dispatch-po] instructions doc create failed:", err);
+      return null;
+    });
+    if (doc) instructionsDocId = doc.id;
+  }
+
+  // 4. Share the Drive folder with the supplier (and ccEmail).
+  const driveShareResults: Array<{ email: string; permissionId: string | null }> = [];
+  if (order.driveFolderId && supplier.email) {
+    const targets = [supplier.email];
+    if (supplier.ccEmail) targets.push(supplier.ccEmail);
+    for (const email of targets) {
+      const permissionId = await shareFolderWithUser({
+        fileOrFolderId: order.driveFolderId,
+        emailAddress: email,
+        role: "reader",
+        notify: false,
+      }).catch((err) => {
+        console.error(`[dispatch-po] Drive share failed for ${email}:`, err);
+        return null;
+      });
+      driveShareResults.push({ email, permissionId });
     }
+  }
 
-    // 1. Assign if not already
-    if (order.assignedSupplierId !== supplierId) {
-      await db.update(orders)
-        .set({ assignedSupplierId: supplierId, updatedAt: new Date() })
-        .where(eq(orders.id, order.id));
-    }
-
-    // 2. Push GHL to PO Raised (if the order is linked to a GHL opportunity)
-    let ghlPushResult: { success: boolean; reason?: string } = { success: false, reason: "no_ghl_link" };
-    if (order.ghlOpportunityId) {
-      ghlPushResult = await updateGhlOpportunityStage(order.ghlOpportunityId, "PO Raised");
-    }
-
-    // 3. Drop an Instructions doc into the Drive folder so the supplier sees
-    // dates + checklist alongside the artwork. Best-effort — Gmail still goes
-    // out even if Drive is down or the folder is missing.
-    let instructionsDocId: string | null = null;
-    if (order.driveFolderId) {
-      const instructionsBody = buildSupplierInstructions({
+  // 5. Email the supplier via Gmail API. Wrapped in tracked() so dispatches
+  // land in integration_events — the supplier follow-up cron reads from there.
+  let gmailMessageId: string | null = null;
+  if (supplier.email) {
+    const items = await storage.getOrderItems(order.id);
+    gmailMessageId = await tracked(
+      {
+        system: "gmail",
+        action: "sendSupplierPo",
+        orderId: order.id,
+        userId: opts.userId,
+        context: {
+          poReference: order.poReference,
+          supplierId,
+          supplierEmail: supplier.email,
+          itemCount: items.length,
+        },
+      },
+      () => sendSupplierPoDispatchGmail({
+        to: supplier.email!,
+        cc: supplier.ccEmail || undefined,
+        supplierName: supplier.teamName,
         orderNumber: order.orderNumber,
         poReference: order.poReference,
         accountName: order.accountName,
-        supplierName: supplier.teamName,
         dueDate: order.dueDate,
         deliveryAddress: order.deliveryAddress,
-        deliveryAttention: order.deliveryAttention,
-      });
-      const doc = await createDocInFolder({
-        parentFolderId: order.driveFolderId,
-        name: `${order.poReference || order.orderNumber} — Supplier Instructions`,
-        body: instructionsBody,
-      }).catch((err) => {
-        console.error("[raise-po] instructions doc create failed:", err);
-        return null;
-      });
-      if (doc) instructionsDocId = doc.id;
-    }
+        driveFolderUrl: order.driveFolderUrl,
+        items: items.map((it: any) => ({
+          productName: it.productName,
+          material: it.material,
+          brandingMethod: it.brandingMethod,
+          quantity: it.quantity,
+          productColors: it.productColors,
+        })),
+      }),
+    );
+  }
 
-    // 4. Share the Drive folder with the supplier (and ccEmail) so the link in
-    // the email actually opens for them. Idempotent — re-dispatching doesn't
-    // re-spam. We disable Drive's notification email since our Gmail covers it.
-    const driveShareResults: Array<{ email: string; permissionId: string | null }> = [];
-    if (order.driveFolderId && supplier.email) {
-      const targets = [supplier.email];
-      if (supplier.ccEmail) targets.push(supplier.ccEmail);
-      for (const email of targets) {
-        const permissionId = await shareFolderWithUser({
-          fileOrFolderId: order.driveFolderId,
-          emailAddress: email,
-          role: "reader",
-          notify: false,
-        }).catch((err) => {
-          console.error(`[raise-po] Drive share failed for ${email}:`, err);
-          return null;
-        });
-        driveShareResults.push({ email, permissionId });
-      }
-    }
-
-    // 5. Email the supplier via Gmail API from orders@sidelinenz.com.
-    // CC's the supplier's ccEmail (secondary contact) + self-cc orders@ so
-    // the thread lives in the shared orders inbox. Wrapped in tracked() so
-    // dispatches land in integration_events — the supplier follow-up cron
-    // reads from there.
-    let gmailMessageId: string | null = null;
-    if (supplier.email) {
-      const items = await storage.getOrderItems(order.id);
-      gmailMessageId = await tracked(
-        {
-          system: "gmail",
-          action: "sendSupplierPo",
-          orderId: order.id,
-          userId: (req as any).user?.userId,
-          context: {
-            poReference: order.poReference,
-            supplierId,
-            supplierEmail: supplier.email,
-            itemCount: items.length,
-          },
-        },
-        () => sendSupplierPoDispatchGmail({
-          to: supplier.email!,
-          cc: supplier.ccEmail || undefined,
-          supplierName: supplier.teamName,
-          orderNumber: order.orderNumber,
-          poReference: order.poReference,
-          accountName: order.accountName,
-          dueDate: order.dueDate,
-          deliveryAddress: order.deliveryAddress,
-          driveFolderUrl: order.driveFolderUrl,
-          items: items.map((it: any) => ({
-            productName: it.productName,
-            material: it.material,
-            brandingMethod: it.brandingMethod,
-            quantity: it.quantity,
-            productColors: it.productColors,
-          })),
-        }),
-      );
-    }
-
-    // 6. Generate PO PDF and upload to Drive folder (01. Brief)
-    let poPdfResult: { pdfId: string; pdfUrl: string } | null = null;
-    if (order.driveFolderId) {
-      poPdfResult = await uploadPoPdfToDrive(order.id, order.driveFolderId).catch((err) => {
-        console.error("[raise-po] PDF upload failed:", err);
-        return null;
-      });
-    }
-
-    // 7. Log the action
-    await db.insert(orderActivity).values({
-      orderId: order.id,
-      userId: (req as any).user?.userId,
-      action: "po_raised_to_supplier",
-      details: {
-        supplierId,
-        supplierName: supplier.teamName,
-        supplierEmail: supplier.email,
-        supplierCcEmail: supplier.ccEmail || null,
-        gmailMessageId,
-        poPdfId: poPdfResult?.pdfId || null,
-        instructionsDocId,
-        driveShares: driveShareResults,
-        ghlPushed: ghlPushResult.success,
-        ghlPushReason: ghlPushResult.reason,
-      },
+  // 6. Generate PO PDF and upload to Drive folder.
+  let poPdfResult: { pdfId: string; pdfUrl: string } | null = null;
+  if (order.driveFolderId) {
+    poPdfResult = await uploadPoPdfToDrive(order.id, order.driveFolderId).catch((err) => {
+      console.error("[dispatch-po] PDF upload failed:", err);
+      return null;
     });
+  }
 
-    res.json({
-      ok: true,
+  // 7. Mark the order dispatched + clear any hold state from a prior tap.
+  await db.update(orders)
+    .set({ poDispatchedAt: new Date(), poHeldAt: null, poHoldReason: null, poHeldBy: null, updatedAt: new Date() })
+    .where(eq(orders.id, order.id));
+
+  // 8. Activity log
+  await db.insert(orderActivity).values({
+    orderId: order.id,
+    userId: opts.userId,
+    action: "po_raised_to_supplier",
+    details: {
+      poKind: order.poKind,
       supplierId,
+      supplierName: supplier.teamName,
       supplierEmail: supplier.email,
       supplierCcEmail: supplier.ccEmail || null,
-      emailSent: !!gmailMessageId,
       gmailMessageId,
-      poPdfUploaded: !!poPdfResult,
-      poPdfUrl: poPdfResult?.pdfUrl || null,
+      poPdfId: poPdfResult?.pdfId || null,
       instructionsDocId,
-      driveSharedWith: driveShareResults.filter((r) => r.permissionId).map((r) => r.email),
+      driveShares: driveShareResults,
       ghlPushed: ghlPushResult.success,
       ghlPushReason: ghlPushResult.reason,
+    },
+  });
+
+  return {
+    ok: true,
+    supplierId,
+    supplierEmail: supplier.email!,
+    supplierCcEmail: supplier.ccEmail || null,
+    emailSent: !!gmailMessageId,
+    gmailMessageId,
+    poPdfUploaded: !!poPdfResult,
+    poPdfUrl: poPdfResult?.pdfUrl || null,
+    instructionsDocId,
+    driveSharedWith: driveShareResults.filter((r) => r.permissionId).map((r) => r.email),
+    ghlPushed: ghlPushResult.success,
+    ghlPushReason: ghlPushResult.reason,
+  };
+}
+
+router.post("/orders/:id/raise-po", async (req, res) => {
+  try {
+    const { supplierId: bodySupplierId } = raisePoSchema.parse(req.body ?? {});
+    const result = await dispatchPoToSupplier(req.params.id, {
+      supplierId: bodySupplierId,
+      userId: (req as any).user?.userId,
     });
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    res.json(result);
   } catch (err: any) {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin raise PO error:", err);
     res.status(500).json({ error: "Failed to raise PO" });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// SAMPLE / BULK PO SPLIT — designed 2026-04-28, shipped 2026-05-07.
+//
+// Flow:
+//   1. /raise-sample-po  — flags the order as poKind=sample (and sets every
+//                          item qty=1 in a snapshot), posts an approval card
+//                          to the Sideline Telegram thread (Send/Edit/Hold).
+//   2. /po-decision      — Telegram callback hits this. action=send invokes
+//                          the shared dispatchPoToSupplier(); action=hold
+//                          parks the PO; action=edit is a no-op (admin
+//                          tweaks in UI then re-taps Send on the same card).
+//   3. /mark-sample-approved-by-client — client signed off the sample. If
+//                          deposit also paid, auto-creates the bulk PO and
+//                          posts its approval card.
+//   4. /mark-deposit-paid — Enoch flips this from Xero. Same auto-bulk
+//                          trigger when sample already approved.
+//   5. /raise-bulk-po    — manual fallback that does the duplicate-from-
+//                          sample → new bulk order step (in case the auto
+//                          gates didn't fire).
+//
+// Both gate signals must be present before bulk auto-creates:
+//   sampleApprovedByClientAt && depositPaidAt
+// ════════════════════════════════════════════════════════════════════════
+
+// Item summary line for the Telegram approval card.
+async function summarizeOrderItems(orderId: string): Promise<{
+  summary: string;
+  totalCents: number;
+  lineCount: number;
+  totalQty: number;
+}> {
+  const items = await storage.getOrderItems(orderId);
+  const lineCount = items.length;
+  const totalQty = items.reduce((s, it) => s + (it.quantity || 0), 0);
+  const totalCents = items.reduce((s, it) => s + (it.unitAmount || 0) * (it.quantity || 0), 0);
+  return { summary: `${lineCount} line${lineCount === 1 ? "" : "s"} • qty ${totalQty}`, totalCents, lineCount, totalQty };
+}
+
+async function postApprovalCardForOrder(orderId: string): Promise<{ ok: boolean; messageId?: number; reason?: string }> {
+  if (!isTelegramConfigured()) {
+    console.warn("[po-card] Telegram not configured — skipping approval card post");
+    return { ok: false, reason: "telegram_not_configured" };
+  }
+  const order = await storage.getOrder(orderId);
+  if (!order) return { ok: false, reason: "order_not_found" };
+  if (order.poKind !== "sample" && order.poKind !== "bulk") {
+    return { ok: false, reason: `not_sample_or_bulk:${order.poKind}` };
+  }
+
+  let supplierName: string | null = null;
+  if (order.assignedSupplierId) {
+    const sup = await storage.getUser(order.assignedSupplierId);
+    if (sup) supplierName = sup.teamName;
+  }
+
+  let parentSampleRef: string | null = null;
+  if (order.poKind === "bulk" && order.parentOrderId) {
+    const parent = await storage.getOrder(order.parentOrderId);
+    if (parent) parentSampleRef = parent.poReference;
+  }
+
+  const { summary, totalCents } = await summarizeOrderItems(order.id);
+  const card = buildPoApprovalCard({
+    orderId: order.id,
+    poReference: order.poReference || order.orderNumber,
+    poKind: order.poKind as "sample" | "bulk",
+    accountName: order.accountName,
+    supplierName,
+    itemSummary: summary,
+    totalNzd: totalCents / 100,
+    driveFolderUrl: order.driveFolderUrl,
+    pdfUrl: null, // PDF is generated at dispatch time, not at card-post time
+    parentSampleRef,
+  });
+  return sendTelegramCard(card);
+}
+
+// Shared bulk-from-sample duplicator. Used by both the manual /raise-bulk-po
+// route and the auto-trigger inside the gate routes (deposit + sample-approved).
+// Returns the new bulk order, or null + reason if it can't be created.
+async function ensureBulkPoFromSample(
+  sampleOrderId: string,
+  userId: string | undefined,
+): Promise<{ bulk: any; created: boolean } | { error: string; status: number }> {
+  const sample = await storage.getOrderWithDetails(sampleOrderId);
+  if (!sample) return { error: "Sample order not found", status: 404 };
+  if (sample.order.poKind !== "sample") {
+    return { error: `Source order is poKind=${sample.order.poKind}, expected sample`, status: 400 };
+  }
+
+  // Idempotent: if a bulk already exists for this sample, return it.
+  const existing = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.parentOrderId, sample.order.id));
+  const priorBulk = existing.find((o: any) => o.poKind === "bulk");
+  if (priorBulk) return { bulk: priorBulk, created: false };
+
+  // Duplicate the sample into a fresh bulk order. New PO reference, blank
+  // quantities (admin/buyer fills these in before tapping Send on the card).
+  const { id: _id, orderNumber: _n, createdAt: _c, updatedAt: _u, paidAt: _p, poReference: _po,
+    poKind: _pk, parentOrderId: _pid, poDispatchedAt: _pd, poHeldAt: _ph, poHoldReason: _phr,
+    poHeldBy: _phb, sampleApprovedByClientAt: _sa, depositPaidAt: _dp,
+    driveFolderId: _df, driveFolderUrl: _du, driveFolderName: _dn,
+    artworkApproved: _aa, artworkApprovedBy: _ab, artworkApprovedAt: _at,
+    ...orderCopy } = sample.order as any;
+
+  const newPoReference = await buildPoReference();
+  const clientForSlug = sample.order.accountName || sample.order.customerName || null;
+  const newOrder = await withPoNumberRetry(clientForSlug, async (orderNumber) =>
+    storage.createOrder({
+      ...orderCopy,
+      orderNumber,
+      poReference: newPoReference,
+      poKind: "bulk",
+      parentOrderId: sample.order.id,
+      // ghlOpportunityId, assignedSupplierId, pipelineStage are intentionally
+      // copied through — bulk inherits the same supplier and GHL deal.
+    } as any),
+  );
+
+  // If the sample was built from a closed Shopify drop, real bulk size
+  // totals were stashed on order.bulkSizeBreakdown — fan them out into
+  // orderSizeBreakdowns rows so the bulk lands populated. Otherwise blank
+  // qtys (legacy custom-order path).
+  const stashedBulk = (sample.order as any).bulkSizeBreakdown as
+    | Record<string, Record<string, number>>
+    | null
+    | undefined;
+
+  // Build a map: sample item id → cloned bulk item id, so we can carry the
+  // stashed breakdown across the duplication.
+  const bulkItemIdBySampleItemId = new Map<string, string>();
+  let bulkSubtotal = 0;
+  for (const it of sample.items) {
+    const { id: sampleItemId, orderId: _oid, ...itemCopy } = it as any;
+    const sizes = stashedBulk?.[sampleItemId];
+    const totalQty = sizes ? Object.values(sizes).reduce((a, b) => a + b, 0) : 0;
+    const newItem = await storage.createOrderItem({
+      ...itemCopy,
+      orderId: newOrder.id,
+      quantity: totalQty, // 0 if no stash → admin fills in; else real total
+    } as any);
+    bulkItemIdBySampleItemId.set(sampleItemId, newItem.id);
+    bulkSubtotal += (it.unitAmount || 0) * totalQty;
+
+    if (sizes) {
+      for (const [size, qty] of Object.entries(sizes)) {
+        if (qty <= 0) continue;
+        await db.insert(orderSizeBreakdowns).values({
+          orderItemId: newItem.id,
+          orderId: newOrder.id,
+          size,
+          quantity: qty,
+        });
+      }
+    }
+  }
+
+  if (stashedBulk) {
+    await db.update(orders)
+      .set({ subtotal: bulkSubtotal, total: bulkSubtotal, updatedAt: new Date() })
+      .where(eq(orders.id, newOrder.id));
+  }
+
+  await db.insert(orderActivity).values({
+    orderId: newOrder.id,
+    userId,
+    action: "bulk_po_duplicated_from_sample",
+    details: {
+      sampleOrderId: sample.order.id,
+      samplePoReference: sample.order.poReference,
+      populatedFromStash: Boolean(stashedBulk),
+    },
+  });
+
+  return { bulk: newOrder, created: true };
+}
+
+// POST /orders/:id/raise-sample-po
+// Flags the order as a sample run (poKind=sample), forces every line item to
+// quantity 1, then posts an approval card to the Sideline Telegram thread.
+// Does NOT dispatch — the supplier email goes out only when Romero taps Send.
+router.post("/orders/:id/raise-sample-po", async (req, res) => {
+  try {
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    if (order.poKind === "bulk") {
+      return res.status(400).json({ error: "Order is already a bulk PO — can't downgrade to sample" });
+    }
+    if (order.poDispatchedAt) {
+      return res.status(400).json({ error: "PO already dispatched — raise a new sample PO if needed" });
+    }
+
+    // Flag + reset hold state.
+    await db.update(orders)
+      .set({ poKind: "sample", poHeldAt: null, poHoldReason: null, poHeldBy: null, updatedAt: new Date() })
+      .where(eq(orders.id, order.id));
+
+    // Force every item to qty 1 (sample run).
+    const items = await storage.getOrderItems(order.id);
+    for (const it of items) {
+      if (it.quantity !== 1) {
+        await db.update(orderItems).set({ quantity: 1 }).where(eq(orderItems.id, it.id));
+      }
+    }
+
+    // Recompute order totals against the new quantities.
+    const subtotal = items.reduce((s, it) => s + (it.unitAmount || 0) * 1, 0);
+    await db.update(orders)
+      .set({ subtotal, total: subtotal, updatedAt: new Date() })
+      .where(eq(orders.id, order.id));
+
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId: (req as any).user?.userId,
+      action: "sample_po_raised",
+      details: { previousKind: order.poKind, itemCount: items.length },
+    });
+
+    const cardResult = await postApprovalCardForOrder(order.id);
+
+    res.json({
+      ok: true,
+      poKind: "sample",
+      itemCount: items.length,
+      cardPosted: cardResult.ok,
+      cardReason: cardResult.reason,
+      cardMessageId: cardResult.messageId,
+    });
+  } catch (err: any) {
+    console.error("Admin raise-sample-po error:", err);
+    res.status(500).json({ error: "Failed to raise sample PO" });
+  }
+});
+
+// POST /orders/:id/raise-bulk-po
+// Manual fallback path. Duplicates the SAMPLE order at this :id into a new
+// bulk order (qty blanked), then posts the bulk approval card. Most of the
+// time this runs automatically when both gates land — see the gate routes
+// below — but expose the manual path so admins can force it if Xero is slow
+// or the sample-approved signal got lost.
+router.post("/orders/:id/raise-bulk-po", async (req, res) => {
+  try {
+    const result = await ensureBulkPoFromSample(req.params.id, (req as any).user?.userId);
+    if ("error" in result) return res.status(result.status).json({ error: result.error });
+
+    const cardResult = await postApprovalCardForOrder(result.bulk.id);
+
+    res.json({
+      ok: true,
+      bulkOrderId: result.bulk.id,
+      bulkPoReference: result.bulk.poReference,
+      created: result.created,
+      cardPosted: cardResult.ok,
+      cardReason: cardResult.reason,
+      cardMessageId: cardResult.messageId,
+    });
+  } catch (err: any) {
+    console.error("Admin raise-bulk-po error:", err);
+    res.status(500).json({ error: "Failed to raise bulk PO" });
+  }
+});
+
+// POST /orders/:id/po-decision
+// Telegram approval-card callback target. Bridge POSTs here when Romero taps
+// Send / Edit / Hold on a sample/bulk approval card.
+//
+//   action=send  → run dispatchPoToSupplier (same path as legacy /raise-po)
+//   action=hold  → set poHeldAt + reason; flow pauses until manually resumed
+//   action=edit  → no-op; admin edits in UI, then re-taps Send (we still log
+//                  it so we can audit "card edited but never re-sent")
+const poDecisionSchema = z.object({
+  action: z.enum(["send", "hold", "edit"]),
+  reason: z.string().optional(),
+});
+
+router.post("/orders/:id/po-decision", async (req, res) => {
+  try {
+    const { action, reason } = poDecisionSchema.parse(req.body ?? {});
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    if (action === "send") {
+      const result = await dispatchPoToSupplier(order.id, { userId: (req as any).user?.userId });
+      if (!result.ok) return res.status(result.status).json({ error: result.error });
+      const { ok: _ok, ...rest } = result;
+      return res.json({ ok: true, action: "send", ...rest });
+    }
+
+    if (action === "hold") {
+      await db.update(orders)
+        .set({
+          poHeldAt: new Date(),
+          poHoldReason: reason || null,
+          poHeldBy: (req as any).user?.userId || null,
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, order.id));
+      await db.insert(orderActivity).values({
+        orderId: order.id,
+        userId: (req as any).user?.userId,
+        action: "po_held",
+        details: { reason: reason || null, poKind: order.poKind },
+      });
+      return res.json({ ok: true, action: "hold", heldAt: new Date().toISOString() });
+    }
+
+    // edit: just log it.
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId: (req as any).user?.userId,
+      action: "po_edit_requested",
+      details: { poKind: order.poKind },
+    });
+    res.json({ ok: true, action: "edit", note: "Edit in admin UI, then re-tap Send on the card." });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin po-decision error:", err);
+    res.status(500).json({ error: "Failed to record PO decision" });
+  }
+});
+
+// POST /orders/:id/mark-sample-approved-by-client
+// Called by the client-mockup-approval flow (or the Enoch observer when it
+// detects "approved" in the client thread). Sets sampleApprovedByClientAt;
+// if depositPaidAt is also set, auto-creates the bulk PO and posts its card.
+router.post("/orders/:id/mark-sample-approved-by-client", async (req, res) => {
+  try {
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.poKind !== "sample") {
+      return res.status(400).json({ error: `Order poKind=${order.poKind}, expected sample` });
+    }
+
+    if (!order.sampleApprovedByClientAt) {
+      await db.update(orders)
+        .set({ sampleApprovedByClientAt: new Date(), updatedAt: new Date() })
+        .where(eq(orders.id, order.id));
+      await db.insert(orderActivity).values({
+        orderId: order.id,
+        userId: (req as any).user?.userId,
+        action: "sample_approved_by_client",
+        details: {},
+      });
+    }
+
+    // Both gates met → fire bulk.
+    let bulkResult: any = null;
+    if (order.depositPaidAt) {
+      const bulk = await ensureBulkPoFromSample(order.id, (req as any).user?.userId);
+      if (!("error" in bulk)) {
+        const card = await postApprovalCardForOrder(bulk.bulk.id);
+        bulkResult = { bulkOrderId: bulk.bulk.id, created: bulk.created, cardPosted: card.ok };
+      }
+    }
+
+    res.json({ ok: true, sampleApproved: true, bulkTriggered: !!bulkResult, bulk: bulkResult });
+  } catch (err: any) {
+    console.error("Admin mark-sample-approved error:", err);
+    res.status(500).json({ error: "Failed to mark sample approved" });
+  }
+});
+
+// POST /orders/:id/mark-deposit-paid
+// Enoch invokes this from the Xero deposit watcher. Mirror of the sample-
+// approved gate: sets depositPaidAt, and if the sample is already approved
+// auto-creates+cards the bulk PO.
+router.post("/orders/:id/mark-deposit-paid", async (req, res) => {
+  try {
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    // Deposit can be marked on either the sample or the bulk row — when it
+    // hits the bulk row directly we just record it (no auto-trigger needed).
+    if (!order.depositPaidAt) {
+      await db.update(orders)
+        .set({ depositPaidAt: new Date(), updatedAt: new Date() })
+        .where(eq(orders.id, order.id));
+      await db.insert(orderActivity).values({
+        orderId: order.id,
+        userId: (req as any).user?.userId,
+        action: "deposit_paid",
+        details: {},
+      });
+    }
+
+    let bulkResult: any = null;
+    if (order.poKind === "sample" && order.sampleApprovedByClientAt) {
+      const bulk = await ensureBulkPoFromSample(order.id, (req as any).user?.userId);
+      if (!("error" in bulk)) {
+        const card = await postApprovalCardForOrder(bulk.bulk.id);
+        bulkResult = { bulkOrderId: bulk.bulk.id, created: bulk.created, cardPosted: card.ok };
+      }
+    }
+
+    res.json({ ok: true, depositPaid: true, bulkTriggered: !!bulkResult, bulk: bulkResult });
+  } catch (err: any) {
+    console.error("Admin mark-deposit-paid error:", err);
+    res.status(500).json({ error: "Failed to mark deposit paid" });
   }
 });
 
@@ -2201,6 +2715,508 @@ router.post("/reports/club-drop-summary", async (req, res) => {
   } catch (err: any) {
     console.error("Drop summary error:", err);
     res.status(500).json({ error: "Failed to generate drop summary", message: String(err?.message || err) });
+  }
+});
+
+// ─── Closed-Drop PO Builder ──────────────────────────────────────
+//
+// When a club's supporter Shopify collection closes (publish=false), this
+// endpoint aggregates every tagged order into a sample PO with:
+//   • one line per canonical Supporters Range product (Bucket Hat, Cap, Tee,
+//     Polo, Beanie, Shell, Singlet) found in the orders
+//   • correct material from shared/product-catalog.ts defaultMaterial
+//   • product image pulled from the Shopify product's featured image
+//   • size breakdown rolled up across all supporter orders
+//
+// poKind=sample with all line qtys=1 (so the supplier sample run goes out
+// first), and the full bulk size totals are stashed on orders.bulkSizeBreakdown
+// so when sampleApproved + depositPaid both land, the auto-bulk fans out with
+// real qtys instead of blank.
+//
+// Triggers: scripts/poll-supporter-collections.ts (cron, on publish→unpublish),
+// or the manual "Close Drop & Build PO" button in the admin club page.
+//
+// Idempotent: if the club already has supporterDropClosedAt set, returns the
+// existing sample order id instead of building a new one. Clear that field if
+// a fresh drop reuses the same handle.
+
+interface BuildClosedDropResult {
+  ok: true;
+  sampleOrderId: string;
+  poReference: string;
+  cardPosted: boolean;
+  cardReason?: string;
+  productsAdded: number;
+  totalSupporterOrders: number;
+  totalUnits: number;
+  skippedLineItems: string[];
+  reused: boolean;
+}
+
+async function buildPoFromClosedDrop(
+  clubId: string,
+  userId: string | undefined,
+): Promise<BuildClosedDropResult | { error: string; status: number }> {
+  if (!isShopifyAdminConfigured()) {
+    return { error: "Shopify Admin API not configured", status: 503 };
+  }
+
+  const [club] = await db.select().from(clubAccounts).where(eq(clubAccounts.id, clubId)).limit(1);
+  if (!club) return { error: "Club not found", status: 404 };
+  if (!club.shopifyOrderTag) {
+    return { error: "Club has no shopifyOrderTag — set it before building PO", status: 400 };
+  }
+  if (!club.supporterCollectionHandle) {
+    return { error: "Club has no supporterCollectionHandle — set it before building PO", status: 400 };
+  }
+
+  // Idempotent: re-use existing sample if drop was already closed.
+  if (club.supporterDropClosedAt) {
+    const existing = await db
+      .select()
+      .from(orders)
+      .where(and(
+        eq(orders.poKind, "sample"),
+        eq(orders.sourceCollectionHandle, club.supporterCollectionHandle),
+      ))
+      .limit(1);
+    if (existing.length) {
+      return {
+        ok: true,
+        sampleOrderId: existing[0].id,
+        poReference: existing[0].poReference || existing[0].orderNumber,
+        cardPosted: false,
+        cardReason: "drop_already_closed",
+        productsAdded: 0,
+        totalSupporterOrders: 0,
+        totalUnits: 0,
+        skippedLineItems: [],
+        reused: true,
+      };
+    }
+  }
+
+  // 1. Pull every Shopify order carrying the club's tag.
+  const supporterOrders: SupporterOrder[] = await fetchSupporterOrdersByTag(club.shopifyOrderTag);
+  if (!supporterOrders.length) {
+    return { error: "No supporter orders found for this club's tag", status: 400 };
+  }
+
+  // 2. Pull collection products so we can resolve title → product image.
+  const products: ShopifyProductLite[] = await fetchProductsInCollection(club.supporterCollectionHandle);
+  const productImageByTitle = new Map<string, string>();
+  for (const p of products) {
+    if (p.imageUrl) productImageByTitle.set(p.title.toLowerCase(), p.imageUrl);
+  }
+
+  // 3. Group supporter line items by canonical product id, rolling up size
+  //    counts as we go. Skip lines that don't match the 7-SKU range
+  //    (shipping, gift cards, custom add-ons).
+  type Aggregate = { canonical: ReturnType<typeof matchSupporterProduct>; sizeTotals: Map<string, number>; titles: Set<string> };
+  const byCanonical = new Map<string, Aggregate>();
+  const skipped: string[] = [];
+  let totalUnits = 0;
+
+  for (const o of supporterOrders) {
+    for (const line of o.lines) {
+      const match = matchSupporterProduct(line.title);
+      if (!match) {
+        skipped.push(line.title);
+        continue;
+      }
+      let agg = byCanonical.get(match.productId);
+      if (!agg) {
+        agg = { canonical: match, sizeTotals: new Map(), titles: new Set() };
+        byCanonical.set(match.productId, agg);
+      }
+      agg.titles.add(line.title);
+      const size = extractSizeFromVariant(line.variantTitle, match.productId);
+      agg.sizeTotals.set(size, (agg.sizeTotals.get(size) || 0) + line.quantity);
+      totalUnits += line.quantity;
+    }
+  }
+
+  if (byCanonical.size === 0) {
+    return { error: "No supporter range products matched in any order line", status: 400 };
+  }
+
+  // 4. Create the sample order.
+  const poReference = await buildPoReference();
+  const dueDate = new Date(Date.now() + 35 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const order = await withPoNumberRetry(club.clubName, async (orderNumber) =>
+    storage.createOrder({
+      orderNumber,
+      storeSlug: "sideline",
+      orderType: "supporter-drop",
+      status: "processing",
+      subtotal: 0,
+      total: 0,
+      currency: "nzd",
+      customerEmail: club.email,
+      customerName: club.clubName,
+      poReference,
+      poKind: "sample",
+      accountName: club.clubName,
+      isRepeatOrder: false,
+      dueDate,
+      sourceCollectionHandle: club.supporterCollectionHandle,
+    } as any),
+  );
+
+  // 5. One line per canonical product. Sample run = qty 1 each. Bulk totals
+  //    stashed on order.bulkSizeBreakdown for later fan-out.
+  const bulkSizeBreakdown: Record<string, Record<string, number>> = {};
+  let productsAdded = 0;
+
+  for (const entry of Array.from(byCanonical.entries())) {
+    const [canonicalId, agg] = entry;
+    const product = agg.canonical!.product;
+    // Pick the highest-frequency Shopify title for display so the PO matches
+    // what the club ordered (e.g. "Onewhero RFC Cotton Tee" not "Cotton T-Shirt").
+    const displayTitle = Array.from(agg.titles)[0] || product.name;
+    const imageUrl = productImageByTitle.get(displayTitle.toLowerCase()) || null;
+    const chartType = suggestSizeChart(canonicalId);
+    const isHeadwear = product.category === "Headwear";
+
+    const item = await storage.createOrderItem({
+      orderId: order.id,
+      productId: canonicalId,
+      priceId: "supporter-drop",
+      productName: displayTitle,
+      productImage: imageUrl,
+      quantity: 1, // sample run
+      unitAmount: 0,
+      currency: "nzd",
+      productType: canonicalId,
+      material: product.defaultMaterial,
+      sizeChartType: chartType,
+      mockupImages: imageUrl ? [{ url: imageUrl, label: "Shopify product image" }] : null,
+    } as any);
+
+    // Sample size breakdown: one row at "Sample" qty 1 so the PO PDF shows
+    // the line. Bulk breakdown (the real per-size totals) goes on the order.
+    await db.insert(orderSizeBreakdowns).values({
+      orderItemId: item.id,
+      orderId: order.id,
+      size: isHeadwear ? "One Size" : "Sample",
+      quantity: 1,
+    });
+
+    bulkSizeBreakdown[item.id] = Object.fromEntries(agg.sizeTotals);
+    productsAdded++;
+  }
+
+  // 6. Stash bulk totals + close-drop marker.
+  await db.update(orders)
+    .set({ bulkSizeBreakdown: bulkSizeBreakdown as any, updatedAt: new Date() })
+    .where(eq(orders.id, order.id));
+  await db.update(clubAccounts)
+    .set({ supporterDropClosedAt: new Date(), supporterCollectionPublished: false, updatedAt: new Date() })
+    .where(eq(clubAccounts.id, club.id));
+
+  await db.insert(orderActivity).values({
+    orderId: order.id,
+    userId,
+    action: "closed_drop_po_built",
+    details: {
+      collection: club.supporterCollectionHandle,
+      tag: club.shopifyOrderTag,
+      supporterOrderCount: supporterOrders.length,
+      totalUnits,
+      productsAdded,
+      skippedCount: skipped.length,
+    },
+  });
+
+  // 7. Post the sample approval card to Telegram.
+  const cardResult = await postApprovalCardForOrder(order.id);
+
+  return {
+    ok: true,
+    sampleOrderId: order.id,
+    poReference: order.poReference || order.orderNumber,
+    cardPosted: cardResult.ok,
+    cardReason: cardResult.reason,
+    productsAdded,
+    totalSupporterOrders: supporterOrders.length,
+    totalUnits,
+    skippedLineItems: Array.from(new Set(skipped)),
+    reused: false,
+  };
+}
+
+// GET /api/admin/clubs — list club accounts with their drop config + state.
+router.get("/clubs", async (_req, res) => {
+  try {
+    const rows = await db.select({
+      id: clubAccounts.id,
+      email: clubAccounts.email,
+      clubName: clubAccounts.clubName,
+      shopifyOrderTag: clubAccounts.shopifyOrderTag,
+      supporterCollectionHandle: clubAccounts.supporterCollectionHandle,
+      supporterCollectionPublished: clubAccounts.supporterCollectionPublished,
+      supporterDropClosedAt: clubAccounts.supporterDropClosedAt,
+      profitShareTierBps: clubAccounts.profitShareTierBps,
+    }).from(clubAccounts);
+    res.json({ ok: true, clubs: rows });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// PATCH /api/admin/clubs/:id — set collection handle / clear drop-closed marker.
+const patchClubSchema = z.object({
+  supporterCollectionHandle: z.string().optional(),
+  clearDropClosedAt: z.boolean().optional(),
+});
+router.patch("/clubs/:id", async (req, res) => {
+  try {
+    const data = patchClubSchema.parse(req.body);
+    const updates: Record<string, any> = { updatedAt: new Date() };
+    if (data.supporterCollectionHandle !== undefined) {
+      updates.supporterCollectionHandle = data.supporterCollectionHandle || null;
+    }
+    if (data.clearDropClosedAt) {
+      updates.supporterDropClosedAt = null;
+      updates.supporterCollectionPublished = null;
+    }
+    await db.update(clubAccounts).set(updates).where(eq(clubAccounts.id, req.params.id));
+    const [club] = await db.select().from(clubAccounts).where(eq(clubAccounts.id, req.params.id)).limit(1);
+    res.json({ ok: true, club });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// POST /api/admin/clubs/:id/build-po-from-closed-drop
+// Manual + cron entry point for the closed-drop builder above.
+router.post("/clubs/:id/build-po-from-closed-drop", async (req, res) => {
+  try {
+    const result = await buildPoFromClosedDrop(req.params.id, (req as any).user?.userId);
+    if ("error" in result) return res.status(result.status).json({ error: result.error });
+    res.json(result);
+  } catch (err: any) {
+    console.error("[closed-drop-po] build error:", err);
+    res.status(500).json({ error: "Failed to build PO from closed drop", message: String(err?.message || err) });
+  }
+});
+
+// Service-token variant for the Telegram bridge / cron poller. Same logic,
+// X-Service-Token auth instead of admin JWT.
+router.post("/clubs/:id/build-po-from-closed-drop-service", async (req, res) => {
+  const expected = process.env.SIDELINE_SERVICE_TOKEN || process.env.SERVICE_TOKEN;
+  if (!expected || req.header("X-Service-Token") !== expected) {
+    return res.status(401).json({ error: "Invalid service token" });
+  }
+  try {
+    const result = await buildPoFromClosedDrop(req.params.id, undefined);
+    if ("error" in result) return res.status(result.status).json({ error: result.error });
+    res.json(result);
+  } catch (err: any) {
+    console.error("[closed-drop-po] service build error:", err);
+    res.status(500).json({ error: "Failed to build PO from closed drop", message: String(err?.message || err) });
+  }
+});
+
+// GET /api/admin/clubs/:id/collection-status — cron poller calls this every
+// 10 min to look for the publish→unpublish transition.
+router.get("/clubs/:id/collection-status", async (req, res) => {
+  try {
+    const [club] = await db.select().from(clubAccounts).where(eq(clubAccounts.id, req.params.id)).limit(1);
+    if (!club) return res.status(404).json({ error: "Club not found" });
+    if (!club.supporterCollectionHandle) {
+      return res.json({ ok: true, configured: false });
+    }
+    const status = await fetchCollectionStatus(club.supporterCollectionHandle);
+    if (!status) return res.json({ ok: true, configured: true, found: false });
+    res.json({
+      ok: true,
+      configured: true,
+      found: true,
+      publishedNow: status.publishedOnOnlineStore,
+      publishedLastSeen: club.supporterCollectionPublished,
+      transitionedToClosed:
+        club.supporterCollectionPublished === true && status.publishedOnOnlineStore === false,
+      dropClosedAt: club.supporterDropClosedAt,
+      productCount: status.productCount,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// ---- In-app AI worker (Phase 1: name-asset) ----
+//
+// POST /ai/name-asset
+//   body: { assetUrl, context: { orderId?, clubAccountId?, productHint?, side? } }
+//   returns: { canonicalName, confidence, reasoning }
+//   Pure suggestion endpoint — does not persist. UI calls
+//   PATCH /designs/:id/canonical-name on accept.
+const nameAssetSchema = z.object({
+  assetUrl: z.string().url(),
+  context: z
+    .object({
+      orderId: z.string().optional(),
+      clubAccountId: z.string().optional(),
+      clubName: z.string().max(80).optional(),
+      productHint: z.string().max(80).optional(),
+      side: z.enum(["front", "back"]).optional(),
+    })
+    .default({}),
+});
+
+// Unpack the AggregateError shape that postgres-js throws on Neon timeouts
+// into something a human can act on (the default toString is just
+// "AggregateError" which is useless).
+function describeError(err: any): string {
+  if (err?.errors && Array.isArray(err.errors) && err.errors.length) {
+    const first = err.errors[0];
+    return `${err.name || "Error"}: ${first?.message || first?.code || String(first)}`;
+  }
+  return String(err?.message || err);
+}
+
+router.post("/ai/name-asset", async (req, res) => {
+  try {
+    const body = nameAssetSchema.parse(req.body ?? {});
+    const userId = (req as any).user?.userId as string | undefined;
+    const result = await runAiTask({
+      taskName: "name-asset",
+      input: { assetUrl: body.assetUrl, context: body.context, userId },
+    });
+    res.json(result);
+  } catch (err: any) {
+    if (err.name === "ZodError") {
+      return res.status(400).json({ error: "Invalid data", details: err.errors });
+    }
+    console.error("Admin ai/name-asset error:", err);
+    res.status(500).json({ error: describeError(err) });
+  }
+});
+
+// ---- Ezra copilot chat (Phase A) ----
+//
+// POST /ai/chat — single chat turn. Returns the full assistant response
+// (non-streaming for Phase A; SSE is a planned upgrade). Tool calls happen
+// inside the runner; each is persisted as a message row so the conversation
+// IS the audit trail.
+const chatSchema = z.object({
+  message: z.string().min(1).max(8000),
+  conversationId: z.string().optional(),
+  scopeKind: z.enum(["order", "club", "global"]).optional(),
+  scopeId: z.string().optional(),
+});
+
+router.post("/ai/chat", async (req, res) => {
+  try {
+    const body = chatSchema.parse(req.body ?? {});
+    const userId = (req as any).user?.userId as string;
+    if (!userId) return res.status(401).json({ error: "no_user" });
+
+    let conversationId = body.conversationId;
+    if (!conversationId) {
+      const conv = await getOrCreateConversation({
+        userId,
+        channel: "web",
+        scopeKind: body.scopeKind || "global",
+        scopeId: body.scopeId,
+      });
+      conversationId = conv.id;
+    }
+
+    const result = await runChatTurn({ conversationId, userId, message: body.message });
+    res.json(result);
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin ai/chat error:", err);
+    res.status(500).json({ error: describeError(err) });
+  }
+});
+
+// GET /ai/conversations — list the caller's conversations (most recent first).
+router.get("/ai/conversations", async (req, res) => {
+  try {
+    const userId = (req as any).user?.userId as string;
+    if (!userId) return res.status(401).json({ error: "no_user" });
+    const list = await listConversations(userId);
+    res.json({ conversations: list });
+  } catch (err: any) {
+    res.status(500).json({ error: describeError(err) });
+  }
+});
+
+// GET /ai/conversations/:id/messages — load the messages for a conversation.
+router.get("/ai/conversations/:id/messages", async (req, res) => {
+  try {
+    const userId = (req as any).user?.userId as string;
+    if (!userId) return res.status(401).json({ error: "no_user" });
+    // Defence in depth: confirm the conversation belongs to this caller before
+    // returning messages. (Service-token sessions bypass this — same pattern
+    // as the rest of the admin routes.)
+    const { ezraConversations } = await import("@shared/schema");
+    const { eq: eqOp, and: andOp } = await import("drizzle-orm");
+    const [conv] = await db.select().from(ezraConversations).where(andOp(eqOp(ezraConversations.id, req.params.id), eqOp(ezraConversations.userId, userId))).limit(1);
+    if (!conv) {
+      // Allow service-token (admin) sessions to read any conversation.
+      if ((req as any).user?.userId?.startsWith("service:")) {
+        // fall through
+      } else {
+        return res.status(404).json({ error: "not_found" });
+      }
+    }
+    const messages = await listMessages(req.params.id);
+    res.json({ conversation: conv, messages });
+  } catch (err: any) {
+    res.status(500).json({ error: describeError(err) });
+  }
+});
+
+// GET /ai/tools — list the tools currently available to Ezra (for the UI
+// to show what it can do).
+router.get("/ai/tools", async (_req, res) => {
+  res.json({ tools: EZRA_TOOLS_AVAILABLE });
+});
+
+// GET /ai/lookups — clubs + products for the AI page dropdowns. One call,
+// 30s cache on the client (react-query default). Skips per-keystroke DB hits
+// when the operator is using the worker repeatedly.
+router.get("/ai/lookups", async (_req, res) => {
+  try {
+    const { desc } = await import("drizzle-orm");
+    const clubs = await db
+      .select({ id: clubAccounts.id, name: clubAccounts.clubName, tag: clubAccounts.shopifyOrderTag })
+      .from(clubAccounts)
+      .orderBy(clubAccounts.clubName);
+    const products = SIDELINE_PRODUCTS.map((p) => ({ id: p.id, name: p.name, category: p.category }));
+    res.json({ clubs, products });
+  } catch (err: any) {
+    console.error("Admin ai/lookups error:", err);
+    res.status(500).json({ error: describeError(err) });
+  }
+});
+
+// PATCH /designs/:id/canonical-name — admin applies a proposed canonical name.
+const updateCanonicalNameSchema = z.object({
+  canonicalName: z.string().min(1).max(200),
+});
+
+router.patch("/designs/:id/canonical-name", async (req, res) => {
+  try {
+    const { canonicalName } = updateCanonicalNameSchema.parse(req.body ?? {});
+    const [updated] = await db
+      .update(designFiles)
+      .set({ canonicalName })
+      .where(eq(designFiles.id, req.params.id))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Design file not found" });
+    res.json({ ok: true, canonicalName: updated.canonicalName });
+  } catch (err: any) {
+    if (err.name === "ZodError") {
+      return res.status(400).json({ error: "Invalid data", details: err.errors });
+    }
+    console.error("Admin update canonical-name error:", err);
+    res.status(500).json({ error: "Failed to update canonical name" });
   }
 });
 

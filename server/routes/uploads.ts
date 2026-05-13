@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, json } from "express";
 import { requireAuth } from "../auth";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 
@@ -6,6 +6,10 @@ const router = Router();
 
 // All upload routes require authentication
 router.use(requireAuth);
+
+// Route-scoped 60MB JSON limit for /blob (base64 file uploads). The global
+// express.json() limit is 100KB which is fine for everything else.
+const largeJson = json({ limit: "60mb" });
 
 // POST /token — generates Vercel Blob client upload token
 router.post("/token", async (req, res) => {
@@ -119,6 +123,47 @@ router.post("/from-url", async (req, res) => {
   } catch (err: any) {
     console.error("Upload from URL error:", err);
     res.status(500).json({ error: err.message || "Upload from URL failed" });
+  }
+});
+
+// POST /blob — server-side file upload as base64 JSON. Bypasses the client
+// upload() flow (which needs a public callback URL that localhost can't
+// satisfy). Used by the /admin/ai page so drop/paste/file-picker works in
+// dev without ngrok or VERCEL_BLOB_CALLBACK_URL.
+router.post("/blob", largeJson, async (req, res) => {
+  try {
+    const { filename, contentType, dataBase64 } = req.body as {
+      filename?: string;
+      contentType?: string;
+      dataBase64?: string;
+    };
+    if (!filename || !contentType || !dataBase64) {
+      return res.status(400).json({ error: "filename, contentType, and dataBase64 are required" });
+    }
+    const allowed = ["image/png", "image/jpeg", "image/svg+xml", "image/webp", "image/gif"];
+    if (!allowed.includes(contentType)) {
+      return res.status(400).json({ error: `Unsupported content type: ${contentType}` });
+    }
+
+    const buffer = Buffer.from(dataBase64, "base64");
+    if (buffer.byteLength > 50 * 1024 * 1024) {
+      return res.status(400).json({ error: "Image > 50MB" });
+    }
+
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!blobToken) return res.status(500).json({ error: "BLOB_READ_WRITE_TOKEN missing" });
+
+    const { put } = await import("@vercel/blob");
+    const blob = await put(filename, buffer, {
+      access: "public",
+      contentType,
+      token: blobToken,
+      addRandomSuffix: true,
+    });
+    res.json({ url: blob.url });
+  } catch (err: any) {
+    console.error("Upload blob error:", err);
+    res.status(500).json({ error: err.message || "Upload failed" });
   }
 });
 

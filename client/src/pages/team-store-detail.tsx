@@ -1,7 +1,8 @@
 import { useParams, Link, Redirect } from "wouter";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Layout from "@/components/layout";
-import { ShoppingBag, ArrowLeft, ArrowRight, Users, Calendar, Package, Loader2 } from "lucide-react";
+import { ShoppingBag, ArrowLeft, ArrowRight, Users, Calendar, Package, Loader2, Clock, AlertTriangle, Gift } from "lucide-react";
+import { getCampaign, isCampaignClosed, getTimeRemaining, type StoreCampaign } from "@/lib/campaigns";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -76,20 +77,130 @@ function TeamStoreExplainerModal({
   );
 }
 
+function CampaignBanner({ campaign }: { campaign: StoreCampaign }) {
+  const [timeLeft, setTimeLeft] = useState(getTimeRemaining(campaign));
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeLeft(getTimeRemaining(campaign));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [campaign]);
+
+  const closed = isCampaignClosed(campaign);
+  const cutoffDate = new Date(campaign.cutoff);
+  const formattedDate = cutoffDate.toLocaleDateString("en-NZ", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  const formattedTime = cutoffDate.toLocaleTimeString("en-NZ", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  if (closed) {
+    return (
+      <section style={{ background: "#1a1a1a", borderBottom: "2px solid #333" }}>
+        <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "24px 20px", textAlign: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", marginBottom: "8px" }}>
+            <AlertTriangle size={18} style={{ color: "#f59e0b" }} />
+            <span style={{ fontSize: "14px", fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: "1.5px" }}>
+              Orders Closed
+            </span>
+          </div>
+          <p style={{ fontSize: "14px", color: "#999", margin: 0 }}>
+            This campaign closed on {formattedDate} at {formattedTime}. Production is now underway.
+          </p>
+          <p style={{ fontSize: "13px", color: "#666", marginTop: "8px" }}>
+            Estimated delivery: {campaign.estimatedDelivery}
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section style={{ background: "#111", borderBottom: "2px solid #22c55e" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "24px 20px" }}>
+        {/* Countdown row */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "12px", flexWrap: "wrap" }}>
+          <Clock size={16} style={{ color: "#22c55e" }} />
+          <span style={{ fontSize: "13px", fontWeight: 700, color: "#22c55e", textTransform: "uppercase", letterSpacing: "1.5px" }}>
+            Pre-Order Open
+          </span>
+          <span style={{ color: "#444" }}>|</span>
+          <span style={{ fontSize: "13px", color: "#aaa" }}>
+            Orders close <strong style={{ color: "#fff" }}>{formattedDate}</strong> at <strong style={{ color: "#fff" }}>{formattedTime}</strong>
+          </span>
+        </div>
+
+        {/* Countdown timer */}
+        {timeLeft && (
+          <div style={{ display: "flex", justifyContent: "center", gap: "16px", marginTop: "16px" }}>
+            {[
+              { label: "Days", value: timeLeft.days },
+              { label: "Hours", value: timeLeft.hours },
+              { label: "Mins", value: timeLeft.minutes },
+              { label: "Secs", value: timeLeft.seconds },
+            ].map((unit) => (
+              <div key={unit.label} style={{ textAlign: "center", minWidth: "56px" }}>
+                <div style={{
+                  fontSize: "24px", fontWeight: 800, color: "#fff",
+                  background: "#1a1a1a", borderRadius: "8px", padding: "8px 12px",
+                  fontVariantNumeric: "tabular-nums",
+                }}>
+                  {String(unit.value).padStart(2, "0")}
+                </div>
+                <div style={{ fontSize: "10px", color: "#888", textTransform: "uppercase", letterSpacing: "1px", marginTop: "4px" }}>
+                  {unit.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Incentives */}
+        {campaign.incentives && campaign.incentives.length > 0 && (
+          <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
+            {campaign.incentives.map((incentive, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#aaa" }}>
+                <Gift size={12} style={{ color: "#22c55e", flexShrink: 0 }} />
+                {incentive}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function ProductCard({
   product,
   storeHandle,
+  disabled,
 }: {
   product: ShopifyProduct;
   storeHandle: string;
+  disabled?: boolean;
 }) {
+  const Wrapper = disabled ? "div" : "a";
+  const linkProps = disabled
+    ? {}
+    : {
+        href: `https://teamstore.sidelinenz.com/collections/${storeHandle}/products/${product.handle}`,
+        target: "_blank",
+        rel: "noopener noreferrer",
+      };
+
   return (
-    <a
-      href={`https://teamstore.sidelinenz.com/collections/${storeHandle}/products/${product.handle}`}
-      target="_blank"
-      rel="noopener noreferrer"
+    <Wrapper
+      {...linkProps as any}
       data-testid={"product-card-" + product.handle}
-      style={{ cursor: "pointer", textAlign: "center", display: "block", textDecoration: "none" }}
+      style={{ cursor: disabled ? "default" : "pointer", textAlign: "center", display: "block", textDecoration: "none", opacity: disabled ? 0.6 : 1 }}
       className="group w-full"
     >
       <div style={{
@@ -122,7 +233,7 @@ function ProductCard({
       <p style={{ fontSize: "15px", fontWeight: 700, color: "#111" }}>
         {formatPrice(product.priceRange.minVariantPrice.amount, product.priceRange.minVariantPrice.currencyCode)}
       </p>
-    </a>
+    </Wrapper>
   );
 }
 
@@ -148,10 +259,15 @@ export default function TeamStoreDetailPage() {
   }
 
   const { collection, products } = data;
+  const campaign = getCampaign(handle);
+  const campaignClosed = campaign ? isCampaignClosed(campaign) : false;
 
   return (
     <StoreGate storeName={collection.title} storeHandle={handle}>
     <Layout>
+      {/* Campaign Banner */}
+      {campaign && <CampaignBanner campaign={campaign} />}
+
       {/* Hero / Feature Image */}
       {collection.image && (
         <section style={{ position: "relative", width: "100%", background: "#fff" }}>
@@ -191,16 +307,24 @@ export default function TeamStoreDetailPage() {
               >
                 How it works
               </button>
-              <a
-                href={`https://teamstore.sidelinenz.com/collections/${handle}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid="button-shop-now"
-                style={{ fontSize: "13px", fontWeight: 600, color: "#fff", background: "#111", border: "1px solid #111", borderRadius: "6px", padding: "10px 20px", cursor: "pointer", whiteSpace: "nowrap", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}
-                className="hover:opacity-80 transition-opacity"
-              >
-                Shop Now <ArrowRight size={14} />
-              </a>
+              {campaignClosed ? (
+                <span
+                  style={{ fontSize: "13px", fontWeight: 600, color: "#999", background: "#f5f5f5", border: "1px solid #ddd", borderRadius: "6px", padding: "10px 20px", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "6px", cursor: "not-allowed" }}
+                >
+                  Orders Closed
+                </span>
+              ) : (
+                <a
+                  href={`https://teamstore.sidelinenz.com/collections/${handle}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="button-shop-now"
+                  style={{ fontSize: "13px", fontWeight: 600, color: "#fff", background: "#111", border: "1px solid #111", borderRadius: "6px", padding: "10px 20px", cursor: "pointer", whiteSpace: "nowrap", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                  className="hover:opacity-80 transition-opacity"
+                >
+                  Shop Now <ArrowRight size={14} />
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -236,6 +360,7 @@ export default function TeamStoreDetailPage() {
                   key={product.id}
                   product={product}
                   storeHandle={handle}
+                  disabled={campaignClosed}
                 />
               ))}
             </div>
@@ -340,7 +465,7 @@ export default function TeamStoreDetailPage() {
                 ))}
               </ol>
               <p style={{ fontSize: "13px", color: "#888", marginTop: "20px" }}>
-                Estimated delivery: <span style={{ color: "#ccc", fontWeight: 600 }}>4–5 weeks from campaign close date</span>
+                Estimated delivery: <span style={{ color: "#ccc", fontWeight: 600 }}>{campaign?.estimatedDelivery ?? "4–5 weeks from campaign close date"}</span>
               </p>
             </div>
 
