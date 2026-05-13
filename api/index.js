@@ -1009,7 +1009,7 @@ function getStripe() {
   }
   if (!stripeInstance) {
     stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: "2024-12-18.acacia"
+      apiVersion: "2026-02-25.clover"
     });
   }
   return stripeInstance;
@@ -96703,7 +96703,16 @@ router5.post("/orders/:id/items/:itemId/extract-colors", async (req, res) => {
     const [item] = await db.select().from(orderItems).where(eq9(orderItems.id, req.params.itemId)).limit(1);
     if (!item) return res.status(404).json({ error: "Item not found" });
     const mockupsRaw = item.mockupImages;
-    const mockupUrls = Array.isArray(mockupsRaw) ? mockupsRaw.map((m) => typeof m === "string" ? { url: m } : m && typeof m.url === "string" ? { url: m.url, label: m.label } : null).filter((m) => m && m.url.startsWith("http")) : [];
+    const mockupUrls = [];
+    if (Array.isArray(mockupsRaw)) {
+      for (const m of mockupsRaw) {
+        if (typeof m === "string" && m.startsWith("http")) {
+          mockupUrls.push({ url: m });
+        } else if (m && typeof m.url === "string" && m.url.startsWith("http")) {
+          mockupUrls.push({ url: m.url, label: m.label });
+        }
+      }
+    }
     const sideMatchedMockup = side ? mockupUrls.find((m) => (m.label || "").toLowerCase().includes(side))?.url : void 0;
     const sourceUrl = imageUrl || (side === "back" ? item.backDesignUrl : side === "front" ? item.frontDesignUrl : null) || sideMatchedMockup || item.frontDesignUrl || item.backDesignUrl || mockupUrls[0]?.url;
     if (!sourceUrl) return res.status(400).json({ error: "No design or mockup image on this item to analyse" });

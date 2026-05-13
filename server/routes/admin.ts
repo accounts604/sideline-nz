@@ -969,11 +969,16 @@ router.post("/orders/:id/items/:itemId/extract-colors", async (req, res) => {
     // label when a side hint was supplied so a "back" scan reads the back
     // mockup.
     const mockupsRaw = (item as any).mockupImages;
-    const mockupUrls: Array<{ url: string; label?: string }> = Array.isArray(mockupsRaw)
-      ? mockupsRaw
-          .map((m: any) => (typeof m === "string" ? { url: m } : m && typeof m.url === "string" ? { url: m.url, label: m.label } : null))
-          .filter((m: any) => m && m.url.startsWith("http"))
-      : [];
+    const mockupUrls: Array<{ url: string; label?: string }> = [];
+    if (Array.isArray(mockupsRaw)) {
+      for (const m of mockupsRaw) {
+        if (typeof m === "string" && m.startsWith("http")) {
+          mockupUrls.push({ url: m });
+        } else if (m && typeof m.url === "string" && m.url.startsWith("http")) {
+          mockupUrls.push({ url: m.url, label: m.label });
+        }
+      }
+    }
     const sideMatchedMockup = side
       ? mockupUrls.find((m) => (m.label || "").toLowerCase().includes(side))?.url
       : undefined;

@@ -26,19 +26,19 @@ import { strict as assert } from "node:assert";
 let fetchCalls = 0;
 const fakeOrdersByTag = new Map();
 
-globalThis.fetch = async (url, init) => {
+globalThis.fetch = (async (url: any, init: any) => {
   fetchCalls++;
   if (!String(url).includes("/admin/api/")) {
     throw new Error(`Unexpected fetch URL in test: ${url}`);
   }
-  const body = JSON.parse(init.body);
+  const body = JSON.parse(String(init?.body || "{}"));
   // body.query.query is the Shopify search string e.g. `tag:"club:test-fc"`
   const m = /tag:"([^"]+)"/.exec(body.variables.query);
   const tag = m?.[1] || "";
 
   // Mixed bag — return orders for the requested tag PLUS one with a different tag,
   // so we can verify the client-side belt-and-braces filter actually drops it.
-  const ours = (fakeOrdersByTag.get(tag) || []).map((o, i) => ({
+  const ours = (fakeOrdersByTag.get(tag) || []).map((o: any, i: number) => ({
     id: `gid://shopify/Order/${tag}-${i}`,
     name: `#${1000 + i}`,
     createdAt: o.createdAt,
@@ -47,7 +47,7 @@ globalThis.fetch = async (url, init) => {
     tags: [tag],
     currentTotalPriceSet: { shopMoney: { amount: o.total.toFixed(2), currencyCode: "NZD" } },
     customer: { firstName: o.first, lastName: o.last, email: o.email },
-    lineItems: { nodes: o.lines.map((l) => ({
+    lineItems: { nodes: o.lines.map((l: any) => ({
       title: l.title,
       quantity: l.qty,
       originalUnitPriceSet: { shopMoney: { amount: l.unit.toFixed(2) } },
@@ -68,7 +68,7 @@ globalThis.fetch = async (url, init) => {
   return new Response(JSON.stringify({
     data: { orders: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [...ours, poison] } },
   }), { status: 200, headers: { "Content-Type": "application/json" } });
-};
+}) as typeof fetch;
 
 // Required env so isShopifyAdminConfigured() returns true.
 process.env.SHOPIFY_STORE_URL = "test-shop.myshopify.com";

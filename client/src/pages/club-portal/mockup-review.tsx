@@ -26,12 +26,12 @@ export default function MockupReviewPage() {
 
   const { data: me } = useQuery<ClubMe>({
     queryKey: ["/api/club-portal/me"],
-    queryFn: getQueryFn(),
+    queryFn: getQueryFn({ on401: "throw" }),
   });
 
   const { data: order, isLoading: orderLoading } = useQuery<Order>({
     queryKey: ["/api/club-portal/order"],
-    queryFn: getQueryFn(),
+    queryFn: getQueryFn({ on401: "throw" }),
   });
 
   const handleLogout = async () => {
