@@ -267,7 +267,7 @@ export default function AdminOrders() {
                     { label: "Customer" },
                     { label: "Stage" },
                     { label: "Design" },
-                    { label: "Total" },
+                    { label: "Est. Cost" },
                     { label: "Due", sortKey: "dueDate" as const },
                     { label: "Created", sortKey: "createdAt" as const },
                     { label: "" },
@@ -335,7 +335,10 @@ export default function AdminOrders() {
                       <StatusBadge status={order.designStatus || "not_started"} type="design" />
                     </td>
                     <td style={{ padding: "14px 20px", fontSize: "14px", color: "#fff", fontWeight: 500 }}>
-                      ${(order.total / 100).toFixed(2)}
+                      <div>${(order.total / 100).toFixed(2)}</div>
+                      <div style={{ fontSize: "9px", color: "rgba(255,255,255,0.35)", fontStyle: "italic", marginTop: "2px", letterSpacing: "0.2px" }} title="Estimated cost from Puffin Tier-1 pricing + overhead. Not the final supplier-negotiated price.">
+                        estimated
+                      </div>
                     </td>
                     <td style={{ padding: "14px 20px", fontSize: "13px", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
                       {order.dueDate
