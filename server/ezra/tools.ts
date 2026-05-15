@@ -65,17 +65,74 @@ const nameAssetTool: ToolDefinition = {
   },
 };
 
+// Helper: hydrate an order row with its line items + existing size totals
+// so Ezra has everything it needs to plan size allocation in one tool call.
+async function hydrateOrder(order: any) {
+  const items = await db
+    .select({
+      id: orderItems.id,
+      productName: orderItems.productName,
+      productType: orderItems.productType,
+      gradeGroup: orderItems.gradeGroup,
+      quantity: orderItems.quantity,
+    })
+    .from(orderItems)
+    .where(eq(orderItems.orderId, order.id));
+  // Per-item current size totals so Ezra can show what's already filled
+  const existing = await db.select().from(orderSizeBreakdowns).where(eq(orderSizeBreakdowns.orderId, order.id));
+  const filledByItem: Record<string, { totalUnits: number; rowCount: number }> = {};
+  for (const b of existing) {
+    const slot = filledByItem[b.orderItemId] ||= { totalUnits: 0, rowCount: 0 };
+    slot.totalUnits += b.quantity;
+    slot.rowCount += 1;
+  }
+  return {
+    ...order,
+    items: items.map((i) => ({
+      ...i,
+      currentSizeUnits: filledByItem[i.id]?.totalUnits || 0,
+      currentSizeRowCount: filledByItem[i.id]?.rowCount || 0,
+    })),
+  };
+}
+
 const getOrderTool: ToolDefinition = {
   name: "get_order",
-  description: "Look up a single order by id. Returns the order row including customer, PO reference, due date, status, totals.",
+  description: "Look up a single order AND its line items (garments). Accepts UUID, PO reference (e.g. 'PO-2026-0018'), or order number (e.g. 'SL-2026-OU7-001'). Returns the order plus an `items[]` array — each item has id, productName, productType, gradeGroup, quantity, currentSizeUnits (already-allocated total). Use this whenever the user references an order, then use the returned item IDs as orderItemId when calling add_size_breakdowns.",
   parameters: {
     type: "object",
-    properties: { orderId: { type: "string", description: "Order id (uuid)" } },
+    properties: {
+      orderId: { type: "string", description: "Order UUID, PO reference (PO-YYYY-NNNN), or order number (SL-YYYY-XXX-NNN). All three resolve to the same order." },
+    },
     required: ["orderId"],
   },
   async execute(args) {
-    const rows = await db.select().from(orders).where(eq(orders.id, args.orderId)).limit(1);
-    return rows[0] || { error: "not_found" };
+    const q = String(args.orderId || "").trim();
+    if (!q) return { error: "no_identifier_provided" };
+
+    // 1. Exact UUID
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q)) {
+      const rows = await db.select().from(orders).where(eq(orders.id, q)).limit(1);
+      if (rows[0]) return hydrateOrder(rows[0]);
+      return { error: "not_found", tried: "uuid" };
+    }
+
+    // 2. PO reference (case-insensitive exact)
+    const byPo = await db.select().from(orders).where(ilike(orders.poReference, q)).limit(2);
+    if (byPo.length === 1) return hydrateOrder(byPo[0]);
+    if (byPo.length > 1) return { error: "ambiguous", field: "poReference", matches: byPo.map((o) => ({ id: o.id, poReference: o.poReference, orderNumber: o.orderNumber, accountName: o.accountName })) };
+
+    // 3. Order number (case-insensitive exact)
+    const byNum = await db.select().from(orders).where(ilike(orders.orderNumber, q)).limit(2);
+    if (byNum.length === 1) return hydrateOrder(byNum[0]);
+    if (byNum.length > 1) return { error: "ambiguous", field: "orderNumber", matches: byNum.map((o) => ({ id: o.id, poReference: o.poReference, orderNumber: o.orderNumber, accountName: o.accountName })) };
+
+    // 4. Last resort — partial match on either field
+    const partial = await db.select().from(orders).where(or(ilike(orders.poReference, `%${q}%`), ilike(orders.orderNumber, `%${q}%`))).limit(5);
+    if (partial.length === 1) return hydrateOrder(partial[0]);
+    if (partial.length > 1) return { error: "ambiguous", field: "partial_match", matches: partial.map((o) => ({ id: o.id, poReference: o.poReference, orderNumber: o.orderNumber, accountName: o.accountName })) };
+
+    return { error: "not_found", searched: q };
   },
 };
 
