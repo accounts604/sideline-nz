@@ -4,9 +4,18 @@
 import { db } from "../db";
 import { ezraConversations, ezraMessages } from "@shared/schema";
 import { and, eq, desc } from "drizzle-orm";
-import { runChatTurn, type ChatTurnInput, type ChatTurnOutput, EZRA_TOOLS_AVAILABLE } from "./runner";
+// Provider switch — AI_PROVIDER env picks Gemini (default, free) or
+// Claude Sonnet (better tool use, needs ANTHROPIC_API_KEY credit). Both
+// runners share the same {ChatTurnInput, ChatTurnOutput} signatures, so
+// callers don't care which one's wired.
+import { runChatTurn as runChatTurnGemini, type ChatTurnInput, type ChatTurnOutput, EZRA_TOOLS_AVAILABLE } from "./runner";
+import { runChatTurn as runChatTurnClaude } from "./runner-claude";
 
-export { runChatTurn, EZRA_TOOLS_AVAILABLE };
+const AI_PROVIDER = process.env.AI_PROVIDER || "gemini";
+export const runChatTurn: typeof runChatTurnGemini =
+  AI_PROVIDER === "claude" ? runChatTurnClaude : runChatTurnGemini;
+
+export { EZRA_TOOLS_AVAILABLE };
 export type { ChatTurnInput, ChatTurnOutput };
 
 // Get-or-create a conversation. The caller passes a logical key (userId +

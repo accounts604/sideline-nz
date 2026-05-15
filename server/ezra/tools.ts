@@ -11,7 +11,7 @@
 // a separate dynamic registry layered on top.
 
 import { db } from "../db";
-import { orders, clubAccounts, orderItems, designFiles } from "@shared/schema";
+import { orders, clubAccounts, orderItems, designFiles, orderSizeBreakdowns } from "@shared/schema";
 import { eq, desc, and, or, ilike } from "drizzle-orm";
 import { SIDELINE_PRODUCTS } from "@shared/product-catalog";
 import { runTask as runAiTask } from "../ai";
@@ -222,6 +222,79 @@ const extractColoursTool: ToolDefinition = {
   },
 };
 
+// ─── Action tool: bulk-write size breakdowns ─────────────────────────
+//
+// First action tool exposed to Ezra (read-only set is everything above).
+// Used when the user pastes a size list / roster and asks to apply it to
+// an order. Each row becomes one orderSizeBreakdowns row — already the
+// right shape for the per-player customisation flow shipped earlier.
+//
+// Does NOT delete or modify existing breakdowns; it appends. If Romero
+// wants a clean rewrite he says "clear sizes first" and Ezra would call
+// delete (not yet implemented) before this.
+
+const addSizeBreakdownsTool: ToolDefinition = {
+  name: "add_size_breakdowns",
+  description: "Append per-row size breakdowns to an order item. Use when the user pastes or describes a size list / customisation roster and asks to apply it to an order. Each row creates one orderSizeBreakdowns row. Existing breakdowns are NOT touched — this is additive. If the user says 'replace' or 'clear first', refuse and tell them to delete in the UI before re-adding (no delete tool yet).",
+  parameters: {
+    type: "object",
+    properties: {
+      orderItemId: { type: "string", description: "Order item id (use list_recent_designs or get_order to find it)" },
+      rows: {
+        type: "array",
+        description: "Per-row size data. Each row = one unit unless `quantity` is set.",
+        items: {
+          type: "object",
+          properties: {
+            size: { type: "string", description: "Size code (e.g. 'Y12', 'M', 'XL', '2XL')" },
+            quantity: { type: "integer", description: "Default 1. Set higher for blank/unnamed bulk sizes." },
+            playerName: { type: "string", description: "Optional player name for customisation" },
+            playerNumber: { type: "string", description: "Optional player number" },
+            namePlacement: { type: "string", description: "Where on the garment the name goes. Use canonical options when possible: 'Back Below Number', 'Back Upper', 'Back Mid', 'Left Chest', 'Right Chest', 'Front Center', 'Left Sleeve', 'Right Sleeve'. Free-text accepted for custom placements." },
+          },
+          required: ["size"],
+        },
+      },
+    },
+    required: ["orderItemId", "rows"],
+  },
+  async execute(args) {
+    const [item] = await db.select().from(orderItems).where(eq(orderItems.id, args.orderItemId)).limit(1);
+    if (!item) return { error: "order_item_not_found", orderItemId: args.orderItemId };
+
+    const rows = Array.isArray(args.rows) ? args.rows : [];
+    if (rows.length === 0) return { error: "no_rows_provided" };
+    if (rows.length > 100) return { error: "too_many_rows", limit: 100, received: rows.length };
+
+    const inserted: any[] = [];
+    for (const r of rows) {
+      if (!r.size || typeof r.size !== "string") continue;
+      const [row] = await db
+        .insert(orderSizeBreakdowns)
+        .values({
+          orderId: item.orderId,
+          orderItemId: item.id,
+          size: String(r.size).trim(),
+          quantity: Math.max(1, Math.min(parseInt(r.quantity, 10) || 1, 999)),
+          playerName: r.playerName ? String(r.playerName).slice(0, 80) : null,
+          playerNumber: r.playerNumber ? String(r.playerNumber).slice(0, 20) : null,
+          namePlacement: r.namePlacement ? String(r.namePlacement).slice(0, 60) : null,
+          notes: null,
+        })
+        .returning();
+      inserted.push({ id: row.id, size: row.size, quantity: row.quantity, playerName: row.playerName, namePlacement: row.namePlacement });
+    }
+
+    return {
+      ok: true,
+      orderId: item.orderId,
+      orderItemId: item.id,
+      inserted_count: inserted.length,
+      inserted,
+    };
+  },
+};
+
 // ─── Registry ─────────────────────────────────────────────────────────
 
 export const EZRA_TOOLS: ToolDefinition[] = [
@@ -233,6 +306,7 @@ export const EZRA_TOOLS: ToolDefinition[] = [
   getDropStatusTool,
   listRecentDesignsTool,
   extractColoursTool,
+  addSizeBreakdownsTool,
 ];
 
 export function findTool(name: string): ToolDefinition | undefined {
