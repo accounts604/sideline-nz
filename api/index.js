@@ -78334,18 +78334,23 @@ var PERSONA = `You are Ezra, Sideline Custom Goods' in-app operations copilot.
 Voice: direct, terse, NZ-shop. No corporate fluff. Answer the question, then stop.
 
 What you handle:
+- Looking up orders, clubs, products, supporter drops
 - Naming product images and logos to the canonical Sideline scheme (call name_asset)
-- Looking up orders, clubs, products, supporter drops (read-only tools)
-- Future: drafting POs from supporter orders, matching logos to placements, reconciling PO details (not yet wired)
+- Extracting hex + PMS codes from a mockup (call extract_colours)
+- Applying per-player size customisations to an order item \u2014 pastes of size lists / rosters land here (call add_size_breakdowns; it APPENDS, never overwrites)
+- Future: drafting POs from supporter orders, matching logos to placements, reconciling PO details, target prices for negotiation (not yet wired)
 
 How you work:
-- Use tools when the user is asking about real data (order status, club info, drop state) \u2014 never guess or fabricate.
+- Use tools when the user is asking about real data \u2014 never guess or fabricate.
 - For multi-step tasks, plan in your head, but only say what's relevant to the user.
 - If a tool fails or returns an error, say so plainly and suggest a next step. Don't retry the same call with the same args.
-- If the user asks something outside Sideline ops (general chat, off-topic), answer briefly and steer back to the work.
+- If the user asks something outside Sideline ops, answer briefly and steer back.
 
-Scope of authority (Phase A):
-- Read-only. You can look things up. You CANNOT yet modify orders, send emails, dispatch POs, or write to the database. If asked to do any of those, say "I can read but I can't write yet \u2014 once you've reviewed Phase D of the plan I'll have action tools."
+Scope of authority:
+- You CAN: read data, name assets, extract colours, append size breakdowns to an order item.
+- You CANNOT: send emails, dispatch POs, mutate financial fields, delete data. If asked, describe what you'd do and ask the user to do it in the UI.
+- Size paste workflow: when the user pastes a list like "Y14 Ross, Y14 Pips, Y12 Muir, M (blank x1)", parse it into rows for add_size_breakdowns. Default quantity=1 unless they explicitly say "\xD7 N" or "(blank x N)". Default namePlacement="Back Below Number" when the user mentions name placement on the back; ask if it's ambiguous. **Recap the parsed list before calling the tool** \u2014 never silently write 20+ rows.
+- Multi-garment allocation: when the user references a PO (by ref like "PO-2026-0018" or "SL-2026-OU7-001") and pastes a roster, FIRST call get_order \u2014 it returns the order's items[] with productName + id. The roster usually has structure: a section per garment ("ZIPPER HOODIES \u2014 Name on lower back (15 units): Y16 Markham, \u2026", "SOFT SHELL JACKETS \u2014 Name on lower back (3 units): XL Manager, \u2026"). Match each section to one item in items[] (by productName fuzzy match), then call add_size_breakdowns(orderItemId=<that item's id>, rows=<that section's parsed rows>) ONCE per garment. Recap the plan (which item gets which rows, total per item) before any tool calls. If a section doesn't clearly map to an item, ask the user to clarify before guessing.
 
 Style rules:
 - Skip "I'll help you with that" / "Great question" / "Let me check". Just do the thing.
@@ -78420,17 +78425,58 @@ var nameAssetTool = {
     });
   }
 };
+async function hydrateOrder(order) {
+  const items = await db.select({
+    id: orderItems.id,
+    productName: orderItems.productName,
+    productType: orderItems.productType,
+    gradeGroup: orderItems.gradeGroup,
+    quantity: orderItems.quantity
+  }).from(orderItems).where(eq(orderItems.orderId, order.id));
+  const existing = await db.select().from(orderSizeBreakdowns).where(eq(orderSizeBreakdowns.orderId, order.id));
+  const filledByItem = {};
+  for (const b2 of existing) {
+    const slot = filledByItem[b2.orderItemId] ||= { totalUnits: 0, rowCount: 0 };
+    slot.totalUnits += b2.quantity;
+    slot.rowCount += 1;
+  }
+  return {
+    ...order,
+    items: items.map((i) => ({
+      ...i,
+      currentSizeUnits: filledByItem[i.id]?.totalUnits || 0,
+      currentSizeRowCount: filledByItem[i.id]?.rowCount || 0
+    }))
+  };
+}
 var getOrderTool = {
   name: "get_order",
-  description: "Look up a single order by id. Returns the order row including customer, PO reference, due date, status, totals.",
+  description: "Look up a single order AND its line items (garments). Accepts UUID, PO reference (e.g. 'PO-2026-0018'), or order number (e.g. 'SL-2026-OU7-001'). Returns the order plus an `items[]` array \u2014 each item has id, productName, productType, gradeGroup, quantity, currentSizeUnits (already-allocated total). Use this whenever the user references an order, then use the returned item IDs as orderItemId when calling add_size_breakdowns.",
   parameters: {
     type: "object",
-    properties: { orderId: { type: "string", description: "Order id (uuid)" } },
+    properties: {
+      orderId: { type: "string", description: "Order UUID, PO reference (PO-YYYY-NNNN), or order number (SL-YYYY-XXX-NNN). All three resolve to the same order." }
+    },
     required: ["orderId"]
   },
   async execute(args) {
-    const rows = await db.select().from(orders).where(eq(orders.id, args.orderId)).limit(1);
-    return rows[0] || { error: "not_found" };
+    const q = String(args.orderId || "").trim();
+    if (!q) return { error: "no_identifier_provided" };
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q)) {
+      const rows = await db.select().from(orders).where(eq(orders.id, q)).limit(1);
+      if (rows[0]) return hydrateOrder(rows[0]);
+      return { error: "not_found", tried: "uuid" };
+    }
+    const byPo = await db.select().from(orders).where(ilike(orders.poReference, q)).limit(2);
+    if (byPo.length === 1) return hydrateOrder(byPo[0]);
+    if (byPo.length > 1) return { error: "ambiguous", field: "poReference", matches: byPo.map((o) => ({ id: o.id, poReference: o.poReference, orderNumber: o.orderNumber, accountName: o.accountName })) };
+    const byNum = await db.select().from(orders).where(ilike(orders.orderNumber, q)).limit(2);
+    if (byNum.length === 1) return hydrateOrder(byNum[0]);
+    if (byNum.length > 1) return { error: "ambiguous", field: "orderNumber", matches: byNum.map((o) => ({ id: o.id, poReference: o.poReference, orderNumber: o.orderNumber, accountName: o.accountName })) };
+    const partial = await db.select().from(orders).where(or(ilike(orders.poReference, `%${q}%`), ilike(orders.orderNumber, `%${q}%`))).limit(5);
+    if (partial.length === 1) return hydrateOrder(partial[0]);
+    if (partial.length > 1) return { error: "ambiguous", field: "partial_match", matches: partial.map((o) => ({ id: o.id, poReference: o.poReference, orderNumber: o.orderNumber, accountName: o.accountName })) };
+    return { error: "not_found", searched: q };
   }
 };
 var getClubTool = {
