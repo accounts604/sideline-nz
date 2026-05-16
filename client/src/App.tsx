@@ -29,6 +29,8 @@ import AdminOrders from "@/pages/admin/orders";
 import AdminOrderDetail from "@/pages/admin/order-detail";
 import AdminCustomers from "@/pages/admin/customers";
 import AdminCustomerDetail from "@/pages/admin/customer-detail";
+import AdminSuppliers from "@/pages/admin/suppliers";
+import AdminSupplierDetail from "@/pages/admin/supplier-detail";
 import AdminVault from "@/pages/admin/vault";
 import AdminDesignReview from "@/pages/admin/design-review";
 import AdminPurchaseOrder from "@/pages/admin/purchase-order";
@@ -140,6 +142,12 @@ function Router() {
         </Route>
         <Route path="/admin/customers">
           {() => <AdminRoute><AdminCustomers /></AdminRoute>}
+        </Route>
+        <Route path="/admin/suppliers/:id">
+          {() => <AdminRoute><AdminSupplierDetail /></AdminRoute>}
+        </Route>
+        <Route path="/admin/suppliers">
+          {() => <AdminRoute><AdminSuppliers /></AdminRoute>}
         </Route>
         <Route path="/admin/vault">
           {() => <AdminRoute><AdminVault /></AdminRoute>}

@@ -13,6 +13,11 @@ export const users = pgTable("users", {
   teamName: text("team_name"),
   contactPhone: text("contact_phone"),
   ccEmail: text("cc_email"), // Supplier secondary contact (CC on PO emails)
+  // Suppliers only: product categories this supplier handles, used as fallback
+  // when raising a PO with no explicit assignedSupplierId — first supplier whose
+  // categories include the order's primary category gets auto-assigned.
+  // Category strings must match shared/product-catalog.ts category names exactly.
+  supplierCategories: text("supplier_categories").array(),
   stripeCustomerId: text("stripe_customer_id"),
   ghlContactId: text("ghl_contact_id"),
   emailVerified: boolean("email_verified").default(false),
@@ -654,3 +659,24 @@ export const ezraMessages = pgTable("ezra_messages", {
 export const insertEzraMessageSchema = createInsertSchema(ezraMessages).omit({ id: true, createdAt: true });
 export type InsertEzraMessage = z.infer<typeof insertEzraMessageSchema>;
 export type EzraMessage = typeof ezraMessages.$inferSelect;
+
+// Supplier pricelist — admin-maintained unit costs per supplier, populated from
+// invoices the supplier sends. Multiple rows per (supplier, productType) are
+// allowed for variants (sizeOrVariant) and price changes over time; the
+// effective_from timestamp wins ties — latest row applicable to a line gets used.
+export const supplierPrices = pgTable("supplier_prices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  supplierId: varchar("supplier_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  productType: text("product_type").notNull(),     // canonical id from shared/product-catalog.ts (e.g. "beanie")
+  sizeOrVariant: text("size_or_variant"),          // null = applies to all sizes
+  unitCostCents: integer("unit_cost_cents").notNull(),
+  currency: text("currency").notNull().default("USD"),
+  sourceInvoiceRef: text("source_invoice_ref"),    // free-text, e.g. "Alibaba order 273423355501021608" or "Invoice DN-2026-04-001"
+  effectiveFrom: timestamp("effective_from").notNull().defaultNow(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export const insertSupplierPriceSchema = createInsertSchema(supplierPrices).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertSupplierPrice = z.infer<typeof insertSupplierPriceSchema>;
+export type SupplierPrice = typeof supplierPrices.$inferSelect;

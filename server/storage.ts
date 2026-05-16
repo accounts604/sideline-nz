@@ -14,10 +14,11 @@ import {
   type OrderMessage, type InsertOrderMessage,
   type OrderActivity, type InsertOrderActivity,
   type ClubAccount, type InsertClubAccount,
+  type SupplierPrice, type InsertSupplierPrice,
   users, carts, cartItems, orders, orderItems, ghlProducts,
   designFiles, designComments, notifications,
   orderSizeBreakdowns, productionStages, qualityChecks, orderMessages, orderActivity,
-  clubAccounts
+  clubAccounts, supplierPrices
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, desc, count, ilike } from "drizzle-orm";
@@ -111,6 +112,14 @@ export interface IStorage {
   getOrdersByUser(userId: string): Promise<Order[]>;
   getOrdersByAssignedSupplier(supplierId: string): Promise<Order[]>;
   listSuppliers(): Promise<User[]>;
+  findSupplierForCategory(category: string): Promise<User | undefined>;
+  updateSupplierCategories(supplierId: string, categories: string[]): Promise<User | undefined>;
+
+  // Supplier pricelist
+  listSupplierPrices(supplierId: string): Promise<SupplierPrice[]>;
+  createSupplierPrice(price: InsertSupplierPrice): Promise<SupplierPrice>;
+  updateSupplierPrice(id: string, data: Partial<InsertSupplierPrice>): Promise<SupplierPrice | undefined>;
+  deleteSupplierPrice(id: string): Promise<void>;
 
   // Dashboard stats
   getDashboardStats(): Promise<{ totalOrders: number; pendingOrders: number; pendingDesigns: number; totalCustomers: number }>;
@@ -698,6 +707,53 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(users)
       .where(eq(users.role, "supplier"))
       .orderBy(desc(users.createdAt));
+  }
+
+  // Find the first supplier whose supplier_categories array contains the given
+  // category. Used by raise-po as the fallback when no supplier is assigned.
+  // Returns undefined if no supplier handles that category.
+  async findSupplierForCategory(category: string): Promise<User | undefined> {
+    const [row] = await db.select().from(users)
+      .where(and(
+        eq(users.role, "supplier"),
+        sql`${users.supplierCategories} @> ARRAY[${category}]::text[]`,
+      ))
+      .orderBy(desc(users.createdAt))
+      .limit(1);
+    return row;
+  }
+
+  async updateSupplierCategories(supplierId: string, categories: string[]): Promise<User | undefined> {
+    const [row] = await db.update(users)
+      .set({ supplierCategories: categories, updatedAt: new Date() })
+      .where(and(eq(users.id, supplierId), eq(users.role, "supplier")))
+      .returning();
+    return row;
+  }
+
+  // ===== Supplier pricelist =====
+
+  async listSupplierPrices(supplierId: string): Promise<SupplierPrice[]> {
+    return await db.select().from(supplierPrices)
+      .where(eq(supplierPrices.supplierId, supplierId))
+      .orderBy(desc(supplierPrices.effectiveFrom));
+  }
+
+  async createSupplierPrice(price: InsertSupplierPrice): Promise<SupplierPrice> {
+    const [row] = await db.insert(supplierPrices).values(price).returning();
+    return row;
+  }
+
+  async updateSupplierPrice(id: string, data: Partial<InsertSupplierPrice>): Promise<SupplierPrice | undefined> {
+    const [row] = await db.update(supplierPrices)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(supplierPrices.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteSupplierPrice(id: string): Promise<void> {
+    await db.delete(supplierPrices).where(eq(supplierPrices.id, id));
   }
 
   // Dashboard stats
