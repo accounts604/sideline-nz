@@ -6,7 +6,7 @@ import { z } from "zod";
 import { notifyDesignApproved, notifyDesignRejected, notifyOrderStatusChange } from "../notifications";
 import { sendInviteEmail, sendSupplierPoRaisedEmail, sendSupplierPoDispatchGmail } from "../email";
 import { db } from "../db";
-import { orders, orderActivity, designFiles, orderItems, orderSizeBreakdowns, clubAccounts } from "@shared/schema";
+import { orders, orderActivity, designFiles, orderItems, orderSizeBreakdowns, clubAccounts, users } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import {
   fetchSupporterOrdersByTag,
@@ -1699,6 +1699,7 @@ router.get("/suppliers", async (_req, res) => {
         id: u.id,
         email: u.email,
         supplierName: u.teamName,
+        categories: u.supplierCategories || [],
         // `password === ""` means the invite hasn't been accepted yet
         inviteAccepted: u.password !== "",
         createdAt: u.createdAt,
@@ -1707,6 +1708,138 @@ router.get("/suppliers", async (_req, res) => {
   } catch (err) {
     console.error("Admin list suppliers error:", err);
     res.status(500).json({ error: "Failed to load suppliers" });
+  }
+});
+
+// GET /suppliers/:id — full supplier detail (for the admin pricelist page).
+router.get("/suppliers/:id", async (req, res) => {
+  try {
+    const supplier = await storage.getUser(req.params.id);
+    if (!supplier || supplier.role !== "supplier") {
+      return res.status(404).json({ error: "Supplier not found" });
+    }
+    res.json({
+      id: supplier.id,
+      email: supplier.email,
+      supplierName: supplier.teamName,
+      contactPhone: supplier.contactPhone,
+      ccEmail: supplier.ccEmail,
+      categories: supplier.supplierCategories || [],
+      inviteAccepted: supplier.password !== "",
+      createdAt: supplier.createdAt,
+    });
+  } catch (err) {
+    console.error("Admin get supplier error:", err);
+    res.status(500).json({ error: "Failed to load supplier" });
+  }
+});
+
+// PATCH /suppliers/:id — update categories / contact fields.
+const updateSupplierSchema = z.object({
+  categories: z.array(z.string().min(1)).optional(),
+  contactPhone: z.string().nullable().optional(),
+  ccEmail: z.string().email().nullable().optional(),
+  supplierName: z.string().min(1).optional(),
+});
+
+router.patch("/suppliers/:id", async (req, res) => {
+  try {
+    const body = updateSupplierSchema.parse(req.body);
+    const supplier = await storage.getUser(req.params.id);
+    if (!supplier || supplier.role !== "supplier") {
+      return res.status(404).json({ error: "Supplier not found" });
+    }
+    const patch: any = { updatedAt: new Date() };
+    if (body.categories !== undefined) patch.supplierCategories = body.categories;
+    if (body.contactPhone !== undefined) patch.contactPhone = body.contactPhone;
+    if (body.ccEmail !== undefined) patch.ccEmail = body.ccEmail;
+    if (body.supplierName !== undefined) patch.teamName = body.supplierName;
+    await db.update(users).set(patch).where(eq(users.id, supplier.id));
+    res.json({ ok: true });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin update supplier error:", err);
+    res.status(500).json({ error: "Failed to update supplier" });
+  }
+});
+
+// ============ SUPPLIER PRICELIST ============
+// Admin-only. Each row = one unit cost from a supplier invoice. Multiple rows per
+// product allowed (per size / over time); the app picks the latest effective row
+// when sourcing live cost for a line.
+
+const supplierPriceSchema = z.object({
+  productType: z.string().min(1),
+  sizeOrVariant: z.string().nullable().optional(),
+  unitCostCents: z.number().int().min(0),
+  currency: z.string().min(3).max(3).default("USD"),
+  sourceInvoiceRef: z.string().nullable().optional(),
+  effectiveFrom: z.string().datetime().optional(),
+  notes: z.string().nullable().optional(),
+});
+
+router.get("/suppliers/:id/prices", async (req, res) => {
+  try {
+    const supplier = await storage.getUser(req.params.id);
+    if (!supplier || supplier.role !== "supplier") {
+      return res.status(404).json({ error: "Supplier not found" });
+    }
+    const prices = await storage.listSupplierPrices(req.params.id);
+    res.json({ prices });
+  } catch (err) {
+    console.error("Admin list supplier prices error:", err);
+    res.status(500).json({ error: "Failed to load prices" });
+  }
+});
+
+router.post("/suppliers/:id/prices", async (req, res) => {
+  try {
+    const supplier = await storage.getUser(req.params.id);
+    if (!supplier || supplier.role !== "supplier") {
+      return res.status(404).json({ error: "Supplier not found" });
+    }
+    const body = supplierPriceSchema.parse(req.body);
+    const price = await storage.createSupplierPrice({
+      supplierId: supplier.id,
+      productType: body.productType,
+      sizeOrVariant: body.sizeOrVariant ?? null,
+      unitCostCents: body.unitCostCents,
+      currency: body.currency,
+      sourceInvoiceRef: body.sourceInvoiceRef ?? null,
+      effectiveFrom: body.effectiveFrom ? new Date(body.effectiveFrom) : new Date(),
+      notes: body.notes ?? null,
+    });
+    res.status(201).json(price);
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin create supplier price error:", err);
+    res.status(500).json({ error: "Failed to create price" });
+  }
+});
+
+router.patch("/suppliers/:id/prices/:priceId", async (req, res) => {
+  try {
+    const body = supplierPriceSchema.partial().parse(req.body);
+    const updated = await storage.updateSupplierPrice(req.params.priceId, {
+      ...body,
+      effectiveFrom: body.effectiveFrom ? new Date(body.effectiveFrom) : undefined,
+    } as any);
+    if (!updated) return res.status(404).json({ error: "Price not found" });
+    res.json(updated);
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin update supplier price error:", err);
+    res.status(500).json({ error: "Failed to update price" });
+  }
+});
+
+router.delete("/suppliers/:id/prices/:priceId", async (req, res) => {
+  try {
+    await storage.deleteSupplierPrice(req.params.priceId);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Admin delete supplier price error:", err);
+    res.status(500).json({ error: "Failed to delete price" });
   }
 });
 
@@ -1882,7 +2015,45 @@ async function dispatchPoToSupplier(
   const order = await storage.getOrder(orderId);
   if (!order) return { ok: false, status: 404, error: "Order not found" };
 
-  const supplierId = opts.supplierId || order.assignedSupplierId;
+  let supplierId = opts.supplierId || order.assignedSupplierId;
+  let autoAssignedByCategory = false;
+
+  // Fallback: if no supplier is explicitly set, derive one from the order items'
+  // product categories. Each supplier opts in to categories via
+  // users.supplier_categories (e.g. Suqian Dnice handles "Headwear"). If all
+  // distinct categories on this order resolve to the same supplier, auto-assign;
+  // if they conflict, fail with a clear error so the admin picks manually.
+  if (!supplierId) {
+    const items = await storage.getOrderItems(order.id);
+    const categories = new Set<string>();
+    for (const it of items) {
+      const product = SIDELINE_PRODUCTS.find((p) => p.id === it.productType);
+      if (product?.category) categories.add(product.category);
+    }
+    const candidateSupplierIds = new Set<string>();
+    const matchedSuppliers: Array<{ category: string; supplier: { id: string; teamName: string | null } }> = [];
+    for (const category of Array.from(categories)) {
+      const match = await storage.findSupplierForCategory(category);
+      if (match) {
+        candidateSupplierIds.add(match.id);
+        matchedSuppliers.push({ category, supplier: { id: match.id, teamName: match.teamName } });
+      }
+    }
+    if (candidateSupplierIds.size === 1) {
+      supplierId = matchedSuppliers[0].supplier.id;
+      autoAssignedByCategory = true;
+    } else if (candidateSupplierIds.size > 1) {
+      const breakdown = matchedSuppliers
+        .map((m) => `${m.category} → ${m.supplier.teamName || m.supplier.id}`)
+        .join("; ");
+      return {
+        ok: false,
+        status: 400,
+        error: `Order spans categories with different default suppliers (${breakdown}) — assign one manually before raising the PO.`,
+      };
+    }
+  }
+
   if (!supplierId) {
     return {
       ok: false,
@@ -2017,6 +2188,7 @@ async function dispatchPoToSupplier(
       supplierName: supplier.teamName,
       supplierEmail: supplier.email,
       supplierCcEmail: supplier.ccEmail || null,
+      autoAssignedByCategory,
       gmailMessageId,
       poPdfId: poPdfResult?.pdfId || null,
       instructionsDocId,
