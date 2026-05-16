@@ -2020,9 +2020,11 @@ async function dispatchPoToSupplier(
 
   // Fallback: if no supplier is explicitly set, derive one from the order items'
   // product categories. Each supplier opts in to categories via
-  // users.supplier_categories (e.g. Suqian Dnice handles "Headwear"). If all
-  // distinct categories on this order resolve to the same supplier, auto-assign;
-  // if they conflict, fail with a clear error so the admin picks manually.
+  // users.supplier_categories (e.g. Suqian Dnice handles "Headwear"). Auto-assign
+  // only when EVERY category present has a matched supplier AND they all resolve
+  // to the same one — otherwise fail loudly so the admin handles the split. This
+  // prevents accidentally dispatching mixed orders (e.g. headwear + apparel) to
+  // a supplier that only handles part of them.
   if (!supplierId) {
     const items = await storage.getOrderItems(order.id);
     const categories = new Set<string>();
@@ -2032,17 +2034,17 @@ async function dispatchPoToSupplier(
     }
     const candidateSupplierIds = new Set<string>();
     const matchedSuppliers: Array<{ category: string; supplier: { id: string; teamName: string | null } }> = [];
+    const unmatchedCategories: string[] = [];
     for (const category of Array.from(categories)) {
       const match = await storage.findSupplierForCategory(category);
       if (match) {
         candidateSupplierIds.add(match.id);
         matchedSuppliers.push({ category, supplier: { id: match.id, teamName: match.teamName } });
+      } else {
+        unmatchedCategories.push(category);
       }
     }
-    if (candidateSupplierIds.size === 1) {
-      supplierId = matchedSuppliers[0].supplier.id;
-      autoAssignedByCategory = true;
-    } else if (candidateSupplierIds.size > 1) {
+    if (candidateSupplierIds.size > 1) {
       const breakdown = matchedSuppliers
         .map((m) => `${m.category} → ${m.supplier.teamName || m.supplier.id}`)
         .join("; ");
@@ -2051,6 +2053,19 @@ async function dispatchPoToSupplier(
         status: 400,
         error: `Order spans categories with different default suppliers (${breakdown}) — assign one manually before raising the PO.`,
       };
+    }
+    if (candidateSupplierIds.size === 1 && unmatchedCategories.length > 0) {
+      const matchedName = matchedSuppliers[0].supplier.teamName || matchedSuppliers[0].supplier.id;
+      const matchedCats = matchedSuppliers.map((m) => m.category).join(", ");
+      return {
+        ok: false,
+        status: 400,
+        error: `Order mixes categories handled by ${matchedName} (${matchedCats}) with categories that have no default supplier (${unmatchedCategories.join(", ")}) — assign manually or split the order before raising the PO.`,
+      };
+    }
+    if (candidateSupplierIds.size === 1) {
+      supplierId = matchedSuppliers[0].supplier.id;
+      autoAssignedByCategory = true;
     }
   }
 
