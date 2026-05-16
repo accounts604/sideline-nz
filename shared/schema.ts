@@ -186,6 +186,15 @@ export const orderItems = pgTable("order_items", {
   designNotes: text("design_notes"), // Any notes about this product line
   designBrief: text("design_brief"), // AI-generated description of design layout, positions, elements (Gemini)
   sizeChartType: text("size_chart_type"), // key from shared/size-charts.ts; auto-set from productType, admin can override
+  // Supplier-side cost stamped on the line when raise-PO fires. unitAmount
+  // remains the client-facing price; these fields capture what we actually
+  // pay the supplier for the line, so margin analytics + Shopify cost
+  // write-back have a clean source. Populated from the latest matching
+  // supplier_prices row when the assigned supplier has one for this productType.
+  supplierUnitCostCents: integer("supplier_unit_cost_cents"),
+  supplierCostCurrency: text("supplier_cost_currency"),     // ISO 4217, e.g. 'USD'
+  supplierCostSourceId: varchar("supplier_cost_source_id"), // supplier_prices.id (not enforced as FK so deleting a price doesn't lose the stamp)
+  supplierCostAppliedAt: timestamp("supplier_cost_applied_at"),
 });
 
 export const insertOrderItemSchema = createInsertSchema(orderItems).omit({ id: true });

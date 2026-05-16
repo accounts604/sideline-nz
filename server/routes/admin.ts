@@ -2074,6 +2074,35 @@ async function dispatchPoToSupplier(
       .where(eq(orders.id, order.id));
   }
 
+  // 1b. Stamp supplier cost on each line from the latest matching pricelist row.
+  // Non-destructive: each line gets supplier_unit_cost_cents + currency + source
+  // ref. Items without a matching price are left untouched. This is the source
+  // of truth for margin analytics; unitAmount remains the client sell price.
+  const appliedCosts: Array<{ orderItemId: string; productType: string; unitCostCents: number; currency: string; sourceId: string }> = [];
+  {
+    const items = await storage.getOrderItems(order.id);
+    for (const it of items) {
+      if (!it.productType) continue;
+      const price = await storage.findSupplierPriceForLine(supplierId, it.productType, it.size ?? null);
+      if (!price) continue;
+      await db.update(orderItems)
+        .set({
+          supplierUnitCostCents: price.unitCostCents,
+          supplierCostCurrency: price.currency,
+          supplierCostSourceId: price.id,
+          supplierCostAppliedAt: new Date(),
+        })
+        .where(eq(orderItems.id, it.id));
+      appliedCosts.push({
+        orderItemId: it.id,
+        productType: it.productType,
+        unitCostCents: price.unitCostCents,
+        currency: price.currency,
+        sourceId: price.id,
+      });
+    }
+  }
+
   // 2. Push GHL to PO Raised (if the order is linked to a GHL opportunity)
   let ghlPushResult: { success: boolean; reason?: string } = { success: false, reason: "no_ghl_link" };
   if (order.ghlOpportunityId) {
@@ -2189,6 +2218,7 @@ async function dispatchPoToSupplier(
       supplierEmail: supplier.email,
       supplierCcEmail: supplier.ccEmail || null,
       autoAssignedByCategory,
+      appliedSupplierCosts: appliedCosts.length ? appliedCosts : undefined,
       gmailMessageId,
       poPdfId: poPdfResult?.pdfId || null,
       instructionsDocId,

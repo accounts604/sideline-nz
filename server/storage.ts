@@ -120,6 +120,7 @@ export interface IStorage {
   createSupplierPrice(price: InsertSupplierPrice): Promise<SupplierPrice>;
   updateSupplierPrice(id: string, data: Partial<InsertSupplierPrice>): Promise<SupplierPrice | undefined>;
   deleteSupplierPrice(id: string): Promise<void>;
+  findSupplierPriceForLine(supplierId: string, productType: string, sizeOrVariant: string | null): Promise<SupplierPrice | undefined>;
 
   // Dashboard stats
   getDashboardStats(): Promise<{ totalOrders: number; pendingOrders: number; pendingDesigns: number; totalCustomers: number }>;
@@ -754,6 +755,29 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSupplierPrice(id: string): Promise<void> {
     await db.delete(supplierPrices).where(eq(supplierPrices.id, id));
+  }
+
+  // Pick the supplier_price row that best matches a given line. Variant-specific
+  // rows beat null-variant rows; ties are broken by latest effective_from.
+  // Returns undefined if no row applies.
+  async findSupplierPriceForLine(
+    supplierId: string,
+    productType: string,
+    sizeOrVariant: string | null,
+  ): Promise<SupplierPrice | undefined> {
+    const rows = await db.select().from(supplierPrices)
+      .where(and(
+        eq(supplierPrices.supplierId, supplierId),
+        eq(supplierPrices.productType, productType),
+      ))
+      .orderBy(desc(supplierPrices.effectiveFrom));
+    if (!rows.length) return undefined;
+    if (sizeOrVariant) {
+      const variantMatch = rows.find((r) => r.sizeOrVariant === sizeOrVariant);
+      if (variantMatch) return variantMatch;
+    }
+    const generic = rows.find((r) => r.sizeOrVariant === null);
+    return generic ?? rows[0];
   }
 
   // Dashboard stats
