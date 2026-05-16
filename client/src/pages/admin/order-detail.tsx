@@ -46,6 +46,9 @@ interface OrderItem {
   designNotes: string | null;
   designBrief: string | null;
   sizeChartType: string | null;
+  supplierUnitCostCents: number | null;
+  supplierCostCurrency: string | null;
+  supplierCostAppliedAt: string | null;
 }
 
 interface DesignFile {
@@ -1446,6 +1449,14 @@ export default function AdminOrderDetail() {
                         </div>
                       );
                     })()}
+                    {item.supplierUnitCostCents != null && item.supplierCostCurrency && (
+                      <div
+                        title={item.supplierCostAppliedAt ? `Stamped from supplier pricelist at ${new Date(item.supplierCostAppliedAt).toLocaleString()}` : "Stamped from supplier pricelist"}
+                        style={{ fontSize: "9px", color: "#fb923c" }}
+                      >
+                        Supplier: {item.supplierCostCurrency} {(item.supplierUnitCostCents / 100).toFixed(2)}
+                      </div>
+                    )}
                   </div>
                 </Field>
                 <Field label="Qty" style={{ flex: 0.5 }}>
