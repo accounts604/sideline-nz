@@ -195,6 +195,12 @@ export const orderItems = pgTable("order_items", {
   supplierCostCurrency: text("supplier_cost_currency"),     // ISO 4217, e.g. 'USD'
   supplierCostSourceId: varchar("supplier_cost_source_id"), // supplier_prices.id (not enforced as FK so deleting a price doesn't lose the stamp)
   supplierCostAppliedAt: timestamp("supplier_cost_applied_at"),
+  // Per-line supplier override. When set, this line dispatches to this supplier
+  // regardless of orders.assigned_supplier_id. raise-PO groups items by their
+  // resolved supplier (precedence: this column → orders.assigned_supplier_id →
+  // category-based default in users.supplier_categories) and sends one PO email
+  // per supplier with only their lines. Null = follow order-level default.
+  assignedSupplierId: varchar("assigned_supplier_id").references(() => users.id),
 });
 
 export const insertOrderItemSchema = createInsertSchema(orderItems).omit({ id: true });

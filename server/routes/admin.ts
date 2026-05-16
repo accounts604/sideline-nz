@@ -7,6 +7,7 @@ import { notifyDesignApproved, notifyDesignRejected, notifyOrderStatusChange } f
 import { sendInviteEmail, sendSupplierPoRaisedEmail, sendSupplierPoDispatchGmail } from "../email";
 import { db } from "../db";
 import { orders, orderActivity, designFiles, orderItems, orderSizeBreakdowns, clubAccounts, users } from "@shared/schema";
+import type { OrderItem } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import {
   fetchSupporterOrdersByTag,
@@ -849,6 +850,7 @@ const updateItemSchema = z.object({
   designNotes: z.string().optional(),
   designBrief: z.string().optional(),
   sizeChartType: z.string().optional(),
+  assignedSupplierId: z.string().nullable().optional(), // per-line supplier override; null clears it
 });
 
 // DELETE /orders/:id/items/:itemId — remove a single garment line +
@@ -1982,174 +1984,72 @@ const raisePoSchema = z.object({
   supplierId: z.string().optional(), // optional if already assigned
 });
 
-// Shared dispatch helper — used by /raise-po (legacy single-PO path) AND
-// /po-decision (new sample+bulk approval-card path). Does the heavy lifting:
-// supplier assign + GHL push + Drive Instructions doc + folder share +
-// Gmail dispatch + PO PDF gen + Drive upload + activity log + sets
-// po_dispatched_at on the order. Returns the same shape the routes respond
-// with so they stay one-liners.
-//
-// The PDF is regenerated every dispatch — that's intentional, since admins
-// often edit qty/sizes after raising the sample card and tapping Send is
-// what locks it in.
-async function dispatchPoToSupplier(
-  orderId: string,
-  opts: { supplierId?: string; userId?: string },
-): Promise<
-  | {
-      ok: true;
-      supplierId: string;
-      supplierEmail: string;
-      supplierCcEmail: string | null;
-      emailSent: boolean;
-      gmailMessageId: string | null;
-      poPdfUploaded: boolean;
-      poPdfUrl: string | null;
-      instructionsDocId: string | null;
-      driveSharedWith: string[];
-      ghlPushed: boolean;
-      ghlPushReason: string | undefined;
-    }
-  | { ok: false; status: number; error: string }
-> {
-  const order = await storage.getOrder(orderId);
-  if (!order) return { ok: false, status: 404, error: "Order not found" };
-
-  let supplierId = opts.supplierId || order.assignedSupplierId;
-  let autoAssignedByCategory = false;
-
-  // Fallback: if no supplier is explicitly set, derive one from the order items'
-  // product categories. Each supplier opts in to categories via
-  // users.supplier_categories (e.g. Suqian Dnice handles "Headwear"). Auto-assign
-  // only when EVERY category present has a matched supplier AND they all resolve
-  // to the same one — otherwise fail loudly so the admin handles the split. This
-  // prevents accidentally dispatching mixed orders (e.g. headwear + apparel) to
-  // a supplier that only handles part of them.
-  if (!supplierId) {
-    const items = await storage.getOrderItems(order.id);
-    const categories = new Set<string>();
-    for (const it of items) {
-      const product = SIDELINE_PRODUCTS.find((p) => p.id === it.productType);
-      if (product?.category) categories.add(product.category);
-    }
-    const candidateSupplierIds = new Set<string>();
-    const matchedSuppliers: Array<{ category: string; supplier: { id: string; teamName: string | null } }> = [];
-    const unmatchedCategories: string[] = [];
-    for (const category of Array.from(categories)) {
-      const match = await storage.findSupplierForCategory(category);
-      if (match) {
-        candidateSupplierIds.add(match.id);
-        matchedSuppliers.push({ category, supplier: { id: match.id, teamName: match.teamName } });
-      } else {
-        unmatchedCategories.push(category);
-      }
-    }
-    if (candidateSupplierIds.size > 1) {
-      const breakdown = matchedSuppliers
-        .map((m) => `${m.category} → ${m.supplier.teamName || m.supplier.id}`)
-        .join("; ");
-      return {
-        ok: false,
-        status: 400,
-        error: `Order spans categories with different default suppliers (${breakdown}) — assign one manually before raising the PO.`,
-      };
-    }
-    if (candidateSupplierIds.size === 1 && unmatchedCategories.length > 0) {
-      const matchedName = matchedSuppliers[0].supplier.teamName || matchedSuppliers[0].supplier.id;
-      const matchedCats = matchedSuppliers.map((m) => m.category).join(", ");
-      return {
-        ok: false,
-        status: 400,
-        error: `Order mixes categories handled by ${matchedName} (${matchedCats}) with categories that have no default supplier (${unmatchedCategories.join(", ")}) — assign manually or split the order before raising the PO.`,
-      };
-    }
-    if (candidateSupplierIds.size === 1) {
-      supplierId = matchedSuppliers[0].supplier.id;
-      autoAssignedByCategory = true;
+// Resolve which supplier should receive a given order line.
+// Precedence: per-line override → order-level supplier → category-based default.
+// Returns null supplierId if nothing applies — the dispatch routine surfaces
+// these orphans as a clear error rather than dropping them on the floor.
+async function resolveSupplierForLine(
+  item: OrderItem,
+  orderLevelSupplierId: string | null,
+): Promise<{ supplierId: string | null; reason: string }> {
+  if (item.assignedSupplierId) return { supplierId: item.assignedSupplierId, reason: "line-override" };
+  if (orderLevelSupplierId) return { supplierId: orderLevelSupplierId, reason: "order-default" };
+  if (item.productType) {
+    const product = SIDELINE_PRODUCTS.find((p) => p.id === item.productType);
+    if (product?.category) {
+      const match = await storage.findSupplierForCategory(product.category);
+      if (match) return { supplierId: match.id, reason: `category-fallback:${product.category}` };
     }
   }
+  return { supplierId: null, reason: "unresolved" };
+}
 
-  if (!supplierId) {
-    return {
-      ok: false,
-      status: 400,
-      error: "No supplier assigned — pass supplierId or assign first",
-    };
-  }
+type SupplierGroupResult = {
+  supplierId: string;
+  supplierName: string | null;
+  supplierEmail: string;
+  itemIds: string[];
+  itemCount: number;
+  emailSent: boolean;
+  gmailMessageId: string | null;
+  appliedCosts: Array<{ orderItemId: string; productType: string; unitCostCents: number; currency: string; sourceId: string }>;
+  driveSharedWith: string[];
+};
 
-  const supplier = await storage.getUser(supplierId);
-  if (!supplier || supplier.role !== "supplier") {
-    return { ok: false, status: 400, error: "Invalid supplier ID" };
-  }
-
-  // 1. Assign if not already
-  if (order.assignedSupplierId !== supplierId) {
-    await db.update(orders)
-      .set({ assignedSupplierId: supplierId, updatedAt: new Date() })
-      .where(eq(orders.id, order.id));
-  }
-
-  // 1b. Stamp supplier cost on each line from the latest matching pricelist row.
-  // Non-destructive: each line gets supplier_unit_cost_cents + currency + source
-  // ref. Items without a matching price are left untouched. This is the source
-  // of truth for margin analytics; unitAmount remains the client sell price.
-  const appliedCosts: Array<{ orderItemId: string; productType: string; unitCostCents: number; currency: string; sourceId: string }> = [];
-  {
-    const items = await storage.getOrderItems(order.id);
-    for (const it of items) {
-      if (!it.productType) continue;
-      const price = await storage.findSupplierPriceForLine(supplierId, it.productType, it.size ?? null);
-      if (!price) continue;
-      await db.update(orderItems)
-        .set({
-          supplierUnitCostCents: price.unitCostCents,
-          supplierCostCurrency: price.currency,
-          supplierCostSourceId: price.id,
-          supplierCostAppliedAt: new Date(),
-        })
-        .where(eq(orderItems.id, it.id));
-      appliedCosts.push({
-        orderItemId: it.id,
-        productType: it.productType,
-        unitCostCents: price.unitCostCents,
-        currency: price.currency,
-        sourceId: price.id,
-      });
-    }
-  }
-
-  // 2. Push GHL to PO Raised (if the order is linked to a GHL opportunity)
-  let ghlPushResult: { success: boolean; reason?: string } = { success: false, reason: "no_ghl_link" };
-  if (order.ghlOpportunityId) {
-    ghlPushResult = await updateGhlOpportunityStage(order.ghlOpportunityId, "PO Raised");
-  }
-
-  // 3. Drop an Instructions doc into the Drive folder so the supplier sees
-  // dates + checklist alongside the artwork. Best-effort — Gmail still goes
-  // out even if Drive is down or the folder is missing.
-  let instructionsDocId: string | null = null;
-  if (order.driveFolderId) {
-    const instructionsBody = buildSupplierInstructions({
-      orderNumber: order.orderNumber,
-      poReference: order.poReference,
-      accountName: order.accountName,
-      supplierName: supplier.teamName,
-      dueDate: order.dueDate,
-      deliveryAddress: order.deliveryAddress,
-      deliveryAttention: order.deliveryAttention,
+// Dispatch one supplier's portion of the order: stamp supplier costs on the
+// supplier's items, email the supplier with ONLY their items, share the Drive
+// folder, log activity. Used per-group by dispatchOrderToSuppliers below.
+// Side-effects that are once-per-order (GHL push, PO PDF, marking dispatched)
+// happen in the outer function, not here.
+async function dispatchSupplierGroup(
+  order: any,
+  supplier: any,
+  items: any[],
+  opts: { userId?: string; resolutionReasons: Map<string, string> },
+): Promise<SupplierGroupResult> {
+  const appliedCosts: SupplierGroupResult["appliedCosts"] = [];
+  for (const it of items) {
+    if (!it.productType) continue;
+    const price = await storage.findSupplierPriceForLine(supplier.id, it.productType, it.size ?? null);
+    if (!price) continue;
+    await db.update(orderItems)
+      .set({
+        supplierUnitCostCents: price.unitCostCents,
+        supplierCostCurrency: price.currency,
+        supplierCostSourceId: price.id,
+        supplierCostAppliedAt: new Date(),
+      })
+      .where(eq(orderItems.id, it.id));
+    appliedCosts.push({
+      orderItemId: it.id,
+      productType: it.productType,
+      unitCostCents: price.unitCostCents,
+      currency: price.currency,
+      sourceId: price.id,
     });
-    const doc = await createDocInFolder({
-      parentFolderId: order.driveFolderId,
-      name: `${order.poReference || order.orderNumber} — Supplier Instructions`,
-      body: instructionsBody,
-    }).catch((err) => {
-      console.error("[dispatch-po] instructions doc create failed:", err);
-      return null;
-    });
-    if (doc) instructionsDocId = doc.id;
   }
 
-  // 4. Share the Drive folder with the supplier (and ccEmail).
+  // Share Drive folder with this supplier
   const driveShareResults: Array<{ email: string; permissionId: string | null }> = [];
   if (order.driveFolderId && supplier.email) {
     const targets = [supplier.email];
@@ -2168,11 +2068,11 @@ async function dispatchPoToSupplier(
     }
   }
 
-  // 5. Email the supplier via Gmail API. Wrapped in tracked() so dispatches
-  // land in integration_events — the supplier follow-up cron reads from there.
+  // Email this supplier with ONLY their lines (this is the whole point of the
+  // multi-supplier dispatch system — each supplier never sees what other
+  // suppliers are making for the same customer order).
   let gmailMessageId: string | null = null;
   if (supplier.email) {
-    const items = await storage.getOrderItems(order.id);
     gmailMessageId = await tracked(
       {
         system: "gmail",
@@ -2181,7 +2081,7 @@ async function dispatchPoToSupplier(
         userId: opts.userId,
         context: {
           poReference: order.poReference,
-          supplierId,
+          supplierId: supplier.id,
           supplierEmail: supplier.email,
           itemCount: items.length,
         },
@@ -2207,7 +2107,181 @@ async function dispatchPoToSupplier(
     );
   }
 
-  // 6. Generate PO PDF and upload to Drive folder.
+  await db.insert(orderActivity).values({
+    orderId: order.id,
+    userId: opts.userId,
+    action: "po_raised_to_supplier",
+    details: {
+      poKind: order.poKind,
+      supplierId: supplier.id,
+      supplierName: supplier.teamName,
+      supplierEmail: supplier.email,
+      supplierCcEmail: supplier.ccEmail || null,
+      itemIds: items.map((it: any) => it.id),
+      itemCount: items.length,
+      resolutionReasons: items.map((it: any) => ({ itemId: it.id, reason: opts.resolutionReasons.get(it.id) || "unknown" })),
+      appliedSupplierCosts: appliedCosts.length ? appliedCosts : undefined,
+      gmailMessageId,
+      driveShares: driveShareResults,
+    },
+  });
+
+  return {
+    supplierId: supplier.id,
+    supplierName: supplier.teamName,
+    supplierEmail: supplier.email!,
+    itemIds: items.map((it: any) => it.id),
+    itemCount: items.length,
+    emailSent: !!gmailMessageId,
+    gmailMessageId,
+    appliedCosts,
+    driveSharedWith: driveShareResults.filter((r) => r.permissionId).map((r) => r.email),
+  };
+}
+
+// Main dispatch entry point. Resolves each line's supplier, groups lines by
+// resolved supplier, and sends one PO email per supplier with only their lines.
+// Side-effects that are once-per-order (GHL stage push, PO PDF gen, marking
+// po_dispatched_at) happen ONCE here regardless of how many suppliers receive
+// emails.
+//
+// opts.supplierId, when provided, forces ALL items to that supplier (legacy
+// single-supplier path used by /po-decision when an admin taps "Send" on a
+// specific supplier's approval card).
+async function dispatchOrderToSuppliers(
+  orderId: string,
+  opts: { supplierId?: string; userId?: string },
+): Promise<
+  | {
+      ok: true;
+      groups: SupplierGroupResult[];
+      poPdfUploaded: boolean;
+      poPdfUrl: string | null;
+      instructionsDocId: string | null;
+      ghlPushed: boolean;
+      ghlPushReason: string | undefined;
+    }
+  | { ok: false; status: number; error: string }
+> {
+  const order = await storage.getOrder(orderId);
+  if (!order) return { ok: false, status: 404, error: "Order not found" };
+
+  const allItems = await storage.getOrderItems(order.id);
+  if (!allItems.length) {
+    return { ok: false, status: 400, error: "Order has no items to dispatch" };
+  }
+
+  // Step 1: resolve supplier per line.
+  // If opts.supplierId is set, force every line to that supplier (legacy
+  // single-supplier path used by /po-decision when admin taps "Send" on a
+  // specific approval card). Otherwise resolve per-line via the precedence
+  // chain in resolveSupplierForLine().
+  const orderLevelSupplierId = opts.supplierId || order.assignedSupplierId || null;
+  const resolutionReasons = new Map<string, string>();
+  const buckets = new Map<string, any[]>();
+  const unresolved: Array<{ itemId: string; productName: string }> = [];
+
+  for (const item of allItems) {
+    let resolution;
+    if (opts.supplierId) {
+      // Force-all path: every line goes to opts.supplierId regardless.
+      resolution = { supplierId: opts.supplierId, reason: "forced-by-caller" };
+    } else {
+      resolution = await resolveSupplierForLine(item, orderLevelSupplierId);
+    }
+    resolutionReasons.set(item.id, resolution.reason);
+    if (!resolution.supplierId) {
+      unresolved.push({ itemId: item.id, productName: item.productName });
+      continue;
+    }
+    const bucket = buckets.get(resolution.supplierId) || [];
+    bucket.push(item);
+    buckets.set(resolution.supplierId, bucket);
+  }
+
+  if (unresolved.length > 0) {
+    const names = unresolved.map((u) => u.productName).join(", ");
+    return {
+      ok: false,
+      status: 400,
+      error: `Cannot resolve supplier for ${unresolved.length} line${unresolved.length === 1 ? "" : "s"}: ${names}. Assign a supplier on the line, or set a default supplier on the order.`,
+    };
+  }
+
+  // Step 2: validate every resolved supplier exists + has supplier role.
+  // Fetch them all up front so we can bail before any side effects fire.
+  const suppliersById = new Map<string, any>();
+  for (const supplierId of Array.from(buckets.keys())) {
+    const sup = await storage.getUser(supplierId);
+    if (!sup || sup.role !== "supplier") {
+      return { ok: false, status: 400, error: `Invalid supplier ID ${supplierId}` };
+    }
+    suppliersById.set(supplierId, sup);
+  }
+
+  // Step 3: shared side effects that happen once per order, not per supplier
+  // group. Drop the Instructions doc into the Drive folder, push GHL stage.
+  let instructionsDocId: string | null = null;
+  if (order.driveFolderId) {
+    // Instructions doc lists ALL suppliers receiving this order so internal
+    // tracking is unified even though each supplier only sees their own email.
+    const supplierNames = Array.from(suppliersById.values()).map((s) => s.teamName).filter(Boolean).join(", ");
+    const instructionsBody = buildSupplierInstructions({
+      orderNumber: order.orderNumber,
+      poReference: order.poReference,
+      accountName: order.accountName,
+      supplierName: supplierNames || null,
+      dueDate: order.dueDate,
+      deliveryAddress: order.deliveryAddress,
+      deliveryAttention: order.deliveryAttention,
+    });
+    const doc = await createDocInFolder({
+      parentFolderId: order.driveFolderId,
+      name: `${order.poReference || order.orderNumber} — Supplier Instructions`,
+      body: instructionsBody,
+    }).catch((err) => {
+      console.error("[dispatch-po] instructions doc create failed:", err);
+      return null;
+    });
+    if (doc) instructionsDocId = doc.id;
+  }
+
+  let ghlPushResult: { success: boolean; reason?: string } = { success: false, reason: "no_ghl_link" };
+  if (order.ghlOpportunityId) {
+    ghlPushResult = await updateGhlOpportunityStage(order.ghlOpportunityId, "PO Raised");
+  }
+
+  // Step 4: keep orders.assigned_supplier_id useful for callers that still
+  // expect a single supplier on the order. Pin it to the supplier whose
+  // bucket has the most items (most representative). Per-line records are
+  // the source of truth from here on.
+  let dominantSupplierId: string | null = null;
+  let dominantCount = -1;
+  for (const [sid, items] of Array.from(buckets.entries())) {
+    if (items.length > dominantCount) {
+      dominantCount = items.length;
+      dominantSupplierId = sid;
+    }
+  }
+  if (dominantSupplierId && order.assignedSupplierId !== dominantSupplierId) {
+    await db.update(orders)
+      .set({ assignedSupplierId: dominantSupplierId, updatedAt: new Date() })
+      .where(eq(orders.id, order.id));
+  }
+
+  // Step 5: dispatch each supplier group (stamp costs, share Drive, send email,
+  // log activity scoped to those items).
+  const groups: SupplierGroupResult[] = [];
+  for (const [supplierId, items] of Array.from(buckets.entries())) {
+    const supplier = suppliersById.get(supplierId);
+    const result = await dispatchSupplierGroup(order, supplier, items, {
+      userId: opts.userId,
+      resolutionReasons,
+    });
+    groups.push(result);
+  }
+
+  // Step 6: PO PDF (one PDF per order, contains all lines for admin reference).
   let poPdfResult: { pdfId: string; pdfUrl: string } | null = null;
   if (order.driveFolderId) {
     poPdfResult = await uploadPoPdfToDrive(order.id, order.driveFolderId).catch((err) => {
@@ -2216,44 +2290,17 @@ async function dispatchPoToSupplier(
     });
   }
 
-  // 7. Mark the order dispatched + clear any hold state from a prior tap.
+  // Step 7: mark order dispatched + clear any prior hold.
   await db.update(orders)
     .set({ poDispatchedAt: new Date(), poHeldAt: null, poHoldReason: null, poHeldBy: null, updatedAt: new Date() })
     .where(eq(orders.id, order.id));
 
-  // 8. Activity log
-  await db.insert(orderActivity).values({
-    orderId: order.id,
-    userId: opts.userId,
-    action: "po_raised_to_supplier",
-    details: {
-      poKind: order.poKind,
-      supplierId,
-      supplierName: supplier.teamName,
-      supplierEmail: supplier.email,
-      supplierCcEmail: supplier.ccEmail || null,
-      autoAssignedByCategory,
-      appliedSupplierCosts: appliedCosts.length ? appliedCosts : undefined,
-      gmailMessageId,
-      poPdfId: poPdfResult?.pdfId || null,
-      instructionsDocId,
-      driveShares: driveShareResults,
-      ghlPushed: ghlPushResult.success,
-      ghlPushReason: ghlPushResult.reason,
-    },
-  });
-
   return {
     ok: true,
-    supplierId,
-    supplierEmail: supplier.email!,
-    supplierCcEmail: supplier.ccEmail || null,
-    emailSent: !!gmailMessageId,
-    gmailMessageId,
+    groups,
     poPdfUploaded: !!poPdfResult,
     poPdfUrl: poPdfResult?.pdfUrl || null,
     instructionsDocId,
-    driveSharedWith: driveShareResults.filter((r) => r.permissionId).map((r) => r.email),
     ghlPushed: ghlPushResult.success,
     ghlPushReason: ghlPushResult.reason,
   };
@@ -2262,7 +2309,7 @@ async function dispatchPoToSupplier(
 router.post("/orders/:id/raise-po", async (req, res) => {
   try {
     const { supplierId: bodySupplierId } = raisePoSchema.parse(req.body ?? {});
-    const result = await dispatchPoToSupplier(req.params.id, {
+    const result = await dispatchOrderToSuppliers(req.params.id, {
       supplierId: bodySupplierId,
       userId: (req as any).user?.userId,
     });
@@ -2560,7 +2607,7 @@ router.post("/orders/:id/po-decision", async (req, res) => {
     if (!order) return res.status(404).json({ error: "Order not found" });
 
     if (action === "send") {
-      const result = await dispatchPoToSupplier(order.id, { userId: (req as any).user?.userId });
+      const result = await dispatchOrderToSuppliers(order.id, { userId: (req as any).user?.userId });
       if (!result.ok) return res.status(result.status).json({ error: result.error });
       const { ok: _ok, ...rest } = result;
       return res.json({ ok: true, action: "send", ...rest });

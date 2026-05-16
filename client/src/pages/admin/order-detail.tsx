@@ -49,6 +49,7 @@ interface OrderItem {
   supplierUnitCostCents: number | null;
   supplierCostCurrency: string | null;
   supplierCostAppliedAt: string | null;
+  assignedSupplierId: string | null;
 }
 
 interface DesignFile {
@@ -1458,6 +1459,21 @@ export default function AdminOrderDetail() {
                       </div>
                     )}
                   </div>
+                </Field>
+                <Field label="Supplier" style={{ flex: 1.2 }}>
+                  <select
+                    value={item.assignedSupplierId || ""}
+                    onChange={(e) => updateItem.mutate({ itemId: item.id, assignedSupplierId: e.target.value || null })}
+                    style={{ ...inputStyle, width: "100%" }}
+                    title="Per-line supplier override. Empty = follow order-level supplier or category-based default."
+                  >
+                    <option value="" style={{ background: "#111" }}>— Auto (by category) —</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id} style={{ background: "#111" }}>
+                        {s.supplierName || s.email}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Qty" style={{ flex: 0.5 }}>
                   <EditableField
