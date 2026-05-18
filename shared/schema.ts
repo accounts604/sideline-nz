@@ -400,6 +400,21 @@ export const orderActivity = pgTable("order_activity", {
 });
 
 export const insertOrderActivitySchema = createInsertSchema(orderActivity).omit({ id: true, createdAt: true });
+
+// Register-interest signups from closed supporter-campaign drops on the
+// teamstore. Populated by POST /api/notify/:clubSlug; UNIQUE on
+// (clubSlug, email) at the DB level so re-submits collide gracefully.
+export const notifySignups = pgTable("notify_signups", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clubSlug: text("club_slug").notNull(),
+  email: text("email").notNull(),
+  collectionHandle: text("collection_handle").notNull(),
+  source: text("source"),
+  userAgent: text("user_agent"),
+  referrer: text("referrer"),
+  createdAt: timestamp("created_at").defaultNow(),
+  notifiedAt: timestamp("notified_at"),
+});
 export type InsertOrderActivity = z.infer<typeof insertOrderActivitySchema>;
 export type OrderActivity = typeof orderActivity.$inferSelect;
 
