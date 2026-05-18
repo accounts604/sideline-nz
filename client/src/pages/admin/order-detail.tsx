@@ -11,7 +11,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { upload } from "@vercel/blob/client";
 import { getQueryFn } from "@/lib/queryClient";
 import { computeMilestones } from "@shared/po-milestones";
-import { productsGroupedByCategory, getProductById, getShopifyCost } from "@shared/product-catalog";
+import { productsGroupedByCategory, getProductById, getShopifyCost, PUFFIN_USD_TO_NZD } from "@shared/product-catalog";
 import { BRANDING_METHODS } from "@shared/branding-methods";
 import { SIZE_CHART_LABELS, suggestSizeChart, getSizeChartTables, type SizeChartType } from "@shared/size-charts";
 import { LOGO_POSITIONS, NAME_PLACEMENT_OPTIONS, type LogoElement, type LogoPosition } from "@shared/schema";
@@ -1450,14 +1450,19 @@ export default function AdminOrderDetail() {
                         </div>
                       );
                     })()}
-                    {item.supplierUnitCostCents != null && item.supplierCostCurrency && (
-                      <div
-                        title={item.supplierCostAppliedAt ? `Stamped from supplier pricelist at ${new Date(item.supplierCostAppliedAt).toLocaleString()}` : "Stamped from supplier pricelist"}
-                        style={{ fontSize: "9px", color: "#fb923c" }}
-                      >
-                        Supplier: {item.supplierCostCurrency} {(item.supplierUnitCostCents / 100).toFixed(2)}
-                      </div>
-                    )}
+                    {item.supplierUnitCostCents != null && item.supplierCostCurrency && (() => {
+                      const usd = item.supplierUnitCostCents / 100;
+                      const nzd = item.supplierCostCurrency === "USD" ? usd * PUFFIN_USD_TO_NZD : usd;
+                      const showNzd = item.supplierCostCurrency === "USD";
+                      return (
+                        <div
+                          title={item.supplierCostAppliedAt ? `Stamped from supplier pricelist at ${new Date(item.supplierCostAppliedAt).toLocaleString()}${showNzd ? ` · FX ${PUFFIN_USD_TO_NZD}` : ""}` : "Stamped from supplier pricelist"}
+                          style={{ fontSize: "9px", color: "#fb923c" }}
+                        >
+                          Supplier: NZD ${nzd.toFixed(2)}{showNzd ? ` (${item.supplierCostCurrency} ${usd.toFixed(2)})` : ""}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </Field>
                 <Field label="Supplier" style={{ flex: 1.2 }}>
