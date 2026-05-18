@@ -1452,12 +1452,28 @@ router.post("/orders/:id/size-breakdowns", async (req, res) => {
 });
 
 // PATCH /orders/:id/size-breakdowns/:bid — update a breakdown
+// Strict allowlist — never let a stale/malformed caller move a breakdown across
+// orderItems (which would silently swap qtys between lines on the PO PDF).
+const sizeBreakdownPatchSchema = z.object({
+  size: z.string().min(1).optional(),
+  quantity: z.number().int().min(1).optional(),
+  playerName: z.string().nullable().optional(),
+  playerNumber: z.string().nullable().optional(),
+  namePlacement: z.string().max(50).nullable().optional(),
+  notes: z.string().nullable().optional(),
+}).strict();
+
 router.patch("/orders/:id/size-breakdowns/:bid", async (req, res) => {
   try {
-    const updated = await storage.updateSizeBreakdown(req.params.bid, req.body);
+    const data = sizeBreakdownPatchSchema.parse(req.body);
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({ error: "No updatable fields supplied" });
+    }
+    const updated = await storage.updateSizeBreakdown(req.params.bid, data);
     if (!updated) return res.status(404).json({ error: "Breakdown not found" });
     res.json(updated);
-  } catch (err) {
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin update breakdown error:", err);
     res.status(500).json({ error: "Failed to update breakdown" });
   }
