@@ -14,8 +14,11 @@ import {
   fetchCollectionStatus,
   fetchProductsInCollection,
   isShopifyAdminConfigured,
+  setSupporterCampaignStatus,
+  getCollectionGidByHandle,
   type SupporterOrder,
   type ShopifyProductLite,
+  type SupporterCampaignStatus,
 } from "../shopify-admin";
 import { matchSupporterProduct, extractSizeFromVariant } from "@shared/supporter-range-mapping";
 import { SIDELINE_PRODUCTS } from "@shared/product-catalog";
@@ -3238,6 +3241,21 @@ async function buildPoFromClosedDrop(
     .set({ supporterDropClosedAt: new Date(), supporterCollectionPublished: false, updatedAt: new Date() })
     .where(eq(clubAccounts.id, club.id));
 
+  // 6a. Flip Shopify supporter_campaign.status -> closed so the teamstore
+  // can split Open Pre-Orders (live only) from Shop by Club (live + closed).
+  // Best-effort: a missing GID or transient API error must not abort the PO
+  // build that already succeeded — log and continue.
+  try {
+    const collectionGid = await getCollectionGidByHandle(club.supporterCollectionHandle);
+    if (collectionGid) {
+      await setSupporterCampaignStatus(collectionGid, "closed");
+    } else {
+      console.warn(`[closed-drop-po] No Shopify collection found for handle ${club.supporterCollectionHandle} — skipping status metafield`);
+    }
+  } catch (err) {
+    console.error(`[closed-drop-po] Failed to set supporter_campaign.status=closed on ${club.supporterCollectionHandle}:`, err);
+  }
+
   await db.insert(orderActivity).values({
     orderId: order.id,
     userId,
@@ -3285,6 +3303,42 @@ router.get("/clubs", async (_req, res) => {
     res.json({ ok: true, clubs: rows });
   } catch (err: any) {
     res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// POST /api/admin/clubs/:id/set-collection-status — flip the supporter
+// campaign status metafield on the club's Shopify collection. Lets ops
+// correct a misfire (e.g. drop closed prematurely) or seed a new state
+// (live/closed/upcoming) without touching the Shopify admin UI.
+const setCollectionStatusSchema = z.object({
+  status: z.enum(["live", "closed", "upcoming"]),
+  closedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+router.post("/clubs/:id/set-collection-status", async (req, res) => {
+  try {
+    const { status, closedAt } = setCollectionStatusSchema.parse(req.body);
+    const [club] = await db.select().from(clubAccounts).where(eq(clubAccounts.id, req.params.id)).limit(1);
+    if (!club) return res.status(404).json({ error: "Club not found" });
+    if (!club.supporterCollectionHandle) {
+      return res.status(400).json({ error: "Club has no supporterCollectionHandle" });
+    }
+    if (!isShopifyAdminConfigured()) {
+      return res.status(503).json({ error: "Shopify Admin API not configured" });
+    }
+    const collectionGid = await getCollectionGidByHandle(club.supporterCollectionHandle);
+    if (!collectionGid) {
+      return res.status(404).json({ error: `Shopify collection not found for handle ${club.supporterCollectionHandle}` });
+    }
+    await setSupporterCampaignStatus(collectionGid, status as SupporterCampaignStatus, closedAt);
+    // No order_activity row — this action is club-scoped, not order-scoped,
+    // and order_activity.order_id is NOT NULL. Logged to stdout for now;
+    // promote to a club_activity table if we need a queryable audit trail.
+    console.log(`[supporter-status] club=${club.id} handle=${club.supporterCollectionHandle} status=${status}${closedAt ? ` closedAt=${closedAt}` : ""} actor=${(req as any).user?.userId || "unknown"}`);
+    res.json({ ok: true, handle: club.supporterCollectionHandle, status, closedAt: closedAt || null });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin set-collection-status error:", err);
+    res.status(500).json({ error: "Failed to set status", message: String(err?.message || err) });
   }
 });
 

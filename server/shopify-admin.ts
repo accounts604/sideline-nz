@@ -349,3 +349,75 @@ export function filterByDateRange(orders: SupporterOrder[], from?: string, to?: 
     return t >= fromMs && t <= toMs;
   });
 }
+
+// ─── Supporter-campaign status metafield ─────────────────────────
+//
+// One-source-of-truth for whether a supporter drop is live, closed, or
+// upcoming. Drives the Shop by Club / Open Pre-Orders split on the
+// teamstore (see spec: the storefront filters collections by this
+// metafield rather than by Online Store publication, so closed drops
+// stay browsable for SEO + "register interest" capture).
+//
+// Definitions live at namespace=supporter_campaign with keys:
+//   status (single_line_text_field, choices: live|closed|upcoming)
+//   closed_at (date, iso yyyy-mm-dd)
+//   notify_signup_url (url, optional)
+
+export type SupporterCampaignStatus = "live" | "closed" | "upcoming";
+
+const SET_COLLECTION_STATUS_MUTATION = /* GraphQL */ `
+  mutation SetCollectionStatus($metafields: [MetafieldsSetInput!]!) {
+    metafieldsSet(metafields: $metafields) {
+      metafields { id namespace key value }
+      userErrors { field message code }
+    }
+  }
+`;
+
+interface MetafieldsSetGQL {
+  metafieldsSet: {
+    metafields: Array<{ id: string; namespace: string; key: string; value: string }>;
+    userErrors: Array<{ field: string[]; message: string; code: string | null }>;
+  };
+}
+
+/**
+ * Write supporter_campaign.{status,closed_at} on a collection. If status is
+ * "closed" and no closedAtIso is supplied, today's date is used.
+ *
+ * Throws on userErrors from Shopify so callers can surface the failure.
+ */
+export async function setSupporterCampaignStatus(
+  collectionGid: string,
+  status: SupporterCampaignStatus,
+  closedAtIso?: string | null,
+): Promise<void> {
+  if (!isShopifyAdminConfigured()) {
+    throw new Error("Shopify Admin API not configured");
+  }
+  const metafields: Array<Record<string, string>> = [
+    { ownerId: collectionGid, namespace: "supporter_campaign", key: "status", type: "single_line_text_field", value: status },
+  ];
+  if (status === "closed") {
+    const date = closedAtIso || new Date().toISOString().slice(0, 10);
+    metafields.push({ ownerId: collectionGid, namespace: "supporter_campaign", key: "closed_at", type: "date", value: date });
+  }
+  const data = await adminFetch<MetafieldsSetGQL>(SET_COLLECTION_STATUS_MUTATION, { metafields });
+  if (data.metafieldsSet.userErrors.length) {
+    throw new Error("Shopify metafieldsSet userErrors: " + JSON.stringify(data.metafieldsSet.userErrors));
+  }
+}
+
+/**
+ * Resolve a collection handle to its Shopify GID so callers that only know
+ * the handle (e.g. from club_accounts.supporter_collection_handle) can write
+ * the status without a separate lookup at the call site.
+ */
+export async function getCollectionGidByHandle(handle: string): Promise<string | null> {
+  if (!isShopifyAdminConfigured()) return null;
+  const data = await adminFetch<{ collectionByHandle: { id: string } | null }>(
+    /* GraphQL */ `query($handle: String!){ collectionByHandle(handle: $handle){ id } }`,
+    { handle },
+  );
+  return data.collectionByHandle?.id ?? null;
+}
