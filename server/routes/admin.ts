@@ -2277,6 +2277,44 @@ async function dispatchOrderToSuppliers(
     suppliersById.set(supplierId, sup);
   }
 
+  // Step 2.5: ensure Drive folder exists. POs created via the older GHL flow
+  // (PO-2026-0007 → 0017) landed with driveFolderId=NULL — dispatch would
+  // succeed but no PDF upload, no folder share with the supplier, and the PO
+  // email link to Drive would be missing. Auto-create here so the dispatch
+  // never half-completes.
+  if (!order.driveFolderId) {
+    const dateStr = (order.createdAt ? new Date(order.createdAt) : new Date()).toISOString().slice(0, 10);
+    const companyForFolder = order.accountName?.trim() || "Sideline";
+    const contactForFolder =
+      [order.customerFirstName, order.customerLastName].filter(Boolean).join(" ").trim() ||
+      order.customerName?.trim() ||
+      order.customerEmail ||
+      "Unnamed Contact";
+    try {
+      const folder = await createClientFolder({
+        date: dateStr,
+        companyName: companyForFolder,
+        contactName: contactForFolder,
+      });
+      if (folder) {
+        await db.update(orders).set({
+          driveFolderId: folder.id,
+          driveFolderUrl: folder.webViewLink,
+          driveFolderName: folder.name,
+          updatedAt: new Date(),
+        }).where(eq(orders.id, order.id));
+        // Mutate the local copy so downstream steps pick it up.
+        order.driveFolderId = folder.id;
+        order.driveFolderUrl = folder.webViewLink;
+        order.driveFolderName = folder.name;
+      } else {
+        console.warn(`[dispatch-po] Drive folder auto-create returned null for ${order.poReference} — continuing without folder`);
+      }
+    } catch (err) {
+      console.error(`[dispatch-po] Drive folder auto-create failed for ${order.poReference}:`, err);
+    }
+  }
+
   // Step 3: shared side effects that happen once per order, not per supplier
   // group. Drop the Instructions doc into the Drive folder, push GHL stage.
   let instructionsDocId: string | null = null;
