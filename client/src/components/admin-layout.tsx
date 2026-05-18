@@ -24,6 +24,7 @@ import { EzraLauncher } from "./ezra-launcher";
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
+  { href: "/admin/triage", label: "Triage", icon: Activity },
   { href: "/admin/customers", label: "Customers", icon: Users },
   { href: "/admin/suppliers", label: "Suppliers", icon: Factory },
   { href: "/admin/vault", label: "File Vault", icon: FolderOpen },
