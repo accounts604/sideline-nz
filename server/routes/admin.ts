@@ -3350,6 +3350,46 @@ router.post("/clubs/:id/set-collection-status", async (req, res) => {
   }
 });
 
+// POST /api/admin/shopify/register-order-webhook — one-time setup that asks
+// Shopify to start POSTing orders/create to our auto-tag handler. Idempotent:
+// if a subscription with the same callback URL already exists, Shopify
+// returns a takenAddress userError — we surface that without retrying.
+router.post("/shopify/register-order-webhook", async (req, res) => {
+  if (!isShopifyAdminConfigured()) {
+    return res.status(503).json({ error: "Shopify Admin API not configured" });
+  }
+  const baseUrl = process.env.BASE_URL || "https://sidelinenz.com";
+  const callbackUrl = `${baseUrl}/api/webhooks/shopify/orders-create`;
+  const storeUrl = process.env.SHOPIFY_STORE_URL!;
+  const token = process.env.SHOPIFY_ADMIN_TOKEN!;
+  const apiVersion = process.env.SHOPIFY_ADMIN_API_VERSION || "2024-10";
+  const MUTATION = /* GraphQL */ `
+    mutation($topic: WebhookSubscriptionTopic!, $sub: WebhookSubscriptionInput!) {
+      webhookSubscriptionCreate(topic: $topic, webhookSubscription: $sub) {
+        webhookSubscription { id callbackUrl topic format }
+        userErrors { field message }
+      }
+    }
+  `;
+  try {
+    const r = await fetch(`https://${storeUrl}/admin/api/${apiVersion}/graphql.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+      body: JSON.stringify({ query: MUTATION, variables: {
+        topic: "ORDERS_CREATE",
+        sub: { callbackUrl, format: "JSON" },
+      }}),
+    });
+    const body = await r.json();
+    const userErrors = body?.data?.webhookSubscriptionCreate?.userErrors ?? [];
+    const sub = body?.data?.webhookSubscriptionCreate?.webhookSubscription;
+    res.json({ ok: !!sub, subscription: sub, userErrors, callbackUrl });
+  } catch (err: any) {
+    console.error("[register-webhook] error:", err);
+    res.status(500).json({ error: "Failed to register webhook", message: String(err?.message || err) });
+  }
+});
+
 // GET /api/admin/clubs/supporter-stats — live tally per club, pulled from
 // Shopify by collection-handle (immune to broken tag automation). Used by
 // the admin Supporter Campaigns page to render the build-PO table.

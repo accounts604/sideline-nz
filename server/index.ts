@@ -50,6 +50,12 @@ app.post(
   }
 );
 
+// Shopify webhook routes — must use express.raw() so HMAC verification can
+// hash the exact bytes Shopify sent. Mounted BEFORE express.json() for the
+// same reason as the Stripe webhook above.
+import shopifyWebhooksRouter from "./routes/webhooks/shopify-orders";
+app.use("/api/webhooks/shopify", express.raw({ type: "application/json", limit: "5mb" }), shopifyWebhooksRouter);
+
 // Pre-mount a larger JSON parser for the base64 image upload route. Has to
 // run BEFORE the global express.json() — once a 100KB body fails parsing
 // upstream, the route-scoped middleware never gets to retry with a higher
