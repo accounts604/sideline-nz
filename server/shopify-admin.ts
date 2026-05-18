@@ -198,6 +198,93 @@ export async function fetchSupporterOrdersByTag(tag: string): Promise<SupporterO
   return orders;
 }
 
+// ─── Collection-handle fallback for untagged orders ──────────────
+//
+// The supporter-campaign flow originally relied on Shopify Flow tagging each
+// order with `club:<slug>` on creation. When that automation breaks (as we
+// found on 2026-05-19: 0/157 orders tagged), `fetchSupporterOrdersByTag`
+// returns empty and `buildPoFromClosedDrop` builds nothing.
+//
+// This helper recovers by matching orders via line-item product handles
+// against the products in a given supporter collection. Slower than tag
+// lookup (queries every order in a date window, then filters) but immune
+// to broken Flows.
+
+export async function fetchSupporterOrdersByCollection(
+  collectionHandle: string,
+  opts?: { sinceDays?: number; maxOrders?: number },
+): Promise<SupporterOrder[]> {
+  if (!collectionHandle) return [];
+
+  const products = await fetchProductsInCollection(collectionHandle);
+  const productHandles = new Set(products.map((p) => p.handle).filter(Boolean));
+  if (productHandles.size === 0) return [];
+
+  const sinceDays = opts?.sinceDays ?? 90;
+  const maxOrders = opts?.maxOrders ?? 2000;
+  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const QUERY = /* GraphQL */ `
+    query OrdersSince($q: String!, $first: Int!, $after: String) {
+      orders(first: $first, after: $after, query: $q, sortKey: CREATED_AT, reverse: true) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id name createdAt tags
+          displayFinancialStatus displayFulfillmentStatus
+          currentTotalPriceSet { shopMoney { amount currencyCode } }
+          customer { firstName lastName email }
+          lineItems(first: 50) {
+            nodes {
+              title variantTitle quantity
+              originalUnitPriceSet { shopMoney { amount } }
+              product { handle }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const matched: SupporterOrder[] = [];
+  let after: string | null = null;
+  for (let page = 0; page < 20 && matched.length < maxOrders; page++) {
+    const data: any = await adminFetch(QUERY, { q: `created_at:>=${since}`, first: 100, after });
+    for (const n of data.orders.nodes) {
+      // Only retain orders that contain ≥1 line item from this collection.
+      const relevantLines = n.lineItems.nodes.filter((l: any) =>
+        l.product?.handle && productHandles.has(l.product.handle),
+      );
+      if (relevantLines.length === 0) continue;
+      const customerName = n.customer
+        ? [n.customer.firstName, n.customer.lastName].filter(Boolean).join(" ") || null
+        : null;
+      matched.push({
+        id: n.id,
+        number: n.name,
+        name: n.name,
+        customerName,
+        customerEmail: n.customer?.email || null,
+        totalCents: moneyToCents(n.currentTotalPriceSet.shopMoney.amount),
+        currency: n.currentTotalPriceSet.shopMoney.currencyCode,
+        financialStatus: n.displayFinancialStatus,
+        fulfillmentStatus: n.displayFulfillmentStatus,
+        createdAt: n.createdAt,
+        tags: n.tags,
+        lines: relevantLines.map((l: any) => ({
+          title: l.title,
+          variantTitle: l.variantTitle,
+          quantity: l.quantity,
+          unitPriceCents: moneyToCents(l.originalUnitPriceSet.shopMoney.amount),
+        })),
+      });
+    }
+    if (!data.orders.pageInfo.hasNextPage) break;
+    after = data.orders.pageInfo.endCursor;
+  }
+
+  return matched;
+}
+
 export interface SupporterOrderSummary {
   orderCount: number;
   unitsSold: number;

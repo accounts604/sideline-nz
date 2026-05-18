@@ -13,6 +13,7 @@ import {
   fetchSupporterOrdersByTag,
   fetchCollectionStatus,
   fetchProductsInCollection,
+  fetchSupporterOrdersByCollection,
   isShopifyAdminConfigured,
   setSupporterCampaignStatus,
   getCollectionGidByHandle,
@@ -3123,9 +3124,16 @@ async function buildPoFromClosedDrop(
   }
 
   // 1. Pull every Shopify order carrying the club's tag.
-  const supporterOrders: SupporterOrder[] = await fetchSupporterOrdersByTag(club.shopifyOrderTag);
+  //    Fallback: if Shopify Flow tagging is broken (we found 0/157 tagged on
+  //    2026-05-19), retry against the collection's products by line-item
+  //    handle. Tag path is preferred when it works (cheaper, exact).
+  let supporterOrders: SupporterOrder[] = await fetchSupporterOrdersByTag(club.shopifyOrderTag);
   if (!supporterOrders.length) {
-    return { error: "No supporter orders found for this club's tag", status: 400 };
+    console.warn(`[closed-drop-po] No tagged orders for ${club.shopifyOrderTag} — falling back to collection-handle lookup`);
+    supporterOrders = await fetchSupporterOrdersByCollection(club.supporterCollectionHandle);
+  }
+  if (!supporterOrders.length) {
+    return { error: "No supporter orders found via tag or collection-handle lookup", status: 400 };
   }
 
   // 2. Pull collection products so we can resolve title → product image.
@@ -3339,6 +3347,56 @@ router.post("/clubs/:id/set-collection-status", async (req, res) => {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin set-collection-status error:", err);
     res.status(500).json({ error: "Failed to set status", message: String(err?.message || err) });
+  }
+});
+
+// GET /api/admin/clubs/supporter-stats — live tally per club, pulled from
+// Shopify by collection-handle (immune to broken tag automation). Used by
+// the admin Supporter Campaigns page to render the build-PO table.
+router.get("/clubs/supporter-stats", async (_req, res) => {
+  try {
+    if (!isShopifyAdminConfigured()) {
+      return res.status(503).json({ error: "Shopify Admin API not configured" });
+    }
+    const allClubs = await db.select().from(clubAccounts);
+    const clubsWithCollection = allClubs.filter((c) => c.supporterCollectionHandle);
+    const stats = await Promise.all(clubsWithCollection.map(async (c) => {
+      try {
+        const orders = await fetchSupporterOrdersByCollection(c.supporterCollectionHandle!);
+        const units = orders.reduce((sum, o) => sum + o.lines.reduce((s, l) => s + l.quantity, 0), 0);
+        const revenueCents = orders.reduce((sum, o) => sum + o.totalCents, 0);
+        return {
+          id: c.id,
+          clubName: c.clubName,
+          email: c.email,
+          shopifyOrderTag: c.shopifyOrderTag,
+          collectionHandle: c.supporterCollectionHandle,
+          supporterDropClosedAt: c.supporterDropClosedAt,
+          profitShareTierBps: c.profitShareTierBps,
+          orderCount: orders.length,
+          unitsSold: units,
+          revenueCents,
+        };
+      } catch (err: any) {
+        return {
+          id: c.id,
+          clubName: c.clubName,
+          email: c.email,
+          shopifyOrderTag: c.shopifyOrderTag,
+          collectionHandle: c.supporterCollectionHandle,
+          supporterDropClosedAt: c.supporterDropClosedAt,
+          profitShareTierBps: c.profitShareTierBps,
+          orderCount: 0,
+          unitsSold: 0,
+          revenueCents: 0,
+          error: String(err?.message || err),
+        };
+      }
+    }));
+    res.json({ ok: true, generatedAt: new Date().toISOString(), clubs: stats });
+  } catch (err: any) {
+    console.error("[supporter-stats] error:", err);
+    res.status(500).json({ error: "Failed to load stats", message: String(err?.message || err) });
   }
 });
 
