@@ -13,6 +13,7 @@ import clubPortalRouter from "./club-portal";
 import supplierRouter from "./supplier";
 import { publicApprovalRouter } from "./approvals";
 import chatbotRouter from "./chatbot";
+import notifyRouter from "./notify";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -66,6 +67,9 @@ export async function registerRoutes(
 
   // Chatbot API for GHL Conversational AI (Jarvesi web chat)
   app.use("/api/chatbot", chatbotRouter);
+
+  // Public register-interest signups from closed supporter-campaign drops
+  app.use("/api/notify", notifyRouter);
 
   return httpServer;
 }
