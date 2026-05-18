@@ -21,7 +21,12 @@ interface Order {
   total: number;
   dueDate: string | null;
   createdAt: string;
+  supplierUsdCents: number;
+  pendingCostLines: number;
 }
+
+// Matches shared/product-catalog.ts PUFFIN_USD_TO_NZD; inlined to avoid a new import.
+const FX_USD_TO_NZD = 1.72;
 
 const iconBtnStyle: React.CSSProperties = {
   padding: "5px 8px",
@@ -95,6 +100,7 @@ export default function AdminOrders() {
   const [overdue, setOverdue] = useState(false);
   const [sortBy, setSortBy] = useState<"createdAt" | "dueDate">("createdAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
 
@@ -251,6 +257,34 @@ export default function AdminOrders() {
       </div>
 
       {/* Orders table */}
+      {/* Selection tally bar — sums supplier cost across selected orders.
+          Sits above the table so it stays put as you scroll the rows. */}
+      {data?.orders && selectedOrderIds.size > 0 && (() => {
+        const selected = data.orders.filter(o => selectedOrderIds.has(o.id));
+        const usdCents = selected.reduce((s, o) => s + (o.supplierUsdCents || 0), 0);
+        const pendingLines = selected.reduce((s, o) => s + (o.pendingCostLines || 0), 0);
+        const usd = usdCents / 100;
+        const nzd = usd * FX_USD_TO_NZD;
+        return (
+          <div style={{ marginBottom: "12px", padding: "14px 18px", background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.3)", borderRadius: "10px", display: "flex", alignItems: "center", gap: "20px", flexWrap: "wrap" }}>
+            <div style={{ fontSize: "10px", letterSpacing: "1px", textTransform: "uppercase", color: "#C9A84C", fontWeight: 700 }}>
+              Selected · {selectedOrderIds.size} order{selectedOrderIds.size === 1 ? "" : "s"}
+            </div>
+            <div style={{ flex: 1, display: "flex", gap: "24px", fontSize: "13px", color: "#fff", flexWrap: "wrap" }}>
+              <span><span style={{ color: "rgba(255,255,255,0.5)" }}>Supplier cost:</span> <b style={{ color: "#22c55e" }}>NZD ${nzd.toFixed(2)}</b></span>
+              <span style={{ color: "rgba(255,255,255,0.5)" }}>USD ${usd.toFixed(2)} · FX {FX_USD_TO_NZD}</span>
+              {pendingLines > 0 && <span style={{ color: "#fb923c", fontSize: "12px" }}>⚠ {pendingLines} line{pendingLines === 1 ? "" : "s"} quote-pending (not counted)</span>}
+            </div>
+            <button
+              onClick={() => setSelectedOrderIds(new Set())}
+              style={{ fontSize: "10px", padding: "5px 10px", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "5px", cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.4px", fontWeight: 600 }}
+            >
+              Clear
+            </button>
+          </div>
+        );
+      })()}
+
       <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", overflow: "hidden" }}>
         {isLoading ? (
           <div style={{ padding: "40px", textAlign: "center", color: "rgba(255,255,255,0.3)" }}>Loading...</div>
@@ -262,16 +296,41 @@ export default function AdminOrders() {
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                   {[
+                    { label: "select", noPad: true },
                     { label: "Order" },
                     { label: "Type" },
                     { label: "Customer" },
                     { label: "Stage" },
                     { label: "Design" },
-                    { label: "Est. Cost" },
+                    { label: "Supplier Cost" },
                     { label: "Due", sortKey: "dueDate" as const },
                     { label: "Created", sortKey: "createdAt" as const },
                     { label: "" },
                   ].map((h) => {
+                    if (h.label === "select") {
+                      const visibleIds = data.orders.map(o => o.id);
+                      const allSelected = visibleIds.length > 0 && visibleIds.every(id => selectedOrderIds.has(id));
+                      const someSelected = visibleIds.some(id => selectedOrderIds.has(id));
+                      return (
+                        <th key="select" style={{ padding: "12px 12px 12px 20px", width: "32px" }}>
+                          <input
+                            type="checkbox"
+                            checked={allSelected}
+                            ref={el => { if (el) el.indeterminate = !allSelected && someSelected; }}
+                            onChange={() => {
+                              setSelectedOrderIds(prev => {
+                                const next = new Set(prev);
+                                if (allSelected) visibleIds.forEach(id => next.delete(id));
+                                else visibleIds.forEach(id => next.add(id));
+                                return next;
+                              });
+                            }}
+                            title="Select all on this page"
+                            style={{ cursor: "pointer" }}
+                          />
+                        </th>
+                      );
+                    }
                     const isSorted = h.sortKey && sortBy === h.sortKey;
                     return (
                       <th
@@ -303,10 +362,25 @@ export default function AdminOrders() {
                 {data.orders.map((order) => (
                   <tr
                     key={order.id}
-                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", cursor: "pointer", background: selectedOrderIds.has(order.id) ? "rgba(201,168,76,0.05)" : "transparent" }}
+                    onMouseEnter={(e) => { if (!selectedOrderIds.has(order.id)) e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = selectedOrderIds.has(order.id) ? "rgba(201,168,76,0.05)" : "transparent"; }}
                   >
+                    <td style={{ padding: "14px 12px 14px 20px" }} onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedOrderIds.has(order.id)}
+                        onChange={() => {
+                          setSelectedOrderIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(order.id)) next.delete(order.id);
+                            else next.add(order.id);
+                            return next;
+                          });
+                        }}
+                        style={{ cursor: "pointer" }}
+                      />
+                    </td>
                     <td style={{ padding: "14px 20px" }}>
                       <Link href={`/admin/orders/${order.id}`}>
                         <span style={{ fontSize: "14px", color: "#fff", fontWeight: 500, cursor: "pointer" }}>{order.poReference || order.orderNumber}</span>
@@ -335,10 +409,21 @@ export default function AdminOrders() {
                       <StatusBadge status={order.designStatus || "not_started"} type="design" />
                     </td>
                     <td style={{ padding: "14px 20px", fontSize: "14px", color: "#fff", fontWeight: 500 }}>
-                      <div>${(order.total / 100).toFixed(2)}</div>
-                      <div style={{ fontSize: "9px", color: "rgba(255,255,255,0.35)", fontStyle: "italic", marginTop: "2px", letterSpacing: "0.2px" }} title="Estimated cost from Puffin Tier-1 pricing + overhead. Not the final supplier-negotiated price.">
-                        estimated
-                      </div>
+                      {order.supplierUsdCents > 0 ? (
+                        <>
+                          <div title={`Supplier cost: USD $${(order.supplierUsdCents / 100).toFixed(2)} × ${FX_USD_TO_NZD} FX`}>
+                            NZD ${(order.supplierUsdCents * FX_USD_TO_NZD / 100).toFixed(2)}
+                          </div>
+                          <div style={{ fontSize: "9px", color: "rgba(255,255,255,0.4)", marginTop: "2px", letterSpacing: "0.2px" }}>
+                            USD ${(order.supplierUsdCents / 100).toFixed(2)}
+                            {order.pendingCostLines > 0 && <span style={{ color: "#fb923c", marginLeft: 6 }}>· {order.pendingCostLines} pending</span>}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ fontSize: "11px", color: order.pendingCostLines > 0 ? "#fb923c" : "rgba(255,255,255,0.3)" }}>
+                          {order.pendingCostLines > 0 ? `${order.pendingCostLines} line${order.pendingCostLines === 1 ? "" : "s"} pending` : "—"}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: "14px 20px", fontSize: "13px", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
                       {order.dueDate
