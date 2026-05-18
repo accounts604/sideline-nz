@@ -20,6 +20,7 @@ import {
 import { matchSupporterProduct, extractSizeFromVariant } from "@shared/supporter-range-mapping";
 import { SIDELINE_PRODUCTS } from "@shared/product-catalog";
 import { suggestSizeChart } from "@shared/size-charts";
+import { triageOrder } from "@shared/triage";
 import { updateGhlOpportunityStage } from "./ghl";
 import { createApprovalToken } from "./approvals";
 import { withPoNumberRetry, buildPoReference } from "../po-number";
@@ -101,6 +102,59 @@ router.get("/dashboard", async (_req, res) => {
   } catch (err) {
     console.error("Admin dashboard error:", err);
     res.status(500).json({ error: "Failed to load dashboard" });
+  }
+});
+
+// GET /orders/triage — cross-order dashboard, one row per active order with
+// its computed triage state against the 35-day build calendar. Excludes
+// Completed / Cancelled. Sorted overdue → at_risk → on_track.
+router.get("/orders/triage", async (_req, res) => {
+  try {
+    const { orders: all } = await storage.getAllOrders({ limit: 500, offset: 0 });
+    const today = new Date();
+    const rows = all
+      .filter((o: any) => {
+        const stage = o.pipelineStage || "";
+        const status = (o.status || "").toLowerCase();
+        return stage !== "Completed" && stage !== "Cancelled" && status !== "cancelled";
+      })
+      .map((o: any) => {
+        const t = triageOrder(
+          { pipelineStage: o.pipelineStage, status: o.status, dueDate: o.dueDate, productionStage: o.productionStage },
+          today,
+        );
+        return {
+          id: o.id,
+          orderNumber: o.orderNumber,
+          poReference: o.poReference,
+          accountName: o.accountName,
+          pipelineStage: o.pipelineStage,
+          status: o.status,
+          dueDate: o.dueDate,
+          createdAt: o.createdAt,
+          triage: t,
+        };
+      });
+
+    const rank: Record<string, number> = { overdue: 0, at_risk: 1, awaiting_kickoff: 2, on_track: 3, no_due_date: 4 };
+    rows.sort((a: any, b: any) => {
+      const ra = rank[a.triage.state] ?? 9;
+      const rb = rank[b.triage.state] ?? 9;
+      if (ra !== rb) return ra - rb;
+      const da = a.triage.daysUntilDue ?? 99_999;
+      const db_ = b.triage.daysUntilDue ?? 99_999;
+      return da - db_;
+    });
+
+    res.json({
+      ok: true,
+      generatedAt: today.toISOString(),
+      counts: rows.reduce((acc: Record<string, number>, r: any) => { acc[r.triage.state] = (acc[r.triage.state] || 0) + 1; return acc; }, {}),
+      rows,
+    });
+  } catch (err: any) {
+    console.error("[triage] error:", err);
+    res.status(500).json({ error: "Failed to load triage", message: String(err?.message || err) });
   }
 });
 

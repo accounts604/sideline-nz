@@ -44,6 +44,7 @@ import AdminQuotes from "@/pages/admin/quotes";
 import AdminQuoteDetail from "@/pages/admin/quote-detail";
 import AdminCreateQuote from "@/pages/admin/create-quote";
 import AdminQuoteTemplates from "@/pages/admin/quote-templates";
+import AdminTriage from "@/pages/admin/triage";
 import QuoteViewPage from "@/pages/quote-view";
 import GetMockupPage from "@/pages/get-mockup";
 import FreeMockup from "@/pages/free-mockup";
@@ -125,6 +126,9 @@ function Router() {
         <Route path="/accept-invite" component={AcceptInvitePage} />
 
         {/* Admin portal */}
+        <Route path="/admin/triage">
+          {() => <AdminRoute><AdminTriage /></AdminRoute>}
+        </Route>
         <Route path="/admin/orders/create-po">
           {() => <AdminRoute><AdminCreatePO /></AdminRoute>}
         </Route>
