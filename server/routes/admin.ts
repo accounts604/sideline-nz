@@ -2380,6 +2380,56 @@ router.post("/orders/:id/raise-po", async (req, res) => {
   }
 });
 
+// GET /orders/:id/dispatch-preview — compute the per-supplier split WITHOUT
+// firing any side effects (no emails, no Drive shares, no GHL push). Mirrors
+// the resolution logic in dispatchOrderToSuppliers() so the admin UI can
+// surface "this PO will be split across N suppliers" before the user pulls
+// the dispatch trigger.
+router.get("/orders/:id/dispatch-preview", async (req, res) => {
+  try {
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const items = await storage.getOrderItems(order.id);
+    if (!items.length) return res.json({ groups: [], unresolved: [], itemCount: 0 });
+
+    const orderLevelSupplierId = order.assignedSupplierId || null;
+    const buckets = new Map<string, { items: typeof items; reasons: Set<string> }>();
+    const unresolved: Array<{ itemId: string; productName: string; productType: string | null; reason: string }> = [];
+
+    for (const item of items) {
+      const resolution = await resolveSupplierForLine(item, orderLevelSupplierId);
+      if (!resolution.supplierId) {
+        unresolved.push({ itemId: item.id, productName: item.productName, productType: item.productType, reason: resolution.reason });
+        continue;
+      }
+      const b = buckets.get(resolution.supplierId) || { items: [], reasons: new Set() };
+      b.items.push(item);
+      b.reasons.add(resolution.reason);
+      buckets.set(resolution.supplierId, b);
+    }
+
+    const groups = [];
+    for (const [supplierId, b] of Array.from(buckets.entries())) {
+      const supplier = await storage.getUser(supplierId);
+      groups.push({
+        supplierId,
+        supplierName: supplier?.teamName || supplier?.email || "Unknown",
+        supplierEmail: supplier?.email || null,
+        lineCount: b.items.length,
+        totalQty: b.items.reduce((s, it) => s + (it.quantity || 0), 0),
+        lines: b.items.map((it) => ({ itemId: it.id, productName: it.productName, quantity: it.quantity })),
+        resolutionReasons: Array.from(b.reasons),
+      });
+    }
+
+    res.json({ groups, unresolved, itemCount: items.length });
+  } catch (err: any) {
+    console.error("Admin dispatch-preview error:", err);
+    res.status(500).json({ error: "Failed to compute dispatch preview" });
+  }
+});
+
 // ════════════════════════════════════════════════════════════════════════
 // SAMPLE / BULK PO SPLIT — designed 2026-04-28, shipped 2026-05-07.
 //

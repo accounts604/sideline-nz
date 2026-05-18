@@ -793,6 +793,24 @@ export default function AdminOrderDetail() {
   const { data: suppliersData } = useQuery<{ suppliers: SupplierOption[] }>({
     queryKey: ["/api/admin/suppliers"],
   });
+
+  type DispatchPreview = {
+    groups: Array<{
+      supplierId: string;
+      supplierName: string;
+      supplierEmail: string | null;
+      lineCount: number;
+      totalQty: number;
+      lines: Array<{ itemId: string; productName: string; quantity: number }>;
+      resolutionReasons: string[];
+    }>;
+    unresolved: Array<{ itemId: string; productName: string; productType: string | null; reason: string }>;
+    itemCount: number;
+  };
+  const { data: dispatchPreview } = useQuery<DispatchPreview>({
+    queryKey: [`/api/admin/orders/${params.id}/dispatch-preview`],
+    enabled: !!params.id,
+  });
   const suppliers = suppliersData?.suppliers ?? [];
 
   // ─── Mutations ───────────────────────────────────────────────
@@ -920,7 +938,17 @@ export default function AdminOrderDetail() {
       const r = await apiRequest("POST", `/api/admin/orders/${params.id}/raise-po`, { supplierId: selectedSupplierId || undefined });
       return r.json();
     },
-    onSuccess: (r: any) => { invalidate(); setPortalMsg({ ok: true, text: r.ghlPushed ? "PO raised · supplier emailed · GHL → PO Raised" : `PO raised · supplier emailed · GHL skipped (${r.ghlPushReason})` }); },
+    onSuccess: (r: any) => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/orders/${params.id}/dispatch-preview`] });
+      const groupCount = r.groups?.length ?? 1;
+      const supplierBlurb = groupCount > 1
+        ? `split across ${groupCount} suppliers (${r.groups.map((g: any) => `${g.supplierName} ${g.itemCount}`).join(", ")})`
+        : `supplier emailed`;
+      setPortalMsg({ ok: true, text: r.ghlPushed
+        ? `PO raised · ${supplierBlurb} · GHL → PO Raised`
+        : `PO raised · ${supplierBlurb} · GHL skipped (${r.ghlPushReason})` });
+    },
     onError: (e: any) => setPortalMsg({ ok: false, text: e?.message || "Failed" }),
   });
 
@@ -1045,20 +1073,33 @@ export default function AdminOrderDetail() {
                 Drive <ExternalLink size={10} />
               </a>
             )}
-            <button
-              onClick={() => { setPortalMsg(null); raisePoMut.mutate(); }}
-              disabled={raisePoMut.isPending || (!selectedSupplierId && !order.assignedSupplierId)}
-              title={!order.assignedSupplierId && !selectedSupplierId ? "Assign a supplier in Portal Actions first" : "Dispatch PO to supplier"}
-              style={{
-                padding: "7px 14px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px",
-                background: (selectedSupplierId || order.assignedSupplierId) ? "#C9A84C" : "rgba(255,255,255,0.04)",
-                color: (selectedSupplierId || order.assignedSupplierId) ? "#0A1628" : "rgba(255,255,255,0.3)",
-                border: "none", borderRadius: "6px",
-                cursor: raisePoMut.isPending || (!selectedSupplierId && !order.assignedSupplierId) ? "not-allowed" : "pointer",
-              }}
-            >
-              {raisePoMut.isPending ? "Dispatching…" : "Dispatch to Supplier"}
-            </button>
+            {(() => {
+              const splitReady = !!dispatchPreview && dispatchPreview.groups.length > 0 && dispatchPreview.unresolved.length === 0;
+              const canDispatch = !!selectedSupplierId || !!order.assignedSupplierId || splitReady;
+              const label = raisePoMut.isPending
+                ? "Dispatching…"
+                : selectedSupplierId || order.assignedSupplierId
+                ? "Dispatch to Supplier"
+                : dispatchPreview && dispatchPreview.groups.length > 1
+                ? `Dispatch (auto-split → ${dispatchPreview.groups.length} suppliers)`
+                : "Dispatch (auto-split)";
+              return (
+                <button
+                  onClick={() => { setPortalMsg(null); raisePoMut.mutate(); }}
+                  disabled={raisePoMut.isPending || !canDispatch}
+                  title={!canDispatch ? (dispatchPreview?.unresolved.length ? `${dispatchPreview.unresolved.length} line(s) have no resolved supplier — assign manually below` : "Assign a supplier or wait for preview to load") : `Dispatch PO${splitReady && !selectedSupplierId && !order.assignedSupplierId ? " (will auto-split per supplier)" : ""}`}
+                  style={{
+                    padding: "7px 14px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px",
+                    background: canDispatch ? "#C9A84C" : "rgba(255,255,255,0.04)",
+                    color: canDispatch ? "#0A1628" : "rgba(255,255,255,0.3)",
+                    border: "none", borderRadius: "6px",
+                    cursor: raisePoMut.isPending || !canDispatch ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })()}
             {order.driveFolderId && (
               <button
                 onClick={() => genPdfMut.mutate()}
@@ -1890,21 +1931,52 @@ export default function AdminOrderDetail() {
                 {suppliers.map((s) => <option key={s.id} value={s.id} style={{ background: "#111" }}>{s.supplierName || s.email}{!s.inviteAccepted ? " (pending)" : ""}</option>)}
               </select>
             </div>
-            <button
-              onClick={() => { setPortalMsg(null); raisePoMut.mutate(); }}
-              disabled={raisePoMut.isPending || (!selectedSupplierId && !order.assignedSupplierId)}
-              style={{
-                width: "100%", padding: "12px", fontSize: "12px", fontWeight: 600,
-                background: (selectedSupplierId || order.assignedSupplierId) ? "#C9A84C" : "rgba(255,255,255,0.04)",
-                color: (selectedSupplierId || order.assignedSupplierId) ? "#0A1628" : "rgba(255,255,255,0.3)",
-                border: "none", borderRadius: "6px",
-                cursor: raisePoMut.isPending || (!selectedSupplierId && !order.assignedSupplierId) ? "not-allowed" : "pointer",
-                textTransform: "uppercase", letterSpacing: "0.5px",
-              }}
-            >
-              {raisePoMut.isPending ? "Raising PO…" : "Raise PO to Supplier"}
-            </button>
-            <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", marginTop: "4px" }}>Assigns supplier · emails PO · GHL → PO Raised</p>
+            {dispatchPreview && dispatchPreview.itemCount > 0 && (
+              <div style={{ marginBottom: "10px", padding: "10px 12px", background: "rgba(201,168,76,0.05)", border: "1px solid rgba(201,168,76,0.2)", borderRadius: "6px" }}>
+                <div style={{ fontSize: "9px", letterSpacing: "1px", textTransform: "uppercase", color: "rgba(201,168,76,0.7)", marginBottom: "6px", fontWeight: 700 }}>
+                  Dispatch Preview · {dispatchPreview.groups.length} supplier{dispatchPreview.groups.length === 1 ? "" : "s"}
+                </div>
+                {dispatchPreview.groups.map((g) => (
+                  <div key={g.supplierId} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#fff", marginBottom: "2px" }}>
+                    <span>→ {g.supplierName}</span>
+                    <span style={{ color: "rgba(255,255,255,0.6)" }}>{g.lineCount} line{g.lineCount === 1 ? "" : "s"} · {g.totalQty} qty</span>
+                  </div>
+                ))}
+                {dispatchPreview.unresolved.length > 0 && (
+                  <div style={{ marginTop: "6px", padding: "6px 8px", background: "rgba(239,68,68,0.1)", borderRadius: "4px", fontSize: "10px", color: "#fca5a5" }}>
+                    ⚠ {dispatchPreview.unresolved.length} unresolved: {dispatchPreview.unresolved.map((u) => u.productName).join(", ")} — assign supplier below
+                  </div>
+                )}
+              </div>
+            )}
+            {(() => {
+              const splitReady = !!dispatchPreview && dispatchPreview.groups.length > 0 && dispatchPreview.unresolved.length === 0;
+              const canDispatch = !!selectedSupplierId || !!order.assignedSupplierId || splitReady;
+              const label = raisePoMut.isPending
+                ? "Raising PO…"
+                : selectedSupplierId || order.assignedSupplierId
+                ? "Raise PO to Supplier"
+                : dispatchPreview && dispatchPreview.groups.length > 1
+                ? `Dispatch (auto-split → ${dispatchPreview.groups.length} suppliers)`
+                : "Dispatch (auto-split)";
+              return (
+                <button
+                  onClick={() => { setPortalMsg(null); raisePoMut.mutate(); }}
+                  disabled={raisePoMut.isPending || !canDispatch}
+                  style={{
+                    width: "100%", padding: "12px", fontSize: "12px", fontWeight: 600,
+                    background: canDispatch ? "#C9A84C" : "rgba(255,255,255,0.04)",
+                    color: canDispatch ? "#0A1628" : "rgba(255,255,255,0.3)",
+                    border: "none", borderRadius: "6px",
+                    cursor: raisePoMut.isPending || !canDispatch ? "not-allowed" : "pointer",
+                    textTransform: "uppercase", letterSpacing: "0.5px",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })()}
+            <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", marginTop: "4px" }}>Pick a supplier above to force-route · leave empty to auto-split by category · GHL → PO Raised</p>
           </div>
         </div>
         {portalMsg && (
