@@ -1969,6 +1969,106 @@ router.post("/orders/:id/generate-pdf", async (req, res) => {
   }
 });
 
+// POST /orders/:id/resend-dispatch-artifacts — for POs that already dispatched
+// (supplier email sent) but didn't get their Drive folder/PDF/folder-share due
+// to missing driveFolderId at dispatch time. Creates the folder if needed,
+// uploads the PDF, and re-shares the folder with every supplier that received
+// the original dispatch email. Does NOT send another email — that'd duplicate
+// the supplier's inbox. Suppliers are pulled from order_activity
+// po_raised_to_supplier rows.
+router.post("/orders/:id/resend-dispatch-artifacts", async (req, res) => {
+  try {
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (!order.poDispatchedAt) return res.status(400).json({ error: "Order has not been dispatched yet — use Dispatch instead" });
+
+    // 1. Ensure Drive folder exists
+    let folderCreated = false;
+    if (!order.driveFolderId) {
+      const dateStr = (order.createdAt ? new Date(order.createdAt) : new Date()).toISOString().slice(0, 10);
+      const companyForFolder = order.accountName?.trim() || "Sideline";
+      const contactForFolder =
+        [order.customerFirstName, order.customerLastName].filter(Boolean).join(" ").trim() ||
+        order.customerName?.trim() ||
+        order.customerEmail ||
+        "Unnamed Contact";
+      const folder = await createClientFolder({ date: dateStr, companyName: companyForFolder, contactName: contactForFolder });
+      if (!folder) return res.status(500).json({ error: "Drive folder creation failed — check GOOGLE_* env" });
+      await storage.updateOrder(order.id, {
+        driveFolderId: folder.id,
+        driveFolderUrl: folder.webViewLink,
+        driveFolderName: folder.name,
+      });
+      order.driveFolderId = folder.id;
+      order.driveFolderUrl = folder.webViewLink;
+      order.driveFolderName = folder.name;
+      folderCreated = true;
+    }
+
+    // 2. Pull suppliers that received the original dispatch email
+    const activities = await db
+      .select()
+      .from(orderActivity)
+      .where(and(eq(orderActivity.orderId, order.id), eq(orderActivity.action, "po_raised_to_supplier")));
+    const supplierEmails = new Map<string, string | null>(); // email -> ccEmail
+    for (const a of activities) {
+      const d = a.details as any;
+      if (d?.supplierEmail) supplierEmails.set(d.supplierEmail, d.supplierCcEmail || null);
+    }
+
+    // 3. Share folder with each supplier (+ ccEmail) - reader role, no notify
+    const driveShares: Array<{ email: string; permissionId: string | null }> = [];
+    for (const [email, cc] of Array.from(supplierEmails.entries())) {
+      const targets = [email, ...(cc ? [cc] : [])];
+      for (const target of targets) {
+        const permissionId = await shareFolderWithUser({
+          fileOrFolderId: order.driveFolderId!,
+          emailAddress: target,
+          role: "reader",
+          notify: false,
+        }).catch((err) => {
+          console.error(`[resend-artifacts] Drive share failed for ${target}:`, err);
+          return null;
+        });
+        driveShares.push({ email: target, permissionId });
+      }
+    }
+
+    // 4. Upload PO PDF
+    const pdfResult = await uploadPoPdfToDrive(order.id, order.driveFolderId!).catch((err) => {
+      console.error(`[resend-artifacts] PDF upload failed:`, err);
+      return null;
+    });
+
+    // 5. Log + return
+    await storage.logOrderActivity({
+      orderId: order.id,
+      userId: (req as any).user?.userId,
+      action: "dispatch_artifacts_resent",
+      details: {
+        folderCreated,
+        driveFolderId: order.driveFolderId,
+        driveShares,
+        pdfUploaded: !!pdfResult,
+        pdfUrl: pdfResult?.pdfUrl,
+        suppliersNotified: Array.from(supplierEmails.keys()),
+      },
+    });
+
+    res.json({
+      ok: true,
+      folderCreated,
+      driveFolderUrl: order.driveFolderUrl,
+      driveShares,
+      pdfUploaded: !!pdfResult,
+      pdfUrl: pdfResult?.pdfUrl,
+    });
+  } catch (err: any) {
+    console.error("Admin resend-dispatch-artifacts error:", err);
+    res.status(500).json({ error: "Failed to resend dispatch artifacts" });
+  }
+});
+
 // POST /orders/:id/raise-po — the main action that ties step 2 (GHL sync) and
 // step 3 (supplier portal) together:
 //   1. Validates the order has a supplier assigned (body.supplierId or order.assignedSupplierId)

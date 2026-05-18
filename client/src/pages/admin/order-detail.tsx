@@ -122,6 +122,7 @@ interface Order {
   driveFolderId: string | null;
   driveFolderUrl: string | null;
   driveFolderName: string | null;
+  poDispatchedAt: string | null;
   orderType: string | null;
   artworkApproved: boolean | null;
   artworkApprovedBy: string | null;
@@ -933,6 +934,19 @@ export default function AdminOrderDetail() {
     },
   });
 
+  const resendArtifactsMut = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/admin/orders/${params.id}/resend-dispatch-artifacts`, {});
+      return r.json();
+    },
+    onSuccess: (r: any) => {
+      invalidate();
+      const shared = r.driveShares?.filter((s: any) => s.permissionId).length || 0;
+      setPortalMsg({ ok: true, text: `Drive folder ${r.folderCreated ? "created" : "ready"} · shared with ${shared} supplier email${shared === 1 ? "" : "s"} · PDF ${r.pdfUploaded ? "uploaded" : "FAILED"}` });
+    },
+    onError: (e: any) => setPortalMsg({ ok: false, text: e?.message || "Failed" }),
+  });
+
   const raisePoMut = useMutation({
     mutationFn: async () => {
       const r = await apiRequest("POST", `/api/admin/orders/${params.id}/raise-po`, { supplierId: selectedSupplierId || undefined });
@@ -1107,6 +1121,16 @@ export default function AdminOrderDetail() {
                 style={{ padding: "7px 12px", fontSize: "11px", fontWeight: 600, background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "6px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px" }}
               >
                 <FileText size={12} /> {genPdfMut.isPending ? "Generating…" : "PDF → Drive"}
+              </button>
+            )}
+            {order.poDispatchedAt && (
+              <button
+                onClick={() => { setPortalMsg(null); resendArtifactsMut.mutate(); }}
+                disabled={resendArtifactsMut.isPending}
+                title="Re-share Drive folder + re-upload PDF for suppliers that already received the dispatch email. Does NOT send another email."
+                style={{ padding: "7px 12px", fontSize: "11px", fontWeight: 600, background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)", borderRadius: "6px", cursor: resendArtifactsMut.isPending ? "not-allowed" : "pointer", display: "inline-flex", alignItems: "center", gap: "4px" }}
+              >
+                {resendArtifactsMut.isPending ? "Resending…" : "Resend PDF + Drive Share"}
               </button>
             )}
             <Link href={`/admin/orders/${order.id}/po`}>
