@@ -4,11 +4,46 @@ import { getUncachableStripeClient } from "../stripeClient";
 import { emailService } from "../email";
 import { z } from "zod";
 import { db } from "../db";
-import { orders, orderActivity } from "@shared/schema";
+import { orders, orderActivity, mockupRequests } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { SIDELINE_PIPELINE_ID, SIDELINE_STAGE_IDS, SIDELINE_STAGE_NAMES } from "../ghl-config";
 import { isSidelinePipelineStage, type SidelinePipelineStage } from "@shared/pipeline";
 import { tracked, logIntegrationEvent } from "../integration-events";
+import { runMockupPipeline } from "../mockup/orchestrator";
+
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+// Free-text colour names → hex, covering the most common rugby/league/netball palette.
+// Falls through to null when input is unrecognised; caller decides whether to skip the pipeline.
+const COLOUR_NAME_TO_HEX: Record<string, string> = {
+  "black": "#000000",
+  "white": "#ffffff",
+  "navy": "#1e3a5f", "navy blue": "#1e3a5f", "dark blue": "#1e3a5f",
+  "royal": "#1e40af", "royal blue": "#1e40af",
+  "blue": "#2563eb",
+  "sky blue": "#0ea5e9", "light blue": "#0ea5e9", "sky": "#0ea5e9",
+  "red": "#dc2626",
+  "maroon": "#7f1d1d", "dark red": "#7f1d1d",
+  "green": "#16a34a",
+  "forest green": "#14532d", "dark green": "#14532d", "bottle green": "#14532d",
+  "yellow": "#facc15",
+  "gold": "#f59e0b",
+  "orange": "#f97316",
+  "purple": "#7c3aed",
+  "pink": "#ec4899",
+  "grey": "#6b7280", "gray": "#6b7280",
+  "silver": "#9ca3af",
+  "brown": "#92400e",
+};
+
+function coerceToHex(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase();
+  if (!v) return null;
+  if (HEX_RE.test(v)) return v.toLowerCase();
+  if (/^[0-9a-f]{6}$/.test(v)) return `#${v}`;
+  return COLOUR_NAME_TO_HEX[v] ?? null;
+}
 
 const router = Router();
 
@@ -511,7 +546,50 @@ router.post("/intake", async (req, res) => {
       );
     }
 
-    res.json({ ok: true, id: contactId });
+    // Dual-write to mockup_requests so the admin pipeline picks this up.
+    // If primary_colour resolves to hex, kick off generation; otherwise park
+    // as 'failed' with a clear error so it's visible for manual review.
+    let mockupRequestId: string | null = null;
+    try {
+      const primaryHex = coerceToHex(payload.primary_colour);
+      const secondaryHex = coerceToHex(payload.secondary_colour);
+      const canRunPipeline = primaryHex !== null;
+
+      const [row] = await db
+        .insert(mockupRequests)
+        .values({
+          contactName: payload.contact_name,
+          contactEmail: payload.email,
+          contactPhone: payload.phone || null,
+          teamName: payload.organization,
+          sport: (payload.sport[0] || "").toLowerCase(),
+          primaryColor: primaryHex ?? payload.primary_colour,
+          secondaryColor: secondaryHex ?? payload.secondary_colour ?? null,
+          accentColor: null,
+          logoUrl: payload.logo_file_url || null,
+          notes: [payload.design_notes, payload.logo_notes].filter(Boolean).join("\n\n") || null,
+          status: canRunPipeline ? "pending" : "failed",
+          errorMessage: canRunPipeline
+            ? null
+            : `Primary colour "${payload.primary_colour}" not recognised as hex — manual review needed before retry.`,
+          ghlContactId: result.contactId || null,
+        })
+        .returning({ id: mockupRequests.id });
+      mockupRequestId = row?.id ?? null;
+
+      if (canRunPipeline && mockupRequestId) {
+        runMockupPipeline(mockupRequestId).catch((err) => {
+          console.error(`[Intake] Background pipeline failed for ${mockupRequestId}:`, err.message);
+        });
+      } else if (mockupRequestId) {
+        console.log(`[Intake] Created mockup_request ${mockupRequestId} in 'failed' status — colour "${payload.primary_colour}" needs manual review.`);
+      }
+    } catch (mockupErr: any) {
+      // Mockup mirror is best-effort: GHL contact is already saved, so do not 500 the request.
+      console.error("[Intake] Failed to mirror to mockup_requests:", mockupErr.message);
+    }
+
+    res.json({ ok: true, id: contactId, mockupRequestId });
   } catch (e: any) {
     console.error("Intake form error:", e);
     res.status(500).json({ error: e.message || "Server error" });
