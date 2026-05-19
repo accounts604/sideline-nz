@@ -554,7 +554,36 @@ export class DatabaseStorage implements IStorage {
       .limit(opts.limit || 50)
       .offset(opts.offset || 0);
 
-    return { orders: result, total: totalResult.count };
+    // Supplier-cost rollup per order — sums supplier_unit_cost_cents * quantity
+    // across all lines that have a confirmed cost. Lines without a cost (apparel
+    // awaiting Puffin quote) are counted separately so the UI can flag them.
+    const ids = result.map(r => r.id);
+    const rollups = new Map<string, { supplierUsdCents: number; pendingLines: number }>();
+    if (ids.length > 0) {
+      const rollupRows: any = await db.execute(sql`
+        SELECT order_id,
+               COALESCE(SUM(CASE WHEN supplier_unit_cost_cents IS NOT NULL THEN supplier_unit_cost_cents * quantity ELSE 0 END), 0)::bigint AS supplier_usd_cents,
+               COUNT(*) FILTER (WHERE supplier_unit_cost_cents IS NULL)::int AS pending_lines
+          FROM order_items
+         WHERE order_id IN (${sql.join(ids.map(id => sql`${id}`), sql`, `)})
+         GROUP BY order_id
+      `);
+      // Driver returns array directly on Neon serverless; some drivers wrap in .rows.
+      const rows: any[] = Array.isArray(rollupRows) ? rollupRows : (rollupRows.rows ?? []);
+      for (const row of rows) {
+        rollups.set(row.order_id, {
+          supplierUsdCents: Number(row.supplier_usd_cents) || 0,
+          pendingLines: Number(row.pending_lines) || 0,
+        });
+      }
+    }
+    const enriched = result.map(o => ({
+      ...o,
+      supplierUsdCents: rollups.get(o.id)?.supplierUsdCents ?? 0,
+      pendingCostLines: rollups.get(o.id)?.pendingLines ?? 0,
+    }));
+
+    return { orders: enriched as any, total: totalResult.count };
   }
 
   async getOrderWithDetails(orderId: string): Promise<{
