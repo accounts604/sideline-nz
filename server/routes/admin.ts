@@ -909,6 +909,12 @@ const updateItemSchema = z.object({
   designBrief: z.string().optional(),
   sizeChartType: z.string().optional(),
   assignedSupplierId: z.string().nullable().optional(), // per-line supplier override; null clears it
+  // Supplier cost override — when an invoice comes back at a different
+  // number than the pricelist, ops corrects the per-line stamp here. The
+  // PATCH handler stamps supplierCostAppliedAt = now and clears
+  // supplierCostSourceId (manual override, not pricelist-sourced).
+  supplierUnitCostCents: z.number().int().min(0).nullable().optional(),
+  supplierCostCurrency: z.string().min(3).max(3).nullable().optional(),
 });
 
 // DELETE /orders/:id/items/:itemId — remove a single garment line +
@@ -929,7 +935,17 @@ router.patch("/orders/:id/items/:itemId", async (req, res) => {
   try {
     const data = updateItemSchema.parse(req.body);
     const user = (req as any).user;
-    const updated = await storage.updateOrderItem(req.params.itemId, data);
+
+    // Supplier cost override stamps applied_at = now and clears the source_id
+    // because the manual edit overrides any pricelist linkage. Pass through
+    // as part of the patch payload so updateOrderItem writes everything in
+    // one update statement.
+    const patch: any = { ...data };
+    if (data.supplierUnitCostCents !== undefined) {
+      patch.supplierCostAppliedAt = new Date();
+      patch.supplierCostSourceId = null;
+    }
+    const updated = await storage.updateOrderItem(req.params.itemId, patch);
     if (!updated) return res.status(404).json({ error: "Item not found" });
 
     // Mirror any new design asset into the PO's Drive folder, routed by type:
@@ -2181,6 +2197,131 @@ router.post("/orders/:id/resend-dispatch-artifacts", async (req, res) => {
   } catch (err: any) {
     console.error("Admin resend-dispatch-artifacts error:", err);
     res.status(500).json({ error: "Failed to resend dispatch artifacts" });
+  }
+});
+
+// ---- Supplier invoice tracking (mark paid + upload PDF/image) ----
+//
+// Captures the supplier's invoice and payment receipt against the PO. Drives
+// AP reconciliation and the green "Paid" chip in the orders list + the
+// supplier portal (so the supplier knows when payment landed without asking).
+
+const markPaidSchema = z.object({
+  paymentRef: z.string().max(200).nullable().optional(),
+  totalCents: z.number().int().min(0).nullable().optional(),
+  currency: z.string().min(3).max(3).nullable().optional(),
+  paidAt: z.string().datetime().optional(), // ISO; defaults to server now
+}).strict();
+
+// POST /orders/:id/supplier-invoice/mark-paid
+router.post("/orders/:id/supplier-invoice/mark-paid", async (req, res) => {
+  try {
+    const data = markPaidSchema.parse(req.body);
+    const user = (req as any).user as { userId: string };
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const paidAt = data.paidAt ? new Date(data.paidAt) : new Date();
+    await db.update(orders).set({
+      supplierInvoicePaidAt: paidAt,
+      supplierInvoicePaidBy: user.userId,
+      supplierInvoicePaymentRef: data.paymentRef ?? null,
+      supplierInvoiceTotalCents: data.totalCents ?? null,
+      supplierInvoiceCurrency: data.currency ?? null,
+      updatedAt: new Date(),
+    }).where(eq(orders.id, order.id));
+    await storage.logOrderActivity({
+      orderId: order.id, userId: user.userId,
+      action: "supplier_invoice_paid",
+      details: { paymentRef: data.paymentRef, totalCents: data.totalCents, currency: data.currency, paidAt: paidAt.toISOString() },
+    } as any).catch(() => {});
+    res.json({ ok: true, paidAt: paidAt.toISOString() });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Mark supplier invoice paid error:", err);
+    res.status(500).json({ error: "Failed to mark paid" });
+  }
+});
+
+// DELETE /orders/:id/supplier-invoice/mark-paid — un-mark (mistake recovery).
+router.delete("/orders/:id/supplier-invoice/mark-paid", async (req, res) => {
+  try {
+    const user = (req as any).user as { userId: string };
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    await db.update(orders).set({
+      supplierInvoicePaidAt: null,
+      supplierInvoicePaidBy: null,
+      supplierInvoicePaymentRef: null,
+      // Keep totalCents / currency / file_url — those describe the invoice
+      // itself, not the payment status. Clearing only the payment fields lets
+      // ops un-mark without losing the invoice metadata they captured.
+      updatedAt: new Date(),
+    }).where(eq(orders.id, order.id));
+    await storage.logOrderActivity({
+      orderId: order.id, userId: user.userId,
+      action: "supplier_invoice_unmarked_paid",
+      details: {},
+    } as any).catch(() => {});
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error("Unmark supplier invoice paid error:", err);
+    res.status(500).json({ error: "Failed to un-mark" });
+  }
+});
+
+// POST /orders/:id/supplier-invoice/upload — accepts { blobUrl, fileName }.
+// Caller (admin UI) puts the file on Vercel Blob first; this endpoint mirrors
+// to the PO's Drive folder under "08. Invoicing" and records the file URL.
+const uploadInvoiceSchema = z.object({
+  blobUrl: z.string().url(),
+  fileName: z.string().max(200),
+  totalCents: z.number().int().min(0).nullable().optional(),
+  currency: z.string().min(3).max(3).nullable().optional(),
+}).strict();
+
+router.post("/orders/:id/supplier-invoice/upload", async (req, res) => {
+  try {
+    const data = uploadInvoiceSchema.parse(req.body);
+    const user = (req as any).user as { userId: string };
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    let driveFileId: string | null = null;
+    if (order.driveFolderId) {
+      driveFileId = await mirrorBlobToPoFolder({
+        poFolderId: order.driveFolderId,
+        slot: "supplier-invoice",
+        blobUrl: data.blobUrl,
+        fileName: data.fileName,
+        orderId: order.id,
+      });
+    }
+    // Drive's public webViewLink. If the upload failed (or Drive isn't wired)
+    // we still store the blob URL so the invoice is accessible — better than
+    // dropping the record entirely.
+    const fileUrl = driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view` : data.blobUrl;
+
+    const patch: any = {
+      supplierInvoiceFileUrl: fileUrl,
+      supplierInvoiceFileName: data.fileName,
+      supplierInvoiceUploadedAt: new Date(),
+      updatedAt: new Date(),
+    };
+    if (data.totalCents != null) patch.supplierInvoiceTotalCents = data.totalCents;
+    if (data.currency) patch.supplierInvoiceCurrency = data.currency;
+    await db.update(orders).set(patch).where(eq(orders.id, order.id));
+
+    await storage.logOrderActivity({
+      orderId: order.id, userId: user.userId,
+      action: "supplier_invoice_uploaded",
+      details: { fileName: data.fileName, fileUrl, driveFileId, totalCents: data.totalCents, currency: data.currency },
+    } as any).catch(() => {});
+
+    res.json({ ok: true, fileUrl, fileName: data.fileName, driveFileId });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Upload supplier invoice error:", err);
+    res.status(500).json({ error: "Failed to upload" });
   }
 });
 

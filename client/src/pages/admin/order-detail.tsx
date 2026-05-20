@@ -123,6 +123,12 @@ interface Order {
   driveFolderUrl: string | null;
   driveFolderName: string | null;
   poDispatchedAt: string | null;
+  supplierInvoicePaidAt: string | null;
+  supplierInvoicePaymentRef: string | null;
+  supplierInvoiceTotalCents: number | null;
+  supplierInvoiceCurrency: string | null;
+  supplierInvoiceFileUrl: string | null;
+  supplierInvoiceFileName: string | null;
   orderType: string | null;
   artworkApproved: boolean | null;
   artworkApprovedBy: string | null;
@@ -1361,6 +1367,9 @@ export default function AdminOrderDetail() {
         </div>
       </Section>
 
+      {/* ──── Supplier Invoice ──── */}
+      <SupplierInvoiceCard order={order} orderId={order.id} invalidate={invalidate} />
+
       {/* ──── Garment Lines ──── */}
       <Section title="Garment Lines" count={items.length} defaultOpen={true}>
         {items.length === 0 && <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "13px", marginBottom: "12px" }}>No items on this PO yet. Add one below.</p>}
@@ -1515,19 +1524,40 @@ export default function AdminOrderDetail() {
                         </div>
                       );
                     })()}
-                    {item.supplierUnitCostCents != null && item.supplierCostCurrency && (() => {
-                      const usd = item.supplierUnitCostCents / 100;
-                      const nzd = item.supplierCostCurrency === "USD" ? usd * PUFFIN_USD_TO_NZD : usd;
-                      const showNzd = item.supplierCostCurrency === "USD";
-                      return (
-                        <div
-                          title={item.supplierCostAppliedAt ? `Stamped from supplier pricelist at ${new Date(item.supplierCostAppliedAt).toLocaleString()}${showNzd ? ` · FX ${PUFFIN_USD_TO_NZD}` : ""}` : "Stamped from supplier pricelist"}
-                          style={{ fontSize: "9px", color: "#fb923c" }}
-                        >
-                          Supplier: NZD ${nzd.toFixed(2)}{showNzd ? ` (${item.supplierCostCurrency} ${usd.toFixed(2)})` : ""}
-                        </div>
-                      );
-                    })()}
+                    {/* Supplier cost — editable. Stamped automatically on
+                        raise-PO from the supplier pricelist; ops corrects it
+                        here when an invoice comes back at a different number.
+                        Currency is whatever the original stamp used (USD
+                        usually); user enters the value in that currency. */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#fb923c" }}>
+                      <span style={{ minWidth: 50 }}>Supplier:</span>
+                      <select
+                        value={item.supplierCostCurrency || "USD"}
+                        onChange={(e) => updateItem.mutate({ itemId: item.id, supplierCostCurrency: e.target.value })}
+                        style={{ background: "#000", color: "#fb923c", border: "1px solid rgba(251,146,60,0.25)", borderRadius: 3, padding: "1px 4px", fontSize: 10 }}
+                      >
+                        <option value="USD">USD</option>
+                        <option value="NZD">NZD</option>
+                      </select>
+                      <EditableField
+                        value={item.supplierUnitCostCents != null ? (item.supplierUnitCostCents / 100).toFixed(2) : ""}
+                        onSave={(v) => {
+                          if (v === "") {
+                            updateItem.mutate({ itemId: item.id, supplierUnitCostCents: null });
+                            return;
+                          }
+                          const cents = Math.round(parseFloat(v) * 100);
+                          if (Number.isNaN(cents) || cents < 0) return;
+                          updateItem.mutate({ itemId: item.id, supplierUnitCostCents: cents, supplierCostCurrency: item.supplierCostCurrency || "USD" });
+                        }}
+                        placeholder="0.00"
+                      />
+                      {item.supplierUnitCostCents != null && item.supplierCostCurrency === "USD" && (
+                        <span style={{ color: "rgba(251,146,60,0.65)" }}>
+                          ≈ NZD ${((item.supplierUnitCostCents / 100) * PUFFIN_USD_TO_NZD).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </Field>
                 <Field label="Supplier" style={{ flex: 1.2 }}>
@@ -2475,5 +2505,155 @@ function FolderDropZone({ folder, fileCount, onDrop }: { folder: string; fileCou
       <div style={{ fontSize: "12px", fontWeight: 600, color: over ? "#C9A84C" : "#fff", textTransform: "uppercase", letterSpacing: "0.5px" }}>{folder}</div>
       <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)", marginTop: "4px" }}>{fileCount} file{fileCount !== 1 ? "s" : ""}</div>
     </div>
+  );
+}
+
+// Supplier Invoice card — separate component so the order-detail body stays
+// readable. Three jobs: upload the supplier's invoice file (PDF/image) to
+// the PO's Drive 08. Invoicing folder, capture the invoice total + currency,
+// mark the invoice as paid (date + reference). When paid, a green chip
+// shows here and on the supplier portal so the supplier knows payment landed.
+function SupplierInvoiceCard({ order, orderId, invalidate }: { order: Order; orderId: string; invalidate: () => void }) {
+  const [paymentRef, setPaymentRef] = useState(order.supplierInvoicePaymentRef || "");
+  const [totalDollars, setTotalDollars] = useState(order.supplierInvoiceTotalCents != null ? (order.supplierInvoiceTotalCents / 100).toFixed(2) : "");
+  const [currency, setCurrency] = useState(order.supplierInvoiceCurrency || "USD");
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+
+  const markPaid = useMutation({
+    mutationFn: async () => {
+      const body: any = { paymentRef: paymentRef || null, currency };
+      const cents = totalDollars ? Math.round(parseFloat(totalDollars) * 100) : null;
+      if (cents != null && !Number.isNaN(cents)) body.totalCents = cents;
+      const r = await apiRequest("POST", `/api/admin/orders/${orderId}/supplier-invoice/mark-paid`, body);
+      return r.json();
+    },
+    onSuccess: invalidate,
+  });
+
+  const unmark = useMutation({
+    mutationFn: async () => {
+      if (!confirm("Un-mark this invoice as paid? The invoice file + total stay; only the payment date / reference are cleared.")) {
+        throw new Error("cancelled");
+      }
+      const r = await apiRequest("DELETE", `/api/admin/orders/${orderId}/supplier-invoice/mark-paid`, undefined);
+      return r.json();
+    },
+    onSuccess: invalidate,
+    onError: (e: any) => { if (e?.message !== "cancelled") alert(e?.message || "Failed"); },
+  });
+
+  async function handleUpload(file: File) {
+    setUploadErr(null);
+    setUploading(true);
+    try {
+      const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token" });
+      const body: any = { blobUrl: blob.url, fileName: file.name };
+      const cents = totalDollars ? Math.round(parseFloat(totalDollars) * 100) : null;
+      if (cents != null && !Number.isNaN(cents)) body.totalCents = cents;
+      if (currency) body.currency = currency;
+      await apiRequest("POST", `/api/admin/orders/${orderId}/supplier-invoice/upload`, body);
+      invalidate();
+    } catch (e: any) {
+      setUploadErr(e?.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const paid = !!order.supplierInvoicePaidAt;
+
+  return (
+    <Section title="Supplier Invoice" count={paid ? 1 : 0} defaultOpen={false}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, padding: "4px 0" }}>
+        {/* Left: file upload + invoice metadata */}
+        <div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Invoice file</div>
+          {order.supplierInvoiceFileUrl ? (
+            <a href={order.supplierInvoiceFileUrl} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#93c5fd", fontSize: 13, padding: "8px 12px", background: "rgba(147,197,253,0.08)", border: "1px solid rgba(147,197,253,0.2)", borderRadius: 6 }}>
+              <FileText size={14} /> {order.supplierInvoiceFileName || "Invoice"}
+            </a>
+          ) : (
+            <label style={{ display: "block", padding: "20px", border: "2px dashed rgba(255,255,255,0.15)", borderRadius: 8, textAlign: "center", cursor: uploading ? "wait" : "pointer", color: "rgba(255,255,255,0.5)", fontSize: 12 }}>
+              <input
+                type="file"
+                accept="application/pdf,image/*"
+                disabled={uploading}
+                onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0]); }}
+                style={{ display: "none" }}
+              />
+              {uploading ? "Uploading…" : "Click to upload supplier invoice (PDF / image)"}
+            </label>
+          )}
+          {uploadErr && <div style={{ color: "#fca5a5", fontSize: 11, marginTop: 6 }}>{uploadErr}</div>}
+
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>Invoice total</div>
+              <input
+                value={totalDollars}
+                onChange={(e) => setTotalDollars(e.target.value)}
+                placeholder="0.00"
+                style={{ ...inputStyle, width: "100%" }}
+              />
+            </div>
+            <div style={{ width: 90 }}>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>Currency</div>
+              <select value={currency} onChange={(e) => setCurrency(e.target.value)} style={{ ...inputStyle, width: "100%" }}>
+                <option value="USD" style={{ background: "#111" }}>USD</option>
+                <option value="NZD" style={{ background: "#111" }}>NZD</option>
+                <option value="AUD" style={{ background: "#111" }}>AUD</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: payment status */}
+        <div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Payment</div>
+          {paid ? (
+            <div>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 6, color: "#22c55e", fontWeight: 600, fontSize: 13 }}>
+                Paid · {new Date(order.supplierInvoicePaidAt!).toLocaleDateString()}
+              </div>
+              {order.supplierInvoicePaymentRef && (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 8 }}>
+                  Ref: <span style={{ color: "#fff", fontFamily: "monospace" }}>{order.supplierInvoicePaymentRef}</span>
+                </div>
+              )}
+              {order.supplierInvoiceTotalCents != null && (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>
+                  Amount: <span style={{ color: "#fff" }}>{order.supplierInvoiceCurrency} {(order.supplierInvoiceTotalCents / 100).toFixed(2)}</span>
+                </div>
+              )}
+              <button
+                onClick={() => unmark.mutate()}
+                disabled={unmark.isPending}
+                style={{ marginTop: 12, padding: "5px 10px", fontSize: 11, background: "rgba(239,68,68,0.1)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 4, cursor: "pointer" }}
+              >
+                {unmark.isPending ? "Un-marking…" : "Un-mark paid"}
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>Payment reference (optional)</div>
+              <input
+                value={paymentRef}
+                onChange={(e) => setPaymentRef(e.target.value)}
+                placeholder="bank ref / wise tx id"
+                style={{ ...inputStyle, width: "100%" }}
+              />
+              <button
+                onClick={() => markPaid.mutate()}
+                disabled={markPaid.isPending}
+                style={{ marginTop: 12, padding: "8px 14px", fontSize: 12, fontWeight: 600, background: "#22c55e", color: "#000", border: "none", borderRadius: 6, cursor: "pointer" }}
+              >
+                {markPaid.isPending ? "Marking…" : "Mark as paid"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </Section>
   );
 }

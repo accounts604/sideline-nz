@@ -184,13 +184,19 @@ function normaliseFolderName(n: string): string {
  */
 export async function resolveUploadTarget(
   poFolderId: string,
-  slot: "mockups" | "logos" | "artwork" | "approvals",
+  slot: "mockups" | "logos" | "artwork" | "approvals" | "supplier-invoice",
 ): Promise<string> {
   const targetWords: Record<typeof slot, string[]> = {
     mockups: ["mockups", "mockup"],
     logos: ["logos", "logo"],
     artwork: ["artwork", "art"],
     approvals: ["approvals", "approval"],
+    // The PO folder template ships with "08. Invoicing". Matching it as the
+    // landing spot for supplier-invoice uploads keeps everything for this PO
+    // in one Drive folder (per memory: Drive 04. Supplier Invoice/ was the
+    // ask; the existing template uses "Invoicing" instead of "Supplier
+    // Invoice" — we match on the token "invoic" so both name variants work).
+    "supplier-invoice": ["invoicing", "invoice", "supplier invoice"],
   } as any;
 
   const q = [
@@ -316,7 +322,7 @@ export async function mirrorBlobToPoFolder({
   orderId,
 }: {
   poFolderId: string;
-  slot?: "mockups" | "logos" | "artwork" | "approvals";
+  slot?: "mockups" | "logos" | "artwork" | "approvals" | "supplier-invoice";
   subFolderName?: string; // explicit name override (takes priority over slot)
   blobUrl: string;
   fileName?: string;

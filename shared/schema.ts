@@ -151,6 +151,19 @@ export const orders = pgTable("orders", {
   bulkSizeBreakdown: jsonb("bulk_size_breakdown"),
   // Source Shopify collection handle this PO was built from (closed-drop flow).
   sourceCollectionHandle: text("source_collection_handle"),
+  // Supplier invoice tracking. supplier_unit_cost_cents on order_items is the
+  // per-line stamp at raise-PO; this set of columns captures the invoice we
+  // received from the supplier (which may differ — currency conversion drift,
+  // negotiated rebates, off-pricelist items) plus payment status. See
+  // migrations/supplier-invoice-fields.sql.
+  supplierInvoicePaidAt: timestamp("supplier_invoice_paid_at"),
+  supplierInvoicePaidBy: varchar("supplier_invoice_paid_by").references(() => users.id),
+  supplierInvoicePaymentRef: text("supplier_invoice_payment_ref"),
+  supplierInvoiceTotalCents: integer("supplier_invoice_total_cents"),
+  supplierInvoiceCurrency: text("supplier_invoice_currency"),
+  supplierInvoiceFileUrl: text("supplier_invoice_file_url"),
+  supplierInvoiceFileName: text("supplier_invoice_file_name"),
+  supplierInvoiceUploadedAt: timestamp("supplier_invoice_uploaded_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   paidAt: timestamp("paid_at"),

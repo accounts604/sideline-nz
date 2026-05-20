@@ -23,6 +23,7 @@ interface Order {
   createdAt: string;
   supplierUsdCents: number;
   pendingCostLines: number;
+  supplierInvoicePaidAt: string | null;
 }
 
 // Matches shared/product-catalog.ts PUFFIN_USD_TO_NZD; inlined to avoid a new import.
@@ -422,6 +423,11 @@ export default function AdminOrders() {
                       ) : (
                         <div style={{ fontSize: "11px", color: order.pendingCostLines > 0 ? "#fb923c" : "rgba(255,255,255,0.3)" }}>
                           {order.pendingCostLines > 0 ? `${order.pendingCostLines} line${order.pendingCostLines === 1 ? "" : "s"} pending` : "—"}
+                        </div>
+                      )}
+                      {order.supplierInvoicePaidAt && (
+                        <div style={{ marginTop: 4, display: "inline-block", padding: "2px 7px", background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.35)", color: "#22c55e", fontSize: 10, fontWeight: 600, borderRadius: 3, letterSpacing: 0.3 }} title={`Supplier invoice paid ${new Date(order.supplierInvoicePaidAt).toLocaleDateString()}`}>
+                          PAID
                         </div>
                       )}
                     </td>

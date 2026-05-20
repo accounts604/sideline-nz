@@ -55,7 +55,10 @@ router.get("/orders", async (req, res) => {
   try {
     const { userId } = (req as any).user as JwtPayload;
     const orders = await storage.getOrdersByAssignedSupplier(userId);
-    // Strip pricing and internal-only fields from the list view
+    // Strip pricing and internal-only fields from the list view. Payment
+    // status (date only, not the amount) is exposed so the supplier sees the
+    // "Paid ✓" chip on their dashboard — saves them asking "did you get the
+    // invoice / has payment cleared?"
     const safe = orders.map((o) => ({
       id: o.id,
       orderNumber: o.orderNumber,
@@ -65,6 +68,7 @@ router.get("/orders", async (req, res) => {
       pipelineStage: o.pipelineStage,
       deliveryAddress: o.deliveryAddress,
       deliveryAttention: o.deliveryAttention,
+      supplierInvoicePaidAt: o.supplierInvoicePaidAt,
       createdAt: o.createdAt,
       updatedAt: o.updatedAt,
     }));

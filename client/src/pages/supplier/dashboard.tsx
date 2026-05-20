@@ -21,6 +21,7 @@ type SupplierOrder = {
   pipelineStage: string | null;
   deliveryAddress: string | null;
   deliveryAttention: string | null;
+  supplierInvoicePaidAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -265,7 +266,7 @@ export default function SupplierDashboard() {
                       {o.poReference || o.accountName || o.customerName || "—"}
                     </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
+                  <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                     <span
                       style={{
                         fontSize: "11px",
@@ -279,6 +280,23 @@ export default function SupplierDashboard() {
                     >
                       {o.pipelineStage || "Assigned"}
                     </span>
+                    {o.supplierInvoicePaidAt && (
+                      <span
+                        title={`Paid ${new Date(o.supplierInvoicePaidAt).toLocaleDateString()}`}
+                        style={{
+                          fontSize: "10px",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.8px",
+                          color: "#34d399",
+                          border: "1px solid rgba(52,211,153,0.4)",
+                          borderRadius: "4px",
+                          padding: "3px 8px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        ✓ Paid
+                      </span>
+                    )}
                   </div>
                 </div>
               </Link>
