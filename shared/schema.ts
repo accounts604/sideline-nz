@@ -164,6 +164,14 @@ export const orders = pgTable("orders", {
   supplierInvoiceFileUrl: text("supplier_invoice_file_url"),
   supplierInvoiceFileName: text("supplier_invoice_file_name"),
   supplierInvoiceUploadedAt: timestamp("supplier_invoice_uploaded_at"),
+  // Payment receipt — proof we paid the supplier (bank slip / Wise PDF /
+  // screenshot). Lives in the same Drive 08. Invoicing/ folder as the
+  // supplier invoice itself. Separate file from supplier_invoice_file_*
+  // because the supplier sends one document (their bill) and we generate
+  // the other (our proof of payment).
+  paymentReceiptFileUrl: text("payment_receipt_file_url"),
+  paymentReceiptFileName: text("payment_receipt_file_name"),
+  paymentReceiptUploadedAt: timestamp("payment_receipt_uploaded_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   paidAt: timestamp("paid_at"),
