@@ -2444,6 +2444,140 @@ router.post("/orders/:id/customer-invoice/upload", async (req, res) => {
   }
 });
 
+// ---- Xero OAuth + invoice pull ----
+//
+// Connect flow: admin clicks Connect → /xero/connect redirects to Xero with
+// a signed state token → user grants access → Xero redirects to /xero/callback
+// with code + state → we exchange code for tokens and store in xero_connections.
+//
+// State token = JWT signed with JWT_SECRET so we can verify it came from us
+// (not a CSRF). Lifetime 10 min.
+
+const XERO_STATE_LIFETIME_SEC = 600;
+
+router.get("/xero/connect", async (req, res) => {
+  try {
+    const { isXeroEnvConfigured, buildAuthorizeUrl } = await import("../xero-client.js");
+    if (!isXeroEnvConfigured()) {
+      return res.status(500).json({ error: "Xero not configured", hint: "Set XERO_CLIENT_ID and XERO_CLIENT_SECRET env vars." });
+    }
+    const jwtMod = await import("jsonwebtoken");
+    const user = (req as any).user as { userId: string };
+    const state = jwtMod.default.sign({ userId: user.userId, nonce: Math.random().toString(36).slice(2) }, process.env.JWT_SECRET || "dev-secret-change-in-production", { expiresIn: XERO_STATE_LIFETIME_SEC });
+    res.redirect(buildAuthorizeUrl(state));
+  } catch (err: any) {
+    console.error("Xero connect error:", err);
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+router.get("/xero/callback", async (req, res) => {
+  try {
+    const { code, state, error } = req.query as Record<string, string | undefined>;
+    if (error) return res.status(400).send(`Xero authorization rejected: ${error}`);
+    if (!code || !state) return res.status(400).send("Missing code or state");
+    const jwtMod = await import("jsonwebtoken");
+    let decoded: any;
+    try {
+      decoded = jwtMod.default.verify(state, process.env.JWT_SECRET || "dev-secret-change-in-production");
+    } catch {
+      return res.status(400).send("Invalid or expired state token");
+    }
+    const { exchangeAuthCode } = await import("../xero-client.js");
+    const { tenantName } = await exchangeAuthCode(code, { userId: decoded?.userId });
+    // Bounce back to the settings page so the admin sees the connected state.
+    const back = `/admin/settings?xero=connected${tenantName ? `&tenant=${encodeURIComponent(tenantName)}` : ""}`;
+    res.redirect(back);
+  } catch (err: any) {
+    console.error("Xero callback error:", err);
+    res.status(500).send(`Xero callback failed: ${err?.message || err}`);
+  }
+});
+
+router.get("/xero/status", async (_req, res) => {
+  try {
+    const { isXeroEnvConfigured } = await import("../xero-client.js");
+    const { xeroConnections } = await import("@shared/schema");
+    const [conn] = await db.select().from(xeroConnections).limit(1);
+    res.json({
+      ok: true,
+      envConfigured: isXeroEnvConfigured(),
+      connected: !!conn,
+      tenantName: conn?.tenantName || null,
+      tenantId: conn?.tenantId || null,
+      connectedAt: conn?.connectedAt || null,
+      expiresAt: conn?.expiresAt || null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+router.delete("/xero", async (_req, res) => {
+  try {
+    const { disconnectXero } = await import("../xero-client.js");
+    await disconnectXero();
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// POST /orders/:id/customer-invoice/pull-from-xero — uses the stored
+// customer_invoice_xero_ref to fetch the PDF from Xero and mirror to Drive.
+router.post("/orders/:id/customer-invoice/pull-from-xero", async (req, res) => {
+  try {
+    const user = (req as any).user as { userId: string };
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (!order.customerInvoiceXeroRef) {
+      return res.status(400).json({ error: "No Xero invoice reference set on this PO. Enter it first." });
+    }
+    const { fetchInvoicePdf } = await import("../xero-client.js");
+    const result = await fetchInvoicePdf(order.customerInvoiceXeroRef);
+    if (!result) return res.status(404).json({ error: `Xero invoice ${order.customerInvoiceXeroRef} not found` });
+
+    const fileName = `${result.invoiceNumber}.pdf`;
+    let driveFileId: string | null = null;
+    if (order.driveFolderId) {
+      // Push the buffer to Vercel Blob first, then reuse the existing mirror
+      // helper. Avoids a second multipart Drive upload path.
+      const { put } = await import("@vercel/blob");
+      const blob = await put(fileName, result.buffer, {
+        access: "public",
+        contentType: "application/pdf",
+        token: process.env.BLOB_READ_WRITE_TOKEN,
+      });
+      driveFileId = await mirrorBlobToPoFolder({
+        poFolderId: order.driveFolderId,
+        slot: "supplier-invoice",
+        blobUrl: blob.url,
+        fileName,
+        orderId: order.id,
+      });
+    }
+    const fileUrl = driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view` : null;
+
+    await db.update(orders).set({
+      customerInvoiceFileUrl: fileUrl || order.customerInvoiceFileUrl,
+      customerInvoiceFileName: fileName,
+      customerInvoiceUploadedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(orders.id, order.id));
+
+    await storage.logOrderActivity({
+      orderId: order.id, userId: user.userId,
+      action: "customer_invoice_pulled_from_xero",
+      details: { xeroRef: order.customerInvoiceXeroRef, xeroInvoiceId: result.invoiceId, fileUrl, driveFileId },
+    } as any).catch(() => {});
+
+    res.json({ ok: true, fileUrl, fileName, driveFileId, invoiceId: result.invoiceId });
+  } catch (err: any) {
+    console.error("Pull from Xero error:", err);
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 // GET /orders/:id/supporter-orders — fetch Shopify orders for this PO's
 // club (the customer-side revenue for a supporter-campaign PO). Empty
 // list for direct POs (no clubAccountId / shopifyOrderTag).

@@ -14,6 +14,7 @@ import {
   X,
   Factory,
   Image as ImageIcon,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { useState } from "react";
 import { SidelineLogo } from "./sideline-logo";
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
   { href: "/admin/quotes", label: "Smart Quotes", icon: FileText },
   { href: "/admin/mockups", label: "Mockup Engine", icon: Wand2 },
   { href: "/admin/integrations", label: "Integrations", icon: Activity },
+  { href: "/admin/settings", label: "Settings", icon: SettingsIcon },
 ];
 
 function NavLink({ href, label, icon: Icon, active, onClick }: {
