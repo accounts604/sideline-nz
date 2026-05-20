@@ -25,7 +25,7 @@ export type { ChatTurnInput, ChatTurnOutput };
 // is the telegram chat_id.
 export async function getOrCreateConversation(opts: {
   userId: string;
-  channel?: "web" | "telegram";
+  channel?: "web" | "telegram" | "gmail";
   channelRef?: string;
   scopeKind?: string;
   scopeId?: string;
@@ -38,6 +38,19 @@ export async function getOrCreateConversation(opts: {
       .select()
       .from(ezraConversations)
       .where(and(eq(ezraConversations.channel, "telegram"), eq(ezraConversations.channelRef, opts.channelRef)))
+      .limit(1);
+    if (existing[0]) return existing[0];
+  }
+
+  // For gmail, dedupe by channel + channelRef (channelRef = Gmail threadId).
+  // One Ezra conversation per Gmail thread — every customer reply on the
+  // same thread continues the same conversation, so Ezra has prior turns
+  // as context when deciding.
+  if (channel === "gmail" && opts.channelRef) {
+    const existing = await db
+      .select()
+      .from(ezraConversations)
+      .where(and(eq(ezraConversations.channel, "gmail"), eq(ezraConversations.channelRef, opts.channelRef)))
       .limit(1);
     if (existing[0]) return existing[0];
   }
