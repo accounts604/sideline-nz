@@ -132,6 +132,11 @@ interface Order {
   paymentReceiptFileUrl: string | null;
   paymentReceiptFileName: string | null;
   paymentReceiptUploadedAt: string | null;
+  customerInvoiceXeroRef: string | null;
+  customerInvoiceFileUrl: string | null;
+  customerInvoiceFileName: string | null;
+  customerInvoiceUploadedAt: string | null;
+  clubAccountId: string | null;
   orderType: string | null;
   artworkApproved: boolean | null;
   artworkApprovedBy: string | null;
@@ -2547,6 +2552,11 @@ function SupplierInvoiceCard({ order, orderId, invalidate }: { order: Order; ord
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [receiptErr, setReceiptErr] = useState<string | null>(null);
+  const [xeroRef, setXeroRef] = useState(order.customerInvoiceXeroRef || "");
+  const [uploadingCustomerInvoice, setUploadingCustomerInvoice] = useState(false);
+  const [customerInvoiceErr, setCustomerInvoiceErr] = useState<string | null>(null);
+  const [showSupporterOrders, setShowSupporterOrders] = useState(false);
+  const isSupporterPo = !!order.clubAccountId;
 
   const markPaid = useMutation({
     mutationFn: async () => {
@@ -2605,11 +2615,35 @@ function SupplierInvoiceCard({ order, orderId, invalidate }: { order: Order; ord
     }
   }
 
+  const saveXeroRef = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("PATCH", `/api/admin/orders/${orderId}/customer-invoice/xero-ref`, { xeroRef: xeroRef.trim() || null });
+      return r.json();
+    },
+    onSuccess: invalidate,
+  });
+
+  async function handleCustomerInvoiceUpload(file: File) {
+    setCustomerInvoiceErr(null);
+    setUploadingCustomerInvoice(true);
+    try {
+      const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token" });
+      await apiRequest("POST", `/api/admin/orders/${orderId}/customer-invoice/upload`, {
+        blobUrl: blob.url, fileName: file.name,
+      });
+      invalidate();
+    } catch (e: any) {
+      setCustomerInvoiceErr(e?.message || "Upload failed");
+    } finally {
+      setUploadingCustomerInvoice(false);
+    }
+  }
+
   const paid = !!order.supplierInvoicePaidAt;
 
   return (
-    <Section title="Supplier Invoice" count={paid ? 1 : 0} defaultOpen={false}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, padding: "4px 0" }}>
+    <Section title="Invoices & Payments" count={paid ? 1 : 0} defaultOpen={false}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16, padding: "4px 0" }}>
         {/* Column 1: supplier's invoice file + total */}
         <div>
           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Invoice file</div>
@@ -2679,7 +2713,69 @@ function SupplierInvoiceCard({ order, orderId, invalidate }: { order: Order; ord
           )}
         </div>
 
-        {/* Column 3: payment status (Mark Paid / Paid info) */}
+        {/* Column 3: customer invoice — Xero ref + deep link for direct POs,
+            or a "Show supporter orders" button for supporter-campaign POs */}
+        <div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>
+            {isSupporterPo ? "Customer revenue (Shopify)" : "Customer invoice (Xero)"}
+          </div>
+
+          {isSupporterPo ? (
+            <>
+              <button
+                onClick={() => setShowSupporterOrders(true)}
+                style={{ width: "100%", padding: "10px 12px", fontSize: 12, fontWeight: 600, background: "rgba(147,197,253,0.08)", color: "#93c5fd", border: "1px solid rgba(147,197,253,0.25)", borderRadius: 6, cursor: "pointer" }}
+              >
+                Show supporter orders →
+              </button>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>
+                Live Shopify orders tagged for this club. CSV export inside.
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  value={xeroRef}
+                  onChange={(e) => setXeroRef(e.target.value)}
+                  onBlur={() => { if ((order.customerInvoiceXeroRef || "") !== xeroRef.trim()) saveXeroRef.mutate(); }}
+                  placeholder="INV-12345"
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                {xeroRef.trim() && (
+                  <a
+                    href={`https://go.xero.com/app/!9XKW/invoicing/search?q=${encodeURIComponent(xeroRef.trim())}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Open in Xero (searches by invoice number)"
+                    style={{ padding: "6px 10px", fontSize: 11, fontWeight: 600, background: "#13b5ea", color: "#fff", border: 0, borderRadius: 4, textDecoration: "none", display: "inline-flex", alignItems: "center" }}
+                  >
+                    Open in Xero
+                  </a>
+                )}
+              </div>
+              {order.customerInvoiceFileUrl ? (
+                <a href={order.customerInvoiceFileUrl} target="_blank" rel="noreferrer" style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 8, color: "#93c5fd", fontSize: 12, padding: "6px 10px", background: "rgba(147,197,253,0.08)", border: "1px solid rgba(147,197,253,0.2)", borderRadius: 6 }}>
+                  <FileText size={13} /> {order.customerInvoiceFileName || "Invoice PDF"}
+                </a>
+              ) : (
+                <label style={{ display: "block", marginTop: 8, padding: "10px", border: "2px dashed rgba(255,255,255,0.15)", borderRadius: 6, textAlign: "center", cursor: uploadingCustomerInvoice ? "wait" : "pointer", color: "rgba(255,255,255,0.5)", fontSize: 11 }}>
+                  <input
+                    type="file"
+                    accept="application/pdf,image/*"
+                    disabled={uploadingCustomerInvoice}
+                    onChange={(e) => { if (e.target.files?.[0]) handleCustomerInvoiceUpload(e.target.files[0]); }}
+                    style={{ display: "none" }}
+                  />
+                  {uploadingCustomerInvoice ? "Uploading…" : "Upload Xero invoice PDF (fallback)"}
+                </label>
+              )}
+              {customerInvoiceErr && <div style={{ color: "#fca5a5", fontSize: 11, marginTop: 6 }}>{customerInvoiceErr}</div>}
+            </>
+          )}
+        </div>
+
+        {/* Column 4: payment status (Mark Paid / Paid info) */}
         <div>
           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Payment</div>
           {paid ? (
@@ -2725,6 +2821,98 @@ function SupplierInvoiceCard({ order, orderId, invalidate }: { order: Order; ord
           )}
         </div>
       </div>
+
+      {/* Supporter orders modal — opens from the customer-side column on
+          supporter-campaign POs. Fetches live from Shopify via the
+          /supporter-orders endpoint. CSV export piggy-backs on the
+          existing club-portal CSV route (server-side tag-isolated). */}
+      {showSupporterOrders && <SupporterOrdersModal orderId={orderId} onClose={() => setShowSupporterOrders(false)} />}
     </Section>
+  );
+}
+
+function SupporterOrdersModal({ orderId, onClose }: { orderId: string; onClose: () => void }) {
+  const { data, isLoading, error } = useQuery<any>({
+    queryKey: [`/api/admin/orders/${orderId}/supporter-orders`],
+  });
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: 24, maxWidth: 920, width: "100%", maxHeight: "85vh", overflowY: "auto", color: "#fff" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Customer revenue — Shopify supporter orders</h3>
+            {data?.club && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>{data.club.clubName} · tag {data.club.shopifyOrderTag}</div>}
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: 0, color: "rgba(255,255,255,0.7)", cursor: "pointer" }}><X size={18} /></button>
+        </div>
+        {isLoading && <div style={{ color: "rgba(255,255,255,0.5)" }}>Loading from Shopify…</div>}
+        {error && <div style={{ color: "#fca5a5" }}>Failed: {String((error as any)?.message || error)}</div>}
+        {data?.summary && (
+          <div style={{ display: "flex", gap: 24, padding: "14px 18px", background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
+            <div><span style={{ color: "rgba(255,255,255,0.5)" }}>Orders:</span> <b>{data.summary.orderCount}</b></div>
+            <div><span style={{ color: "rgba(255,255,255,0.5)" }}>Units:</span> <b>{data.summary.unitsSold}</b></div>
+            <div><span style={{ color: "rgba(255,255,255,0.5)" }}>Revenue:</span> <b style={{ color: "#22c55e" }}>{data.summary.currency} ${(data.summary.revenueCents / 100).toFixed(2)}</b></div>
+          </div>
+        )}
+        {data?.orders?.length > 0 && (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: "rgba(255,255,255,0.04)" }}>
+                <th style={{ padding: "8px 10px", textAlign: "left", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", fontSize: 10, letterSpacing: 0.5 }}>Order</th>
+                <th style={{ padding: "8px 10px", textAlign: "left", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", fontSize: 10, letterSpacing: 0.5 }}>Customer</th>
+                <th style={{ padding: "8px 10px", textAlign: "left", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", fontSize: 10, letterSpacing: 0.5 }}>Items</th>
+                <th style={{ padding: "8px 10px", textAlign: "right", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", fontSize: 10, letterSpacing: 0.5 }}>Total</th>
+                <th style={{ padding: "8px 10px", textAlign: "left", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", fontSize: 10, letterSpacing: 0.5 }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.orders.map((o: any) => (
+                <tr key={o.id} style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                  <td style={{ padding: "8px 10px", fontFamily: "monospace", color: "#93c5fd" }}>{o.name}</td>
+                  <td style={{ padding: "8px 10px" }}>{o.customerName || o.customerEmail || "—"}</td>
+                  <td style={{ padding: "8px 10px", color: "rgba(255,255,255,0.6)" }}>{o.lines.reduce((s: number, l: any) => s + l.quantity, 0)}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right" }}>{o.currency} ${(o.totalCents / 100).toFixed(2)}</td>
+                  <td style={{ padding: "8px 10px", color: "rgba(255,255,255,0.6)" }}>{o.fulfillmentStatus || o.financialStatus || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {data?.orders?.length > 0 && (
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", gap: 10 }}>
+            <button
+              onClick={() => {
+                const rows = [
+                  ["Order", "Customer Name", "Customer Email", "Units", "Total", "Currency", "Financial", "Fulfillment", "Created", "Lines"],
+                  ...data.orders.map((o: any) => [
+                    o.name,
+                    o.customerName || "",
+                    o.customerEmail || "",
+                    String(o.lines.reduce((s: number, l: any) => s + l.quantity, 0)),
+                    (o.totalCents / 100).toFixed(2),
+                    o.currency,
+                    o.financialStatus || "",
+                    o.fulfillmentStatus || "",
+                    o.createdAt,
+                    o.lines.map((l: any) => `${l.quantity}× ${l.title}${l.variantTitle ? ` — ${l.variantTitle}` : ""}`).join(" | "),
+                  ]),
+                ];
+                const csv = rows.map((r: string[]) => r.map((c: string) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+                const blob = new Blob([csv], { type: "text/csv" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `${data.club?.shopifyOrderTag || "supporter"}-orders.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              style={{ padding: "7px 14px", fontSize: 12, fontWeight: 600, background: "rgba(255,255,255,0.06)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6, cursor: "pointer" }}
+            >
+              Download CSV
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

@@ -172,6 +172,14 @@ export const orders = pgTable("orders", {
   paymentReceiptFileUrl: text("payment_receipt_file_url"),
   paymentReceiptFileName: text("payment_receipt_file_name"),
   paymentReceiptUploadedAt: timestamp("payment_receipt_uploaded_at"),
+  // Customer-side invoice. For direct POs we record the Xero invoice ref
+  // and/or upload a PDF. For supporter-campaign POs (has clubAccountId)
+  // the customer-side data lives in Shopify orders tagged club:<slug> —
+  // fetched live via fetchSupporterOrdersByTag, no DB column.
+  customerInvoiceXeroRef: text("customer_invoice_xero_ref"),
+  customerInvoiceFileUrl: text("customer_invoice_file_url"),
+  customerInvoiceFileName: text("customer_invoice_file_name"),
+  customerInvoiceUploadedAt: timestamp("customer_invoice_uploaded_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   paidAt: timestamp("paid_at"),
