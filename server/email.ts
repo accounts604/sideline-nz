@@ -14,6 +14,7 @@ export interface EmailAttachment {
 
 export interface EmailPayload {
   to: string;
+  cc?: string | string[];
   subject: string;
   text: string;
   html?: string;
@@ -51,6 +52,7 @@ class ResendEmailService implements EmailService {
       body: JSON.stringify({
         from: this.from,
         to: [payload.to],
+        cc: payload.cc ? (Array.isArray(payload.cc) ? payload.cc : [payload.cc]) : undefined,
         reply_to: payload.replyTo,
         subject: payload.subject,
         text: payload.text,
@@ -314,4 +316,79 @@ export async function sendInviteEmail(to: string, inviteToken: string, teamName?
     text: `${greeting}\n\nSet up your account: ${link}\n\nThis link expires in 7 days.`,
     html: `<p>${greeting}</p><p><a href="${link}">Set up your account</a></p><p><small>This link expires in 7 days.</small></p>`,
   });
+}
+
+// Supplier onboarding — instructions only. Password is shared separately via
+// WhatsApp/Telegram so it never sits in inboxes or backup systems.
+export async function sendSupplierOnboardingEmail(input: {
+  to: string;
+  ccEmail?: string;
+  supplierName: string;
+  loginUrl: string;
+}) {
+  const { to, ccEmail, supplierName, loginUrl } = input;
+  const subject = `Welcome to the Sideline NZ Supplier Portal`;
+  const text = [
+    `Kia ora ${supplierName} team,`,
+    ``,
+    `You've been set up on the Sideline NZ Supplier Portal — this is where every PO we send you lives. You'll get an email when a new PO is raised; from there you log in to download the production sheet, mark when artwork files are received, and mark each order as dispatched once it ships.`,
+    ``,
+    `Login: ${loginUrl}`,
+    `Username: this email address (${to})`,
+    `Password: shared separately by Romero via WhatsApp/Telegram.`,
+    ``,
+    `What you can do once you're in:`,
+    `  1. See every PO assigned to you, with stage and due date.`,
+    `  2. Open a PO to download the production sheet PDF + access the shared Google Drive folder (artwork, mockups, size run, logos).`,
+    `  3. Mark "Files Received" when the artwork pack is in hand — this updates our internal tracking so we know production can start.`,
+    `  4. Mark "Dispatched" with the tracking number / courier when goods leave you. This is what triggers our customer-facing shipping notification.`,
+    `  5. Reach out via this email or WhatsApp Romero directly if anything is unclear.`,
+    ``,
+    `If you can't log in, reply to this email and we'll reset things.`,
+    ``,
+    `— The Sideline NZ team`,
+    `orders@sidelinenz.com`,
+  ].join("\n");
+
+  const html = `
+<div style="font-family: -apple-system, system-ui, sans-serif; max-width: 600px; color: #1a1a1a; line-height: 1.6">
+  <div style="background: #0A1628; padding: 24px; border-radius: 6px 6px 0 0">
+    <div style="color: #C9A84C; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; font-weight: 700">Sideline NZ</div>
+    <div style="color: #fff; font-size: 22px; font-weight: 700; margin-top: 6px">Welcome to the Supplier Portal</div>
+  </div>
+  <div style="padding: 24px; background: #fff; border: 1px solid #e5e5e5; border-top: 0; border-radius: 0 0 6px 6px">
+    <p>Kia ora <strong>${esc(supplierName)}</strong> team,</p>
+    <p>You've been set up on the Sideline NZ Supplier Portal — this is where every PO we send you lives. You'll get an email when a new PO is raised; from there you log in to download the production sheet, mark when artwork files are received, and mark each order as dispatched once it ships.</p>
+
+    <div style="background: #f6f5f1; border-left: 3px solid #C9A84C; padding: 14px 18px; margin: 18px 0">
+      <div style="font-size: 12px; color: #555; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px">Your login</div>
+      <div style="font-size: 13px"><strong>URL:</strong> <a href="${esc(loginUrl)}" style="color: #0A1628">${esc(loginUrl)}</a></div>
+      <div style="font-size: 13px"><strong>Username:</strong> ${esc(to)}</div>
+      <div style="font-size: 13px"><strong>Password:</strong> shared separately via WhatsApp/Telegram</div>
+    </div>
+
+    <p style="margin-top: 22px; font-weight: 600">What you can do once you're in:</p>
+    <ol style="padding-left: 22px">
+      <li>See every PO assigned to you, with stage and due date.</li>
+      <li>Open a PO to download the production sheet PDF + access the shared Google Drive folder (artwork, mockups, size run, logos).</li>
+      <li><strong>Mark "Files Received"</strong> when the artwork pack is in hand — this updates our internal tracking so we know production can start.</li>
+      <li><strong>Mark "Dispatched"</strong> with the tracking number / courier when goods leave you. This is what triggers our customer-facing shipping notification.</li>
+      <li>Reach out via this email or WhatsApp Romero directly if anything is unclear.</li>
+    </ol>
+
+    <p style="color: #555; font-size: 13px; margin-top: 22px">If you can't log in, reply to this email and we'll reset things.</p>
+    <p style="color: #555; font-size: 13px; margin-top: 4px">— The Sideline NZ team · <a href="mailto:orders@sidelinenz.com" style="color: #0A1628">orders@sidelinenz.com</a></p>
+  </div>
+</div>
+  `.trim();
+
+  return emailService.send({ to, cc: ccEmail, subject, text, html });
+}
+
+function esc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }

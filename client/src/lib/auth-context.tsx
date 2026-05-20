@@ -8,6 +8,7 @@ interface AuthUser {
   role: "admin" | "customer" | "supplier";
   teamName?: string | null;
   contactPhone?: string | null;
+  impersonating?: { originalAdminId: string } | null;
 }
 
 interface AuthContextType {

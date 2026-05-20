@@ -5,6 +5,11 @@ import bcrypt from "bcryptjs";
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 const JWT_EXPIRES_IN = "7d";
 const COOKIE_NAME = "snz_token";
+// Set during impersonation. Holds the original admin's JWT (signed, short-lived)
+// so they can return without re-logging-in. End-impersonation reads this and
+// swaps it back into snz_token. Never accept this cookie as the auth source.
+export const IMPERSONATE_COOKIE = "snz_original_session";
+const IMPERSONATE_EXPIRES_IN = "1h";
 
 export interface JwtPayload {
   userId: string;
@@ -98,4 +103,43 @@ export async function hashPassword(password: string): Promise<string> {
 
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   return bcrypt.compare(password, hash);
+}
+
+// ─── Impersonation ────────────────────────────────────────────────────
+//
+// Two-cookie model:
+//   snz_token              = the JWT requireAuth/requireSupplier reads
+//   snz_original_session   = the admin's JWT, parked here during impersonation
+//
+// Set both on /admin/suppliers/:id/impersonate; restore from the second on
+// /auth/end-impersonation. Never accept snz_original_session as the auth
+// source — it exists purely so the admin can swap back.
+
+export function signShortLivedToken(payload: JwtPayload): string {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: IMPERSONATE_EXPIRES_IN });
+}
+
+export function setImpersonateCookie(res: Response, originalAdminToken: string) {
+  const isProxied = process.env.COOKIE_SECURE === "true" || process.env.NODE_ENV === "production";
+  res.cookie(IMPERSONATE_COOKIE, originalAdminToken, {
+    httpOnly: true,
+    secure: isProxied,
+    sameSite: isProxied ? "none" : "lax",
+    maxAge: 60 * 60 * 1000, // 1 hour — matches signed token lifetime
+    path: "/",
+  });
+}
+
+export function clearImpersonateCookie(res: Response) {
+  res.clearCookie(IMPERSONATE_COOKIE, { path: "/" });
+}
+
+export function readImpersonateCookie(req: Request): JwtPayload | null {
+  const token = req.cookies?.[IMPERSONATE_COOKIE];
+  if (!token) return null;
+  try {
+    return jwt.verify(token, JWT_SECRET) as JwtPayload;
+  } catch {
+    return null;
+  }
 }
