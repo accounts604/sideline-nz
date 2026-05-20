@@ -2431,6 +2431,48 @@ async function dispatchOrderToSuppliers(
     }
   }
 
+  // Step 2.6: auto-attach the club's primary logo to any order_item that
+  // doesn't already have one. Resolves the long-standing chore of hunting
+  // through Canva for the right club mark when raising a PO. Fail-soft —
+  // dispatch should still succeed even if the lookup or DB write fails.
+  if (order.clubAccountId) {
+    try {
+      const primary = await storage.getPrimaryClubLogo(order.clubAccountId);
+      if (primary) {
+        const { logoElementFromAsset, logoListHasAsset } = await import("../canva-logos.js");
+        const element = logoElementFromAsset(primary);
+        let stamped = 0;
+        for (const item of allItems) {
+          const existing = (item.elementUrls as any[] | null) ?? [];
+          if (logoListHasAsset(existing, primary)) continue;
+          const next = [...existing, element];
+          await db.update(orderItems).set({ elementUrls: next as any }).where(eq(orderItems.id, item.id));
+          // Mutate the local item too so the PDF render picks it up later in
+          // this same dispatch run.
+          (item as any).elementUrls = next;
+          stamped += 1;
+        }
+        if (stamped > 0) {
+          await storage.logOrderActivity({
+            orderId: order.id,
+            userId: opts.userId,
+            action: "logo_auto_attached",
+            details: {
+              clubLogoAssetId: primary.id,
+              canvaDesignId: primary.canvaDesignId,
+              canvaPageIndex: primary.canvaPageIndex,
+              itemsStamped: stamped,
+            },
+          } as any).catch(() => {});
+        }
+      } else {
+        console.warn(`[dispatch-po] Club ${order.clubAccountId} has no primary logo asset — PO ${order.poReference} dispatched without auto-attach`);
+      }
+    } catch (err) {
+      console.error(`[dispatch-po] Logo auto-attach failed for ${order.poReference}:`, err);
+    }
+  }
+
   // Step 3: shared side effects that happen once per order, not per supplier
   // group. Drop the Instructions doc into the Drive folder, push GHL stage.
   let instructionsDocId: string | null = null;
@@ -3720,6 +3762,105 @@ router.get("/clubs/:id/collection-status", async (req, res) => {
       dropClosedAt: club.supporterDropClosedAt,
       productCount: status.productCount,
     });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// ---- Club logo assets (Canva-sourced, auto-attached on PO raise) ----
+//
+// Storage shape: club_logo_assets rows hold the canva_design_id + optional
+// page index for a logo asset owned by a club. The PO-raise hook reads the
+// row marked kind='primary' and stamps it into each order_item.elementUrls.
+//
+// Endpoints below are admin-only — mounted under /api/admin already.
+
+const createLogoSchema = z.object({
+  canvaUrl: z.string().url().optional(),
+  canvaDesignId: z.string().min(8).optional(),
+  canvaPageIndex: z.number().int().min(1).max(200).nullable().optional(),
+  kind: z.enum(["primary", "secondary", "sponsor"]).default("primary"),
+  displayLabel: z.string().max(200).nullable().optional(),
+  previewUrl: z.string().url().nullable().optional(),
+}).refine((d) => d.canvaUrl || d.canvaDesignId, { message: "Provide canvaUrl or canvaDesignId" });
+
+const updateLogoSchema = z.object({
+  kind: z.enum(["primary", "secondary", "sponsor"]).optional(),
+  displayLabel: z.string().max(200).nullable().optional(),
+  canvaPageIndex: z.number().int().min(1).max(200).nullable().optional(),
+  previewUrl: z.string().url().nullable().optional(),
+}).strict();
+
+// GET /api/admin/clubs/:id/logos — list logos for one club
+router.get("/clubs/:id/logos", async (req, res) => {
+  try {
+    const [club] = await db.select().from(clubAccounts).where(eq(clubAccounts.id, req.params.id)).limit(1);
+    if (!club) return res.status(404).json({ error: "Club not found" });
+    const logos = await storage.listClubLogoAssets(req.params.id);
+    res.json({ ok: true, club: { id: club.id, clubName: club.clubName }, logos });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// POST /api/admin/clubs/:id/logos — add a logo from a Canva URL or raw ID
+router.post("/clubs/:id/logos", async (req, res) => {
+  try {
+    const data = createLogoSchema.parse(req.body);
+    const [club] = await db.select().from(clubAccounts).where(eq(clubAccounts.id, req.params.id)).limit(1);
+    if (!club) return res.status(404).json({ error: "Club not found" });
+
+    const { extractCanvaDesignId } = await import("../canva-logos.js");
+    const designId = data.canvaDesignId ?? (data.canvaUrl ? extractCanvaDesignId(data.canvaUrl) : null);
+    if (!designId) {
+      return res.status(400).json({ error: "Could not extract Canva design ID from URL" });
+    }
+    const created = await storage.createClubLogoAsset({
+      clubAccountId: req.params.id,
+      canvaDesignId: designId,
+      canvaPageIndex: data.canvaPageIndex ?? null,
+      kind: data.kind,
+      displayLabel: data.displayLabel ?? `${club.clubName} — ${data.kind}`,
+      previewUrl: data.previewUrl ?? null,
+      lastSyncedAt: null,
+    } as any);
+    res.json({ ok: true, logo: created });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// PATCH /api/admin/clubs/:id/logos/:logoId — edit kind / label / preview
+router.patch("/clubs/:id/logos/:logoId", async (req, res) => {
+  try {
+    const data = updateLogoSchema.parse(req.body);
+    const updated = await storage.updateClubLogoAsset(req.params.logoId, data as any);
+    if (!updated) return res.status(404).json({ error: "Logo not found" });
+    res.json({ ok: true, logo: updated });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// DELETE /api/admin/clubs/:id/logos/:logoId
+router.delete("/clubs/:id/logos/:logoId", async (req, res) => {
+  try {
+    const ok = await storage.deleteClubLogoAsset(req.params.logoId);
+    if (!ok) return res.status(404).json({ error: "Logo not found" });
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// GET /api/admin/clubs-missing-logos — health check used by the dashboard
+// to surface clubs that won't auto-attach a logo on PO raise.
+router.get("/clubs-missing-logos", async (_req, res) => {
+  try {
+    const rows = await storage.listClubsMissingPrimaryLogo();
+    res.json({ ok: true, clubs: rows });
   } catch (err: any) {
     res.status(500).json({ error: String(err?.message || err) });
   }

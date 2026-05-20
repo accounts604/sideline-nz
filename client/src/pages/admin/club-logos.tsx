@@ -1,0 +1,257 @@
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { AdminLayout } from "@/components/admin-layout";
+import { apiRequest } from "@/lib/queryClient";
+
+interface ClubRow {
+  id: string;
+  clubName: string;
+  shopifyOrderTag: string | null;
+}
+
+interface LogoRow {
+  id: string;
+  kind: "primary" | "secondary" | "sponsor";
+  displayLabel: string | null;
+  canvaDesignId: string;
+  canvaPageIndex: number | null;
+  previewUrl: string | null;
+  lastSyncedAt: string | null;
+}
+
+interface ClubLogosResponse {
+  ok: boolean;
+  club: { id: string; clubName: string };
+  logos: LogoRow[];
+}
+
+function canvaUrlOf(designId: string, pageIndex: number | null): string {
+  const base = `https://www.canva.com/design/${designId}/edit`;
+  return pageIndex && pageIndex > 1 ? `${base}?page=${pageIndex}` : base;
+}
+
+function ClubRowEditor({ club }: { club: ClubRow }) {
+  const qc = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
+  const [canvaUrl, setCanvaUrl] = useState("");
+  const [pageIndex, setPageIndex] = useState<string>("");
+  const [label, setLabel] = useState("");
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery<ClubLogosResponse>({
+    queryKey: [`/api/admin/clubs/${club.id}/logos`],
+    enabled: expanded,
+  });
+
+  const addLogo = useMutation({
+    mutationFn: async () => {
+      setError(null);
+      const body: any = { canvaUrl, kind: "primary" };
+      if (pageIndex.trim()) body.canvaPageIndex = parseInt(pageIndex.trim(), 10);
+      if (label.trim()) body.displayLabel = label.trim();
+      if (previewUrl.trim()) body.previewUrl = previewUrl.trim();
+      const r = await apiRequest("POST", `/api/admin/clubs/${club.id}/logos`, body);
+      return r.json();
+    },
+    onSuccess: () => {
+      setCanvaUrl(""); setPageIndex(""); setLabel(""); setPreviewUrl("");
+      qc.invalidateQueries({ queryKey: [`/api/admin/clubs/${club.id}/logos`] });
+      qc.invalidateQueries({ queryKey: ["/api/admin/clubs-missing-logos"] });
+    },
+    onError: (e: any) => setError(e?.message || "Add failed"),
+  });
+
+  const setPrimary = useMutation({
+    mutationFn: async (logoId: string) => {
+      const r = await apiRequest("PATCH", `/api/admin/clubs/${club.id}/logos/${logoId}`, { kind: "primary" });
+      return r.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [`/api/admin/clubs/${club.id}/logos`] });
+      qc.invalidateQueries({ queryKey: ["/api/admin/clubs-missing-logos"] });
+    },
+  });
+
+  const deleteLogo = useMutation({
+    mutationFn: async (logoId: string) => {
+      const r = await apiRequest("DELETE", `/api/admin/clubs/${club.id}/logos/${logoId}`, undefined);
+      return r.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [`/api/admin/clubs/${club.id}/logos`] });
+      qc.invalidateQueries({ queryKey: ["/api/admin/clubs-missing-logos"] });
+    },
+  });
+
+  const primary = data?.logos.find((l) => l.kind === "primary") || null;
+
+  return (
+    <>
+      <tr style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+        <td style={tdStyle}>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>{club.clubName}</div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{club.shopifyOrderTag || "—"}</div>
+        </td>
+        <td style={tdStyle}>
+          {primary ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {primary.previewUrl ? (
+                <img src={primary.previewUrl} alt="" style={{ width: 36, height: 36, objectFit: "contain", background: "#fff", padding: 2, borderRadius: 4 }} />
+              ) : (
+                <div style={{ width: 36, height: 36, background: "rgba(255,255,255,0.05)", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "rgba(255,255,255,0.4)" }}>
+                  no img
+                </div>
+              )}
+              <div style={{ fontSize: 12 }}>
+                <a href={canvaUrlOf(primary.canvaDesignId, primary.canvaPageIndex)} target="_blank" rel="noreferrer" style={{ color: "#93c5fd" }}>
+                  {primary.displayLabel || primary.canvaDesignId}
+                </a>
+                {primary.canvaPageIndex ? <span style={{ color: "rgba(255,255,255,0.4)" }}> · p.{primary.canvaPageIndex}</span> : null}
+              </div>
+            </div>
+          ) : (
+            <span style={{ color: "#fca5a5", fontSize: 12 }}>No primary logo</span>
+          )}
+        </td>
+        <td style={{ ...tdStyle, textAlign: "right" }}>
+          <button
+            onClick={() => setExpanded((s) => !s)}
+            style={{ padding: "4px 10px", fontSize: 11, background: "rgba(255,255,255,0.06)", color: "#fff", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4, cursor: "pointer" }}
+          >
+            {expanded ? "Close" : "Manage"}
+          </button>
+        </td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={3} style={{ padding: "12px 16px 20px", background: "rgba(255,255,255,0.02)" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+              <div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Add / replace logo</div>
+                <input value={canvaUrl} onChange={(e) => setCanvaUrl(e.target.value)} placeholder="Canva URL — https://www.canva.com/design/…" style={inputStyle} />
+                <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                  <input value={pageIndex} onChange={(e) => setPageIndex(e.target.value)} placeholder="Page # (multi-page decks only)" style={{ ...inputStyle, width: 200 }} />
+                  <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Display label (optional)" style={inputStyle} />
+                </div>
+                <input value={previewUrl} onChange={(e) => setPreviewUrl(e.target.value)} placeholder="Preview image URL (optional — Canva CDN thumb)" style={{ ...inputStyle, marginTop: 6 }} />
+                <button
+                  disabled={!canvaUrl.trim() || addLogo.isPending}
+                  onClick={() => addLogo.mutate()}
+                  style={{ ...btnPrimary, marginTop: 10, opacity: (!canvaUrl.trim() || addLogo.isPending) ? 0.5 : 1 }}
+                >
+                  {addLogo.isPending ? "Saving…" : "Set as primary"}
+                </button>
+                {error && <div style={{ color: "#fca5a5", fontSize: 11, marginTop: 6 }}>{error}</div>}
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>All assigned logos</div>
+                {isLoading && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Loading…</div>}
+                {data && data.logos.length === 0 && (
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>No logos assigned yet.</div>
+                )}
+                {data && data.logos.map((l) => (
+                  <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                    {l.previewUrl ? (
+                      <img src={l.previewUrl} alt="" style={{ width: 32, height: 32, objectFit: "contain", background: "#fff", padding: 2, borderRadius: 3 }} />
+                    ) : (
+                      <div style={{ width: 32, height: 32, background: "rgba(255,255,255,0.04)", borderRadius: 3 }} />
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <a href={canvaUrlOf(l.canvaDesignId, l.canvaPageIndex)} target="_blank" rel="noreferrer" style={{ color: "#93c5fd", fontSize: 12 }}>
+                        {l.displayLabel || l.canvaDesignId}
+                      </a>
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>
+                        {l.kind}{l.canvaPageIndex ? ` · page ${l.canvaPageIndex}` : ""}
+                      </div>
+                    </div>
+                    {l.kind !== "primary" && (
+                      <button onClick={() => setPrimary.mutate(l.id)} style={btnGhost}>Make primary</button>
+                    )}
+                    <button onClick={() => deleteLogo.mutate(l.id)} style={{ ...btnGhost, color: "#fca5a5" }}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+export default function AdminClubLogos() {
+  const { data: clubsResp, isLoading } = useQuery<{ ok: boolean; clubs: ClubRow[] }>({
+    queryKey: ["/api/admin/clubs"],
+  });
+  const { data: missingResp } = useQuery<{ ok: boolean; clubs: ClubRow[] }>({
+    queryKey: ["/api/admin/clubs-missing-logos"],
+  });
+  const [filter, setFilter] = useState<"all" | "missing">("all");
+
+  const missingIds = new Set((missingResp?.clubs || []).map((c) => c.id));
+  const clubs = (clubsResp?.clubs || []).slice().sort((a, b) => a.clubName.localeCompare(b.clubName));
+  const visible = filter === "missing" ? clubs.filter((c) => missingIds.has(c.id)) : clubs;
+
+  return (
+    <AdminLayout>
+      <div style={{ padding: "32px 36px", color: "#fff" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24 }}>
+          <div>
+            <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: "-0.4px" }}>Club Logos</h1>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", margin: "6px 0 0" }}>
+              The primary logo here auto-attaches to every order_item on PO raise (Center Chest / Embroidery defaults).
+              {missingResp ? <> · <b style={{ color: "#fca5a5" }}>{missingResp.clubs.length}</b> clubs have no primary logo.</> : null}
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setFilter("all")} style={filter === "all" ? btnPrimary : btnGhost}>All</button>
+            <button onClick={() => setFilter("missing")} style={filter === "missing" ? btnPrimary : btnGhost}>Missing only</button>
+          </div>
+        </div>
+
+        {isLoading && <p style={{ color: "rgba(255,255,255,0.5)" }}>Loading…</p>}
+
+        {visible.length > 0 && (
+          <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: "rgba(255,255,255,0.03)" }}>
+                  <Th>Club</Th>
+                  <Th>Primary logo</Th>
+                  <Th right>Action</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((c) => <ClubRowEditor key={c.id} club={c} />)}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </AdminLayout>
+  );
+}
+
+const tdStyle: React.CSSProperties = { padding: "10px 16px", fontSize: 13, verticalAlign: "middle" };
+const inputStyle: React.CSSProperties = {
+  width: "100%", padding: "7px 10px", fontSize: 12, background: "#000", color: "#fff",
+  border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4,
+};
+const btnPrimary: React.CSSProperties = {
+  padding: "6px 14px", fontSize: 11, fontWeight: 600,
+  background: "#fff", color: "#000", border: 0, borderRadius: 4, cursor: "pointer",
+};
+const btnGhost: React.CSSProperties = {
+  padding: "5px 10px", fontSize: 11,
+  background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.8)",
+  border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4, cursor: "pointer",
+};
+
+function Th({ children, right }: { children: any; right?: boolean }) {
+  return (
+    <th style={{ padding: "10px 16px", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, color: "rgba(255,255,255,0.5)", textAlign: right ? "right" : "left" }}>
+      {children}
+    </th>
+  );
+}
