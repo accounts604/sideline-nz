@@ -18,7 +18,9 @@ import {
   users, carts, cartItems, orders, orderItems, ghlProducts,
   designFiles, designComments, notifications,
   orderSizeBreakdowns, productionStages, qualityChecks, orderMessages, orderActivity,
-  clubAccounts, supplierPrices
+  clubAccounts, supplierPrices,
+  clubLogoAssets,
+  type ClubLogoAsset, type InsertClubLogoAsset,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, desc, count, ilike } from "drizzle-orm";
@@ -42,7 +44,15 @@ export interface IStorage {
   createClubAccount(account: InsertClubAccount): Promise<ClubAccount>;
   updateClubAccount(id: string, data: Partial<InsertClubAccount>): Promise<ClubAccount | undefined>;
   getClubOrder(clubAccountId: string): Promise<Order | undefined>;
-  
+
+  // Club logo assets
+  listClubLogoAssets(clubAccountId: string): Promise<ClubLogoAsset[]>;
+  getPrimaryClubLogo(clubAccountId: string): Promise<ClubLogoAsset | undefined>;
+  createClubLogoAsset(data: InsertClubLogoAsset): Promise<ClubLogoAsset>;
+  updateClubLogoAsset(id: string, data: Partial<InsertClubLogoAsset>): Promise<ClubLogoAsset | undefined>;
+  deleteClubLogoAsset(id: string): Promise<boolean>;
+  listClubsMissingPrimaryLogo(): Promise<Array<{ id: string; clubName: string; shopifyOrderTag: string | null }>>;
+
   // Carts
   getCart(id: string): Promise<Cart | undefined>;
   getCartBySession(sessionId: string, storeSlug: string): Promise<Cart | undefined>;
@@ -259,6 +269,72 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(orders.createdAt))
       .limit(1);
     return order;
+  }
+
+  // Club logo assets — Canva-sourced logos linked to a club_account.
+  async listClubLogoAssets(clubAccountId: string): Promise<ClubLogoAsset[]> {
+    return db.select().from(clubLogoAssets)
+      .where(eq(clubLogoAssets.clubAccountId, clubAccountId))
+      .orderBy(desc(clubLogoAssets.kind), desc(clubLogoAssets.createdAt));
+  }
+
+  async getPrimaryClubLogo(clubAccountId: string): Promise<ClubLogoAsset | undefined> {
+    const [row] = await db.select().from(clubLogoAssets)
+      .where(and(eq(clubLogoAssets.clubAccountId, clubAccountId), eq(clubLogoAssets.kind, "primary")))
+      .limit(1);
+    return row;
+  }
+
+  async createClubLogoAsset(data: InsertClubLogoAsset): Promise<ClubLogoAsset> {
+    // Demote any existing primary if this row is being inserted as primary.
+    // Partial unique index would otherwise reject. Single-statement-ish — we
+    // accept the small race window because admin writes are sequential per club.
+    if (data.kind === "primary") {
+      await db.update(clubLogoAssets)
+        .set({ kind: "secondary", updatedAt: new Date() })
+        .where(and(eq(clubLogoAssets.clubAccountId, data.clubAccountId), eq(clubLogoAssets.kind, "primary")));
+    }
+    const [created] = await db.insert(clubLogoAssets).values(data).returning();
+    return created;
+  }
+
+  async updateClubLogoAsset(id: string, data: Partial<InsertClubLogoAsset>): Promise<ClubLogoAsset | undefined> {
+    if (data.kind === "primary") {
+      const [existing] = await db.select().from(clubLogoAssets).where(eq(clubLogoAssets.id, id));
+      if (existing) {
+        await db.update(clubLogoAssets)
+          .set({ kind: "secondary", updatedAt: new Date() })
+          .where(and(
+            eq(clubLogoAssets.clubAccountId, existing.clubAccountId),
+            eq(clubLogoAssets.kind, "primary"),
+            sql`${clubLogoAssets.id} <> ${id}`,
+          ));
+      }
+    }
+    const [updated] = await db.update(clubLogoAssets)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(clubLogoAssets.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteClubLogoAsset(id: string): Promise<boolean> {
+    const result = await db.delete(clubLogoAssets).where(eq(clubLogoAssets.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async listClubsMissingPrimaryLogo(): Promise<Array<{ id: string; clubName: string; shopifyOrderTag: string | null }>> {
+    const rows: any = await db.execute(sql`
+      SELECT ca.id, ca.club_name, ca.shopify_order_tag
+        FROM club_accounts ca
+       WHERE NOT EXISTS (
+         SELECT 1 FROM club_logo_assets l
+          WHERE l.club_account_id = ca.id AND l.kind = 'primary'
+       )
+       ORDER BY ca.club_name
+    `);
+    const out: any[] = Array.isArray(rows) ? rows : (rows.rows ?? []);
+    return out.map((r) => ({ id: r.id, clubName: r.club_name, shopifyOrderTag: r.shopify_order_tag }));
   }
 
   // Carts

@@ -475,6 +475,26 @@ export const insertClubAccountSchema = createInsertSchema(clubAccounts).omit({ i
 export type InsertClubAccount = z.infer<typeof insertClubAccountSchema>;
 export type ClubAccount = typeof clubAccounts.$inferSelect;
 
+// club_logo_assets — Canva-sourced logo assets assigned to a club. The
+// PO-raise hook reads this to auto-attach the primary logo to the order's
+// Drive folder + orders.logoUrl. See migrations/club-logo-assets.sql.
+export const clubLogoAssets = pgTable("club_logo_assets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clubAccountId: varchar("club_account_id").notNull().references(() => clubAccounts.id, { onDelete: "cascade" }),
+  canvaDesignId: text("canva_design_id").notNull(),
+  canvaPageIndex: integer("canva_page_index"), // 1-based; NULL = single-page design
+  kind: text("kind").notNull().default("primary"), // primary | secondary | sponsor
+  displayLabel: text("display_label"),
+  previewUrl: text("preview_url"),
+  lastSyncedAt: timestamp("last_synced_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertClubLogoAssetSchema = createInsertSchema(clubLogoAssets).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertClubLogoAsset = z.infer<typeof insertClubLogoAssetSchema>;
+export type ClubLogoAsset = typeof clubLogoAssets.$inferSelect;
+
 // Mockup requests — lead form submissions that trigger AI mockup generation
 export const mockupRequests = pgTable("mockup_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

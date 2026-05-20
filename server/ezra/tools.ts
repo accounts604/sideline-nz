@@ -11,12 +11,14 @@
 // a separate dynamic registry layered on top.
 
 import { db } from "../db";
-import { orders, clubAccounts, orderItems, designFiles, orderSizeBreakdowns } from "@shared/schema";
+import { orders, clubAccounts, orderItems, designFiles, orderSizeBreakdowns, clubLogoAssets } from "@shared/schema";
 import { eq, desc, and, or, ilike } from "drizzle-orm";
 import { SIDELINE_PRODUCTS } from "@shared/product-catalog";
 import { runTask as runAiTask } from "../ai";
 import { fetchCollectionStatus, isShopifyAdminConfigured } from "../shopify-admin";
 import { extractColorsFromImage } from "../mockup/color-extract";
+import { storage } from "../storage";
+import { extractCanvaDesignId, buildCanvaEditUrl } from "../canva-logos";
 
 export type ToolContext = {
   userId: string;
@@ -352,6 +354,83 @@ const addSizeBreakdownsTool: ToolDefinition = {
   },
 };
 
+// ─── Logo asset tools ─────────────────────────────────────────────────
+//
+// The PO-raise hook reads club_logo_assets to auto-attach the primary
+// logo to each order_item.elementUrls. These tools let Ezra answer
+// "what logo will go on this PO?" / "which clubs are missing logos?" /
+// "set the primary logo for <club> to <Canva URL>" without leaving chat.
+
+const listClubLogosTool: ToolDefinition = {
+  name: "list_club_logos",
+  description: "Return all logo assets stored for a club. Use this to answer 'what logo will be on the PO for <club>?' or 'show me <club>'s logos'. The row marked kind='primary' is the one the PO-raise hook auto-attaches.",
+  parameters: {
+    type: "object",
+    properties: {
+      clubAccountId: { type: "string", description: "Club account id (uuid)" },
+    },
+    required: ["clubAccountId"],
+  },
+  async execute(args) {
+    const logos = await storage.listClubLogoAssets(String(args.clubAccountId));
+    return {
+      count: logos.length,
+      primary: logos.find((l) => l.kind === "primary") || null,
+      logos: logos.map((l) => ({
+        id: l.id,
+        kind: l.kind,
+        displayLabel: l.displayLabel,
+        canvaDesignId: l.canvaDesignId,
+        canvaPageIndex: l.canvaPageIndex,
+        canvaUrl: buildCanvaEditUrl(l.canvaDesignId, l.canvaPageIndex),
+        previewUrl: l.previewUrl,
+        lastSyncedAt: l.lastSyncedAt,
+      })),
+    };
+  },
+};
+
+const setPrimaryLogoTool: ToolDefinition = {
+  name: "set_primary_logo",
+  description: "Set or replace the primary logo for a club from a Canva URL. The primary logo auto-attaches to every order_item.elementUrls when the PO is raised. Use when the user says 'use <Canva URL> as the logo for <club>' or 'make this the primary logo for <club>'.",
+  parameters: {
+    type: "object",
+    properties: {
+      clubAccountId: { type: "string", description: "Club account id (uuid)" },
+      canvaUrl: { type: "string", description: "Canva design URL — supports /d/<id> and /design/<id> shapes" },
+      canvaPageIndex: { type: "integer", description: "1-based page number for multi-page decks (e.g. the 27-page Sideline Customer Logos master). Omit for single-page designs." },
+      displayLabel: { type: "string", description: "Optional human label. Defaults to '<club> — primary'." },
+    },
+    required: ["clubAccountId", "canvaUrl"],
+  },
+  async execute(args) {
+    const designId = extractCanvaDesignId(String(args.canvaUrl));
+    if (!designId) return { error: "could_not_extract_design_id", canvaUrl: args.canvaUrl };
+    const [club] = await db.select().from(clubAccounts).where(eq(clubAccounts.id, String(args.clubAccountId))).limit(1);
+    if (!club) return { error: "club_not_found" };
+    const created = await storage.createClubLogoAsset({
+      clubAccountId: club.id,
+      canvaDesignId: designId,
+      canvaPageIndex: args.canvaPageIndex ?? null,
+      kind: "primary",
+      displayLabel: args.displayLabel ?? `${club.clubName} — primary`,
+      previewUrl: null,
+      lastSyncedAt: null,
+    } as any);
+    return { ok: true, logo: created, club: { id: club.id, name: club.clubName } };
+  },
+};
+
+const findClubsMissingLogosTool: ToolDefinition = {
+  name: "find_clubs_missing_logos",
+  description: "List club_accounts that have no primary logo assigned — these clubs will dispatch POs without an auto-attached logo. Use this for 'which clubs need logos?' or before a batch of dispatches to triage.",
+  parameters: { type: "object", properties: {} },
+  async execute() {
+    const rows = await storage.listClubsMissingPrimaryLogo();
+    return { count: rows.length, clubs: rows };
+  },
+};
+
 // ─── Registry ─────────────────────────────────────────────────────────
 
 export const EZRA_TOOLS: ToolDefinition[] = [
@@ -364,6 +443,9 @@ export const EZRA_TOOLS: ToolDefinition[] = [
   listRecentDesignsTool,
   extractColoursTool,
   addSizeBreakdownsTool,
+  listClubLogosTool,
+  setPrimaryLogoTool,
+  findClubsMissingLogosTool,
 ];
 
 export function findTool(name: string): ToolDefinition | undefined {

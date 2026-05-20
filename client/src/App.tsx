@@ -46,6 +46,7 @@ import AdminCreateQuote from "@/pages/admin/create-quote";
 import AdminQuoteTemplates from "@/pages/admin/quote-templates";
 import AdminTriage from "@/pages/admin/triage";
 import AdminSupporterCampaigns from "@/pages/admin/supporter-campaigns";
+import AdminClubLogos from "@/pages/admin/club-logos";
 import QuoteViewPage from "@/pages/quote-view";
 import GetMockupPage from "@/pages/get-mockup";
 import FreeMockup from "@/pages/free-mockup";
@@ -132,6 +133,9 @@ function Router() {
         </Route>
         <Route path="/admin/supporter-campaigns">
           {() => <AdminRoute><AdminSupporterCampaigns /></AdminRoute>}
+        </Route>
+        <Route path="/admin/club-logos">
+          {() => <AdminRoute><AdminClubLogos /></AdminRoute>}
         </Route>
         <Route path="/admin/orders/create-po">
           {() => <AdminRoute><AdminCreatePO /></AdminRoute>}
