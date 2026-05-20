@@ -2373,6 +2373,112 @@ router.post("/orders/:id/payment-receipt/upload", async (req, res) => {
   }
 });
 
+// ---- Customer-side invoice (the other half of the AP/AR picture) ----
+//
+// Direct POs: ops records the Xero invoice ref + optionally uploads the PDF.
+// Supporter-campaign POs: customer side lives in Shopify, fetched live.
+
+const updateXeroRefSchema = z.object({
+  xeroRef: z.string().max(50).nullable(),
+}).strict();
+
+router.patch("/orders/:id/customer-invoice/xero-ref", async (req, res) => {
+  try {
+    const data = updateXeroRefSchema.parse(req.body);
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    await db.update(orders).set({
+      customerInvoiceXeroRef: data.xeroRef,
+      updatedAt: new Date(),
+    }).where(eq(orders.id, order.id));
+    res.json({ ok: true, xeroRef: data.xeroRef });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Update xero ref error:", err);
+    res.status(500).json({ error: "Failed to update" });
+  }
+});
+
+const uploadCustomerInvoiceSchema = z.object({
+  blobUrl: z.string().url(),
+  fileName: z.string().max(200),
+}).strict();
+
+router.post("/orders/:id/customer-invoice/upload", async (req, res) => {
+  try {
+    const data = uploadCustomerInvoiceSchema.parse(req.body);
+    const user = (req as any).user as { userId: string };
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    let driveFileId: string | null = null;
+    if (order.driveFolderId) {
+      driveFileId = await mirrorBlobToPoFolder({
+        poFolderId: order.driveFolderId,
+        slot: "supplier-invoice", // routes to 08. Invoicing — same folder as supplier files
+        blobUrl: data.blobUrl,
+        fileName: data.fileName,
+        orderId: order.id,
+      });
+    }
+    const fileUrl = driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view` : data.blobUrl;
+
+    await db.update(orders).set({
+      customerInvoiceFileUrl: fileUrl,
+      customerInvoiceFileName: data.fileName,
+      customerInvoiceUploadedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(orders.id, order.id));
+
+    await storage.logOrderActivity({
+      orderId: order.id, userId: user.userId,
+      action: "customer_invoice_uploaded",
+      details: { fileName: data.fileName, fileUrl, driveFileId },
+    } as any).catch(() => {});
+
+    res.json({ ok: true, fileUrl, fileName: data.fileName, driveFileId });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Upload customer invoice error:", err);
+    res.status(500).json({ error: "Failed to upload" });
+  }
+});
+
+// GET /orders/:id/supporter-orders — fetch Shopify orders for this PO's
+// club (the customer-side revenue for a supporter-campaign PO). Empty
+// list for direct POs (no clubAccountId / shopifyOrderTag).
+router.get("/orders/:id/supporter-orders", async (req, res) => {
+  try {
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (!order.clubAccountId) {
+      return res.json({ ok: true, supporterPo: false, orders: [], summary: null });
+    }
+    const club = await storage.getClubAccount(order.clubAccountId);
+    if (!club || !club.shopifyOrderTag) {
+      return res.json({ ok: true, supporterPo: true, orders: [], summary: null, note: "Club has no shopify_order_tag set" });
+    }
+    const supporterOrders = await fetchSupporterOrdersByTag(club.shopifyOrderTag);
+    const totalCents = supporterOrders.reduce((s, o) => s + (o.totalCents || 0), 0);
+    const unitsSold = supporterOrders.reduce((s, o) => s + o.lines.reduce((s2, li) => s2 + (li.quantity || 0), 0), 0);
+    res.json({
+      ok: true,
+      supporterPo: true,
+      club: { id: club.id, clubName: club.clubName, shopifyOrderTag: club.shopifyOrderTag },
+      orders: supporterOrders,
+      summary: {
+        orderCount: supporterOrders.length,
+        unitsSold,
+        revenueCents: totalCents,
+        currency: supporterOrders[0]?.currency || "NZD",
+      },
+    });
+  } catch (err: any) {
+    console.error("Fetch supporter orders error:", err);
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 // POST /orders/:id/raise-po — the main action that ties step 2 (GHL sync) and
 // step 3 (supplier portal) together:
 //   1. Validates the order has a supplier assigned (body.supplierId or order.assignedSupplierId)
