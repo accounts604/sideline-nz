@@ -37,6 +37,7 @@ import AdminPurchaseOrder from "@/pages/admin/purchase-order";
 import AdminCreatePO from "@/pages/admin/create-po";
 import AdminMockups from "@/pages/admin/mockups";
 import AdminIntegrations from "@/pages/admin/integrations";
+import AdminSettings from "@/pages/admin/settings";
 import AdminAi from "@/pages/admin/ai";
 import AdminEzra from "@/pages/admin/ezra";
 import AdminMockupDetail from "@/pages/admin/mockup-detail";
@@ -187,6 +188,9 @@ function Router() {
         </Route>
         <Route path="/admin/integrations">
           {() => <AdminRoute><AdminIntegrations /></AdminRoute>}
+        </Route>
+        <Route path="/admin/settings">
+          {() => <AdminRoute><AdminSettings /></AdminRoute>}
         </Route>
         <Route path="/admin/ezra">
           {() => <AdminRoute><AdminEzra /></AdminRoute>}

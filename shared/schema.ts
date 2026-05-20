@@ -524,6 +524,22 @@ export const insertClubLogoAssetSchema = createInsertSchema(clubLogoAssets).omit
 export type InsertClubLogoAsset = z.infer<typeof insertClubLogoAssetSchema>;
 export type ClubLogoAsset = typeof clubLogoAssets.$inferSelect;
 
+// xero_connections — Xero OAuth tokens. Single row in practice (one Sideline
+// org → one Xero org). See migrations/xero-connections.sql.
+export const xeroConnections = pgTable("xero_connections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: text("tenant_id").notNull().unique(),
+  tenantName: text("tenant_name"),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  scopes: text("scopes"),
+  connectedAt: timestamp("connected_at").defaultNow(),
+  connectedBy: varchar("connected_by").references(() => users.id),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type XeroConnection = typeof xeroConnections.$inferSelect;
+
 // Mockup requests — lead form submissions that trigger AI mockup generation
 export const mockupRequests = pgTable("mockup_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

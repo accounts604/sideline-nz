@@ -81,3 +81,40 @@ psql "$DATABASE_URL" -f migrations/club-supporter-fields.sql
 npx tsx scripts/test-supporter-flow.ts
 ```
 Covers tag isolation (poisoned order rejection), summary math, date filter inclusivity, and cache TTL.
+
+## Xero integration (Pull customer invoice PDF from Xero)
+
+Lets the back office pull a customer invoice PDF straight from Xero by reference, mirrored into the PO's Drive `08. Invoicing/` folder. Used by the "Pull invoice PDF from Xero" button on the Invoices & Payments section of each PO detail.
+
+### One-time setup
+
+1. **Register a Xero app** at https://developer.xero.com/myapps/ → "New app"
+   - **App name**: Sideline NZ
+   - **Integration type**: Web app
+   - **Company / app URL**: `https://sidelinenz.com`
+   - **OAuth 2.0 redirect URI**: `https://sidelinenz.com/api/admin/xero/callback` (and a dev one: `http://localhost:5173/api/admin/xero/callback` if you ever test locally)
+
+2. **Copy the credentials** Xero gives you into env vars on **both** Railway + Vercel:
+   - `XERO_CLIENT_ID`
+   - `XERO_CLIENT_SECRET`
+   - `XERO_REDIRECT_URI` (optional — defaults to `{SITE_URL}/api/admin/xero/callback`)
+
+3. **Apply the migration**: `psql "$DATABASE_URL" -f migrations/xero-connections.sql` (or `npm run db:push`)
+
+4. **Connect from the UI**: visit `/admin/settings` → click "Connect Xero" → grant access in Xero's consent screen → you bounce back with a green "Connected" chip.
+
+### How it works
+
+- `server/xero-client.ts` handles OAuth2: `exchangeAuthCode` on first connect, `refreshAccessToken` lazily before any API call.
+- Tokens stored in `xero_connections` (single-row table by tenant_id). Access token expires every 30 min; refresh token rotates on every refresh and lasts 60 days.
+- `fetchInvoicePdf(invoiceNumberOrId)` resolves an invoice number → InvoiceID via the Invoices API, then GETs the single-invoice endpoint with `Accept: application/pdf` to get the PDF buffer.
+- The `/api/admin/orders/:id/customer-invoice/pull-from-xero` endpoint pushes the PDF to Vercel Blob, then mirrors to Drive via the existing `mirrorBlobToPoFolder` helper.
+
+### Scopes requested
+```
+openid profile email offline_access
+accounting.transactions accounting.attachments accounting.contacts.read
+```
+
+### When the refresh token expires (after 60 days unused)
+The "Pull from Xero" button will return a Xero refresh error. Visit `/admin/settings` and click "Re-connect" to grant a fresh refresh token. No data is lost.

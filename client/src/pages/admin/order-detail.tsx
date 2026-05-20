@@ -2623,6 +2623,15 @@ function SupplierInvoiceCard({ order, orderId, invalidate }: { order: Order; ord
     onSuccess: invalidate,
   });
 
+  const pullFromXero = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/admin/orders/${orderId}/customer-invoice/pull-from-xero`, {});
+      return r.json();
+    },
+    onSuccess: invalidate,
+    onError: (e: any) => setCustomerInvoiceErr(e?.message || "Pull from Xero failed — is Xero connected? Visit /admin/settings."),
+  });
+
   async function handleCustomerInvoiceUpload(file: File) {
     setCustomerInvoiceErr(null);
     setUploadingCustomerInvoice(true);
@@ -2750,10 +2759,20 @@ function SupplierInvoiceCard({ order, orderId, invalidate }: { order: Order; ord
                     title="Open in Xero (searches by invoice number)"
                     style={{ padding: "6px 10px", fontSize: 11, fontWeight: 600, background: "#13b5ea", color: "#fff", border: 0, borderRadius: 4, textDecoration: "none", display: "inline-flex", alignItems: "center" }}
                   >
-                    Open in Xero
+                    Open
                   </a>
                 )}
               </div>
+              {order.customerInvoiceXeroRef && (
+                <button
+                  onClick={() => { setCustomerInvoiceErr(null); pullFromXero.mutate(); }}
+                  disabled={pullFromXero.isPending}
+                  title="Fetch the PDF for this Xero invoice and mirror it to the PO's Drive folder"
+                  style={{ marginTop: 8, width: "100%", padding: "8px 12px", fontSize: 12, fontWeight: 600, background: "rgba(19,181,234,0.1)", color: "#13b5ea", border: "1px solid rgba(19,181,234,0.3)", borderRadius: 6, cursor: pullFromXero.isPending ? "wait" : "pointer" }}
+                >
+                  {pullFromXero.isPending ? "Pulling from Xero…" : "Pull invoice PDF from Xero ↓"}
+                </button>
+              )}
               {order.customerInvoiceFileUrl ? (
                 <a href={order.customerInvoiceFileUrl} target="_blank" rel="noreferrer" style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 8, color: "#93c5fd", fontSize: 12, padding: "6px 10px", background: "rgba(147,197,253,0.08)", border: "1px solid rgba(147,197,253,0.2)", borderRadius: 6 }}>
                   <FileText size={13} /> {order.customerInvoiceFileName || "Invoice PDF"}
