@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { AdminLayout } from "@/components/admin-layout";
 import { apiRequest } from "@/lib/queryClient";
-import { ArrowLeft, Plus, Trash2, Save, X } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Save, X, Eye, KeyRound, Mail, Copy } from "lucide-react";
 import { SIDELINE_PRODUCTS, productsGroupedByCategory } from "@shared/product-catalog";
 
 interface Supplier {
@@ -43,9 +43,12 @@ function productLabel(productType: string) {
 export default function AdminSupplierDetail() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
   const [editingCategories, setEditingCategories] = useState(false);
   const [categoryDraft, setCategoryDraft] = useState<string[]>([]);
   const [showAddPrice, setShowAddPrice] = useState(false);
+  const [credentialsModal, setCredentialsModal] = useState<{ password: string; loginUrl: string; email: string } | null>(null);
+  const [emailToast, setEmailToast] = useState<string | null>(null);
   const [newPrice, setNewPrice] = useState({
     productType: "",
     sizeOrVariant: "",
@@ -95,6 +98,48 @@ export default function AdminSupplierDetail() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/admin/suppliers/${id}/prices`] }),
   });
 
+  const impersonate = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/suppliers/${id}/impersonate`, {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      navigate(data.redirectTo || "/supplier");
+    },
+  });
+
+  const resetPassword = useMutation({
+    mutationFn: async () => {
+      if (!confirm("Reset this supplier's password? The current password will stop working immediately.")) {
+        throw new Error("cancelled");
+      }
+      const res = await apiRequest("POST", `/api/admin/suppliers/${id}/reset-password`, {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setCredentialsModal({ password: data.password, loginUrl: data.loginUrl, email: data.supplier.email });
+    },
+    onError: (e: any) => {
+      if (e?.message !== "cancelled") alert(e?.message || "Reset failed");
+    },
+  });
+
+  const sendOnboardingEmail = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/suppliers/${id}/send-onboarding-email`, {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setEmailToast(data.sent ? "Onboarding email sent ✓" : "Email logged to console (no Resend key set)");
+      setTimeout(() => setEmailToast(null), 4000);
+    },
+    onError: (e: any) => {
+      setEmailToast(`Send failed: ${e?.message || "unknown"}`);
+      setTimeout(() => setEmailToast(null), 6000);
+    },
+  });
+
   if (!supplier) {
     return <AdminLayout><div style={{ color: "rgba(255,255,255,0.4)" }}>Loading...</div></AdminLayout>;
   }
@@ -110,9 +155,67 @@ export default function AdminSupplierDetail() {
       <h1 style={{ fontSize: "24px", fontWeight: 700, color: "#fff", marginBottom: "4px" }}>
         {supplier.supplierName || "(unnamed supplier)"}
       </h1>
-      <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)", marginBottom: "24px" }}>
+      <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)", marginBottom: "12px" }}>
         {supplier.email} {supplier.ccEmail && <>· CC: {supplier.ccEmail}</>} {supplier.contactPhone && <>· {supplier.contactPhone}</>}
       </p>
+
+      {/* Login ops — impersonate, reset password, send onboarding email */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24, alignItems: "center" }}>
+        <button
+          onClick={() => impersonate.mutate()}
+          disabled={impersonate.isPending}
+          style={actionBtn}
+        ><Eye size={13} /> {impersonate.isPending ? "Switching…" : "View portal as this supplier"}</button>
+        <button
+          onClick={() => resetPassword.mutate()}
+          disabled={resetPassword.isPending}
+          style={actionBtn}
+        ><KeyRound size={13} /> {resetPassword.isPending ? "Resetting…" : "Reset password"}</button>
+        <button
+          onClick={() => sendOnboardingEmail.mutate()}
+          disabled={sendOnboardingEmail.isPending || !supplier.email}
+          style={actionBtn}
+        ><Mail size={13} /> {sendOnboardingEmail.isPending ? "Sending…" : "Send onboarding email"}</button>
+        {emailToast && <span style={{ fontSize: 12, color: emailToast.startsWith("Send failed") ? "#fca5a5" : "#86efac" }}>{emailToast}</span>}
+      </div>
+
+      {/* Credentials modal — shown once after reset. Memory rule: passwords go via WhatsApp/Telegram, not email. */}
+      {credentialsModal && (
+        <div onClick={() => setCredentialsModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#111", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: 24, maxWidth: 560, width: "100%", color: "#fff" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>New password set</h3>
+              <button onClick={() => setCredentialsModal(null)} style={{ background: "transparent", border: 0, color: "rgba(255,255,255,0.7)", cursor: "pointer" }}><X size={16} /></button>
+            </div>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", marginTop: 0, marginBottom: 14 }}>
+              Shown once. Copy the message below and send it via <b>WhatsApp or Telegram</b> — do not email the password.
+            </p>
+            <textarea
+              readOnly
+              value={[
+                `Sideline NZ Supplier Portal — your login`,
+                ``,
+                `URL: ${credentialsModal.loginUrl}`,
+                `Email: ${credentialsModal.email}`,
+                `Password: ${credentialsModal.password}`,
+                ``,
+                `Open the URL, sign in, and you'll see your assigned POs. Tap Help (top right) for a quick walkthrough.`,
+              ].join("\n")}
+              style={{ width: "100%", minHeight: 160, padding: 12, fontSize: 12, fontFamily: "monospace", background: "#000", color: "#fff", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, resize: "vertical" }}
+            />
+            <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => {
+                  const msg = `Sideline NZ Supplier Portal — your login\n\nURL: ${credentialsModal.loginUrl}\nEmail: ${credentialsModal.email}\nPassword: ${credentialsModal.password}\n\nOpen the URL, sign in, and you'll see your assigned POs. Tap Help (top right) for a quick walkthrough.`;
+                  navigator.clipboard.writeText(msg);
+                }}
+                style={{ ...actionBtn, background: "#fff", color: "#000", border: 0 }}
+              ><Copy size={13} /> Copy to clipboard</button>
+              <button onClick={() => setCredentialsModal(null)} style={actionBtn}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Categories */}
       <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "20px 24px", marginBottom: "24px" }}>
@@ -301,3 +404,17 @@ export default function AdminSupplierDetail() {
     </AdminLayout>
   );
 }
+
+const actionBtn: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "7px 12px",
+  fontSize: 12,
+  fontWeight: 500,
+  background: "rgba(255,255,255,0.06)",
+  color: "rgba(255,255,255,0.85)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 6,
+  cursor: "pointer",
+};

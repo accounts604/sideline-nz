@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { storage } from "../storage";
-import { signToken, setAuthCookie, clearAuthCookie, hashPassword, verifyPassword, requireAuth } from "../auth";
+import { signToken, setAuthCookie, clearAuthCookie, hashPassword, verifyPassword, requireAuth, readImpersonateCookie, clearImpersonateCookie, IMPERSONATE_COOKIE } from "../auth";
 import type { JwtPayload } from "../auth";
 import { z } from "zod";
 
@@ -122,16 +122,45 @@ router.get("/me", requireAuth, async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
+    // Expose impersonation state so the UI can render the "Viewing as X — Return" banner.
+    const original = readImpersonateCookie(req);
+    const impersonating = original ? { originalAdminId: original.userId } : null;
+
     res.json({
       id: user.id,
       email: user.email,
       role: user.role,
       teamName: user.teamName,
       contactPhone: user.contactPhone,
+      impersonating,
     });
   } catch (e: any) {
     console.error("Me error:", e);
     res.status(500).json({ error: "Failed to fetch user" });
+  }
+});
+
+// POST /api/auth/end-impersonation — restore the original admin session.
+// Callable by anyone holding the snz_original_session cookie (the JWT inside
+// is verified — a forged cookie can't escalate). No requireAdmin guard
+// because during impersonation the role on snz_token is "supplier".
+router.post("/end-impersonation", async (req, res) => {
+  try {
+    const original = readImpersonateCookie(req);
+    if (!original) return res.status(400).json({ error: "Not impersonating" });
+    // Re-verify the admin still exists + still has admin role before handing back.
+    const admin = await storage.getUser(original.userId);
+    if (!admin || admin.role !== "admin") {
+      clearImpersonateCookie(res);
+      return res.status(403).json({ error: "Original admin no longer valid" });
+    }
+    const newToken = signToken({ userId: admin.id, role: "admin" });
+    setAuthCookie(res, newToken);
+    clearImpersonateCookie(res);
+    res.json({ ok: true, restoredTo: { id: admin.id, email: admin.email } });
+  } catch (e: any) {
+    console.error("End impersonation error:", e);
+    res.status(500).json({ error: "Failed to end impersonation" });
   }
 });
 

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAdmin } from "../auth";
 import { storage } from "../storage";
-import { hashPassword } from "../auth";
+import { hashPassword, signToken, setAuthCookie, setImpersonateCookie } from "../auth";
 import { z } from "zod";
 import { notifyDesignApproved, notifyDesignRejected, notifyOrderStatusChange } from "../notifications";
 import { sendInviteEmail, sendSupplierPoRaisedEmail, sendSupplierPoDispatchGmail } from "../email";
@@ -1836,6 +1836,105 @@ router.patch("/suppliers/:id", async (req, res) => {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin update supplier error:", err);
     res.status(500).json({ error: "Failed to update supplier" });
+  }
+});
+
+// ---- Supplier impersonation / password reset / onboarding email ----
+//
+// Three admin-only actions that all carry real privilege:
+//   - impersonate: swaps the admin's snz_token for the supplier's, parks the
+//     admin's JWT in snz_original_session so they can swap back. Audit log entry.
+//   - reset-password: generates a strong random password, returns it ONCE.
+//     Memory rule: password value is NOT emailed — admin copies + shares via
+//     WhatsApp/Telegram.
+//   - send-onboarding-email: portal URL + what they can do + contact. No password.
+
+router.post("/suppliers/:id/impersonate", async (req, res) => {
+  try {
+    const supplier = await storage.getUser(req.params.id);
+    if (!supplier || supplier.role !== "supplier") {
+      return res.status(404).json({ error: "Supplier not found" });
+    }
+    const admin = (req as any).user as { userId: string; role: "admin" };
+    // Sign a 7-day supplier JWT (matches a normal supplier login) but
+    // ALSO park the admin's original short-lived JWT in the second cookie
+    // so end-impersonation can restore them.
+    const originalAdminToken = signToken({ userId: admin.userId, role: "admin" });
+    const supplierToken = signToken({ userId: supplier.id, role: "supplier" });
+    setImpersonateCookie(res, originalAdminToken);
+    setAuthCookie(res, supplierToken);
+    // Audit trail. Logged against the supplier user via order_activity is wrong
+    // (no order context); use a console.warn for now — full audit table is a
+    // bigger lift and the supplier portal's "Viewing as X" banner is the
+    // primary safeguard.
+    console.warn(`[impersonate] admin ${admin.userId} began viewing as supplier ${supplier.id} (${supplier.email})`);
+    res.json({
+      ok: true,
+      impersonating: { id: supplier.id, email: supplier.email, name: supplier.teamName },
+      redirectTo: "/supplier",
+    });
+  } catch (e: any) {
+    console.error("Impersonate error:", e);
+    res.status(500).json({ error: "Failed to start impersonation" });
+  }
+});
+
+// POST /suppliers/:id/reset-password — generate + return a new password ONCE.
+// Memory rule: passwords go via WhatsApp/Telegram, not email. The endpoint
+// returns the plaintext in the response body (over HTTPS) and never logs it.
+function generateStrongPassword(): string {
+  // 16 chars, mixed-case + digits + 2 symbols. Avoid ambiguous chars (0/O, 1/l/I).
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  const symbols = "!@#$%&*";
+  const pick = (s: string) => s[Math.floor(Math.random() * s.length)];
+  let out = "";
+  for (let i = 0; i < 14; i++) out += pick(alphabet);
+  out += pick(symbols);
+  out += pick(symbols);
+  return out;
+}
+
+router.post("/suppliers/:id/reset-password", async (req, res) => {
+  try {
+    const supplier = await storage.getUser(req.params.id);
+    if (!supplier || supplier.role !== "supplier") {
+      return res.status(404).json({ error: "Supplier not found" });
+    }
+    const newPassword = generateStrongPassword();
+    const hash = await hashPassword(newPassword);
+    await db.update(users).set({ password: hash, updatedAt: new Date() }).where(eq(users.id, supplier.id));
+    res.json({
+      ok: true,
+      supplier: { id: supplier.id, email: supplier.email, name: supplier.teamName },
+      password: newPassword, // Returned ONCE — never logged.
+      loginUrl: `${(process.env.SITE_URL || "https://sidelinenz.com").replace(/\/$/, "")}/supplier/login`,
+    });
+  } catch (e: any) {
+    console.error("Reset password error:", e);
+    res.status(500).json({ error: "Failed to reset password" });
+  }
+});
+
+// POST /suppliers/:id/send-onboarding-email — instructions only (NO password).
+router.post("/suppliers/:id/send-onboarding-email", async (req, res) => {
+  try {
+    const supplier = await storage.getUser(req.params.id);
+    if (!supplier || supplier.role !== "supplier") {
+      return res.status(404).json({ error: "Supplier not found" });
+    }
+    if (!supplier.email) return res.status(400).json({ error: "Supplier has no email on file" });
+    const { sendSupplierOnboardingEmail } = await import("../email.js");
+    const loginUrl = `${(process.env.SITE_URL || "https://sidelinenz.com").replace(/\/$/, "")}/supplier/login`;
+    const result = await sendSupplierOnboardingEmail({
+      to: supplier.email,
+      ccEmail: supplier.ccEmail || undefined,
+      supplierName: supplier.teamName || supplier.email,
+      loginUrl,
+    });
+    res.json({ ok: true, sent: result.success, messageId: result.messageId });
+  } catch (e: any) {
+    console.error("Send onboarding email error:", e);
+    res.status(500).json({ error: String(e?.message || e) });
   }
 });
 
