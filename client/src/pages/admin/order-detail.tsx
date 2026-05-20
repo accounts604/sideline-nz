@@ -129,6 +129,9 @@ interface Order {
   supplierInvoiceCurrency: string | null;
   supplierInvoiceFileUrl: string | null;
   supplierInvoiceFileName: string | null;
+  paymentReceiptFileUrl: string | null;
+  paymentReceiptFileName: string | null;
+  paymentReceiptUploadedAt: string | null;
   orderType: string | null;
   artworkApproved: boolean | null;
   artworkApprovedBy: string | null;
@@ -2519,6 +2522,8 @@ function SupplierInvoiceCard({ order, orderId, invalidate }: { order: Order; ord
   const [currency, setCurrency] = useState(order.supplierInvoiceCurrency || "USD");
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [receiptErr, setReceiptErr] = useState<string | null>(null);
 
   const markPaid = useMutation({
     mutationFn: async () => {
@@ -2561,12 +2566,28 @@ function SupplierInvoiceCard({ order, orderId, invalidate }: { order: Order; ord
     }
   }
 
+  async function handleReceiptUpload(file: File) {
+    setReceiptErr(null);
+    setUploadingReceipt(true);
+    try {
+      const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/uploads/token" });
+      await apiRequest("POST", `/api/admin/orders/${orderId}/payment-receipt/upload`, {
+        blobUrl: blob.url, fileName: file.name,
+      });
+      invalidate();
+    } catch (e: any) {
+      setReceiptErr(e?.message || "Upload failed");
+    } finally {
+      setUploadingReceipt(false);
+    }
+  }
+
   const paid = !!order.supplierInvoicePaidAt;
 
   return (
     <Section title="Supplier Invoice" count={paid ? 1 : 0} defaultOpen={false}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, padding: "4px 0" }}>
-        {/* Left: file upload + invoice metadata */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, padding: "4px 0" }}>
+        {/* Column 1: supplier's invoice file + total */}
         <div>
           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Invoice file</div>
           {order.supplierInvoiceFileUrl ? (
@@ -2608,7 +2629,34 @@ function SupplierInvoiceCard({ order, orderId, invalidate }: { order: Order; ord
           </div>
         </div>
 
-        {/* Right: payment status */}
+        {/* Column 2: payment receipt — our proof of payment (bank slip / Wise PDF) */}
+        <div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Payment receipt</div>
+          {order.paymentReceiptFileUrl ? (
+            <a href={order.paymentReceiptFileUrl} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#86efac", fontSize: 13, padding: "8px 12px", background: "rgba(134,239,172,0.08)", border: "1px solid rgba(134,239,172,0.2)", borderRadius: 6 }}>
+              <FileText size={14} /> {order.paymentReceiptFileName || "Receipt"}
+            </a>
+          ) : (
+            <label style={{ display: "block", padding: "20px", border: "2px dashed rgba(255,255,255,0.15)", borderRadius: 8, textAlign: "center", cursor: uploadingReceipt ? "wait" : "pointer", color: "rgba(255,255,255,0.5)", fontSize: 12 }}>
+              <input
+                type="file"
+                accept="application/pdf,image/*"
+                disabled={uploadingReceipt}
+                onChange={(e) => { if (e.target.files?.[0]) handleReceiptUpload(e.target.files[0]); }}
+                style={{ display: "none" }}
+              />
+              {uploadingReceipt ? "Uploading…" : "Click to upload payment receipt (PDF / image)"}
+            </label>
+          )}
+          {receiptErr && <div style={{ color: "#fca5a5", fontSize: 11, marginTop: 6 }}>{receiptErr}</div>}
+          {order.paymentReceiptUploadedAt && (
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>
+              Uploaded {new Date(order.paymentReceiptUploadedAt).toLocaleDateString()}
+            </div>
+          )}
+        </div>
+
+        {/* Column 3: payment status (Mark Paid / Paid info) */}
         <div>
           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Payment</div>
           {paid ? (

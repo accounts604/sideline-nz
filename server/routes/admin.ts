@@ -2325,6 +2325,54 @@ router.post("/orders/:id/supplier-invoice/upload", async (req, res) => {
   }
 });
 
+// POST /orders/:id/payment-receipt/upload — proof we paid the supplier
+// (bank slip / Wise PDF / screenshot). Lives in the same Drive 08. Invoicing/
+// subfolder as the supplier invoice itself.
+const uploadReceiptSchema = z.object({
+  blobUrl: z.string().url(),
+  fileName: z.string().max(200),
+}).strict();
+
+router.post("/orders/:id/payment-receipt/upload", async (req, res) => {
+  try {
+    const data = uploadReceiptSchema.parse(req.body);
+    const user = (req as any).user as { userId: string };
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    let driveFileId: string | null = null;
+    if (order.driveFolderId) {
+      driveFileId = await mirrorBlobToPoFolder({
+        poFolderId: order.driveFolderId,
+        slot: "supplier-invoice",
+        blobUrl: data.blobUrl,
+        fileName: data.fileName,
+        orderId: order.id,
+      });
+    }
+    const fileUrl = driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view` : data.blobUrl;
+
+    await db.update(orders).set({
+      paymentReceiptFileUrl: fileUrl,
+      paymentReceiptFileName: data.fileName,
+      paymentReceiptUploadedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(orders.id, order.id));
+
+    await storage.logOrderActivity({
+      orderId: order.id, userId: user.userId,
+      action: "payment_receipt_uploaded",
+      details: { fileName: data.fileName, fileUrl, driveFileId },
+    } as any).catch(() => {});
+
+    res.json({ ok: true, fileUrl, fileName: data.fileName, driveFileId });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Upload payment receipt error:", err);
+    res.status(500).json({ error: "Failed to upload" });
+  }
+});
+
 // POST /orders/:id/raise-po — the main action that ties step 2 (GHL sync) and
 // step 3 (supplier portal) together:
 //   1. Validates the order has a supplier assigned (body.supplierId or order.assignedSupplierId)
