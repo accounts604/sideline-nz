@@ -198,6 +198,148 @@ export async function fetchSupporterOrdersByTag(tag: string): Promise<SupporterO
   return orders;
 }
 
+// ─── Customer-context lookup (single order by number or email) ────
+//
+// Used by Ezra's customer-reply context loop. A customer email arrives
+// asking "where's order #1042" — Ezra needs the Shopify-side view (fulfillment
+// status, tracking, lines, shipping address) to answer. The tag-based
+// fetcher above is for bulk club-portal reads; this one targets a single
+// order by name (`#1042`) or by customer email (returns most-recent first).
+
+export interface ShopifyOrderDetail extends SupporterOrder {
+  trackingNumbers: string[];
+  trackingUrls: string[];
+  fulfillments: Array<{
+    status: string | null;
+    trackingNumbers: string[];
+    trackingUrls: string[];
+    createdAt: string;
+  }>;
+  shippingAddress: {
+    name: string | null;
+    address1: string | null;
+    address2: string | null;
+    city: string | null;
+    province: string | null;
+    zip: string | null;
+    country: string | null;
+  } | null;
+  note: string | null;
+}
+
+const ORDER_DETAIL_QUERY = /* GraphQL */ `
+  query OrderSearch($query: String!, $first: Int!) {
+    orders(first: $first, query: $query, sortKey: CREATED_AT, reverse: true) {
+      nodes {
+        id name createdAt tags note
+        displayFinancialStatus displayFulfillmentStatus
+        currentTotalPriceSet { shopMoney { amount currencyCode } }
+        customer { firstName lastName email }
+        shippingAddress {
+          name address1 address2 city province zip country
+        }
+        lineItems(first: 50) {
+          nodes {
+            title variantTitle quantity
+            originalUnitPriceSet { shopMoney { amount } }
+          }
+        }
+        fulfillments(first: 10) {
+          status createdAt
+          trackingInfo { number url }
+        }
+      }
+    }
+  }
+`;
+
+function nodeToOrderDetail(n: any): ShopifyOrderDetail {
+  const customerName = n.customer
+    ? [n.customer.firstName, n.customer.lastName].filter(Boolean).join(" ") || null
+    : null;
+  const fulfillments = (n.fulfillments || []).map((f: any) => ({
+    status: f.status || null,
+    trackingNumbers: (f.trackingInfo || []).map((t: any) => t.number).filter(Boolean),
+    trackingUrls: (f.trackingInfo || []).map((t: any) => t.url).filter(Boolean),
+    createdAt: f.createdAt,
+  }));
+  const trackingNumbers = Array.from(new Set(fulfillments.flatMap((f: any) => f.trackingNumbers))) as string[];
+  const trackingUrls = Array.from(new Set(fulfillments.flatMap((f: any) => f.trackingUrls))) as string[];
+  return {
+    id: n.id,
+    number: n.name,
+    name: n.name,
+    customerName,
+    customerEmail: n.customer?.email || null,
+    totalCents: moneyToCents(n.currentTotalPriceSet.shopMoney.amount),
+    currency: n.currentTotalPriceSet.shopMoney.currencyCode,
+    financialStatus: n.displayFinancialStatus,
+    fulfillmentStatus: n.displayFulfillmentStatus,
+    createdAt: n.createdAt,
+    tags: n.tags || [],
+    lines: (n.lineItems?.nodes || []).map((l: any) => ({
+      title: l.title,
+      variantTitle: l.variantTitle,
+      quantity: l.quantity,
+      unitPriceCents: moneyToCents(l.originalUnitPriceSet.shopMoney.amount),
+    })),
+    trackingNumbers,
+    trackingUrls,
+    fulfillments,
+    shippingAddress: n.shippingAddress
+      ? {
+          name: n.shippingAddress.name || null,
+          address1: n.shippingAddress.address1 || null,
+          address2: n.shippingAddress.address2 || null,
+          city: n.shippingAddress.city || null,
+          province: n.shippingAddress.province || null,
+          zip: n.shippingAddress.zip || null,
+          country: n.shippingAddress.country || null,
+        }
+      : null,
+    note: n.note || null,
+  };
+}
+
+/**
+ * Look up a Shopify order by its visible number (`#1042` or `1042`) or by
+ * customer email. Returns the most recent match plus up to `extraMatches`
+ * other recent orders for the same email so Ezra can disambiguate when a
+ * customer has placed several.
+ *
+ * IMPORTANT: this is the customer-context lookup. It carries no tag filter —
+ * callers must NOT use it to enforce club-portal isolation (that path stays
+ * on `fetchSupporterOrdersByTag`).
+ */
+export async function fetchShopifyOrderByNumberOrEmail(
+  needle: string,
+  opts?: { extraMatches?: number },
+): Promise<{ primary: ShopifyOrderDetail | null; others: ShopifyOrderDetail[] }> {
+  const q = String(needle || "").trim();
+  if (!q) return { primary: null, others: [] };
+
+  let queryString: string;
+  if (q.includes("@")) {
+    queryString = `email:${q.replace(/"/g, "")}`;
+  } else {
+    const name = q.startsWith("#") ? q : `#${q.replace(/^SL[-_]?/i, "")}`;
+    queryString = `name:${name}`;
+  }
+
+  const wantOthers = Math.max(0, Math.min(opts?.extraMatches ?? 5, 20));
+  const data: any = await adminFetch(ORDER_DETAIL_QUERY, {
+    query: queryString,
+    first: 1 + wantOthers,
+  });
+  const nodes = data.orders?.nodes || [];
+  if (nodes.length === 0) return { primary: null, others: [] };
+  const [first, ...rest] = nodes;
+  return {
+    primary: nodeToOrderDetail(first),
+    others: rest.map(nodeToOrderDetail),
+  };
+}
+
 // ─── Collection-handle fallback for untagged orders ──────────────
 //
 // The supporter-campaign flow originally relied on Shopify Flow tagging each

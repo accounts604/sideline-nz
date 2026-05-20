@@ -15,7 +15,9 @@ import { orders, clubAccounts, orderItems, designFiles, orderSizeBreakdowns } fr
 import { eq, desc, and, or, ilike } from "drizzle-orm";
 import { SIDELINE_PRODUCTS } from "@shared/product-catalog";
 import { runTask as runAiTask } from "../ai";
-import { fetchCollectionStatus, isShopifyAdminConfigured } from "../shopify-admin";
+import { fetchCollectionStatus, fetchShopifyOrderByNumberOrEmail, isShopifyAdminConfigured } from "../shopify-admin";
+import { searchGmailMessages, getGmailThread, createGmailDraft, sendGmail, isGmailConfigured } from "../gmail";
+import { sendTelegramCard, isTelegramConfigured } from "../telegram";
 import { extractColorsFromImage } from "../mockup/color-extract";
 
 export type ToolContext = {
@@ -352,6 +354,416 @@ const addSizeBreakdownsTool: ToolDefinition = {
   },
 };
 
+// ─── Customer-context read tools ──────────────────────────────────────
+//
+// The three tools below feed Ezra the context it needs to draft replies to
+// customer queries. They are read-only and have no isolation boundary — the
+// scope check is on the caller (an admin chatting with Ezra, or the
+// label-triggered draft pipeline). Don't expose these via any
+// unauthenticated route.
+
+const lookupShopifyOrderTool: ToolDefinition = {
+  name: "lookup_shopify_order",
+  description: "Look up a Shopify order by order number (e.g. '#1042' or '1042') or by customer email. Returns fulfillment status, tracking numbers/URLs, line items, shipping address, and total. When searching by email, returns the most recent order as `primary` plus up to 5 other recent orders for that customer in `others` so you can disambiguate. Use this whenever a customer asks 'where's my order' or references an order number — never guess fulfillment state.",
+  parameters: {
+    type: "object",
+    properties: {
+      needle: { type: "string", description: "Either a Shopify order number ('#1042', '1042') or a customer email address." },
+      extraMatches: { type: "integer", description: "When the needle is an email, how many additional recent orders to return alongside the primary. Default 5, max 20." },
+    },
+    required: ["needle"],
+  },
+  async execute(args) {
+    if (!isShopifyAdminConfigured()) return { error: "shopify_admin_not_configured" };
+    const needle = String(args.needle || "").trim();
+    if (!needle) return { error: "no_needle_provided" };
+    const result = await fetchShopifyOrderByNumberOrEmail(needle, { extraMatches: args.extraMatches });
+    if (!result.primary) return { error: "not_found", searched: needle };
+    return result;
+  },
+};
+
+const getEmailThreadTool: ToolDefinition = {
+  name: "get_email_thread",
+  description: "Read a Gmail thread from the orders@sidelinenz.com inbox. Pass `threadId` to load a known thread (every message, oldest first), OR pass `searchQuery` to find recent threads using Gmail search syntax (e.g. 'from:foo@bar.com newer_than:30d', 'subject:#1042'). Returns the parsed messages — From/To/Subject/Snippet/body and labelIds. Use before drafting a customer reply so you have the full conversation history.",
+  parameters: {
+    type: "object",
+    properties: {
+      threadId: { type: "string", description: "Gmail thread id (preferred when known)." },
+      searchQuery: { type: "string", description: "Gmail search query — used when no threadId is known. Examples: 'from:customer@example.com', 'subject:order #1042'." },
+      maxResults: { type: "integer", description: "When using searchQuery, max threads to consider. Default 5, max 25." },
+    },
+  },
+  async execute(args) {
+    if (!isGmailConfigured()) return { error: "gmail_not_configured" };
+    if (args.threadId) {
+      const messages = await getGmailThread(String(args.threadId));
+      if (messages.length === 0) return { error: "thread_not_found_or_empty", threadId: args.threadId };
+      return { threadId: args.threadId, messages };
+    }
+    if (!args.searchQuery) return { error: "no_thread_id_or_query" };
+    const maxResults = Math.min(Math.max(parseInt(args.maxResults ?? 5, 10) || 5, 1), 25);
+    const refs = await searchGmailMessages(String(args.searchQuery), maxResults);
+    if (refs.length === 0) return { matches: [], note: "no_messages_for_query" };
+    // Dedupe by threadId — one match per thread, load each thread once.
+    const seen = new Set<string>();
+    const threadIds: string[] = [];
+    for (const r of refs) {
+      if (!seen.has(r.threadId)) {
+        seen.add(r.threadId);
+        threadIds.push(r.threadId);
+      }
+    }
+    const matches = [];
+    for (const tid of threadIds.slice(0, maxResults)) {
+      const messages = await getGmailThread(tid);
+      if (messages.length) matches.push({ threadId: tid, messages });
+    }
+    return { matches };
+  },
+};
+
+// Customer-safe stage mapping. The internal pipeline has many stages;
+// Ezra needs a short English phrase it can use in a customer-facing reply
+// without leaking internal terms ("design_review_internal", etc.).
+function customerSafeStage(o: { pipelineStage: string | null; productionStage: string | null; status: string }): string {
+  const ps = (o.pipelineStage || o.productionStage || o.status || "").toLowerCase();
+  if (!ps) return "received";
+  if (ps.includes("deliver")) return "delivered";
+  if (ps.includes("ship") || ps.includes("dispatch")) return "shipped";
+  if (ps.includes("quality") || ps.includes("qc")) return "quality check";
+  if (ps.includes("production") || ps.includes("manufacture")) return "in production";
+  if (ps.includes("sample")) return "sample run";
+  if (ps.includes("approve")) return "awaiting approval";
+  if (ps.includes("design") || ps.includes("mockup")) return "in design";
+  if (ps.includes("brief") || ps.includes("received") || ps.includes("pending")) return "received";
+  if (ps.includes("hold")) return "on hold";
+  return ps.replace(/[_-]+/g, " ");
+}
+
+const getOrderStatusTool: ToolDefinition = {
+  name: "get_order_status",
+  description: "Customer-safe status view of a Sideline order — what you can quote back to a customer in an email reply. Returns the order number, PO reference, plain-English stage, due date, tracking info, dispatched/on-hold flags, and a one-line line-item summary. Distinct from `get_order` (which exposes supplier costs and internal fields you must NOT share with customers). Accepts UUID, PO reference (PO-YYYY-NNNN), or order number (SL-YYYY-XXX-NNN). Use this when drafting a customer reply.",
+  parameters: {
+    type: "object",
+    properties: {
+      orderId: { type: "string", description: "Order UUID, PO reference (PO-YYYY-NNNN), or order number (SL-YYYY-XXX-NNN)." },
+    },
+    required: ["orderId"],
+  },
+  async execute(args) {
+    const q = String(args.orderId || "").trim();
+    if (!q) return { error: "no_identifier_provided" };
+
+    let order: any = null;
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q)) {
+      const [row] = await db.select().from(orders).where(eq(orders.id, q)).limit(1);
+      order = row;
+    }
+    if (!order) {
+      const [row] = await db.select().from(orders).where(ilike(orders.poReference, q)).limit(1);
+      order = row;
+    }
+    if (!order) {
+      const [row] = await db.select().from(orders).where(ilike(orders.orderNumber, q)).limit(1);
+      order = row;
+    }
+    if (!order) return { error: "not_found", searched: q };
+
+    const items = await db
+      .select({
+        productName: orderItems.productName,
+        quantity: orderItems.quantity,
+      })
+      .from(orderItems)
+      .where(eq(orderItems.orderId, order.id));
+
+    return {
+      orderNumber: order.orderNumber,
+      poReference: order.poReference,
+      accountName: order.accountName,
+      customerStage: customerSafeStage(order),
+      rawPipelineStage: order.pipelineStage,
+      rawProductionStage: order.productionStage,
+      dueDate: order.dueDate,
+      estimatedDeliveryDate: order.estimatedDeliveryDate,
+      poDispatchedAt: order.poDispatchedAt,
+      onHold: Boolean(order.poHeldAt),
+      holdReason: order.poHeldAt ? order.poHoldReason : null,
+      trackingNumber: order.trackingNumber,
+      trackingUrl: order.trackingUrl,
+      sampleApprovedByClientAt: order.sampleApprovedByClientAt,
+      itemSummary: items
+        .map((i) => `${i.quantity}× ${i.productName}`)
+        .join(", "),
+      items,
+    };
+  },
+};
+
+// ─── Customer-reply action tool (draft only, never auto-send) ─────────
+//
+// Creates a Gmail draft against orders@sidelinenz.com (or replies into an
+// existing thread if `threadId` is supplied). Send is deliberately NOT
+// exposed here — drafts must be reviewed by a human in the Gmail drafts
+// folder (or via the future Telegram approve/discard buttons) before they
+// reach a customer. Same posture as the supplier follow-up cron.
+
+const FROM_HEADER =
+  process.env.SIDELINE_REPLY_FROM ||
+  "Sideline NZ Orders <orders@sidelinenz.com>";
+
+function plainTextToHtml(s: string): string {
+  // Minimal escape + paragraphise. Body text Ezra produces is plain prose;
+  // we wrap it for Gmail's HTML part. Anything richer (links, lists) the
+  // human edits in Gmail before sending.
+  const esc = s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  const paragraphs = esc.split(/\n\s*\n/).map((p) => `<p>${p.replace(/\n/g, "<br/>")}</p>`);
+  return paragraphs.join("\n");
+}
+
+const draftCustomerReplyTool: ToolDefinition = {
+  name: "draft_customer_reply",
+  description: "Create a Gmail DRAFT customer reply from orders@sidelinenz.com. Does NOT send — the draft lands in Gmail Drafts for a human to review and click Send (or for the Telegram approval flow to release). If `threadId` is given the draft attaches to that thread (i.e. replies inline); otherwise it starts a fresh thread. Use AFTER you've gathered context with lookup_shopify_order / get_email_thread / get_order_status. Never expose supplier names, supplier costs, internal stage strings, or admin notes — phrase status in customer-safe English (see get_order_status output).",
+  parameters: {
+    type: "object",
+    properties: {
+      to: { type: "string", description: "Recipient email address." },
+      subject: { type: "string", description: "Subject line. If replying into an existing thread, Gmail will normalise to the thread's subject — pass the same subject anyway so the RFC2822 headers match." },
+      body: { type: "string", description: "Plain-text body. Greeting, message, sign-off. Don't include HTML — it's wrapped automatically." },
+      threadId: { type: "string", description: "Optional Gmail thread id (returned by get_email_thread) to attach the draft to as a reply. Omit for a fresh thread." },
+      cc: { type: "string", description: "Optional Cc address (comma-separated for multiple)." },
+    },
+    required: ["to", "subject", "body"],
+  },
+  async execute(args) {
+    if (!isGmailConfigured()) return { error: "gmail_not_configured" };
+    const to = String(args.to || "").trim();
+    const subject = String(args.subject || "").trim();
+    const body = String(args.body || "");
+    if (!to || !subject || !body) return { error: "missing_required_field", required: ["to", "subject", "body"] };
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { error: "invalid_to_address", to };
+
+    const draftId = await createGmailDraft(
+      {
+        from: FROM_HEADER,
+        to,
+        cc: args.cc ? String(args.cc) : undefined,
+        subject,
+        html: plainTextToHtml(body),
+        text: body,
+      },
+      args.threadId ? String(args.threadId) : undefined,
+    );
+    if (!draftId) return { error: "draft_creation_failed", hint: "Check Gmail OAuth creds and server logs." };
+    return {
+      ok: true,
+      draftId,
+      to,
+      subject,
+      threadId: args.threadId || null,
+      note: "Draft created in Gmail. NOT sent. Open Drafts in Gmail to review + send.",
+    };
+  },
+};
+
+// ─── Auto-send + escalation (the bounded send path) ───────────────────
+//
+// send_customer_reply auto-sends a reply ONLY when the body is provably
+// safe to send. The tool validates the body itself — Ezra doesn't get to
+// declare "this is safe", it has to actually meet the gates.
+//
+// Hard gates (any failure → return error, no send):
+//   1. Body contains no phone-number-shaped digit runs. We never paste a
+//      phone number into a customer email. See feedback memory
+//      `feedback_sideline_never_share_phone`.
+//   2. Body contains no escalation keywords. If the draft mentions
+//      "refund", "cancel", "wrong item", etc. it almost certainly
+//      shouldn't be a confident auto-send — flag instead.
+//   3. Internal order resolved cleanly + has a real status signal
+//      (dispatched / tracking / clear stage). Otherwise we don't have
+//      enough confidence to speak.
+//   4. Subject + body both non-empty, To address validates.
+//
+// Every successful auto-send BCCs the ops inbox AND drops an audit card
+// in Telegram thread 614 so Romero sees exactly what went out within
+// minutes.
+
+// Phone-shape detection. We want to reject phone numbers WITHOUT also
+// rejecting tracking numbers (couriers typically use 10-15 digit alphanumeric
+// strings — those are not phones). Two patterns:
+//   1. Separator-structured digit groups, e.g. "021 555 1234", "(09) 555-1234",
+//      "+64 21 555 1234". A phone almost always has separators or parens.
+//   2. NZ-shaped numbers without separators — must start with "0" + a known
+//      NZ leading group (0800/0508, 021/022/027/029, or 03–09).
+// A bare digit run with no separators that doesn't start with "0" + a known
+// NZ prefix is allowed (it's most likely an order/tracking ref).
+const PHONE_SHAPED = /(?:\+?\d{1,3}[\s.()\-])?(?:\(?\d{2,4}\)?[\s.()\-])\d{3,4}[\s.()\-]?\d{3,4}/;
+const NZ_UNSEPARATED = /\b0(?:[28]00|5[08]00|2[01279]|[3-9])\d{6,8}\b/;
+const ESCALATION_KEYWORDS = [
+  "refund", "chargeback", "cancel", "cancellation",
+  "wrong", "missing", "broken", "damaged", "defective",
+  "complaint", "complain", "disappointed", "unhappy", "angry", "upset",
+  "lawyer", "legal", "consumer guarantees", "fair trading",
+  "manager", "speak to someone", "speak with someone", "call me", "phone me",
+  "escalate", "supervisor", "head office",
+];
+const AUDIT_BCC = process.env.SIDELINE_AUTO_SEND_BCC || "orders@sidelinenz.com";
+
+export function looksLikePhone(body: string): boolean {
+  if (PHONE_SHAPED.test(body)) return true;
+  if (NZ_UNSEPARATED.test(body)) return true;
+  return false;
+}
+
+export function escalationHit(text: string): string | null {
+  const lower = text.toLowerCase();
+  for (const kw of ESCALATION_KEYWORDS) {
+    if (lower.includes(kw)) return kw;
+  }
+  return null;
+}
+
+function htmlEsc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+const sendCustomerReplyTool: ToolDefinition = {
+  name: "send_customer_reply",
+  description: "AUTO-SEND a customer reply via Gmail (from orders@sidelinenz.com). Only use when ALL of these hold: (a) you've gathered context via lookup_shopify_order + get_order_status; (b) the customer's question is a plain order-status query (where is my order, when will it ship, what's the status); (c) you know exactly which order they mean — no ambiguity; (d) the order has a real status signal (dispatched_at, tracking #, or a clear stage). For ANYTHING involving refunds/cancellations/complaints/missing/wrong/manager/legal — DO NOT use this tool. Call flag_for_escalation instead. The tool re-validates these gates server-side: it will REJECT a send if the body contains a phone number or any escalation keyword. Every send BCCs the ops inbox and posts an audit card to Telegram thread 614.",
+  parameters: {
+    type: "object",
+    properties: {
+      to: { type: "string", description: "Recipient email address." },
+      subject: { type: "string", description: "Subject line. Match the inbound thread's subject when replying inline." },
+      body: { type: "string", description: "Plain-text body. Must reference only facts pulled from tool calls. Must NOT contain any phone number. Must NOT contain escalation keywords." },
+      threadId: { type: "string", description: "Optional Gmail thread id (from get_email_thread) — attaches the reply inline to that thread." },
+      internalOrderRef: { type: "string", description: "Required for audit — the PO reference or order number you're answering about (e.g. 'PO-2026-0025' / 'SL-2026-OU7-001'). Recorded in the audit card." },
+      customerStage: { type: "string", description: "Optional — the customerStage value get_order_status returned, recorded in the audit card." },
+    },
+    required: ["to", "subject", "body", "internalOrderRef"],
+  },
+  async execute(args) {
+    if (!isGmailConfigured()) return { error: "gmail_not_configured" };
+    const to = String(args.to || "").trim();
+    const subject = String(args.subject || "").trim();
+    const body = String(args.body || "");
+    if (!to || !subject || !body) return { error: "missing_required_field", required: ["to", "subject", "body"] };
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { error: "invalid_to_address", to };
+    if (!args.internalOrderRef) return { error: "missing_internal_order_ref", hint: "Pass the PO reference / order number you're answering about so the audit card has a link." };
+
+    // ── Gate 1: phone number leak ─────────────────────────────────
+    if (looksLikePhone(body)) {
+      return {
+        error: "blocked_phone_number_in_body",
+        reason: "Body contains a phone-number-shaped digit run. Never include a phone number in a customer reply. Direct them to orders@sidelinenz.com instead.",
+      };
+    }
+    // ── Gate 2: escalation keyword detected ───────────────────────
+    const hit = escalationHit(body) || escalationHit(subject);
+    if (hit) {
+      return {
+        error: "blocked_escalation_keyword",
+        keyword: hit,
+        reason: `The draft contains '${hit}' — this is an escalation signal. Call flag_for_escalation instead of auto-sending.`,
+      };
+    }
+
+    // ── Send ──────────────────────────────────────────────────────
+    const msgId = await sendGmail({
+      from: process.env.SIDELINE_REPLY_FROM || "Sideline NZ Orders <orders@sidelinenz.com>",
+      to,
+      bcc: AUDIT_BCC,
+      subject,
+      html: plainTextToHtml(body),
+      text: body,
+    });
+    if (!msgId) return { error: "gmail_send_failed", hint: "Check Gmail OAuth creds and server logs." };
+
+    // ── Audit card to Telegram 614 (best-effort, doesn't block send result) ──
+    if (isTelegramConfigured()) {
+      const orderRefStr = String(args.internalOrderRef);
+      const stage = args.customerStage ? ` (${htmlEsc(String(args.customerStage))})` : "";
+      const preview = body.length > 320 ? body.slice(0, 320) + "…" : body;
+      try {
+        await sendTelegramCard({
+          text: [
+            `<b>📤 Ezra auto-reply sent</b>`,
+            `Order: ${htmlEsc(orderRefStr)}${stage}`,
+            `To: ${htmlEsc(to)}`,
+            `Subject: ${htmlEsc(subject)}`,
+            "",
+            `<i>${htmlEsc(preview)}</i>`,
+          ].join("\n"),
+        });
+      } catch (err) {
+        console.error("[ezra] audit card post failed:", err);
+      }
+    }
+
+    return {
+      ok: true,
+      sent: true,
+      gmailMessageId: msgId,
+      to,
+      bcc: AUDIT_BCC,
+      subject,
+      threadId: args.threadId || null,
+    };
+  },
+};
+
+const flagForEscalationTool: ToolDefinition = {
+  name: "flag_for_escalation",
+  description: "Hand a customer thread off to a human. Use this whenever the inbound carries any whiff of refund/cancellation/complaint/missing/wrong item/legal/'manager'/'call me', OR when you don't have enough context to answer confidently, OR when send_customer_reply rejected your draft on a gate. Posts an escalation card to Telegram thread 614 (Sideline ops) so a human picks it up. Does NOT draft, does NOT send — handing off means a human writes the reply from scratch.",
+  parameters: {
+    type: "object",
+    properties: {
+      customerEmail: { type: "string", description: "The customer's email address." },
+      customerName: { type: "string", description: "Optional — customer's name if known." },
+      orderRef: { type: "string", description: "Optional — PO reference / order number / Shopify order # the query is about." },
+      reason: { type: "string", description: "Short classification of why this needs a human: 'refund', 'cancel', 'complaint', 'missing items', 'wrong item', 'asking to speak to manager', 'ambiguous match', 'low confidence', etc." },
+      summary: { type: "string", description: "1–3 sentence summary of what the customer is asking / saying, so the human knows what they're picking up." },
+      gmailThreadId: { type: "string", description: "Optional Gmail thread id — included in the card so the human can jump straight to the thread." },
+    },
+    required: ["customerEmail", "reason", "summary"],
+  },
+  async execute(args) {
+    if (!isTelegramConfigured()) {
+      // Don't fail silently — if we can't escalate, we MUST tell Ezra so it
+      // can fall back to draft_customer_reply rather than auto-send.
+      return { error: "telegram_not_configured", hint: "Set JARVESI_BOT_TOKEN + KIG_GROUP_CHAT_ID. Falling back: draft a holding reply with draft_customer_reply." };
+    }
+    const customerEmail = String(args.customerEmail || "").trim();
+    if (!customerEmail) return { error: "missing_customer_email" };
+
+    const lines: string[] = [
+      `<b>🚨 Sideline customer escalation</b>`,
+      `Reason: <b>${htmlEsc(String(args.reason))}</b>`,
+      `From: ${htmlEsc(args.customerName ? `${args.customerName} <${customerEmail}>` : customerEmail)}`,
+    ];
+    if (args.orderRef) lines.push(`Order: ${htmlEsc(String(args.orderRef))}`);
+    if (args.gmailThreadId) {
+      // Gmail web URL for a thread the admin can click straight into
+      lines.push(`<a href="https://mail.google.com/mail/u/0/#inbox/${htmlEsc(String(args.gmailThreadId))}">📧 Open thread</a>`);
+    }
+    lines.push("");
+    lines.push(`<i>${htmlEsc(String(args.summary))}</i>`);
+
+    const result = await sendTelegramCard({ text: lines.join("\n") });
+    if (!result.ok) return { error: "telegram_post_failed", reason: result.reason };
+    return {
+      ok: true,
+      escalated: true,
+      telegramMessageId: result.messageId,
+      note: "Posted to Sideline ops thread 614. A human will handle the reply — do not auto-send or draft.",
+    };
+  },
+};
+
 // ─── Registry ─────────────────────────────────────────────────────────
 
 export const EZRA_TOOLS: ToolDefinition[] = [
@@ -364,6 +776,12 @@ export const EZRA_TOOLS: ToolDefinition[] = [
   listRecentDesignsTool,
   extractColoursTool,
   addSizeBreakdownsTool,
+  lookupShopifyOrderTool,
+  getEmailThreadTool,
+  getOrderStatusTool,
+  draftCustomerReplyTool,
+  sendCustomerReplyTool,
+  flagForEscalationTool,
 ];
 
 export function findTool(name: string): ToolDefinition | undefined {

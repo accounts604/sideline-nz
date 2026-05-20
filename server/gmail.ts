@@ -13,6 +13,7 @@ const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 const GMAIL_SEND_URL = `${GMAIL_API_BASE}/messages/send`;
 const GMAIL_DRAFTS_URL = `${GMAIL_API_BASE}/drafts`;
 const GMAIL_THREADS_URL = `${GMAIL_API_BASE}/threads`;
+const GMAIL_LABELS_URL = `${GMAIL_API_BASE}/labels`;
 
 let cachedAccessToken: { token: string; expiresAt: number } | null = null;
 
@@ -273,6 +274,91 @@ export async function getGmailThread(threadId: string): Promise<GmailMessage[]> 
       labelIds: m.labelIds || [],
     };
   });
+}
+
+// ─── Labels ──────────────────────────────────────────────────────
+//
+// The queue processor uses a label-based handshake:
+//   - inbound customer threads land in label `sideline-auto-queue`
+//     (applied by a Gmail filter or manually)
+//   - processor reads `is:unread label:sideline-auto-queue`, takes action,
+//     then removes the queue label and applies `sideline-auto-handled`
+//
+// Labels are user labels (visible in Gmail UI), not system labels.
+
+let labelCache: Map<string, string> | null = null;
+
+async function loadLabelCache(token: string): Promise<Map<string, string>> {
+  if (labelCache) return labelCache;
+  const res = await fetch(GMAIL_LABELS_URL, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) {
+    console.error("[Gmail] label list failed:", res.status, await res.text());
+    return new Map();
+  }
+  const data = await res.json();
+  const m = new Map<string, string>();
+  for (const lb of data.labels || []) {
+    if (lb.id && lb.name) m.set(lb.name, lb.id);
+  }
+  labelCache = m;
+  return m;
+}
+
+export async function getOrCreateGmailLabel(name: string): Promise<string | null> {
+  const token = await getAccessToken();
+  if (!token) return null;
+  const cache = await loadLabelCache(token);
+  const existing = cache.get(name);
+  if (existing) return existing;
+  // Create the label (user-visible, expanded by default).
+  const res = await fetch(GMAIL_LABELS_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name,
+      labelListVisibility: "labelShow",
+      messageListVisibility: "show",
+    }),
+  });
+  if (!res.ok) {
+    console.error(`[Gmail] label create failed for "${name}":`, res.status, await res.text());
+    return null;
+  }
+  const data = await res.json();
+  if (data.id && data.name) cache.set(data.name, data.id);
+  return data.id || null;
+}
+
+export async function applyGmailLabels(threadId: string, opts: { add?: string[]; remove?: string[] }): Promise<boolean> {
+  const token = await getAccessToken();
+  if (!token) return false;
+  const addIds: string[] = [];
+  const removeIds: string[] = [];
+  for (const name of opts.add || []) {
+    const id = await getOrCreateGmailLabel(name);
+    if (id) addIds.push(id);
+  }
+  if (opts.remove?.length) {
+    const cache = await loadLabelCache(token);
+    for (const name of opts.remove) {
+      const id = cache.get(name);
+      if (id) removeIds.push(id);
+    }
+  }
+  if (addIds.length === 0 && removeIds.length === 0) return true; // nothing to do
+  const res = await fetch(`${GMAIL_THREADS_URL}/${threadId}/modify`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      addLabelIds: addIds,
+      removeLabelIds: removeIds,
+    }),
+  });
+  if (!res.ok) {
+    console.error("[Gmail] label modify failed:", res.status, await res.text());
+    return false;
+  }
+  return true;
 }
 
 /**
