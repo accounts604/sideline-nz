@@ -1561,6 +1561,29 @@ export default function AdminOrderDetail() {
                         </span>
                       )}
                     </div>
+                    {/* Line subtotal — unit cost × quantity. Quantity comes
+                        from size breakdowns when set (the real production
+                        total), else falls back to the order_item.quantity
+                        field. Always shows both currencies when supplier
+                        cost is in USD. */}
+                    {item.supplierUnitCostCents != null && (() => {
+                      const usdUnit = item.supplierUnitCostCents / 100;
+                      const isUsd = (item.supplierCostCurrency || "USD") === "USD";
+                      const lineUsd = usdUnit * totalQty;
+                      const lineNzd = isUsd ? lineUsd * PUFFIN_USD_TO_NZD : lineUsd;
+                      return (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 600, color: "#fb923c", marginTop: 3 }}>
+                          <span style={{ minWidth: 50 }}>= line:</span>
+                          <span>{item.supplierCostCurrency || "USD"} ${usdUnit.toFixed(2)} × {totalQty} = </span>
+                          <span style={{ color: "#fff" }}>{item.supplierCostCurrency || "USD"} ${lineUsd.toFixed(2)}</span>
+                          {isUsd && (
+                            <span style={{ color: "rgba(251,146,60,0.65)" }}>
+                              ≈ NZD ${lineNzd.toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </Field>
                 <Field label="Supplier" style={{ flex: 1.2 }}>
