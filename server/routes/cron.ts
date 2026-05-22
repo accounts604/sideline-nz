@@ -7,8 +7,8 @@
 //      external schedulers that have no cookie).
 //
 // Endpoints:
-//   POST /api/cron/daily-digest — morning Telegram digest (overdue, at-risk,
-//                                  AP backlog, live supporter drops)
+//   POST /api/cron/daily-digest             — morning Telegram digest
+//   POST /api/cron/process-customer-queue   — Gmail queue → Ezra
 
 import { Router } from "express";
 import { db } from "../db";
@@ -44,6 +44,32 @@ function gate(req: any, res: any, next: any) {
 }
 
 router.use(gate);
+
+// ─── Process customer queue ─────────────────────────────────────────────
+//
+// Runs the Gmail queue processor: pulls labelled threads, hydrates context,
+// spawns one Ezra turn per thread, applies handled labels. Pass ?dryRun=true
+// to scan + log without calling Ezra or modifying Gmail labels.
+
+router.post("/process-customer-queue", async (req, res) => {
+  try {
+    const { processCustomerQueue } = await import("../ezra/queue-processor.js");
+    const live = req.query.dryRun === "true" ? false : true;
+    const limit = req.query.limit ? Math.max(1, Math.min(25, parseInt(String(req.query.limit), 10) || 5)) : 5;
+    const threadId = req.query.threadId ? String(req.query.threadId) : undefined;
+    const logs: string[] = [];
+    const result = await processCustomerQueue({
+      live,
+      limit,
+      threadId,
+      log: (s) => logs.push(s),
+    });
+    res.json({ ok: true, live, ...result, logs });
+  } catch (err: any) {
+    console.error("[cron/queue] error:", err);
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
 
 // ─── Daily digest ───────────────────────────────────────────────────────
 //
