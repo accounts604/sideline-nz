@@ -1378,6 +1378,9 @@ export default function AdminOrderDetail() {
       {/* ──── Supplier Invoice ──── */}
       <SupplierInvoiceCard order={order} orderId={order.id} invalidate={invalidate} />
 
+      {/* ──── Production Checkpoints ──── */}
+      <ProductionCheckpointsCard orderId={order.id} invalidate={invalidate} />
+
       {/* ──── Garment Lines ──── */}
       <Section title="Garment Lines" count={items.length} defaultOpen={true}>
         {items.length === 0 && <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "13px", marginBottom: "12px" }}>No items on this PO yet. Add one below.</p>}
@@ -2933,5 +2936,134 @@ function SupporterOrdersModal({ orderId, onClose }: { orderId: string; onClose: 
         )}
       </div>
     </div>
+  );
+}
+
+// Production checkpoints — admin timeline + Mark Complete / Advance.
+// Backed by storage.getProductionStages (returned in getOrderWithDetails).
+// 9-stage pipeline; one in_progress at a time; admin advances which also
+// auto-starts the next.
+
+const STAGE_LABELS: Record<string, string> = {
+  order_received: "Order Received",
+  design_review: "Design Review",
+  design_confirmed: "Design Confirmed",
+  in_production: "In Production",
+  printing: "Print / Embroidery",
+  quality_check: "Quality Check",
+  packing: "Packing",
+  shipped: "Shipped",
+  delivered: "Delivered",
+};
+
+interface Stage {
+  id: string;
+  stage: string;
+  status: "pending" | "in_progress" | "completed" | "skipped";
+  enteredAt: string | null;
+  completedAt: string | null;
+  notes: string | null;
+  completedBy: string | null;
+}
+
+function ProductionCheckpointsCard({ orderId, invalidate }: { orderId: string; invalidate: () => void }) {
+  const { data } = useQuery<{ order: any; stages: Stage[] }>({
+    queryKey: [`/api/admin/orders/${orderId}`],
+  });
+  const [noteDraft, setNoteDraft] = useState("");
+  const stages: Stage[] = (data as any)?.stages || [];
+  const completedCount = stages.filter((s) => s.status === "completed").length;
+
+  const advance = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/admin/orders/${orderId}/production/advance`, { notes: noteDraft || undefined });
+      return r.json();
+    },
+    onSuccess: () => { setNoteDraft(""); invalidate(); },
+  });
+
+  const initPipeline = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/admin/orders/${orderId}/production/initialize`, {});
+      return r.json();
+    },
+    onSuccess: invalidate,
+  });
+
+  if (stages.length === 0) {
+    return (
+      <Section title="Production Checkpoints" count={0} defaultOpen={false}>
+        <div style={{ padding: "16px 0" }}>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginBottom: 10 }}>
+            Pipeline not initialised yet. Stages auto-create on raise-PO; click below to seed manually.
+          </p>
+          <button
+            onClick={() => initPipeline.mutate()}
+            disabled={initPipeline.isPending}
+            style={{ padding: "8px 14px", fontSize: 12, fontWeight: 600, background: "#C9A84C", color: "#0A1628", border: 0, borderRadius: 6, cursor: "pointer" }}
+          >
+            {initPipeline.isPending ? "Creating…" : "Initialise 9-stage pipeline"}
+          </button>
+        </div>
+      </Section>
+    );
+  }
+
+  const currentStage = stages.find((s) => s.status === "in_progress");
+  const allDone = !currentStage && completedCount === stages.length;
+
+  return (
+    <Section title="Production Checkpoints" count={completedCount} defaultOpen={false}>
+      <div style={{ padding: "8px 0" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8, marginBottom: 14 }}>
+          {stages.map((s, i) => {
+            const isDone = s.status === "completed";
+            const isCurrent = s.status === "in_progress";
+            const bg = isDone ? "rgba(34,197,94,0.1)" : isCurrent ? "rgba(201,168,76,0.12)" : "rgba(255,255,255,0.03)";
+            const border = isDone ? "rgba(34,197,94,0.35)" : isCurrent ? "rgba(201,168,76,0.4)" : "rgba(255,255,255,0.08)";
+            const fg = isDone ? "#22c55e" : isCurrent ? "#C9A84C" : "rgba(255,255,255,0.4)";
+            return (
+              <div key={s.id} style={{ padding: "8px 10px", background: bg, border: `1px solid ${border}`, borderRadius: 6 }}>
+                <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 2 }}>
+                  {i + 1}/{stages.length}
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: fg }}>{STAGE_LABELS[s.stage] || s.stage}</div>
+                {s.completedAt && (
+                  <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
+                    {new Date(s.completedAt).toLocaleDateString()}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {!allDone && currentStage && (
+          <div style={{ background: "rgba(201,168,76,0.06)", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 8, padding: "12px 14px" }}>
+            <div style={{ fontSize: 11, color: "#C9A84C", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>
+              Currently in: {STAGE_LABELS[currentStage.stage]}
+            </div>
+            <textarea
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              placeholder="Optional notes for the completion log…"
+              style={{ width: "100%", minHeight: 50, padding: "6px 10px", fontSize: 12, background: "#000", color: "#fff", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4, resize: "vertical" }}
+            />
+            <button
+              onClick={() => advance.mutate()}
+              disabled={advance.isPending}
+              style={{ marginTop: 8, padding: "8px 14px", fontSize: 12, fontWeight: 600, background: "#22c55e", color: "#000", border: 0, borderRadius: 6, cursor: "pointer" }}
+            >
+              {advance.isPending ? "Advancing…" : `Mark "${STAGE_LABELS[currentStage.stage]}" complete →`}
+            </button>
+          </div>
+        )}
+        {allDone && (
+          <div style={{ padding: "10px 14px", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e", borderRadius: 6, fontSize: 13, fontWeight: 600 }}>
+            ✓ All 9 stages complete. Order delivered.
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }

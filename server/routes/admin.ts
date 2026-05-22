@@ -8,7 +8,7 @@ import { sendInviteEmail, sendSupplierPoRaisedEmail, sendSupplierPoDispatchGmail
 import { db } from "../db";
 import { orders, orderActivity, designFiles, orderItems, orderSizeBreakdowns, clubAccounts, users } from "@shared/schema";
 import type { OrderItem } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import {
   fetchSupporterOrdersByTag,
   fetchCollectionStatus,
@@ -159,6 +159,70 @@ router.get("/orders/triage", async (_req, res) => {
   } catch (err: any) {
     console.error("[triage] error:", err);
     res.status(500).json({ error: "Failed to load triage", message: String(err?.message || err) });
+  }
+});
+
+// GET /orders/action-required — action-based triage (orthogonal to the
+// time-based triage above). Returns 4 buckets ops needs to clear:
+//   1. needs_supplier      — PO has no assigned_supplier_id, can't dispatch
+//   2. pending_costs       — PO has lines with NULL supplier_unit_cost_cents
+//   3. dispatched_unpaid   — PO was dispatched but supplier invoice not paid
+//   4. on_hold             — PO was held; needs decision
+router.get("/orders/action-required", async (_req, res) => {
+  try {
+    const rows: any = await db.execute(sql`
+      SELECT
+        o.id, o.po_reference, o.account_name, o.pipeline_stage, o.status,
+        o.due_date, o.assigned_supplier_id, o.po_dispatched_at, o.po_held_at,
+        o.po_hold_reason, o.supplier_invoice_paid_at, o.supplier_invoice_file_url,
+        o.supplier_invoice_total_cents, o.supplier_invoice_currency,
+        (SELECT COUNT(*)::int FROM order_items WHERE order_id = o.id) AS line_count,
+        (SELECT COUNT(*)::int FROM order_items WHERE order_id = o.id AND supplier_unit_cost_cents IS NULL) AS pending_cost_lines
+      FROM orders o
+      WHERE o.po_reference IS NOT NULL
+        AND COALESCE(o.pipeline_stage, '') NOT IN ('Cancelled', 'Completed')
+        AND COALESCE(o.status, '') NOT IN ('cancelled')
+    `);
+    const all: any[] = Array.isArray(rows) ? rows : (rows.rows ?? []);
+
+    const needsSupplier: any[] = [];
+    const pendingCosts: any[] = [];
+    const dispatchedUnpaid: any[] = [];
+    const onHold: any[] = [];
+
+    for (const r of all) {
+      // Skip dispatched POs for the "needs action" pre-dispatch buckets.
+      const dispatched = !!r.po_dispatched_at;
+      if (r.po_held_at) {
+        onHold.push(r);
+      }
+      if (!dispatched && !r.po_held_at) {
+        if (!r.assigned_supplier_id) needsSupplier.push(r);
+        if ((r.pending_cost_lines ?? 0) > 0) pendingCosts.push(r);
+      }
+      if (dispatched && !r.supplier_invoice_paid_at) dispatchedUnpaid.push(r);
+    }
+
+    res.json({
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      buckets: {
+        needs_supplier: needsSupplier,
+        pending_costs: pendingCosts,
+        dispatched_unpaid: dispatchedUnpaid,
+        on_hold: onHold,
+      },
+      counts: {
+        needs_supplier: needsSupplier.length,
+        pending_costs: pendingCosts.length,
+        dispatched_unpaid: dispatchedUnpaid.length,
+        on_hold: onHold.length,
+        total_active_pos: all.length,
+      },
+    });
+  } catch (err: any) {
+    console.error("[action-required] error:", err);
+    res.status(500).json({ error: String(err?.message || err) });
   }
 });
 
@@ -2999,6 +3063,15 @@ async function dispatchOrderToSuppliers(
     } catch (err) {
       console.error(`[dispatch-po] Logo auto-attach failed for ${order.poReference}:`, err);
     }
+  }
+
+  // Step 2.7: seed the 8-stage production pipeline if it hasn't been
+  // initialized yet. Idempotent on second call (storage method checks).
+  // Lets admin + supplier mark checkpoints from the order detail page.
+  try {
+    await storage.initializeProductionPipeline(order.id);
+  } catch (err) {
+    console.error(`[dispatch-po] Production pipeline init failed for ${order.poReference}:`, err);
   }
 
   // Step 3: shared side effects that happen once per order, not per supplier

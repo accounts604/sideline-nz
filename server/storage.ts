@@ -1061,6 +1061,11 @@ export class DatabaseStorage implements IStorage {
       "delivered",
     ];
 
+    // Idempotent — if any stages exist for this order, return them as-is.
+    // Lets the raise-PO hook call this unconditionally without duplicating.
+    const existing = await db.select().from(productionStages).where(eq(productionStages.orderId, orderId));
+    if (existing.length > 0) return existing;
+
     const created: ProductionStage[] = [];
     for (let i = 0; i < stages.length; i++) {
       const [row] = await db.insert(productionStages).values({
