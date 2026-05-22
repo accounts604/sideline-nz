@@ -1,6 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { AdminLayout } from "@/components/admin-layout";
+import { apiRequest } from "@/lib/queryClient";
 import type { TriageResult, TriageState } from "@shared/triage";
 
 interface TriageRow {
@@ -48,16 +50,19 @@ export default function AdminTriage() {
               Active orders against the 35-day build calendar. Auto-refreshes every 60s.
             </p>
           </div>
-          <button
-            onClick={() => refetch()}
-            style={{
-              padding: "8px 16px", fontSize: "12px", fontWeight: 600,
-              background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.8)",
-              border: "1px solid rgba(255,255,255,0.12)", borderRadius: "6px", cursor: "pointer",
-            }}
-          >
-            {isFetching ? "Refreshing…" : "Refresh"}
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <SendDigestButton />
+            <button
+              onClick={() => refetch()}
+              style={{
+                padding: "8px 16px", fontSize: "12px", fontWeight: 600,
+                background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.8)",
+                border: "1px solid rgba(255,255,255,0.12)", borderRadius: "6px", cursor: "pointer",
+              }}
+            >
+              {isFetching ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
         </div>
 
         {/* Status counters */}
@@ -274,5 +279,79 @@ function ActionRequiredPanel() {
         })}
       </div>
     </div>
+  );
+}
+
+// "Send digest now" — fires the same endpoint a scheduled cron would.
+// Shows a preview modal (dry-run) before posting to Telegram so the
+// admin can confirm what will go out.
+function SendDigestButton() {
+  const [preview, setPreview] = useState<any>(null);
+  const [posting, setPosting] = useState(false);
+
+  const fetchPreview = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", "/api/cron/daily-digest?dryRun=true", {});
+      return r.json();
+    },
+    onSuccess: (data: any) => setPreview(data?.digest || data),
+    onError: (e: any) => alert(e?.message || "Preview failed"),
+  });
+
+  const send = async () => {
+    setPosting(true);
+    try {
+      const r = await apiRequest("POST", "/api/cron/daily-digest", {});
+      const data = await r.json();
+      if (data?.posted) {
+        alert("✓ Digest posted to Telegram thread 614");
+        setPreview(null);
+      } else {
+        alert(data?.error || "Send failed");
+      }
+    } catch (e: any) {
+      alert(e?.message || "Send failed");
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => fetchPreview.mutate()}
+        disabled={fetchPreview.isPending}
+        style={{
+          padding: "8px 16px", fontSize: 12, fontWeight: 600,
+          background: "rgba(34,197,94,0.12)", color: "#22c55e",
+          border: "1px solid rgba(34,197,94,0.3)", borderRadius: 6, cursor: "pointer",
+        }}
+      >
+        {fetchPreview.isPending ? "Preview…" : "📨 Send digest"}
+      </button>
+      {preview && (
+        <div onClick={() => setPreview(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: 24, maxWidth: 700, width: "100%", maxHeight: "85vh", overflowY: "auto", color: "#fff" }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 14px" }}>Daily digest preview</h3>
+            <pre style={{ whiteSpace: "pre-wrap", fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12, background: "#000", padding: 14, borderRadius: 6, color: "rgba(255,255,255,0.85)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              {(preview.text || "").replace(/<\/?[a-z][^>]*>/gi, (m: string) => m === "<b>" ? "**" : m === "</b>" ? "**" : m === "<i>" ? "_" : m === "</i>" ? "_" : "")}
+            </pre>
+            <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setPreview(null)}
+                style={{ padding: "8px 14px", fontSize: 12, background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, cursor: "pointer" }}
+              >Cancel</button>
+              <button
+                onClick={send}
+                disabled={posting}
+                style={{ padding: "8px 14px", fontSize: 12, fontWeight: 600, background: "#22c55e", color: "#000", border: 0, borderRadius: 6, cursor: posting ? "wait" : "pointer" }}
+              >
+                {posting ? "Posting to Telegram…" : "Post to Telegram thread 614 →"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

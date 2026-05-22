@@ -14,6 +14,7 @@ import supplierRouter from "./supplier";
 import { publicApprovalRouter } from "./approvals";
 import chatbotRouter from "./chatbot";
 import notifyRouter from "./notify";
+import cronRouter from "./cron";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -70,6 +71,9 @@ export async function registerRoutes(
 
   // Public register-interest signups from closed supporter-campaign drops
   app.use("/api/notify", notifyRouter);
+
+  // Scheduled / cron-triggered jobs (admin cookie OR X-Cron-Secret header)
+  app.use("/api/cron", cronRouter);
 
   return httpServer;
 }
