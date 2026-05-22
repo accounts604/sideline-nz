@@ -144,3 +144,31 @@ Query params:
 ### To turn off
 
 Disable the workflow under `Actions → Daily digest → ⋯ → Disable workflow`. The manual button stays available either way.
+
+## Customer-queue cron (Gmail → Ezra)
+
+Drains the `sideline-auto-queue` Gmail label every 15 min: pulls labelled threads, hydrates context (Shopify by email/order#, internal by PO ref), spawns one Ezra turn per thread, applies `sideline-auto-handled` after.
+
+### Surfaces
+
+- **Manual fire**: `/admin/triage` → "📥 Scan queue" button → dry-run result modal → "Run live → process for real"
+- **Scheduled**: `.github/workflows/customer-queue.yml` hits `/api/cron/process-customer-queue` every 15 min
+
+### Endpoint
+
+`POST /api/cron/process-customer-queue` — same auth model as daily-digest (admin cookie OR `X-Cron-Secret`).
+
+Query params:
+- `?dryRun=true` — scan + log without calling Ezra or modifying Gmail labels
+- `?limit=N` — max threads per run (default 5, max 25)
+- `?threadId=<id>` — process a single specific thread
+
+### Setting up the Gmail label
+
+1. In Gmail, create the label `sideline-auto-queue`
+2. Create a Gmail filter — e.g. `to:orders@sidelinenz.com -from:@sidelinenz.com -from:@kig.co.nz` → "Apply the label: sideline-auto-queue"
+3. From then on, every inbound customer email is queued automatically
+
+### Reuse from CLI
+
+The module `server/ezra/queue-processor.ts` is the single source of truth — `scripts/process-sideline-queue.ts` still works for ad-hoc CLI runs, and the cron endpoint imports the same `processCustomerQueue()` function.

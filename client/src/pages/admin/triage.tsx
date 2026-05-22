@@ -51,6 +51,7 @@ export default function AdminTriage() {
             </p>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <ProcessQueueButton />
             <SendDigestButton />
             <button
               onClick={() => refetch()}
@@ -279,6 +280,71 @@ function ActionRequiredPanel() {
         })}
       </div>
     </div>
+  );
+}
+
+// "Process queue now" — drains the sideline-auto-queue Gmail label through
+// Ezra. Same endpoint the 15-min cron hits. Shows result summary inline.
+function ProcessQueueButton() {
+  const [result, setResult] = useState<any>(null);
+
+  const run = useMutation({
+    mutationFn: async (live: boolean) => {
+      const qs = live ? "" : "?dryRun=true";
+      const r = await apiRequest("POST", `/api/cron/process-customer-queue${qs}`, {});
+      return r.json();
+    },
+    onSuccess: (data: any) => setResult(data),
+    onError: (e: any) => alert(e?.message || "Failed"),
+  });
+
+  return (
+    <>
+      <button
+        onClick={() => run.mutate(false)}
+        disabled={run.isPending}
+        title="Scan the sideline-auto-queue Gmail label (dry-run — no Ezra call, no label changes)"
+        style={{
+          padding: "8px 16px", fontSize: 12, fontWeight: 600,
+          background: "rgba(147,197,253,0.12)", color: "#93c5fd",
+          border: "1px solid rgba(147,197,253,0.3)", borderRadius: 6, cursor: "pointer",
+        }}
+      >
+        {run.isPending ? "Scanning…" : "📥 Scan queue"}
+      </button>
+      {result && (
+        <div onClick={() => setResult(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: 24, maxWidth: 700, width: "100%", maxHeight: "85vh", overflowY: "auto", color: "#fff" }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 6px" }}>
+              Customer queue — {result.live ? "live" : "dry-run"} result
+            </h3>
+            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: "0 0 14px" }}>
+              Scanned {result.scanned} thread{result.scanned === 1 ? "" : "s"}. Totals: {Object.entries(result.totals || {}).map(([k, v]: any) => `${k}=${v}`).join(", ") || "—"}
+            </p>
+            {result.logs?.length > 0 && (
+              <pre style={{ whiteSpace: "pre-wrap", fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11, background: "#000", padding: 14, borderRadius: 6, color: "rgba(255,255,255,0.85)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                {(result.logs || []).join("\n")}
+              </pre>
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setResult(null)}
+                style={{ padding: "8px 14px", fontSize: 12, background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, cursor: "pointer" }}
+              >Close</button>
+              {!result.live && (
+                <button
+                  onClick={() => { setResult(null); run.mutate(true); }}
+                  disabled={run.isPending}
+                  style={{ padding: "8px 14px", fontSize: 12, fontWeight: 600, background: "#93c5fd", color: "#000", border: 0, borderRadius: 6, cursor: "pointer" }}
+                >
+                  Run live → process for real
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
