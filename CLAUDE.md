@@ -118,3 +118,29 @@ accounting.transactions accounting.attachments accounting.contacts.read
 
 ### When the refresh token expires (after 60 days unused)
 The "Pull from Xero" button will return a Xero refresh error. Visit `/admin/settings` and click "Re-connect" to grant a fresh refresh token. No data is lost.
+
+## Daily digest (proactive ops summary)
+
+Sends a morning summary to Telegram thread 614: overdue POs, at-risk POs this week, supplier invoices unpaid >7d, live supporter drops. The user gets it whether or not they open the admin portal — Ezra surfacing what matters before being asked.
+
+### Surfaces
+
+- **Manual fire**: `/admin/triage` → "📨 Send digest" button → preview modal → "Post to Telegram thread 614 →"
+- **Scheduled** (GitHub Actions): `.github/workflows/daily-digest.yml` hits `/api/cron/daily-digest` at 18:30 UTC daily (~07:30 NZ; drift across DST is acceptable)
+
+### Endpoint
+
+`POST /api/cron/daily-digest` — accepts either an admin session cookie (for the UI button) or `X-Cron-Secret: <value>` header matching `CRON_SECRET` env var.
+
+Query params:
+- `?dryRun=true` — returns the digest payload without posting to Telegram
+
+### Required env vars
+
+- `CRON_SECRET` — random string, set on the server **and** as a GitHub Actions secret (`Settings → Secrets and variables → Actions`)
+- `SITE_URL` — base URL the workflow hits (optional GitHub secret; defaults to `https://sidelinenz.com`)
+- `JARVESI_BOT_TOKEN` + `KIG_GROUP_CHAT_ID` — already configured for other Telegram cards
+
+### To turn off
+
+Disable the workflow under `Actions → Daily digest → ⋯ → Disable workflow`. The manual button stays available either way.
