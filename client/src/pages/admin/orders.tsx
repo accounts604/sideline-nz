@@ -49,6 +49,8 @@ const STAGE_COLORS: Record<string, { bg: string; text: string }> = {
   "Mockup Sent":          { bg: "rgba(168,85,247,0.15)",  text: "#a855f7" },
   "Deposit Paid":         { bg: "rgba(34,197,94,0.15)",   text: "#22c55e" },
   "PO Raised":            { bg: "rgba(249,115,22,0.15)",  text: "#f97316" },
+  "In Production":        { bg: "rgba(217,119,6,0.15)",   text: "#d97706" },
+  "Shipped":              { bg: "rgba(168,85,247,0.15)",  text: "#a855f7" },
   "Delivered":            { bg: "rgba(20,184,166,0.15)",  text: "#14b8a6" },
   "Invoice Sent":         { bg: "rgba(99,102,241,0.15)",  text: "#6366f1" },
   "Paid":                 { bg: "rgba(34,197,94,0.18)",   text: "#22c55e" },

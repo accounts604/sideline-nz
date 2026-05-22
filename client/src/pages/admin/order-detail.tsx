@@ -2945,6 +2945,7 @@ function SupporterOrdersModal({ orderId, onClose }: { orderId: string; onClose: 
 // auto-starts the next.
 
 const STAGE_LABELS: Record<string, string> = {
+  // Bulk / single path
   order_received: "Order Received",
   design_review: "Design Review",
   design_confirmed: "Design Confirmed",
@@ -2954,6 +2955,11 @@ const STAGE_LABELS: Record<string, string> = {
   packing: "Packing",
   shipped: "Shipped",
   delivered: "Delivered",
+  // Sample path
+  sample_produced: "Sample Produced",
+  sample_dispatched: "Sample Dispatched",
+  sample_received_by_client: "Sample Received by Client",
+  sample_approved_by_client: "Sample Approved by Client",
 };
 
 interface Stage {
