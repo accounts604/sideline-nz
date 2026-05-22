@@ -183,6 +183,78 @@ const dispatchedSchema = z.object({
   notes: z.string().optional(),
 });
 
+// GET /orders/:id/stages — production stages for this order (supplier-scoped)
+router.get("/orders/:id/stages", async (req, res) => {
+  try {
+    const { userId } = (req as any).user as JwtPayload;
+    const order = await getSupplierOrder(req.params.id, userId);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const stages = await storage.getProductionStages(order.id);
+    res.json({ stages });
+  } catch (e: any) {
+    console.error("Supplier stages error:", e);
+    res.status(500).json({ error: "Failed to load stages" });
+  }
+});
+
+// POST /orders/:id/stages/:stageId/complete — supplier marks a stage as
+// completed. The stage must belong to this order. Notes/photoUrl optional.
+const completeStageSchema = z.object({
+  notes: z.string().max(2000).optional(),
+  photoUrl: z.string().url().optional(),
+});
+
+router.post("/orders/:id/stages/:stageId/complete", async (req, res) => {
+  try {
+    const { userId } = (req as any).user as JwtPayload;
+    const order = await getSupplierOrder(req.params.id, userId);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const parsed = completeStageSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0]?.message || "Invalid payload" });
+
+    // Verify the stage belongs to this order before updating.
+    const stages = await storage.getProductionStages(order.id);
+    const target = stages.find((s) => s.id === req.params.stageId);
+    if (!target) return res.status(404).json({ error: "Stage not found on this order" });
+
+    const now = new Date();
+    await storage.updateProductionStage(target.id, {
+      status: "completed",
+      completedAt: now,
+      completedBy: userId,
+      notes: parsed.data.notes ?? target.notes,
+    });
+
+    // Auto-advance the next stage to in_progress (mirrors the admin advance flow)
+    const idx = stages.findIndex((s) => s.id === target.id);
+    if (idx >= 0 && idx < stages.length - 1) {
+      const next = stages[idx + 1];
+      if (next.status === "pending") {
+        await storage.updateProductionStage(next.id, { status: "in_progress", enteredAt: now });
+        await storage.updateOrder(order.id, { productionStage: next.stage } as any);
+      }
+    }
+
+    await db.insert(orderActivity).values({
+      orderId: order.id,
+      userId,
+      action: "supplier_stage_completed",
+      details: {
+        source: "supplier_portal",
+        stage: target.stage,
+        stageId: target.id,
+        notes: parsed.data.notes,
+        photoUrl: parsed.data.photoUrl,
+      },
+    });
+
+    res.json({ ok: true, stage: target.stage });
+  } catch (e: any) {
+    console.error("Supplier complete stage error:", e);
+    res.status(500).json({ error: "Failed to mark stage complete" });
+  }
+});
+
 router.post("/orders/:id/dispatched", async (req, res) => {
   try {
     const { userId } = (req as any).user as JwtPayload;

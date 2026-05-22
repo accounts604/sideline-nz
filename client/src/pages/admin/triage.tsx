@@ -82,6 +82,9 @@ export default function AdminTriage() {
           </div>
         )}
 
+        {/* Action Required — orthogonal bucket-based view. What needs ops attention TODAY. */}
+        <ActionRequiredPanel />
+
         {isLoading && <p style={{ color: "rgba(255,255,255,0.5)" }}>Loading…</p>}
         {error && <p style={{ color: "#fca5a5" }}>Failed to load triage: {String((error as any)?.message || error)}</p>}
 
@@ -167,5 +170,109 @@ function Td({ children, right }: { children: React.ReactNode; right?: boolean })
       textAlign: right ? "right" : "left",
       fontSize: "13px", color: "#fff", verticalAlign: "middle",
     }}>{children}</td>
+  );
+}
+
+// ─── Action Required panel ───────────────────────────────────────────
+//
+// Bucket-based view orthogonal to the time-based triage. Shows the four
+// categories ops must clear daily:
+//   needs_supplier · pending_costs · dispatched_unpaid · on_hold
+
+interface ActionRow {
+  id: string;
+  po_reference: string | null;
+  account_name: string | null;
+  pipeline_stage: string | null;
+  due_date: string | null;
+  assigned_supplier_id: string | null;
+  po_dispatched_at: string | null;
+  po_held_at: string | null;
+  po_hold_reason: string | null;
+  supplier_invoice_paid_at: string | null;
+  supplier_invoice_file_url: string | null;
+  supplier_invoice_total_cents: number | null;
+  supplier_invoice_currency: string | null;
+  line_count: number;
+  pending_cost_lines: number;
+}
+
+interface ActionResponse {
+  ok: boolean;
+  generatedAt: string;
+  buckets: {
+    needs_supplier: ActionRow[];
+    pending_costs: ActionRow[];
+    dispatched_unpaid: ActionRow[];
+    on_hold: ActionRow[];
+  };
+  counts: {
+    needs_supplier: number;
+    pending_costs: number;
+    dispatched_unpaid: number;
+    on_hold: number;
+    total_active_pos: number;
+  };
+}
+
+function ActionRequiredPanel() {
+  const { data } = useQuery<ActionResponse>({
+    queryKey: ["/api/admin/orders/action-required"],
+    refetchInterval: 60_000,
+  });
+  if (!data) return null;
+
+  const BUCKETS: Array<{ key: keyof ActionResponse["buckets"]; label: string; color: string; sub: string }> = [
+    { key: "needs_supplier",    label: "Needs supplier",    color: "#fca5a5", sub: "Can't dispatch — assign before raise-PO" },
+    { key: "pending_costs",     label: "Pending costs",     color: "#fb923c", sub: "Stamp from supplier pricelist or enter manually" },
+    { key: "dispatched_unpaid", label: "Dispatched · unpaid", color: "#93c5fd", sub: "AP follow-up — chase supplier invoice or mark paid" },
+    { key: "on_hold",           label: "On hold",           color: "#fcd34d", sub: "Decision required" },
+  ];
+
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "#fff" }}>Action Required</h2>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+          {data.counts.total_active_pos} active PO{data.counts.total_active_pos === 1 ? "" : "s"} · auto-refreshes
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+        {BUCKETS.map((b) => {
+          const rows = data.buckets[b.key];
+          return (
+            <div key={b.key} style={{ background: "#0d0d0d", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "14px 16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: b.color, textTransform: "uppercase", letterSpacing: 0.6 }}>{b.label}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", lineHeight: 1 }}>{rows.length}</div>
+              </div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 10 }}>{b.sub}</div>
+              {rows.length === 0 ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>All clear ✓</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
+                  {rows.map((r) => (
+                    <Link key={r.id} href={`/admin/orders/${r.id}`}>
+                      <div style={{ padding: "6px 8px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 5, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontFamily: "monospace", fontSize: 11, color: "#93c5fd" }}>{r.po_reference}</div>
+                          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.account_name || "—"}</div>
+                        </div>
+                        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>
+                          {b.key === "pending_costs" ? `${r.pending_cost_lines}/${r.line_count} lines` :
+                           b.key === "dispatched_unpaid" ? (r.po_dispatched_at ? `${Math.floor((Date.now() - new Date(r.po_dispatched_at).getTime()) / 86400000)}d ago` : "") :
+                           b.key === "on_hold" ? (r.po_hold_reason || "—") :
+                           (r.due_date || "no due date")}
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

@@ -296,6 +296,9 @@ export default function SupplierOrderDetail() {
           })}
         </Card>
 
+        {/* Production checkpoints — supplier marks each as complete as they progress */}
+        {orderId && <ProductionStagesCard orderId={orderId} />}
+
         {/* Tech-pack files */}
         <Card title="Tech-pack files">
           {files.length === 0 && (
@@ -486,5 +489,115 @@ function Row({ label, value }: { label: string; value: string | null | undefined
       <div style={{ width: "100px", color: "rgba(255,255,255,0.5)" }}>{label}</div>
       <div style={{ color: "#fff", flex: 1 }}>{value || "—"}</div>
     </div>
+  );
+}
+
+// Supplier-side production checkpoints. Reads GET /api/supplier/orders/:id/stages
+// (scoped server-side to assigned_supplier_id) and lets the supplier mark
+// the currently-active stage complete with optional notes. The server
+// auto-advances the next stage to in_progress.
+
+const SUPPLIER_STAGE_LABELS: Record<string, { label: string; supplierHint?: string }> = {
+  order_received: { label: "Order Received" },
+  design_review:  { label: "Design Review" },
+  design_confirmed: { label: "Design Confirmed", supplierHint: "Confirm artwork is correct + production-ready" },
+  in_production:  { label: "In Production", supplierHint: "Production has started" },
+  printing:       { label: "Print / Embroidery", supplierHint: "Decoration step done" },
+  quality_check:  { label: "Quality Check", supplierHint: "QC pass — all units inspected" },
+  packing:        { label: "Packing", supplierHint: "Boxed and ready to ship" },
+  shipped:        { label: "Shipped", supplierHint: "Use the 'Mark Dispatched' button below to capture tracking" },
+  delivered:      { label: "Delivered" },
+};
+
+type SupplierStage = {
+  id: string;
+  stage: string;
+  status: "pending" | "in_progress" | "completed" | "skipped";
+  enteredAt: string | null;
+  completedAt: string | null;
+  notes: string | null;
+};
+
+function ProductionStagesCard({ orderId }: { orderId: string }) {
+  const qc = useQueryClient();
+  const [notes, setNotes] = useState("");
+  const { data, isLoading } = useQuery<{ stages: SupplierStage[] }>({
+    queryKey: [`/api/supplier/orders/${orderId}/stages`],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+
+  const complete = useMutation({
+    mutationFn: async (stageId: string) => {
+      const res = await apiRequest("POST", `/api/supplier/orders/${orderId}/stages/${stageId}/complete`, {
+        notes: notes.trim() || undefined,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      setNotes("");
+      qc.invalidateQueries({ queryKey: [`/api/supplier/orders/${orderId}/stages`] });
+    },
+  });
+
+  const stages = data?.stages ?? [];
+  const current = stages.find((s) => s.status === "in_progress");
+  const completedCount = stages.filter((s) => s.status === "completed").length;
+
+  return (
+    <Card title={`Production progress — ${completedCount}/${stages.length} done`}>
+      {isLoading && <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13 }}>Loading…</p>}
+      {!isLoading && stages.length === 0 && (
+        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13 }}>
+          Pipeline not initialised yet — Sideline will set it up when the PO is raised.
+        </p>
+      )}
+      {stages.length > 0 && (
+        <>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+            {stages.map((s, i) => {
+              const isDone = s.status === "completed";
+              const isCurrent = s.status === "in_progress";
+              const cfg = SUPPLIER_STAGE_LABELS[s.stage] || { label: s.stage };
+              return (
+                <div key={s.id} style={{
+                  padding: "5px 10px", borderRadius: 4, fontSize: 11, fontWeight: 600,
+                  background: isDone ? "rgba(34,197,94,0.12)" : isCurrent ? `rgba(201,168,76,0.12)` : "rgba(255,255,255,0.04)",
+                  color: isDone ? "#86efac" : isCurrent ? GOLD : "rgba(255,255,255,0.45)",
+                  border: `1px solid ${isDone ? "rgba(34,197,94,0.3)" : isCurrent ? GOLD : "rgba(255,255,255,0.1)"}`,
+                }}>
+                  {isDone ? "✓ " : isCurrent ? "● " : ""}{cfg.label}
+                </div>
+              );
+            })}
+          </div>
+
+          {current && (
+            <div style={{ background: "rgba(201,168,76,0.06)", border: `1px solid rgba(201,168,76,0.25)`, borderRadius: 8, padding: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: GOLD, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>
+                Currently: {SUPPLIER_STAGE_LABELS[current.stage]?.label || current.stage}
+              </div>
+              {SUPPLIER_STAGE_LABELS[current.stage]?.supplierHint && (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginBottom: 8 }}>
+                  {SUPPLIER_STAGE_LABELS[current.stage]?.supplierHint}
+                </div>
+              )}
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Optional — any notes for Sideline (e.g. sample photo URL, completion details)"
+                style={{ width: "100%", minHeight: 50, padding: "6px 10px", fontSize: 12, background: NAVY, color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 4, resize: "vertical" }}
+              />
+              <button
+                onClick={() => complete.mutate(current.id)}
+                disabled={complete.isPending}
+                style={{ marginTop: 8, padding: "8px 16px", fontSize: 12, fontWeight: 600, background: GOLD, color: NAVY, border: 0, borderRadius: 6, cursor: complete.isPending ? "wait" : "pointer" }}
+              >
+                {complete.isPending ? "Marking…" : `Mark "${SUPPLIER_STAGE_LABELS[current.stage]?.label || current.stage}" complete →`}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </Card>
   );
 }
