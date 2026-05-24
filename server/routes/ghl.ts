@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { storage } from "../storage";
 import { getUncachableStripeClient } from "../stripeClient";
-import { emailService } from "../email";
+import { emailService, sendContactConfirmation } from "../email";
 import { z } from "zod";
 import { db } from "../db";
 import { orders, orderActivity, mockupRequests } from "@shared/schema";
@@ -369,6 +369,16 @@ router.post("/contact", async (req, res) => {
         : `Contact Enquiry — ${payload.name}`;
       await createGhlOpportunity(result.contactId, opportunityName, SIDELINE_PIPELINE_ID, SIDELINE_STAGE_LEAD_RECEIVED);
     }
+
+    // Fire-and-forget customer auto-reply. Lead is already in GHL — a failed
+    // email must not block the form response.
+    void sendContactConfirmation({
+      name: payload.name,
+      email: payload.email,
+      enquiryType: payload.enquiry_type,
+      message: payload.message,
+      organization: payload.organization,
+    });
 
     res.json({ ok: true, id: result.contactId || crypto.randomUUID() });
   } catch (e: any) {

@@ -163,6 +163,90 @@ export async function sendClientApprovalResult(
 
 export const SIDELINE_ORDERS_FROM = "Sideline NZ Orders <orders@sidelinenz.com>";
 
+/**
+ * Customer-facing auto-reply for /api/ghl/contact form submissions. Two
+ * variants: general contact vs team-store-gate signup. Fire-and-forget —
+ * the lead is already in GHL by the time this runs, and a failed email
+ * should never block the form response.
+ */
+export async function sendContactConfirmation(input: {
+  name: string;
+  email: string;
+  enquiryType?: string;
+  message?: string;
+  organization?: string;
+}): Promise<void> {
+  const fn = (input.name || "there").trim().split(/\s+/)[0] || "there";
+  const isGate = input.enquiryType === "team-store-gate";
+
+  const subject = isGate
+    ? `You're on the Sideline team-store list, ${fn}`
+    : `We've got your message — Sideline NZ`;
+
+  const text = isGate
+    ? [
+        `Kia ora ${fn},`,
+        ``,
+        `You're in. We've added you to the Sideline team-store waitlist for`,
+        `${input.organization || "your club"} — when the drop opens you'll be the first to know,`,
+        `so keep an eye on this inbox.`,
+        ``,
+        `While you wait, take a look at live supporter campaigns running right`,
+        `now at teamstore.sidelinenz.com.`,
+        ``,
+        `Cheers,`,
+        `The Sideline NZ team`,
+        `sidelinenz.com`,
+      ].join("\n")
+    : [
+        `Kia ora ${fn},`,
+        ``,
+        `Thanks for getting in touch with Sideline NZ. Your message has landed`,
+        `in our team inbox and someone will be back to you within one working`,
+        `day.`,
+        ...(input.message?.trim() ? [``, `Here's what you sent:`, ``, `  ${input.message.trim()}`] : []),
+        ``,
+        `If your enquiry is about a supporter campaign for your club, you can`,
+        `also browse the live drops while you wait at teamstore.sidelinenz.com.`,
+        ``,
+        `Cheers,`,
+        `The Sideline NZ team`,
+        `sidelinenz.com`,
+      ].join("\n");
+
+  const messageBlock = !isGate && input.message?.trim()
+    ? `<p style="margin-bottom: 6px">Here's what you sent:</p><blockquote style="border-left: 3px solid #C9A84C; padding: 10px 14px; margin: 4px 0 18px; background: #f6f5f1; color: #333;">${esc(input.message.trim()).replace(/\n/g, "<br/>")}</blockquote>`
+    : "";
+
+  const html = isGate
+    ? `<div style="font-family: -apple-system, system-ui, sans-serif; max-width: 600px; color: #1a1a1a; line-height: 1.55;">
+        <p>Kia ora ${esc(fn)},</p>
+        <p>You're in. We've added you to the Sideline team-store waitlist for <strong>${esc(input.organization || "your club")}</strong> — when the drop opens you'll be the first to know, so keep an eye on this inbox.</p>
+        <p>While you wait, take a look at live supporter campaigns running right now at <a href="https://teamstore.sidelinenz.com" style="color: #0A1628;">teamstore.sidelinenz.com</a>.</p>
+        <p style="margin-top: 22px; color: #555;">Cheers,<br/>The Sideline NZ team<br/><a href="https://sidelinenz.com" style="color: #0A1628;">sidelinenz.com</a></p>
+      </div>`
+    : `<div style="font-family: -apple-system, system-ui, sans-serif; max-width: 600px; color: #1a1a1a; line-height: 1.55;">
+        <p>Kia ora ${esc(fn)},</p>
+        <p>Thanks for getting in touch with Sideline NZ. Your message has landed in our team inbox and someone will be back to you within one working day.</p>
+        ${messageBlock}
+        <p>If your enquiry is about a supporter campaign for your club, you can also browse the live drops while you wait at <a href="https://teamstore.sidelinenz.com" style="color: #0A1628;">teamstore.sidelinenz.com</a>.</p>
+        <p style="margin-top: 22px; color: #555;">Cheers,<br/>The Sideline NZ team<br/><a href="https://sidelinenz.com" style="color: #0A1628;">sidelinenz.com</a></p>
+      </div>`;
+
+  try {
+    await emailService.send({
+      to: input.email,
+      replyTo: "orders@sidelinenz.com",
+      subject,
+      text,
+      html,
+    });
+  } catch (err) {
+    console.error("[email] sendContactConfirmation failed:", err);
+  }
+}
+
+
 export interface DispatchSupplierInput {
   to: string;
   cc?: string | string[];
