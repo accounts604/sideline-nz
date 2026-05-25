@@ -712,6 +712,59 @@ const sendCustomerReplyTool: ToolDefinition = {
       };
     }
 
+    // Kill switch: when EZRA_AUTOSEND_DISABLED is on, every send_customer_reply
+    // call falls through to a Gmail draft instead of an actual send. All the
+    // gates above still fire (phone, escalation keywords) so Ezra keeps
+    // learning the same constraints — we just hold the door before delivery.
+    // Use during calibration / observation periods.
+    const autosendDisabled = String(process.env.EZRA_AUTOSEND_DISABLED || "").toLowerCase() === "true";
+    if (autosendDisabled) {
+      const draftId = await createGmailDraft(
+        {
+          from: process.env.SIDELINE_REPLY_FROM || "Sideline NZ Orders <orders@sidelinenz.com>",
+          to,
+          subject,
+          html: plainTextToHtml(body),
+          text: body,
+        },
+        args.threadId ? String(args.threadId) : undefined,
+      );
+      if (!draftId) return { error: "draft_creation_failed", hint: "Autosend disabled and draft creation failed. Check Gmail OAuth creds." };
+
+      if (isTelegramConfigured()) {
+        const orderRefStr = String(args.internalOrderRef);
+        const stage = args.customerStage ? ` (${htmlEsc(String(args.customerStage))})` : "";
+        const preview = body.length > 320 ? body.slice(0, 320) + "…" : body;
+        try {
+          await sendTelegramCard({
+            text: [
+              `<b>📝 Ezra wrote a draft</b> <i>(autosend disabled)</i>`,
+              `Order: ${htmlEsc(orderRefStr)}${stage}`,
+              `To: ${htmlEsc(to)}`,
+              `Subject: ${htmlEsc(subject)}`,
+              "",
+              `<i>${htmlEsc(preview)}</i>`,
+              "",
+              `Review in Gmail Drafts → send if it looks right.`,
+            ].join("\n"),
+          });
+        } catch (err) {
+          console.error("[ezra] audit card post failed:", err);
+        }
+      }
+
+      return {
+        ok: true,
+        sent: false,
+        downgraded: "autosend_disabled",
+        draftId,
+        to,
+        subject,
+        threadId: args.threadId || null,
+        note: "EZRA_AUTOSEND_DISABLED=true — reply was queued as a Gmail draft instead of sent. Open Drafts to review.",
+      };
+    }
+
     const msgId = await sendGmail({
       from: process.env.SIDELINE_REPLY_FROM || "Sideline NZ Orders <orders@sidelinenz.com>",
       to,

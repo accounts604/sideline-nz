@@ -112,6 +112,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </span>
             </Link>
 
+            <Link href="/terms">
+              <span className="text-xs tracking-wider uppercase text-white/25 hover:text-white transition-colors cursor-pointer mb-6 block">
+                Terms &amp; Conditions
+              </span>
+            </Link>
+
             <p className="text-xs text-white/20 tracking-wider">
               &copy; {new Date().getFullYear()} Sideline Custom Goods Ltd
             </p>

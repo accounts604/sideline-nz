@@ -21,6 +21,7 @@ import TeamStoresPage from "@/pages/team-stores";
 import TeamStoreDetailPage from "@/pages/team-store-detail";
 import SponsorPlacement from "@/pages/sponsor-placement";
 import SizeChartPage from "@/pages/size-chart";
+import Terms from "@/pages/terms";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import AcceptInvitePage from "@/pages/accept-invite";
@@ -117,6 +118,8 @@ function Router() {
         <Route path="/our-work/:slug" component={CaseStudyDetailPage} />
         <Route path="/sponsor-placement" component={SponsorPlacement} />
         <Route path="/size-chart" component={SizeChartPage} />
+        <Route path="/terms" component={Terms} />
+        <Route path="/terms-and-conditions" component={Terms} />
         <Route path="/quote" component={Quote} />
         <Route path="/contact" component={Contact} />
         <Route path="/free-mockup" component={FreeMockup} />
