@@ -201,6 +201,8 @@ interface ActionRow {
   supplier_invoice_currency: string | null;
   line_count: number;
   pending_cost_lines: number;
+  estimated_cost_cents: number;
+  estimated_cost_currency: string | null;
 }
 
 interface ActionResponse {
@@ -219,6 +221,24 @@ interface ActionResponse {
     on_hold: number;
     total_active_pos: number;
   };
+  totals_cents?: {
+    needs_supplier: Record<string, number>;
+    pending_costs: Record<string, number>;
+    dispatched_unpaid: Record<string, number>;
+    on_hold: Record<string, number>;
+  };
+}
+
+function formatMoney(cents: number, currency: string): string {
+  return `${currency} ${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatTotals(totals: Record<string, number> | undefined): string {
+  if (!totals) return "";
+  const parts = Object.entries(totals)
+    .filter(([, cents]) => cents > 0)
+    .map(([ccy, cents]) => formatMoney(cents, ccy));
+  return parts.join(" + ");
 }
 
 function ActionRequiredPanel() {
@@ -246,33 +266,48 @@ function ActionRequiredPanel() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
         {BUCKETS.map((b) => {
           const rows = data.buckets[b.key];
+          const totalLabel = formatTotals(data.totals_cents?.[b.key]);
           return (
             <div key={b.key} style={{ background: "#0d0d0d", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "14px 16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: b.color, textTransform: "uppercase", letterSpacing: 0.6 }}>{b.label}</div>
                 <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", lineHeight: 1 }}>{rows.length}</div>
               </div>
-              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 10 }}>{b.sub}</div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>{b.sub}</div>
+              {totalLabel && (
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#fff", background: "rgba(255,255,255,0.06)", padding: "4px 8px", borderRadius: 4, marginBottom: 10, fontFamily: "monospace" }}>
+                  Total est: {totalLabel}
+                </div>
+              )}
               {rows.length === 0 ? (
                 <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>All clear ✓</div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
-                  {rows.map((r) => (
-                    <Link key={r.id} href={`/admin/orders/${r.id}`}>
-                      <div style={{ padding: "6px 8px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 5, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontFamily: "monospace", fontSize: 11, color: "#93c5fd" }}>{r.po_reference}</div>
-                          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.account_name || "—"}</div>
+                  {rows.map((r) => {
+                    const ccy = r.estimated_cost_currency || "USD";
+                    const moneyLabel = r.estimated_cost_cents > 0 ? formatMoney(r.estimated_cost_cents, ccy) : null;
+                    return (
+                      <Link key={r.id} href={`/admin/orders/${r.id}`}>
+                        <div style={{ padding: "6px 8px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 5, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontFamily: "monospace", fontSize: 11, color: "#93c5fd" }}>{r.po_reference}</div>
+                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.account_name || "—"}</div>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, whiteSpace: "nowrap" }}>
+                            {moneyLabel && (
+                              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#86efac", fontWeight: 600 }}>{moneyLabel}</div>
+                            )}
+                            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>
+                              {b.key === "pending_costs" ? `${r.pending_cost_lines}/${r.line_count} lines` :
+                               b.key === "dispatched_unpaid" ? (r.po_dispatched_at ? `${Math.floor((Date.now() - new Date(r.po_dispatched_at).getTime()) / 86400000)}d ago` : "") :
+                               b.key === "on_hold" ? (r.po_hold_reason || "—") :
+                               (r.due_date || "no due date")}
+                            </div>
+                          </div>
                         </div>
-                        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>
-                          {b.key === "pending_costs" ? `${r.pending_cost_lines}/${r.line_count} lines` :
-                           b.key === "dispatched_unpaid" ? (r.po_dispatched_at ? `${Math.floor((Date.now() - new Date(r.po_dispatched_at).getTime()) / 86400000)}d ago` : "") :
-                           b.key === "on_hold" ? (r.po_hold_reason || "—") :
-                           (r.due_date || "no due date")}
-                        </div>
-                      </div>
-                    </Link>
-                  ))}
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </div>
