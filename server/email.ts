@@ -78,7 +78,7 @@ class ResendEmailService implements EmailService {
 function createEmailService(): EmailService {
   const provider = process.env.EMAIL_PROVIDER;
   const resendKey = process.env.RESEND_API_KEY;
-  const resendFrom = process.env.RESEND_FROM || "Sideline NZ <hello@sidelinenz.com>";
+  const resendFrom = process.env.RESEND_FROM || "Sideline NZ <hello@kig.co.nz>";
 
   if (provider === "resend" || (!provider && resendKey)) {
     if (!resendKey) {
