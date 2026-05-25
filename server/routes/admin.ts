@@ -170,6 +170,10 @@ router.get("/orders/triage", async (_req, res) => {
 //   4. on_hold             — PO was held; needs decision
 router.get("/orders/action-required", async (_req, res) => {
   try {
+    // The estimated cost subquery picks the dominant currency per order
+    // (most line items' supplier_cost_currency wins). Lines with NULL
+    // supplier_unit_cost_cents contribute zero to the estimate; the
+    // pending_cost_lines count tells you how many are missing.
     const rows: any = await db.execute(sql`
       SELECT
         o.id, o.po_reference, o.account_name, o.pipeline_stage, o.status,
@@ -177,7 +181,20 @@ router.get("/orders/action-required", async (_req, res) => {
         o.po_hold_reason, o.supplier_invoice_paid_at, o.supplier_invoice_file_url,
         o.supplier_invoice_total_cents, o.supplier_invoice_currency,
         (SELECT COUNT(*)::int FROM order_items WHERE order_id = o.id) AS line_count,
-        (SELECT COUNT(*)::int FROM order_items WHERE order_id = o.id AND supplier_unit_cost_cents IS NULL) AS pending_cost_lines
+        (SELECT COUNT(*)::int FROM order_items WHERE order_id = o.id AND supplier_unit_cost_cents IS NULL) AS pending_cost_lines,
+        (
+          SELECT COALESCE(SUM(oi.supplier_unit_cost_cents * oi.quantity), 0)::bigint
+            FROM order_items oi
+           WHERE oi.order_id = o.id
+        ) AS estimated_cost_cents,
+        (
+          SELECT oi.supplier_cost_currency
+            FROM order_items oi
+           WHERE oi.order_id = o.id AND oi.supplier_cost_currency IS NOT NULL
+           GROUP BY oi.supplier_cost_currency
+           ORDER BY COUNT(*) DESC
+           LIMIT 1
+        ) AS estimated_cost_currency
       FROM orders o
       WHERE o.po_reference IS NOT NULL
         AND COALESCE(o.pipeline_stage, '') NOT IN ('Cancelled', 'Completed')
@@ -191,7 +208,8 @@ router.get("/orders/action-required", async (_req, res) => {
     const onHold: any[] = [];
 
     for (const r of all) {
-      // Skip dispatched POs for the "needs action" pre-dispatch buckets.
+      // Normalise the estimated cost so downstream consumers see a plain number, not a bigint string.
+      r.estimated_cost_cents = Number(r.estimated_cost_cents ?? 0);
       const dispatched = !!r.po_dispatched_at;
       if (r.po_held_at) {
         onHold.push(r);
@@ -202,6 +220,17 @@ router.get("/orders/action-required", async (_req, res) => {
       }
       if (dispatched && !r.supplier_invoice_paid_at) dispatchedUnpaid.push(r);
     }
+
+    // Bucket totals by currency. Each row's estimated_cost_cents is the
+    // SUM(unit × qty) of its line items; we roll those up per currency.
+    const sumByCurrency = (rows: any[]) => {
+      const out: Record<string, number> = {};
+      for (const r of rows) {
+        const ccy = r.estimated_cost_currency || "USD";
+        out[ccy] = (out[ccy] ?? 0) + (r.estimated_cost_cents ?? 0);
+      }
+      return out;
+    };
 
     res.json({
       ok: true,
@@ -218,6 +247,12 @@ router.get("/orders/action-required", async (_req, res) => {
         dispatched_unpaid: dispatchedUnpaid.length,
         on_hold: onHold.length,
         total_active_pos: all.length,
+      },
+      totals_cents: {
+        needs_supplier: sumByCurrency(needsSupplier),
+        pending_costs: sumByCurrency(pendingCosts),
+        dispatched_unpaid: sumByCurrency(dispatchedUnpaid),
+        on_hold: sumByCurrency(onHold),
       },
     });
   } catch (err: any) {
