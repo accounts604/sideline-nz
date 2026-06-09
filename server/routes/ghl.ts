@@ -352,9 +352,13 @@ router.post("/contact", async (req, res) => {
       submitted_at: new Date().toISOString(),
     };
 
-    const tags = payload.enquiry_type === "team-store-gate"
+    // Team-store-gate is buyer-intent → a real lead. A general contact-form
+    // submission is an ENQUIRY, not a lead: tag it "Enquiry" and do NOT create a
+    // pipeline deal (only quote requests / gate signups become pipeline leads).
+    const isGate = payload.enquiry_type === "team-store-gate";
+    const tags = isGate
       ? ["Website Lead", "Team Store Gate"]
-      : ["Website Lead", "Contact Form"];
+      : ["Enquiry", "Contact Form"];
 
     const result = await createGhlContact(enriched, tags);
 
@@ -362,12 +366,9 @@ router.post("/contact", async (req, res) => {
       console.log("GHL not configured - form data logged above");
     }
 
-    // Add to Sideline pipeline for gate signups and general contact leads
-    if (result.contactId) {
-      const opportunityName = payload.enquiry_type === "team-store-gate"
-        ? `Team Store Signup — ${payload.name}`
-        : `Contact Enquiry — ${payload.name}`;
-      await createGhlOpportunity(result.contactId, opportunityName, SIDELINE_PIPELINE_ID, SIDELINE_STAGE_LEAD_RECEIVED);
+    // Pipeline deal only for gate signups (leads). General enquiries get no deal.
+    if (result.contactId && isGate) {
+      await createGhlOpportunity(result.contactId, `Team Store Signup — ${payload.name}`, SIDELINE_PIPELINE_ID, SIDELINE_STAGE_LEAD_RECEIVED);
     }
 
     res.json({ ok: true, id: result.contactId || crypto.randomUUID() });
