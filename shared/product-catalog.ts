@@ -217,6 +217,10 @@ export const SIDELINE_PRODUCTS: SidelineProduct[] = [
 
   // ─── American Football ───
   { id: "american-football-jersey", name: "American Football Jersey", category: "American Football", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Interlock Polyester", puffinCostKey: "am-football-jersey" },
+
+  // ─── Equipment (non-apparel gear — flat-priced, no sublimation, no Puffin SKU) ───
+  { id: "rugby-ball",     name: "Rugby Ball",                 category: "Equipment", sizes: ["Size 3", "Size 4", "Size 5"], defaultMaterial: "Match/training grade, 3-ply rubber",                 pricing: [{ minQty: 1, maxQty: 9999, unitPrice: 2500 }],  minOrder: 1 }, // flat $25/ea — covers training + match
+  { id: "training-cones", name: "Training Cones (100pc set)", category: "Equipment", sizes: ["100pc set"],                   defaultMaterial: "PVC marker cones, assorted colours, with carry bag", pricing: [{ minQty: 1, maxQty: 9999, unitPrice: 15000 }], minOrder: 1 }, // flat $150 per 100pc set
 ] as const as unknown as SidelineProduct[];
 
 /** Get the unit price for a product at a given quantity. Returns NZD cents or null. */
