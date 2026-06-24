@@ -68,7 +68,6 @@ import SupplierLoginPage from "@/pages/supplier/login";
 import SupplierDashboard from "@/pages/supplier/dashboard";
 import SupplierOrderDetail from "@/pages/supplier/order-detail";
 import ApprovePage from "@/pages/approve";
-import ClientPo from "@/pages/client-po";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -227,7 +226,6 @@ function Router() {
 
         {/* Public client approval (no auth — token in URL) */}
         <Route path="/approve/:token" component={ApprovePage} />
-        <Route path="/client-po/:token" component={ClientPo} />
 
         {/* Supplier Portal */}
         <Route path="/supplier/login" component={SupplierLoginPage} />
