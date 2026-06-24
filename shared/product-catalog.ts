@@ -146,7 +146,7 @@ const SOCKS = ["Youth", "S", "M", "L", "XL"];
 export const SIDELINE_PRODUCTS: SidelineProduct[] = [
   // ─── Rugby ───
   { id: "rugby-match-jersey",    name: "Rugby Jersey",               category: "Rugby",   sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Interlock Polyester (full sublimation)", pricing: tiers(44,42,40,38,36), minOrder: 10, puffinCostKey: "rugby-jersey" },
-  { id: "rugby-long-sleeve",     name: "Rugby Long Sleeve Jersey",   category: "Rugby",   sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Interlock Polyester", pricing: tiers(40,38,36,34,33), minOrder: 10, puffinCostKey: "rugby-jersey" }, // no LS SKU on Puffin — using jersey as proxy
+  { id: "rugby-long-sleeve",     name: "Rugby Long Sleeve Jersey",   category: "Rugby",   sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Interlock Polyester", pricing: tiers(49,47,45,43,41), minOrder: 10, puffinCostKey: "rugby-jersey" }, // no LS SKU on Puffin — using jersey as proxy. Phase 1 margin correction 2026-06 (was 40/38/36/34/33)
   { id: "rugby-shorts",          name: "Rugby Shorts",               category: "Rugby",   sizes: UNISEX_JERSEY, defaultMaterial: "240gsm Stretch Woven Polyester", pricing: tiers(40,38,36,34,33), minOrder: 10, puffinCostKey: "rugby-short-lycra" },
   { id: "rugby-socks",           name: "Rugby Socks",                category: "Rugby",   sizes: SOCKS,         defaultMaterial: "Nylon/Elastane Knit", pricing: tiers(26,25,23,22,21), minOrder: 20, puffinCostKey: "sublimated-socks" },
   { id: "rugby-set",             name: "Rugby Full Set (Jersey + Shorts + Socks)", category: "Rugby", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Interlock Polyester", pricing: tiers(112,106,101,96,91), minOrder: 10 }, // composite — cost computed as sum of components
@@ -178,7 +178,7 @@ export const SIDELINE_PRODUCTS: SidelineProduct[] = [
   { id: "basketball-socks",      name: "Basketball Socks",           category: "Basketball", sizes: SOCKS, defaultMaterial: "Nylon/Elastane Knit", pricing: tiers(20,19,18,17,16), minOrder: 20, puffinCostKey: "sublimated-socks" },
 
   // ─── Cricket / Hockey ───
-  { id: "cricket-polo",          name: "Cricket Polo",               category: "Cricket", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Micro-Pique Polyester", pricing: tiers(40,38,36,34,33), minOrder: 10, puffinCostKey: "cricket-shirt" },
+  { id: "cricket-polo",          name: "Cricket Polo",               category: "Cricket", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Micro-Pique Polyester", pricing: tiers(49,47,45,43,41), minOrder: 10, puffinCostKey: "cricket-shirt" }, // Phase 1 margin correction 2026-06 (was 40/38/36/34/33)
   { id: "cricket-trousers",      name: "Cricket Trousers",           category: "Cricket", sizes: UNISEX_JERSEY, defaultMaterial: "Polycotton Twill", puffinCostKey: "cricket-pant" },
   { id: "hockey-jersey",         name: "Hockey Jersey",              category: "Hockey",  sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Micro-Mesh Polyester", puffinCostKey: "soccer-jersey" }, // proxy — no hockey SKU on Puffin
   { id: "hockey-skort",          name: "Hockey Skort",               category: "Hockey",  sizes: WOMENS_DRESS,  defaultMaterial: "Performance Spandex / Polyester", puffinCostKey: "gym-tights-short" }, // proxy
@@ -186,7 +186,7 @@ export const SIDELINE_PRODUCTS: SidelineProduct[] = [
   // ─── Training / Streetwear ───
   { id: "dri-fit-shirt",         name: "Dri-Fit Shirt",              category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Performance Polyester", pricing: tiers(38,36,34,33,31), minOrder: 10, puffinCostKey: "t-shirt" },
   { id: "dri-fit-polo",          name: "Dri-Fit Polo",               category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Micro-Pique Polyester", pricing: tiers(40,38,36,34,33), minOrder: 10, puffinCostKey: "polo-shirt" },
-  { id: "training-singlet",      name: "Training Singlet",           category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "160gsm Performance Polyester", pricing: tiers(33,31,30,28,27), minOrder: 10, puffinCostKey: "singlet" },
+  { id: "training-singlet",      name: "Training Singlet",           category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "160gsm Performance Polyester", pricing: tiers(39,37,35,34,32), minOrder: 10, puffinCostKey: "singlet" }, // Phase 1 margin correction 2026-06 (was 33/31/30/28/27)
   { id: "cotton-tee",            name: "Cotton T-Shirt",             category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Combed Cotton", puffinCostKey: "t-shirt-cotton-poly" },
   { id: "gym-shorts",            name: "Gym Shorts",                 category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Polyester Tricot", pricing: tiers(40,38,36,34,33), minOrder: 20, puffinCostKey: "training-short" },
   { id: "track-pants",           name: "Track Pants",                category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "280gsm Polyfleece", pricing: tiers(56,53,50,48,46), minOrder: 20, puffinCostKey: "tracksuit-pants" },
