@@ -16,6 +16,12 @@ import { orders, clubAccounts } from "@shared/schema";
 import { sql, and, eq, isNotNull } from "drizzle-orm";
 import { triageOrder } from "@shared/triage";
 import { sendTelegramCard, isTelegramConfigured } from "../telegram";
+import {
+  findOrphanShipments,
+  findPosDispatchedWithoutWaybill,
+  findDeliveredNotAdvanced,
+  findVerificationMismatches,
+} from "../shipments";
 
 const router = Router();
 
@@ -95,6 +101,98 @@ router.post("/daily-digest", async (req, res) => {
     res.status(500).json({ error: String(err?.message || err) });
   }
 });
+
+// ─── Shipment exceptions ────────────────────────────────────────────────
+//
+// Posts a Telegram card flagging shipment-tracking gaps:
+//   🟠 orphan waybills awaiting linking (DHL event arrived, no PO linked)
+//   ⏳ POs dispatched >N days with no waybill captured (the anchor gap)
+//   📦 shipments delivered but the PO hasn't been advanced
+//   🔴 content/qty mismatches from verification
+// Pass ?dryRun=true to get the payload without posting.
+
+router.post("/shipment-exceptions", async (req, res) => {
+  try {
+    const dryRun = req.query.dryRun === "true";
+    const days = req.query.days ? Math.max(1, parseInt(String(req.query.days), 10) || 3) : 3;
+    const payload = await buildShipmentExceptions(days);
+    if (dryRun) return res.json({ ok: true, dryRun: true, ...payload });
+    if (payload.empty) return res.json({ ok: true, posted: false, reason: "no_exceptions", summary: payload.summary });
+    if (!isTelegramConfigured()) {
+      return res.status(500).json({ error: "Telegram not configured", hint: "Set JARVESI_BOT_TOKEN + KIG_GROUP_CHAT_ID." });
+    }
+    const result = await sendTelegramCard({ text: payload.text, buttons: payload.buttons });
+    res.json({ ok: true, posted: result.ok, telegramMessageId: result.messageId, summary: payload.summary });
+  } catch (err: any) {
+    console.error("[cron/shipment-exceptions] error:", err);
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+async function buildShipmentExceptions(days: number) {
+  const esc = (s: string) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const now = Date.now();
+
+  const [orphans, dispatchedNoWaybill, deliveredNotAdvanced, mismatches] = await Promise.all([
+    findOrphanShipments(),
+    findPosDispatchedWithoutWaybill(days),
+    findDeliveredNotAdvanced(),
+    findVerificationMismatches(),
+  ]);
+
+  const summary = {
+    orphans: orphans.length,
+    dispatchedNoWaybill: dispatchedNoWaybill.length,
+    deliveredNotAdvanced: deliveredNotAdvanced.length,
+    mismatches: mismatches.length,
+  };
+  const empty = Object.values(summary).every((n) => n === 0);
+
+  const lines: string[] = [`<b>📦 Sideline — Shipment Exceptions</b> · ${new Date(now).toISOString().slice(0, 10)}`, ``];
+  const buttons: { text: string; callback_data?: string; url?: string }[][] = [];
+
+  if (orphans.length) {
+    lines.push(`<b>🟠 ${orphans.length} orphan waybill(s) awaiting linking</b>`);
+    for (const s of orphans.slice(0, 8)) {
+      const ageD = s.lastEventAt ? Math.floor((now - new Date(s.lastEventAt).getTime()) / 86_400_000) : null;
+      lines.push(`• WB ${esc(s.waybill)} · ${esc(s.status)}${ageD !== null ? ` · ${ageD}d ago` : ""}`);
+      buttons.push([{ text: `🔗 Link ${s.waybill.slice(-6)}`, callback_data: `wblink_${s.id}` }]);
+    }
+    lines.push(``);
+  }
+
+  if (dispatchedNoWaybill.length) {
+    lines.push(`<b>⏳ ${dispatchedNoWaybill.length} PO(s) dispatched &gt;${days}d, no waybill</b>`);
+    for (const o of dispatchedNoWaybill.slice(0, 8)) {
+      const ageD = o.poDispatchedAt ? Math.floor((now - new Date(o.poDispatchedAt).getTime()) / 86_400_000) : 0;
+      lines.push(`• ${esc(o.poReference || "—")} <i>${esc(o.accountName || "")}</i> · ${ageD}d since dispatch`);
+    }
+    lines.push(``);
+  }
+
+  if (deliveredNotAdvanced.length) {
+    lines.push(`<b>📦 ${deliveredNotAdvanced.length} delivered but PO not advanced</b>`);
+    for (const r of deliveredNotAdvanced.slice(0, 8)) {
+      lines.push(`• ${esc(r.order.poReference || "—")} <i>${esc(r.order.accountName || "")}</i> · WB ${esc(r.shipment.waybill)}`);
+      buttons.push([{ text: `✅ Mark delivered ${(r.order.poReference || "").slice(-4)}`, callback_data: `posetstatus_${r.order.id}_delivered` }]);
+    }
+    lines.push(``);
+  }
+
+  if (mismatches.length) {
+    lines.push(`<b>🔴 ${mismatches.length} content/qty mismatch(es)</b>`);
+    for (const m of mismatches.slice(0, 8)) {
+      const rep: any = m.link.verificationReport;
+      const detail = rep?.reason ? ` · ${esc(rep.reason)}` : "";
+      lines.push(`• ${esc(m.order.poReference || "—")} <i>${esc(m.order.accountName || "")}</i> · WB ${esc(m.shipment.waybill)}${detail}`);
+    }
+    lines.push(``);
+  }
+
+  if (empty) lines.push(`<i>No shipment exceptions. All POs tracked and on course.</i>`);
+
+  return { empty, summary, text: lines.join("\n").trim(), buttons };
+}
 
 interface DigestPayload {
   date: string;

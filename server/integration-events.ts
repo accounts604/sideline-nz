@@ -33,7 +33,9 @@ export type IntegrationSystem =
   | "vercel-blob"
   | "gemini"
   | "elevenlabs"
-  | "clickup";
+  | "clickup"
+  | "dhl"
+  | "whatsapp";
 
 export type LogEventInput = {
   system: IntegrationSystem | string;

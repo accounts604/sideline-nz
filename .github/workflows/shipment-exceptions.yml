@@ -1,0 +1,33 @@
+name: Shipment exceptions (07:00 NZ)
+
+# 07:00 Pacific/Auckland ≈ 19:00 UTC. Runs an hour before the daily digest so
+# any shipment gaps (orphan waybills, POs dispatched with no waybill, delivered-
+# but-not-advanced, content mismatches) are surfaced first thing. The endpoint
+# posts nothing when there are no exceptions, so a quiet day = no card.
+on:
+  schedule:
+    - cron: '0 19 * * *'
+  workflow_dispatch: {} # run manually from the Actions tab
+
+jobs:
+  shipment-exceptions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/cron/shipment-exceptions
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -e
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not set in this repo's settings"
+            exit 1
+          fi
+          SITE="${SITE_URL:-https://sidelinenz.com}"
+          echo "Hitting $SITE/api/cron/shipment-exceptions"
+          RESP=$(curl -sS -X POST "$SITE/api/cron/shipment-exceptions" \
+            -H "X-Cron-Secret: $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -w "\nHTTP %{http_code}\n")
+          echo "$RESP"
+          echo "$RESP" | tail -1 | grep -q "HTTP 200" || exit 1

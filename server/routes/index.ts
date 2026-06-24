@@ -11,6 +11,7 @@ import { mockupPublicRouter, adminMockupRouter } from "./mockups";
 import { adminQuoteRouter, templateRouter, publicQuoteRouter } from "./quotes";
 import clubPortalRouter from "./club-portal";
 import supplierRouter from "./supplier";
+import shipmentsRouter from "./shipments";
 import { publicApprovalRouter } from "./approvals";
 import chatbotRouter from "./chatbot";
 import notifyRouter from "./notify";
@@ -42,6 +43,9 @@ export async function registerRoutes(
 
   // Admin mockup management
   app.use("/api/admin/mockups", adminMockupRouter);
+
+  // DHL shipment tracking → PO matching
+  app.use("/api/admin/shipments", shipmentsRouter);
 
   // Customer portal (Phase 3)
   app.use("/api/portal", customerRouter);
