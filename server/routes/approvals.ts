@@ -239,76 +239,9 @@ publicApprovalRouter.post("/:token", async (req, res) => {
   }
 });
 
-// GET /:token/po — full client-facing PO view. Reuses the approval_tokens
-// table for auth. Strips financials, supplier identity, production
-// schedule, and Drive links. Client sees only what they need to confirm
-// (products, sizes, customisation, mockups, logo placement, est. due
-// date). Designed for sharing the URL with the buyer for sign-off.
-publicApprovalRouter.get("/:token/po", async (req, res) => {
-  try {
-    const [tokenRow] = await db.select().from(approvalTokens).where(eq(approvalTokens.token, req.params.token)).limit(1);
-    if (!tokenRow) return res.status(404).json({ error: "Invalid or expired link" });
-    if (tokenRow.expiresAt && new Date(tokenRow.expiresAt) < new Date()) {
-      return res.status(410).json({ error: "This link has expired. Contact Sideline NZ for a fresh link." });
-    }
-
-    const [order] = await db.select().from(orders).where(eq(orders.id, tokenRow.orderId)).limit(1);
-    if (!order) return res.status(404).json({ error: "Order not found" });
-
-    const items = await storage.getOrderItems(order.id);
-    const sizeBreakdowns = await storage.getSizeBreakdowns(order.id);
-
-    // Sanitised — no unit prices, no supplier, no driveFolderUrl, no totals
-    res.json({
-      order: {
-        id: order.id,
-        poReference: order.poReference,
-        orderNumber: order.orderNumber,
-        accountName: order.accountName,
-        customerName: order.customerName,
-        customerEmail: order.customerEmail,
-        customerFirstName: order.customerFirstName,
-        customerLastName: order.customerLastName,
-        dueDate: order.dueDate,
-        deliveryAttention: order.deliveryAttention,
-        deliveryAddress: order.deliveryAddress,
-        artworkApproved: order.artworkApproved,
-        artworkApprovedBy: order.artworkApprovedBy,
-        artworkApprovedAt: order.artworkApprovedAt,
-        createdAt: order.createdAt,
-      },
-      items: items.map((i) => ({
-        id: i.id,
-        productName: i.productName,
-        productType: i.productType,
-        gradeGroup: i.gradeGroup,
-        material: i.material,
-        brandingMethod: i.brandingMethod,
-        productColors: i.productColors,
-        designNotes: i.designNotes,
-        designBrief: i.designBrief,
-        frontDesignUrl: i.frontDesignUrl,
-        backDesignUrl: i.backDesignUrl,
-        designPrints: i.designPrints,
-        mockupImages: i.mockupImages,
-        elementUrls: i.elementUrls,
-        sizeChartType: i.sizeChartType,
-        // NO unitAmount, NO currency
-      })),
-      sizeBreakdowns: sizeBreakdowns.map((b) => ({
-        id: b.id,
-        orderItemId: b.orderItemId,
-        size: b.size,
-        quantity: b.quantity,
-        playerName: b.playerName,
-        playerNumber: b.playerNumber,
-        namePlacement: b.namePlacement,
-      })),
-    });
-  } catch (e: any) {
-    console.error("Client PO load error:", e);
-    res.status(500).json({ error: "Failed to load PO" });
-  }
-});
+// NOTE: the public client-facing PO view (GET /:token/po) was removed
+// 2026-06-24. The PO / production sheet is admin + supplier access only
+// (Romero rule). Client artwork sign-off still runs through GET/POST
+// /:token above, which serves mockups for approval, not the PO.
 
 export { publicApprovalRouter };
