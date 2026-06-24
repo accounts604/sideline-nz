@@ -10,12 +10,14 @@
  *     it never depends on a human having the right chat on screen.
  *   - Writes straight to the DB (DATABASE_URL in .env) via ingestShipmentEvent;
  *     dedup is text-based so re-reading the same messages is a no-op.
- *   - Auto-ingests status; posts a Telegram card for new/unlinked waybills or
- *     Puffin club-content to CONFIRM the PO link (never auto-guessed).
+ *   - Auto-ingests status; posts a Telegram card for new/unlinked waybills to
+ *     CONFIRM the PO link (never auto-guessed). A club name in the message is
+ *     attached to that card as a hint.
+ *   - Only trusts RECEIVED messages (from DHL/Puffin); ignores our own sent
+ *     messages, which quote waybills in discussion.
  *
  * Requires a ONE-TIME Accessibility grant for the LaunchAgent's runner (see
- * scripts/whatsapp-sweep.README in this repo / the plist comment). AX reading
- * does NOT need Screen Recording.
+ * scripts/whatsapp-sweep.README.md). AX reading does NOT need Screen Recording.
  *
  * Manual run (interactive Terminal already has Accessibility):
  *   npx tsx scripts/whatsapp-shipment-sweep.ts            # live
@@ -49,15 +51,12 @@ import { normalizeDhlStatus, normalizeWaybill } from "../shared/shipment-status"
 
 const DRY = process.argv.includes("--dry");
 const CHATS = ["DHL Express", "Sideline NZ x Puffin Sports Production"];
-const PUFFIN_CHAT = "Sideline NZ x Puffin Sports Production";
 const CLUB_KEYWORDS =
   /(kelston|kbhs|wesley|onewhero|narre\s*warren|st\.?\s*peter|te\s*papa|otahuhu|weymouth|manurewa|ponsonby|propertyscouts|aorere|tag\s*nz)/i;
 
 function nowInPakistanHour(): number {
-  // PKT = UTC+5, no DST. DST-safe regardless of NZ local time.
-  const utcH = new Date().getUTCHours();
-  const utcM = new Date().getUTCMinutes();
-  return (utcH + 5) % 24 + utcM / 60;
+  const now = new Date();
+  return ((now.getUTCHours() + 5) % 24) + now.getUTCMinutes() / 60; // PKT = UTC+5, no DST
 }
 
 function consoleUser(): string {
@@ -91,8 +90,7 @@ tell application "System Events" to tell process "WhatsApp"
     end try
   end repeat
 end tell`);
-  // give the message list a moment to render
-  execFileSync("sleep", ["2"]);
+  execFileSync("sleep", ["2"]); // let the message list render
   const out = osa(`
 tell application "System Events" to tell process "WhatsApp"
   set acc to ""
@@ -101,7 +99,7 @@ tell application "System Events" to tell process "WhatsApp"
     try
       set d to description of e
       if d is not missing value and d is not "" then
-        if d contains "Message from" or d contains "Your message" or d contains "waybill" or d contains "shipment" then
+        if d contains "Message from" or d contains "Received in" then
           set acc to acc & d & "\n@@@\n"
         end if
       end if
@@ -116,104 +114,106 @@ end tell`);
   return out.split("\n@@@\n").map((s) => s.trim()).filter(Boolean);
 }
 
-function extractWaybills(text: string, strict: boolean): string[] {
+// Any 10-digit run in a shipment chat is a waybill (Puffin writes the number
+// then "This shipment includes…", so we can't require a keyword before it).
+function extractWaybills(text: string): string[] {
   const found = new Set<string>();
-  const re = strict ? /(?:waybill|shipment|awb|tracking|dhl)[^0-9]{0,24}(\d{10})\b/gi : /\b(\d{10})\b/g;
+  const re = /\b(\d{10})\b/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) found.add(m[1]);
   return Array.from(found);
 }
 
+interface LinkItem {
+  waybill: string;
+  status: string | null;
+  shipmentId: string | null;
+  reason: string;
+  snippet?: string;
+}
+
 async function main() {
-  // Pre-flight (skip gates in --dry so it can be tested any time).
   if (!DRY) {
     const pkt = nowInPakistanHour();
     if (pkt < 8 || pkt >= 19) {
-      console.log(`[sweep] outside PKT window (now ${pkt.toFixed(1)} PKT) — no-op`);
+      console.log(`[sweep] ${new Date().toISOString()} outside PKT window (now ${pkt.toFixed(1)} PKT) — no-op`);
       process.exit(0);
     }
     const cu = consoleUser();
     if (cu !== "kigagent") {
-      console.error(`[sweep] console not logged in (user="${cu}") — cannot read WhatsApp`);
+      console.error(`[sweep] ${new Date().toISOString()} console not logged in (user="${cu}") — cannot read WhatsApp`);
       process.exit(0);
     }
   }
 
   try { execFileSync("open", ["-a", "WhatsApp"]); execFileSync("sleep", ["3"]); } catch { /* */ }
 
-  const needsLink: Array<{ waybill: string; status: string | null; shipmentId: string | null; reason: string }> = [];
-  const contentFlags: Array<{ chat: string; waybills: string[]; snippet: string }> = [];
+  const needsLink: LinkItem[] = [];
   const seenLink = new Set<string>();
   let scanned = 0;
   let statusCount = 0;
 
   for (const chat of CHATS) {
     const texts = readChat(chat);
-    const isPuffin = chat === PUFFIN_CHAT;
     for (const text of texts) {
-      // Only trust RECEIVED messages (from DHL/Puffin). Our own sent messages
-      // often quote waybills while discussing them and would otherwise be
-      // re-ingested as bogus status events (e.g. our follow-up naming 6917093481).
+      // Only trust RECEIVED messages — our own sent messages quote waybills.
       if (!/Message from|Received in/.test(text)) continue;
       scanned++;
       const status = normalizeDhlStatus(text);
-      const waybills = extractWaybills(text, isPuffin);
-
-      if (isPuffin && CLUB_KEYWORDS.test(text) && waybills.length) {
-        contentFlags.push({ chat, waybills, snippet: text.slice(0, 160) });
-      }
-      for (const raw of waybills) {
+      const hasClub = CLUB_KEYWORDS.test(text);
+      for (const raw of extractWaybills(text)) {
         const wb = normalizeWaybill(raw);
-        const dedupKey = createHash("sha256").update(`wa|${wb}|${status || ""}|${text.slice(0, 120)}`).digest("hex");
         const [existing] = await db.select().from(shipments).where(eq(shipments.waybill, wb));
-        if (DRY) {
-          console.log(`[dry] ${chat}: WB ${wb} status=${status || "-"} existing=${!!existing}`);
-          continue;
+        let shipmentId: string | null = existing?.id ?? null;
+        let isDup = false;
+        if (!DRY) {
+          const dedupKey = createHash("sha256").update(`wa|${wb}|${status || ""}|${text.slice(0, 120)}`).digest("hex");
+          const ev = await ingestShipmentEvent({
+            waybill: wb,
+            eventType: status || undefined,
+            eventDescription: text.slice(0, 160),
+            rawText: text.slice(0, 1000),
+            source: "whatsapp",
+            dedupKey,
+          });
+          isDup = ev.duplicate;
+          shipmentId = ev.shipmentId ?? shipmentId;
+          if (!isDup) statusCount++;
+        } else {
+          console.log(`[dry] ${chat}: WB ${wb} status=${status || "-"} existing=${!!existing} club=${hasClub}`);
         }
-        const ev = await ingestShipmentEvent({
-          waybill: wb,
-          eventType: status || undefined,
-          eventDescription: text.slice(0, 160),
-          rawText: text.slice(0, 1000),
-          source: "whatsapp",
-          dedupKey,
-        });
-        if (ev.duplicate) continue;
-        statusCount++;
-        if (!existing && !seenLink.has(wb)) {
-          seenLink.add(wb);
-          needsLink.push({ waybill: wb, status, shipmentId: ev.shipmentId, reason: "new waybill (WhatsApp)" });
-        } else if (existing) {
+        let linked = false;
+        if (existing) {
           const links = await db.select().from(shipmentOrders).where(eq(shipmentOrders.shipmentId, existing.id));
-          if (!links.length && !seenLink.has(wb)) {
-            seenLink.add(wb);
-            needsLink.push({ waybill: wb, status, shipmentId: existing.id, reason: "unlinked" });
-          }
+          linked = links.length > 0;
+        }
+        // Flag only FRESH (non-duplicate) info for an unlinked waybill, so it
+        // doesn't re-nag every run; the daily exception digest is the backstop.
+        if ((DRY || !isDup) && !linked && !seenLink.has(wb)) {
+          seenLink.add(wb);
+          needsLink.push({
+            waybill: wb,
+            status,
+            shipmentId,
+            reason: existing ? "unlinked" : "new waybill",
+            snippet: hasClub ? text.replace(/\s+/g, " ").slice(0, 140) : undefined,
+          });
         }
       }
     }
   }
 
-  console.log(`[sweep] scanned=${scanned} statusIngested=${statusCount} needsLink=${needsLink.length} contentFlags=${contentFlags.length}`);
+  console.log(`[sweep] ${new Date().toISOString()} scanned=${scanned} statusIngested=${statusCount} needsLink=${needsLink.length}`);
 
-  if (!DRY && (needsLink.length || contentFlags.length) && isTelegramConfigured()) {
+  if (!DRY && needsLink.length && isTelegramConfigured()) {
     const esc = (s: string) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const lines: string[] = ["<b>📲 WhatsApp shipment sweep</b>", ""];
+    const lines: string[] = ["<b>📲 WhatsApp shipment sweep</b>", "", `<b>🔗 ${needsLink.length} waybill(s) need linking</b>`];
     const buttons: any[][] = [];
-    if (needsLink.length) {
-      lines.push(`<b>🔗 ${needsLink.length} waybill(s) need linking</b>`);
-      for (const n of needsLink.slice(0, 8)) {
-        lines.push(`• WB ${esc(n.waybill)}${n.status ? ` · ${esc(n.status)}` : ""} · ${esc(n.reason)}`);
-        if (n.shipmentId) buttons.push([{ text: `🔗 Link ${n.waybill.slice(-6)}`, callback_data: `wblink_${n.shipmentId}` }]);
-      }
-      lines.push("");
+    for (const n of needsLink.slice(0, 8)) {
+      lines.push(`• WB ${esc(n.waybill)}${n.status ? ` · ${esc(n.status)}` : ""} · ${esc(n.reason)}${n.snippet ? `\n   ↳ ${esc(n.snippet)}` : ""}`);
+      if (n.shipmentId) buttons.push([{ text: `🔗 Link ${n.waybill.slice(-6)}`, callback_data: `wblink_${n.shipmentId}` }]);
     }
-    if (contentFlags.length) {
-      lines.push(`<b>📝 Puffin named clubs (confirm contents)</b>`);
-      for (const c of contentFlags.slice(0, 6)) lines.push(`• WB ${c.waybills.map(esc).join(", ")} · ${esc(c.snippet)}`);
-      lines.push("");
-    }
-    lines.push("<i>To link: reply</i> <code>link WB &lt;number&gt; to PO-XXXX</code>");
+    lines.push("", "<i>To link: reply</i> <code>link WB &lt;number&gt; to PO-XXXX</code>");
     await sendTelegramCard({ text: lines.join("\n").trim(), buttons });
   }
   process.exit(0);
