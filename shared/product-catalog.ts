@@ -189,7 +189,7 @@ export const SIDELINE_PRODUCTS: SidelineProduct[] = [
   { id: "training-singlet",      name: "Training Singlet",           category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "160gsm Performance Polyester", pricing: tiers(39,37,35,34,32), minOrder: 10, puffinCostKey: "singlet" }, // Phase 1 margin correction 2026-06 (was 33/31/30/28/27)
   { id: "cotton-tee",            name: "Cotton T-Shirt",             category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Combed Cotton", puffinCostKey: "t-shirt-cotton-poly" },
   { id: "gym-shorts",            name: "Gym Shorts",                 category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Polyester Tricot", pricing: tiers(40,38,36,34,33), minOrder: 20, puffinCostKey: "training-short" },
-  { id: "track-pants",           name: "Track Pants",                category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "280gsm Polyfleece", pricing: tiers(56,53,50,48,46), minOrder: 20, puffinCostKey: "tracksuit-pants" },
+  { id: "track-pants",           name: "Track Pants",                category: "Training", sizes: UNISEX_JERSEY, defaultMaterial: "280gsm Polyfleece", pricing: tiers(56,53,50,48,46), minOrder: 20, puffinCostKey: "hoodie-cotton-poly" }, // cost = sublimated pullover hoodie (Romero 2026-06; was tracksuit-pants, mis-high,
 
   // ─── Outerwear ───
   { id: "hoodie",                name: "Hoodie (Pullover)",          category: "Outerwear", sizes: UNISEX_JERSEY, defaultMaterial: "320gsm Cotton/Poly Fleece", pricing: tiers(60,57,54,51,49), minOrder: 10, puffinCostKey: "hoodie-cotton-poly" },
