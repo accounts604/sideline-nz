@@ -26,7 +26,7 @@ export function isShipmentStatus(value: unknown): value is ShipmentStatus {
 }
 
 // Where a shipment row (or an event) originated.
-export const SHIPMENT_SOURCE_CHANNELS = ["supplier", "whatsapp", "admin", "telegram_manual"] as const;
+export const SHIPMENT_SOURCE_CHANNELS = ["supplier", "whatsapp", "admin", "telegram_manual", "email"] as const;
 export type ShipmentSourceChannel = (typeof SHIPMENT_SOURCE_CHANNELS)[number];
 
 // Per-PO content verification grade. Deliberately confidence-graded rather

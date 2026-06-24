@@ -1,0 +1,33 @@
+name: DHL/Puffin email watcher
+
+# Reliable backbone of the shipment watcher. Scans recent DHL + Puffin emails
+# every 30 min, auto-ingests status updates for known waybills, and posts a
+# Telegram card when a new/unlinked waybill or a Puffin club-content email needs
+# a human link. Idempotent (dedup via shipment_events), so frequent runs are safe.
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  dhl-email-watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/cron/dhl-email-watch
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -e
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not set in this repo's settings"
+            exit 1
+          fi
+          SITE="${SITE_URL:-https://sidelinenz.com}"
+          echo "Hitting $SITE/api/cron/dhl-email-watch"
+          RESP=$(curl -sS -X POST "$SITE/api/cron/dhl-email-watch" \
+            -H "X-Cron-Secret: $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -w "\nHTTP %{http_code}\n")
+          echo "$RESP"
+          echo "$RESP" | tail -1 | grep -q "HTTP 200" || exit 1

@@ -102,6 +102,41 @@ router.post("/daily-digest", async (req, res) => {
   }
 });
 
+// ─── DHL / Puffin email watcher ─────────────────────────────────────────
+//
+// The reliable backbone of the shipment watcher: scans recent DHL + Puffin
+// emails, auto-ingests status events for known waybills, and posts a Telegram
+// card for new/unlinked waybills or Puffin club-content mentions to confirm.
+// Idempotent (dedup via shipment_events). Schedule every ~30 min.
+
+router.post("/dhl-email-watch", async (req, res) => {
+  try {
+    const dryRun = req.query.dryRun === "true";
+    const { runDhlEmailWatch, buildEmailWatchCard } = await import("../dhl-email-watch.js");
+    const result = await runDhlEmailWatch();
+    const card = buildEmailWatchCard(result);
+    if (dryRun) return res.json({ ok: true, dryRun: true, result, card });
+    let posted = false;
+    if (card && isTelegramConfigured()) {
+      const r = await sendTelegramCard({ text: card.text, buttons: card.buttons });
+      posted = r.ok;
+    }
+    res.json({
+      ok: true,
+      posted,
+      summary: {
+        scanned: result.scanned,
+        statusUpdates: result.statusUpdates.length,
+        needsLink: result.needsLink.length,
+        contentFlags: result.contentFlags.length,
+      },
+    });
+  } catch (err: any) {
+    console.error("[cron/dhl-email-watch] error:", err);
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 // ─── Shipment exceptions ────────────────────────────────────────────────
 //
 // Posts a Telegram card flagging shipment-tracking gaps:
