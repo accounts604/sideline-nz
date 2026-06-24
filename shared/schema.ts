@@ -94,6 +94,11 @@ export const orders = pgTable("orders", {
   designStatus: text("design_status").default("not_started"), // not_started, pending_review, approved, needs_revision
   adminNotes: text("admin_notes"),
   productionStage: text("production_stage").default("order_received"),
+  // Legacy single-shipment fields. As of the DHL shipment-tracking feature
+  // these are a denormalised MIRROR of the `shipments` tables (the new source
+  // of truth, which model many-to-many waybill↔PO consolidation). On link we
+  // set these to the order's primary/most-recent waybill for back-compat with
+  // the PO grid, supplier chip, and customer notifications.
   trackingNumber: text("tracking_number"),
   trackingUrl: text("tracking_url"),
   estimatedDeliveryDate: timestamp("estimated_delivery_date"),
@@ -457,7 +462,7 @@ export type OrderActivity = typeof orderActivity.$inferSelect;
 export const integrationEvents = pgTable("integration_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   createdAt: timestamp("created_at").defaultNow(),
-  system: text("system").notNull(),          // "ghl" | "drive" | "gmail" | "resend" | "apiease" | "stripe" | "shopify" | "xero" | "vercel-blob"
+  system: text("system").notNull(),          // "ghl" | "drive" | "gmail" | "resend" | "apiease" | "stripe" | "shopify" | "xero" | "vercel-blob" | "dhl" | "whatsapp"
   action: text("action").notNull(),          // "upsertContact" | "createFolder" | "sendSupplierPo" | "mirrorBlob" | ...
   status: text("status").notNull(),          // "success" | "failed"
   orderId: varchar("order_id"),              // loose FK — NOT enforced; log survives order delete
@@ -470,6 +475,98 @@ export const integrationEvents = pgTable("integration_events", {
 export const insertIntegrationEventSchema = createInsertSchema(integrationEvents).omit({ id: true, createdAt: true });
 export type InsertIntegrationEvent = z.infer<typeof insertIntegrationEventSchema>;
 export type IntegrationEvent = typeof integrationEvents.$inferSelect;
+
+// DHL shipment tracking — see migrations/dhl-shipment-tracking.sql.
+//
+// Puffin manufactures POs and ships them via DHL, often CONSOLIDATING several
+// POs into one waybill (and a single PO can span several parcels). The legacy
+// orders.trackingNumber single field cannot model that, so these tables are the
+// source of truth and orders.trackingNumber becomes a denormalised mirror.
+//
+// The reliable anchor is the waybill Puffin gives us AT DISPATCH (linked to the
+// PO(s) here). DHL's WhatsApp status messages are parsed best-effort and arrive
+// via shipment_events; they enrich the timeline but never drive expectations.
+export const shipments = pgTable("shipments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  waybill: text("waybill").notNull().unique(), // DHL tracking number — the identity anchor (normalised, see normalizeWaybill)
+  carrier: text("carrier").notNull().default("dhl"),
+  status: text("status").notNull().default("created"), // shared/shipment-status.ts SHIPMENT_STATUSES
+  lastEventCode: text("last_event_code"), // raw DHL event code, if parseable
+  lastEventDescription: text("last_event_description"), // human text of the last event
+  lastEventAt: timestamp("last_event_at"),
+  estimatedDeliveryDate: timestamp("estimated_delivery_date"),
+  deliveredAt: timestamp("delivered_at"),
+  sourceChannel: text("source_channel").notNull().default("supplier"), // SHIPMENT_SOURCE_CHANNELS
+  isOrphan: boolean("is_orphan").notNull().default(false), // DHL event arrived for a waybill with no linked PO yet
+  trackingUrl: text("tracking_url"),
+  rawMeta: jsonb("raw_meta"), // raw source payloads (supplier submission, last WhatsApp parse)
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertShipmentSchema = createInsertSchema(shipments).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertShipment = z.infer<typeof insertShipmentSchema>;
+export type Shipment = typeof shipments.$inferSelect;
+
+// Many-to-many link between a waybill (shipment) and the PO(s) it carries.
+// expectedItems is a snapshot of the PO's order_items taken at link time, so
+// verification has a stable baseline even if the PO is later edited.
+export const shipmentOrders = pgTable("shipment_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  shipmentId: varchar("shipment_id").notNull().references(() => shipments.id, { onDelete: "cascade" }),
+  orderId: varchar("order_id").notNull().references(() => orders.id),
+  expectedParcelCount: integer("expected_parcel_count"), // how many parcels Puffin said this PO would take, if known
+  expectedItems: jsonb("expected_items"), // [{ orderItemId, productName, size, qty }] snapshot at link time
+  verificationStatus: text("verification_status").notNull().default("unverified"), // VERIFICATION_STATUSES
+  verificationReport: jsonb("verification_report"), // computed diff output (see computeShipmentVerification)
+  verifiedAt: timestamp("verified_at"),
+  linkedBy: varchar("linked_by").references(() => users.id),
+  linkSource: text("link_source").notNull().default("supplier"), // "supplier" | "admin" | "whatsapp-late-link"
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertShipmentOrderSchema = createInsertSchema(shipmentOrders).omit({ id: true, createdAt: true });
+export type InsertShipmentOrder = z.infer<typeof insertShipmentOrderSchema>;
+export type ShipmentOrder = typeof shipmentOrders.$inferSelect;
+
+// One physical parcel within a shipment. Optional (DHL/WhatsApp often omits
+// per-piece detail); when present it powers true per-PO content verification.
+export const shipmentParcels = pgTable("shipment_parcels", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  shipmentId: varchar("shipment_id").notNull().references(() => shipments.id, { onDelete: "cascade" }),
+  shipmentOrderId: varchar("shipment_order_id").references(() => shipmentOrders.id, { onDelete: "set null" }), // which PO this parcel belongs to (nullable)
+  pieceId: text("piece_id"), // DHL piece/parcel ID if provided
+  description: text("description"), // free text or from packing list
+  declaredItems: jsonb("declared_items"), // [{ productName, size, qty }] actually packed
+  weightGrams: integer("weight_grams"),
+  status: text("status"), // optional per-piece status
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertShipmentParcelSchema = createInsertSchema(shipmentParcels).omit({ id: true, createdAt: true });
+export type InsertShipmentParcel = z.infer<typeof insertShipmentParcelSchema>;
+export type ShipmentParcel = typeof shipmentParcels.$inferSelect;
+
+// Append-only event log + dedup guard. Repeated WhatsApp scrapes show the same
+// messages, so dedupKey (sha256 of waybill|status|minute) is UNIQUE and is the
+// authoritative idempotency guard. shipmentId is null for orphan events (a DHL
+// message for a waybill we never captured).
+export const shipmentEvents = pgTable("shipment_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  shipmentId: varchar("shipment_id").references(() => shipments.id, { onDelete: "cascade" }),
+  rawWaybill: text("raw_waybill").notNull(), // normalised waybill from the event
+  status: text("status"), // normalised status, or null if unrecognised
+  eventCode: text("event_code"),
+  eventDescription: text("event_description"),
+  occurredAt: timestamp("occurred_at"),
+  location: text("location"),
+  source: text("source").notNull().default("whatsapp"), // SHIPMENT_SOURCE_CHANNELS
+  confidence: integer("confidence"), // 0-100 parse confidence (vision/text extraction)
+  dedupKey: text("dedup_key").notNull().unique(),
+  rawText: text("raw_text"), // original WhatsApp message text
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertShipmentEventSchema = createInsertSchema(shipmentEvents).omit({ id: true, createdAt: true });
+export type InsertShipmentEvent = z.infer<typeof insertShipmentEventSchema>;
+export type ShipmentEvent = typeof shipmentEvents.$inferSelect;
 
 // Club Portal Accounts — separate login system for clubs who paid $297
 export const clubAccounts = pgTable("club_accounts", {

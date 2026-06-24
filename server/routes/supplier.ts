@@ -18,6 +18,7 @@ import { requireSupplier } from "../auth";
 import type { JwtPayload } from "../auth";
 import { db } from "../db";
 import { orderActivity } from "@shared/schema";
+import { linkOrdersToShipment, findOrdersByPoReferences } from "../shipments";
 
 const router = Router();
 
@@ -181,6 +182,24 @@ const dispatchedSchema = z.object({
   trackingNumber: z.string().optional(),
   trackingUrl: z.string().url().optional(),
   notes: z.string().optional(),
+  // DHL waybill capture (the reliable anchor). `waybill` defaults to
+  // trackingNumber if omitted. `poReferences` lets the supplier flag OTHER POs
+  // consolidated onto the same waybill — only those also assigned to this
+  // supplier are linked; the rest are silently skipped (no existence leak).
+  waybill: z.string().min(3).optional(),
+  poReferences: z.array(z.string()).optional(),
+  parcels: z
+    .array(
+      z.object({
+        pieceId: z.string().optional(),
+        description: z.string().optional(),
+        declaredItems: z
+          .array(z.object({ productName: z.string().optional(), size: z.string().nullish(), qty: z.number().optional() }))
+          .optional(),
+        weightGrams: z.number().int().optional(),
+      }),
+    )
+    .optional(),
 });
 
 // GET /orders/:id/stages — production stages for this order (supplier-scoped)
@@ -279,7 +298,25 @@ router.post("/orders/:id/dispatched", async (req, res) => {
       },
     });
 
-    res.json({ ok: true });
+    // Capture the DHL waybill → PO link (the reliable anchor). Link this order
+    // plus any consolidated POs the supplier flagged that are also theirs.
+    const waybill = parsed.data.waybill || parsed.data.trackingNumber;
+    let shipment: { linkedOrderIds: string[] } | undefined;
+    if (waybill) {
+      const extra = await findOrdersByPoReferences(parsed.data.poReferences ?? [], { assignedSupplierId: userId });
+      const orderIds = Array.from(new Set([order.id, ...extra.orders.map((o) => o.id)]));
+      const result = await linkOrdersToShipment({
+        waybill,
+        orderIds,
+        source: "supplier",
+        linkSource: "supplier",
+        parcels: parsed.data.parcels,
+        userId,
+      });
+      shipment = { linkedOrderIds: result.linkedOrderIds };
+    }
+
+    res.json({ ok: true, shipment });
   } catch (e: any) {
     console.error("Supplier dispatched error:", e);
     res.status(500).json({ error: "Failed to record action" });
