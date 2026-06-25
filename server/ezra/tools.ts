@@ -11,8 +11,9 @@
 // a separate dynamic registry layered on top.
 
 import { db } from "../db";
-import { orders, clubAccounts, orderItems, designFiles, orderSizeBreakdowns, clubLogoAssets } from "@shared/schema";
+import { orders, clubAccounts, orderItems, designFiles, orderSizeBreakdowns, clubLogoAssets, users } from "@shared/schema";
 import { eq, desc, and, or, ilike } from "drizzle-orm";
+import { buildPoReference, withPoNumberRetry } from "../po-number";
 import { SIDELINE_PRODUCTS } from "@shared/product-catalog";
 import { runTask as runAiTask } from "../ai";
 import { fetchCollectionStatus, fetchShopifyOrderByNumberOrEmail, isShopifyAdminConfigured } from "../shopify-admin";
@@ -352,6 +353,141 @@ const addSizeBreakdownsTool: ToolDefinition = {
       orderItemId: item.id,
       inserted_count: inserted.length,
       inserted,
+    };
+  },
+};
+
+// ─── Order creation (write) ───────────────────────────────────────────
+//
+// Mirrors POST /orders/create-po (server/routes/admin.ts): builds a bulk/
+// team order shell + line items so an operator (or Ezra) can then add sizes
+// via add_size_breakdowns and dispatch from the UI. Prices default to 0 and
+// are filled in the UI. Supplier is resolved by name (e.g. "Puffin") to
+// assignedSupplierId. Does NOT dispatch — that stays a UI/raise-PO action.
+const createOrderTool: ToolDefinition = {
+  name: "create_order",
+  description: "Create a new bulk/team order (production sheet shell) with its line items. Use when the user asks to create or set up a new order/PO for a club, school or team from a brief or quote. Auto-generates the SL order number + PO reference. Line item prices default to 0 (filled later in the UI). Sizes are NOT set here — after creating, call add_size_breakdowns per item once you have the roster. Does NOT dispatch to the supplier; raising the PO stays a UI action. Recap the order (account, contact, items) before calling.",
+  parameters: {
+    type: "object",
+    properties: {
+      accountName: { type: "string", description: "Club / school / team / company name, e.g. 'Aorere College — Premier Netball'" },
+      orderType: { type: "string", enum: ["team-store", "bulk-order", "sample-run"], description: "Default 'bulk-order'." },
+      customerName: { type: "string", description: "Contact full name" },
+      customerEmail: { type: "string", description: "Contact email" },
+      companyEmail: { type: "string", description: "Company/accounts email" },
+      companyPhone: { type: "string", description: "Company phone" },
+      poComments: { type: "string", description: "Notes shown on the production sheet, e.g. quote ref + summary" },
+      dueDate: { type: "string", description: "YYYY-MM-DD 'door to customer' date (optional)" },
+      deliveryAttention: { type: "string" },
+      deliveryAddress: { type: "string" },
+      deliveryEmail: { type: "string" },
+      deliveryPhone: { type: "string" },
+      supplierName: { type: "string", description: "Supplier to assign, e.g. 'Puffin'. Resolved to the supplier account by name. Omit for none." },
+      items: {
+        type: "array",
+        description: "Line items, at least one. quantity defaults to 1; unitAmount (retail, in cents) defaults to 0.",
+        items: {
+          type: "object",
+          properties: {
+            productName: { type: "string", description: "Garment name, e.g. 'Dri-Fit Long Sleeve'" },
+            productType: { type: "string", description: "Canonical product type if known (see search_products)" },
+            material: { type: "string" },
+            quantity: { type: "integer", description: "Default 1" },
+            unitAmount: { type: "integer", description: "Retail price in cents. Default 0." },
+            brandingMethod: { type: "string" },
+          },
+          required: ["productName"],
+        },
+      },
+    },
+    required: ["accountName", "items"],
+  },
+  async execute(args) {
+    const items = Array.isArray(args.items) ? args.items.filter((i: any) => i && i.productName) : [];
+    if (items.length === 0) return { error: "no_items", hint: "Provide at least one line item with a productName." };
+    if (items.length > 40) return { error: "too_many_items", limit: 40, received: items.length };
+
+    // Resolve supplier by name (optional).
+    let assignedSupplierId: string | null = null;
+    let supplierLabel: string | null = null;
+    if (args.supplierName && String(args.supplierName).trim()) {
+      const [sup] = await db.select().from(users)
+        .where(and(eq(users.role, "supplier"), ilike(users.teamName, `%${String(args.supplierName).trim()}%`))).limit(1);
+      if (!sup) return { error: "supplier_not_found", supplierName: args.supplierName };
+      assignedSupplierId = sup.id;
+      supplierLabel = sup.teamName;
+    }
+
+    const orderType = ["team-store", "bulk-order", "sample-run"].includes(args.orderType) ? args.orderType : "bulk-order";
+    const name = args.customerName ? String(args.customerName).trim() : undefined;
+    const firstName = name ? name.split(" ")[0] : undefined;
+    const lastName = name ? (name.split(" ").slice(1).join(" ") || undefined) : undefined;
+    const dueDate = typeof args.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.dueDate) ? args.dueDate : null;
+    const clean = items.map((i: any) => ({
+      productName: String(i.productName).slice(0, 120),
+      productType: i.productType ? String(i.productType).slice(0, 60) : null,
+      material: i.material ? String(i.material).slice(0, 120) : null,
+      quantity: Math.max(1, Math.min(parseInt(i.quantity, 10) || 1, 999)),
+      unitAmount: Math.max(0, parseInt(i.unitAmount, 10) || 0),
+      brandingMethod: i.brandingMethod ? String(i.brandingMethod).slice(0, 60) : null,
+    }));
+    const subtotal = clean.reduce((s: number, i: any) => s + i.unitAmount * i.quantity, 0);
+    const poReference = await buildPoReference();
+
+    const order = await withPoNumberRetry(args.accountName || name || null, async (orderNumber: string) =>
+      storage.createOrder({
+        orderNumber,
+        storeSlug: "sideline",
+        orderType,
+        status: "processing",
+        subtotal,
+        total: subtotal,
+        currency: "nzd",
+        customerEmail: args.customerEmail ?? null,
+        customerName: name ?? null,
+        customerFirstName: firstName ?? null,
+        customerLastName: lastName ?? null,
+        companyEmail: args.companyEmail ?? null,
+        companyPhone: args.companyPhone ?? null,
+        poReference,
+        accountName: args.accountName ?? null,
+        isRepeatOrder: false,
+        poComments: args.poComments ?? null,
+        dueDate,
+        deliveryAttention: args.deliveryAttention ?? null,
+        deliveryAddress: args.deliveryAddress ?? null,
+        deliveryEmail: args.deliveryEmail ?? null,
+        deliveryPhone: args.deliveryPhone ?? null,
+        assignedSupplierId,
+      } as any),
+    );
+
+    const created: any[] = [];
+    for (const it of clean) {
+      const row = await storage.createOrderItem({
+        orderId: order.id,
+        productId: "manual",
+        priceId: "manual",
+        productName: it.productName,
+        productType: it.productType,
+        material: it.material,
+        quantity: it.quantity,
+        unitAmount: it.unitAmount,
+        currency: "nzd",
+        brandingMethod: it.brandingMethod,
+      } as any);
+      created.push({ id: row.id, productName: row.productName, quantity: row.quantity });
+    }
+
+    return {
+      ok: true,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      poReference: order.poReference,
+      accountName: order.accountName,
+      supplier: supplierLabel,
+      items: created,
+      next: "Sizes not set yet — call add_size_breakdowns for each item once you have the roster, then raise the PO from the UI. Prices default to 0; set them in the UI.",
     };
   },
 };
@@ -864,6 +1000,7 @@ export const EZRA_TOOLS: ToolDefinition[] = [
   listRecentDesignsTool,
   extractColoursTool,
   addSizeBreakdownsTool,
+  createOrderTool,
   listClubLogosTool,
   setPrimaryLogoTool,
   findClubsMissingLogosTool,
