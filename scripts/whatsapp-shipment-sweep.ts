@@ -37,7 +37,9 @@ try {
     if (!line || line.startsWith("#") || !line.includes("=")) continue;
     const [k, ...v] = line.split("=");
     const key = k.trim();
-    if (!process.env[key] && /BOT_TOKEN|GROUP_CHAT_ID|ENGINE_ROOM_ID|THREAD_ID/.test(key)) {
+    // Bot token is JARVESI_TOKEN locally (server accepts it as a fallback); chat
+    // id is KIG_ENGINE_ROOM_ID. Match the exact names server/telegram.ts reads.
+    if (!process.env[key] && /^(JARVESI_TOKEN|JARVESI_BOT_TOKEN|TELEGRAM_BOT_TOKEN|KIG_GROUP_CHAT_ID|KIG_ENGINE_ROOM_ID|SIDELINE_THREAD_ID)$/.test(key)) {
       process.env[key] = v.join("=").trim();
     }
   }
