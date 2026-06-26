@@ -66,9 +66,9 @@ export default function Terms() {
             approving. We will produce exactly what was approved.
           </p>
 
-          <SectionAnchor id="deposits" title="3. Payment, deposits &amp; pricing" />
+          <SectionAnchor id="deposits" title="3. Payment &amp; pricing" />
           <p>
-            Bulk team orders typically require a deposit before production. Final balance is due before dispatch
+            Bulk team orders are paid in full upfront before production
             unless other terms are agreed in writing. Supporter-campaign orders are paid in full at checkout via
             our Shopify storefront.
           </p>

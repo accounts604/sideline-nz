@@ -107,7 +107,7 @@ export default function ApprovePage() {
           </h1>
           <p style={{ color: "rgba(255,255,255,0.7)", fontSize: "15px", lineHeight: 1.6 }}>
             {approved
-              ? "Thanks — we've let the Sideline team know. They'll follow up with a deposit invoice shortly."
+              ? "Thanks — we've let the Sideline team know. They'll follow up with your invoice shortly."
               : "Thanks — the Sideline team has been notified. They'll get back to you with an updated mockup."}
           </p>
         </div>
