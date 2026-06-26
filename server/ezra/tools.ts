@@ -11,7 +11,7 @@
 // a separate dynamic registry layered on top.
 
 import { db } from "../db";
-import { orders, clubAccounts, orderItems, designFiles, orderSizeBreakdowns, clubLogoAssets, users } from "@shared/schema";
+import { orders, clubAccounts, orderItems, designFiles, orderSizeBreakdowns, clubLogoAssets, users, orderActivity } from "@shared/schema";
 import { eq, desc, and, or, ilike } from "drizzle-orm";
 import { buildPoReference, withPoNumberRetry } from "../po-number";
 import { SIDELINE_PRODUCTS } from "@shared/product-catalog";
@@ -479,14 +479,31 @@ const createOrderTool: ToolDefinition = {
       created.push({ id: row.id, productName: row.productName, quantity: row.quantity });
     }
 
+    // VERIFY-AFTER-WRITE (anti-fabrication): read the order back from the DB.
+    // If it isn't there, the create did NOT happen — never report success.
+    const [persisted] = await db.select().from(orders).where(eq(orders.id, order.id)).limit(1);
+    if (!persisted) {
+      return { error: "create_unverified", message: "Order did not persist on read-back — do NOT tell the user it was created.", attemptedId: order.id };
+    }
+    // Audit row so every Ezra-initiated order is traceable after the fact.
+    try {
+      await db.insert(orderActivity).values({
+        orderId: persisted.id,
+        action: "order_created_via_ezra",
+        details: { poReference: persisted.poReference, orderNumber: persisted.orderNumber, accountName: persisted.accountName, itemCount: created.length, source: "ezra:create_order" },
+      } as any);
+    } catch { /* audit is best-effort; do not fail the create */ }
+
     return {
       ok: true,
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      poReference: order.poReference,
-      accountName: order.accountName,
+      verified: true,
+      orderId: persisted.id,
+      orderNumber: persisted.orderNumber,
+      poReference: persisted.poReference,
+      accountName: persisted.accountName,
       supplier: supplierLabel,
       items: created,
+      note: "VERIFIED: order was read back from the DB. Report ONLY this exact poReference/orderNumber to the user — never a number you were not given here.",
       next: "Sizes not set yet — call add_size_breakdowns for each item once you have the roster, then raise the PO from the UI. Prices default to 0; set them in the UI.",
     };
   },
