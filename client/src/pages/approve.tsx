@@ -11,6 +11,7 @@ import { Loader2, CheckCircle2, MessageSquareWarning } from "lucide-react";
 const NAVY = "#0A1628";
 const NAVY_LIGHT = "#122239";
 const GOLD = "#C9A84C";
+const SIZE_OPTIONS = ["OS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"];
 
 type ApprovalHydrateResponse = {
   order: {
@@ -43,6 +44,9 @@ export default function ApprovePage() {
   const [decision, setDecision] = useState<"approved" | "changes_requested" | null>(null);
   const [changesNotes, setChangesNotes] = useState("");
   const [submitted, setSubmitted] = useState<"approved" | "changes_requested" | null>(null);
+  const [sizes, setSizes] = useState<Record<string, Record<string, number>>>({});
+  const setSize = (itemId: string, size: string, n: number) =>
+    setSizes((prev) => ({ ...prev, [itemId]: { ...(prev[itemId] || {}), [size]: Math.max(0, n || 0) } }));
 
   const { data, isLoading, error } = useQuery<ApprovalHydrateResponse>({
     queryKey: [`/api/approve/${token}`],
@@ -54,9 +58,18 @@ export default function ApprovePage() {
   const submitMut = useMutation({
     mutationFn: async () => {
       if (!decision) throw new Error("Pick a decision first");
+      const sizesPayload = (data?.items || [])
+        .map((i) => ({
+          itemId: i.id,
+          rows: Object.entries(sizes[i.id] || {})
+            .filter(([, q]) => q > 0)
+            .map(([size, quantity]) => ({ size, quantity })),
+        }))
+        .filter((g) => g.rows.length);
       const res = await apiRequest("POST", `/api/approve/${token}`, {
         decision,
-        changesNotes: decision === "changes_requested" ? changesNotes : undefined,
+        changesNotes: changesNotes.trim() || undefined,
+        sizes: sizesPayload,
       });
       return res.json();
     },
@@ -136,7 +149,7 @@ export default function ApprovePage() {
             fontFamily: "'Bebas Neue', sans-serif",
           }}
         >
-          Sideline NZ — Mockup Approval
+          Sideline NZ — Order Approval &amp; Sizing
         </div>
       </header>
 
@@ -152,7 +165,7 @@ export default function ApprovePage() {
           {order.poReference || order.accountName || order.orderNumber || "Your order"}
         </h1>
         <p style={{ color: "rgba(255,255,255,0.6)", fontSize: "14px", marginBottom: "32px" }}>
-          Review the mockup below and let us know if it's good to go.
+          Check your mockups, fill in your sizes, add any comments, and approve to lock it in.
         </p>
 
         {/* Garment summary */}
@@ -232,6 +245,42 @@ export default function ApprovePage() {
           </div>
         </Card>
 
+        {/* Sizing */}
+        <Card title="Your sizes">
+          <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)", marginBottom: "16px" }}>
+            Enter how many of each size you need per item. Leave a size at 0 if you don't need it.
+          </p>
+          {items.map((i) => {
+            const itemSizes = sizes[i.id] || {};
+            const assigned = Object.values(itemSizes).reduce((a, b) => a + (b || 0), 0);
+            return (
+              <div key={i.id} style={{ borderTop: "1px solid rgba(255,255,255,0.08)", padding: "16px 0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
+                  <div style={{ fontWeight: 500, fontSize: "14px" }}>{i.productName}</div>
+                  <div style={{ fontSize: "13px", color: assigned === i.quantity ? "#4ade80" : "rgba(255,255,255,0.6)" }}>
+                    {assigned} / {i.quantity}
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(60px, 1fr))", gap: "8px" }}>
+                  {SIZE_OPTIONS.map((sz) => (
+                    <div key={sz} style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)", marginBottom: "4px" }}>{sz}</div>
+                      <input
+                        type="number"
+                        min={0}
+                        inputMode="numeric"
+                        value={itemSizes[sz] || ""}
+                        onChange={(e) => setSize(i.id, sz, parseInt(e.target.value, 10) || 0)}
+                        style={{ width: "100%", padding: "8px 4px", textAlign: "center", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "6px", color: "#fff", outline: "none", fontSize: "14px" }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </Card>
+
         {/* Decision */}
         <Card title="Your decision">
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
@@ -271,27 +320,28 @@ export default function ApprovePage() {
             </button>
           </div>
 
-          {decision === "changes_requested" && (
-            <textarea
-              placeholder="Tell us what to change..."
-              value={changesNotes}
-              onChange={(e) => setChangesNotes(e.target.value)}
-              rows={4}
-              style={{
-                width: "100%",
-                padding: "14px",
-                fontSize: "14px",
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.15)",
-                borderRadius: "6px",
-                color: "#fff",
-                outline: "none",
-                fontFamily: "inherit",
-                resize: "vertical",
-                marginBottom: "16px",
-              }}
-            />
-          )}
+          <label style={{ display: "block", fontSize: "12px", color: "rgba(255,255,255,0.55)", marginBottom: "8px" }}>
+            Comments, requests or notes (optional)
+          </label>
+          <textarea
+            placeholder={decision === "changes_requested" ? "Tell us what to change..." : "Anything you'd like us to know? (optional)"}
+            value={changesNotes}
+            onChange={(e) => setChangesNotes(e.target.value)}
+            rows={4}
+            style={{
+              width: "100%",
+              padding: "14px",
+              fontSize: "14px",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.15)",
+              borderRadius: "6px",
+              color: "#fff",
+              outline: "none",
+              fontFamily: "inherit",
+              resize: "vertical",
+              marginBottom: "16px",
+            }}
+          />
 
           <button
             onClick={() => submitMut.mutate()}

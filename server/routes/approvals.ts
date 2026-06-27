@@ -29,7 +29,7 @@ import { z } from "zod";
 import crypto from "crypto";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { approvalTokens, orderActivity, orders, designFiles } from "@shared/schema";
+import { approvalTokens, orderActivity, orders, designFiles, orderItems, orderSizeBreakdowns } from "@shared/schema";
 import { storage } from "../storage";
 import { updateGhlOpportunityStage } from "./ghl";
 import { sendMockupApprovalRequest, sendClientApprovalResult } from "../email";
@@ -157,7 +157,12 @@ publicApprovalRouter.get("/:token", async (req, res) => {
 // POST /:token — submit the decision
 const decisionSchema = z.object({
   decision: z.enum(["approved", "changes_requested"]),
-  changesNotes: z.string().optional(),
+  changesNotes: z.string().optional(), // serves as the customer's comments/requests box
+  // Per-garment sizing the customer fills on the order form (approve + sizing step).
+  sizes: z.array(z.object({
+    itemId: z.string(),
+    rows: z.array(z.object({ size: z.string().min(1), quantity: z.number().int().min(0) })),
+  })).optional(),
 });
 
 publicApprovalRouter.post("/:token", async (req, res) => {
@@ -191,6 +196,28 @@ publicApprovalRouter.post("/:token", async (req, res) => {
       .set({ usedAt: new Date(), decision, changesNotes: changesNotes || null })
       .where(eq(approvalTokens.id, tokenRow.id));
 
+    // Capture the customer's size breakdown (the order form's sizing step).
+    // itemId is validated against this order's lines so a token can't write to another order.
+    let sizesWritten = 0;
+    if (Array.isArray(parsed.data.sizes) && parsed.data.sizes.length) {
+      const lineRows = await db.select({ id: orderItems.id }).from(orderItems).where(eq(orderItems.orderId, order.id));
+      const validIds = new Set(lineRows.map((r) => r.id));
+      for (const grp of parsed.data.sizes) {
+        if (!validIds.has(grp.itemId)) continue;
+        for (const row of grp.rows || []) {
+          const qty = Math.max(0, Math.min(parseInt(String(row.quantity), 10) || 0, 999));
+          if (!row.size || qty < 1) continue;
+          await db.insert(orderSizeBreakdowns).values({
+            orderId: order.id,
+            orderItemId: grp.itemId,
+            size: String(row.size).trim().slice(0, 20),
+            quantity: qty,
+          } as any);
+          sizesWritten++;
+        }
+      }
+    }
+
     // Log the event on the order
     await db.insert(orderActivity).values({
       orderId: order.id,
@@ -200,6 +227,7 @@ publicApprovalRouter.post("/:token", async (req, res) => {
         source: "public_approval_link",
         tokenId: tokenRow.id,
         changesNotes: changesNotes || null,
+        sizeRowsWritten: sizesWritten,
       },
     });
 
