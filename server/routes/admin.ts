@@ -4713,12 +4713,13 @@ router.get("/clubs/brand-identity", async (_req, res) => {
     const accts = R(await db.execute(sql`SELECT id, club_name, club_id FROM club_accounts WHERE club_id IS NOT NULL`));
     const assets = R(await db.execute(sql`SELECT id, club_account_id, kind, display_label, preview_url, default_position FROM club_logo_assets`));
     const colorRows = R(await db.execute(sql`SELECT club_account_id, colors FROM club_brand_identity`));
-    const ords = R(await db.execute(sql`SELECT id, account_name, po_reference, status, club_id, club_account_id, created_at FROM orders WHERE po_reference IS NOT NULL`));
+    const ords = R(await db.execute(sql`SELECT id, account_name, po_reference, status, club_id, club_account_id, team_id, created_at FROM orders WHERE po_reference IS NOT NULL`));
+    const teamRows = R(await db.execute(sql`SELECT id, name, notes, secondary_logo_url, club_id FROM teams`));
     const acctsByClub = new Map<string, any[]>(); for (const a of accts) { const x = acctsByClub.get(a.club_id) || []; x.push(a); acctsByClub.set(a.club_id, x); }
     const assetsByAcct = new Map<string, any[]>(); for (const s of assets) { const x = assetsByAcct.get(s.club_account_id) || []; x.push(s); assetsByAcct.set(s.club_account_id, x); }
     const colorsByAcct = new Map<string, any>(colorRows.map((r: any) => [r.club_account_id, r.colors]));
-    const latestByAcct = new Map<string, any>(); for (const o of ords) { if (!o.club_account_id) continue; const p = latestByAcct.get(o.club_account_id); if (!p || (o.created_at > p.created_at)) latestByAcct.set(o.club_account_id, o); }
-    const ordTeamsByClub = new Map<string, any[]>(); for (const o of ords) { if (o.club_id && !o.club_account_id) { const x = ordTeamsByClub.get(o.club_id) || []; x.push(o); ordTeamsByClub.set(o.club_id, x); } }
+    const teamsByClub = new Map<string, any[]>(); for (const t of teamRows) { const x = teamsByClub.get(t.club_id) || []; x.push(t); teamsByClub.set(t.club_id, x); }
+    const ordsByTeam = new Map<string, any[]>(); for (const o of ords) { if (o.team_id) { const x = ordsByTeam.get(o.team_id) || []; x.push(o); ordsByTeam.set(o.team_id, x); } }
     const out = clubsRows.map((c: any) => {
       const cAccts = acctsByClub.get(c.id) || [];
       const rep = cAccts.find((a: any) => a.club_name === c.name) || cAccts[0] || null;
@@ -4727,10 +4728,13 @@ router.get("/clubs/brand-identity", async (_req, res) => {
       const designs = allAssets.filter((s: any) => DESIGN_KINDS.includes(s.kind)).map(mapAsset);
       const colors = rep ? (colorsByAcct.get(rep.id) || null) : null;
       const primaryLogoUrl = (logos.find((l: any) => l.kind === "primary")?.previewUrl) || c.primary_logo_url || null;
-      const teams = [
-        ...cAccts.map((a: any) => { const po = latestByAcct.get(a.id); return { name: a.club_name, type: "account", poRef: po?.po_reference || null, poId: po?.id || null, status: po?.status || null }; }),
-        ...(ordTeamsByClub.get(c.id) || []).map((o: any) => ({ name: o.account_name, type: "order", poRef: o.po_reference, poId: o.id, status: o.status })),
-      ];
+      // Teams (middle level) with their LIST of orders nested: Club > Team > Orders.
+      const teams = (teamsByClub.get(c.id) || []).map((t: any) => ({
+        id: t.id, name: t.name, notes: t.notes, secondaryLogoUrl: t.secondary_logo_url,
+        orders: (ordsByTeam.get(t.id) || [])
+          .sort((a: any, b: any) => String(b.po_reference).localeCompare(String(a.po_reference)))
+          .map((o: any) => ({ poRef: o.po_reference, poId: o.id, status: o.status, name: o.account_name })),
+      })).sort((a: any, b: any) => a.name.localeCompare(b.name));
       return { id: c.id, name: c.name, kind: c.kind, accountId: rep?.id || null, primaryLogoUrl, colors, logos, designs, teams };
     });
     res.json({ ok: true, clubs: out });
