@@ -301,12 +301,22 @@ router.get("/orders/:id", async (req, res) => {
     // Brand colours — resolved READ-THROUGH from this PO's club brand identity
     // (set once on the Brand Identity page, flows to every PO, no copy/drift).
     const _R = (r: any) => (r && r.rows) ? r.rows : (Array.isArray(r) ? r : []);
-    const ord = _R(await db.execute(sql`SELECT club_account_id FROM orders WHERE id=${req.params.id}`))[0];
+    const ord = _R(await db.execute(sql`SELECT club_account_id, club_id FROM orders WHERE id=${req.params.id}`))[0];
     let brandColors: any = null;
     if (ord?.club_account_id) {
       brandColors = _R(await db.execute(sql`SELECT colors FROM club_brand_identity WHERE club_account_id=${ord.club_account_id}`))[0]?.colors || null;
     }
-    res.json({ ...result, brandColors });
+    // Parent (Club/School) — resolved READ-THROUGH: its delivery address is the
+    // default ship-to for this PO, its contact the default comms recipient.
+    // Defensive (columns may not be migrated yet).
+    let parent: any = null;
+    if (ord?.club_id) {
+      try {
+        const p = _R(await db.execute(sql`SELECT name, delivery_address, contact_name, contact_email, contact_phone, website FROM clubs WHERE id=${ord.club_id}`))[0];
+        if (p) parent = { name: p.name, deliveryAddress: p.delivery_address, contactName: p.contact_name, contactEmail: p.contact_email, contactPhone: p.contact_phone, website: p.website };
+      } catch { /* parent-detail columns not migrated yet */ }
+    }
+    res.json({ ...result, brandColors, parent });
   } catch (err) {
     console.error("Admin order detail error:", err);
     res.status(500).json({ error: "Failed to load order" });
