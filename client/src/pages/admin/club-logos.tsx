@@ -37,6 +37,19 @@ const ASSET_TYPES: { value: AssetKind; label: string; pos: string }[] = [
 const TYPE_LABEL: Record<string, string> = Object.fromEntries(ASSET_TYPES.map((t) => [t.value, t.label]));
 // Sponsor placement, most-prominent first (the confirmed ladder).
 const SPONSOR_LADDER = ["Front Center", "Upper Back", "Left Sleeve 1", "Right Sleeve 1", "Lower Back", "Left Sleeve 2", "Right Sleeve 2"];
+// Master placement list — every placement is chosen from this, never typed, so
+// locations stay consistent across all assets.
+const PLACEMENTS = [
+  "Left Chest", "Right Chest", "Center Chest", "Front Center", "Front",
+  "Back", "Upper Back", "Center Back", "Lower Back",
+  "Left Sleeve", "Left Sleeve 1", "Left Sleeve 2",
+  "Right Sleeve", "Right Sleeve 1", "Right Sleeve 2",
+  "Collar / Nape", "Hem / Bottom",
+];
+const placementOptions = (kind: AssetKind) =>
+  kind === "sponsor"
+    ? SPONSOR_LADDER.map((s, i) => ({ value: s, label: `${i + 1}. ${s}` }))
+    : PLACEMENTS.map((s) => ({ value: s, label: s }));
 
 const OVERVIEW_KEY = "/api/admin/clubs/logos-overview";
 
@@ -120,7 +133,8 @@ function AssetManageRow({ clubId, logo, onChanged }: { clubId: string; logo: Log
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(logo.displayLabel || "");
   const [kind, setKind] = useState<AssetKind>(logo.kind);
-  const [pos, setPos] = useState(logo.defaultPosition || "");
+  const posDefault = ASSET_TYPES.find((t) => t.value === logo.kind)?.pos || "Left Chest";
+  const [pos, setPos] = useState(logo.defaultPosition || posDefault);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -130,8 +144,8 @@ function AssetManageRow({ clubId, logo, onChanged }: { clubId: string; logo: Log
     catch (e: any) { setErr(e?.message || "Failed"); return false; }
     finally { setBusy(false); }
   }
-  async function save() { if (await patch({ displayLabel: name.trim() || null, kind, defaultPosition: pos.trim() || null })) setEditing(false); }
-  function cancel() { setName(logo.displayLabel || ""); setKind(logo.kind); setPos(logo.defaultPosition || ""); setErr(null); setEditing(false); }
+  async function save() { if (await patch({ displayLabel: name.trim() || null, kind, defaultPosition: pos || null })) setEditing(false); }
+  function cancel() { setName(logo.displayLabel || ""); setKind(logo.kind); setPos(logo.defaultPosition || posDefault); setErr(null); setEditing(false); }
   async function remove() {
     setBusy(true); setErr(null);
     try { await apiRequest("DELETE", `/api/admin/clubs/${clubId}/logos/${logo.id}`, undefined); onChanged(); }
@@ -148,16 +162,12 @@ function AssetManageRow({ clubId, logo, onChanged }: { clubId: string; logo: Log
         {thumb}
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Asset name" style={{ ...inputStyle, padding: "5px 8px" }} />
-          <select value={kind} onChange={(e) => { setKind(e.target.value as AssetKind); }} style={{ ...inputStyle, padding: "5px 8px", cursor: "pointer" }}>
+          <select value={kind} onChange={(e) => { const k = e.target.value as AssetKind; setKind(k); setPos(k === "sponsor" ? "Front Center" : (ASSET_TYPES.find((t) => t.value === k)?.pos || "Left Chest")); }} style={{ ...inputStyle, padding: "5px 8px", cursor: "pointer" }}>
             {ASSET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
-          {kind === "sponsor" ? (
-            <select value={pos || "Front Center"} onChange={(e) => setPos(e.target.value)} style={{ ...inputStyle, padding: "5px 8px", cursor: "pointer" }}>
-              {SPONSOR_LADDER.map((s, i) => <option key={s} value={s}>{i + 1}. {s}</option>)}
-            </select>
-          ) : (
-            <input value={pos} onChange={(e) => setPos(e.target.value)} placeholder="Placement (e.g. Left Chest)" style={{ ...inputStyle, padding: "5px 8px" }} />
-          )}
+          <select value={pos} onChange={(e) => setPos(e.target.value)} style={{ ...inputStyle, padding: "5px 8px", cursor: "pointer" }}>
+            {placementOptions(kind).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={save} disabled={busy} style={{ ...btnPrimary, opacity: busy ? 0.5 : 1 }}>{busy ? "Saving…" : "Save"}</button>
             <button onClick={cancel} disabled={busy} style={btnGhost}>Cancel</button>
@@ -203,7 +213,7 @@ function ClubCard({ club }: { club: ClubWithLogos }) {
   const usedSponsorSlots = new Set(logos.filter((l) => l.kind === "sponsor").map((l) => l.defaultPosition).filter(Boolean));
   const nextSponsorSlot = SPONSOR_LADDER.find((s) => !usedSponsorSlots.has(s)) || "Front Center";
   const typeDefaultPos = ASSET_TYPES.find((t) => t.value === dropKind)?.pos || "Left Chest";
-  const effectivePos = dropKind === "sponsor" ? (dropPos || nextSponsorSlot) : typeDefaultPos;
+  const effectivePos = dropPos || (dropKind === "sponsor" ? nextSponsorSlot : typeDefaultPos);
 
   const addCanva = useMutation({
     mutationFn: async () => {
@@ -251,13 +261,9 @@ function ClubCard({ club }: { club: ClubWithLogos }) {
               <select value={dropKind} onChange={(e) => { setDropKind(e.target.value as AssetKind); setDropPos(""); }} style={{ ...inputStyle, flex: 1, cursor: "pointer" }}>
                 {ASSET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
-              {dropKind === "sponsor" ? (
-                <select value={effectivePos} onChange={(e) => setDropPos(e.target.value)} style={{ ...inputStyle, flex: 1, cursor: "pointer" }}>
-                  {SPONSOR_LADDER.map((s, i) => <option key={s} value={s}>{i + 1}. {s}</option>)}
-                </select>
-              ) : (
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", alignSelf: "center", whiteSpace: "nowrap" }}>→ {typeDefaultPos}</span>
-              )}
+              <select value={effectivePos} onChange={(e) => setDropPos(e.target.value)} style={{ ...inputStyle, flex: 1, cursor: "pointer" }}>
+                {placementOptions(dropKind).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
             </div>
             <LogoDropZone clubId={club.id} kind={dropKind} position={effectivePos} onDone={refresh} />
             <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", textAlign: "center", margin: "10px 0 8px" }}>— or paste a Canva URL —</div>
