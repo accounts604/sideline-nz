@@ -3070,42 +3070,42 @@ async function dispatchOrderToSuppliers(
     }
   }
 
-  // Step 2.6: auto-attach the club's primary logo to any order_item that
-  // doesn't already have one. Resolves the long-standing chore of hunting
-  // through Canva for the right club mark when raising a PO. Fail-soft —
-  // dispatch should still succeed even if the lookup or DB write fails.
+  // Step 2.6 (Sideline Studio Phase 4): auto-attach ALL the club's placeable
+  // marks (primary / secondary / sponsor) to each order_item, each at its OWN
+  // stored placement + application from the Brand Identity — not just the
+  // primary at a hardcoded Center Chest. Front/back DESIGNS are full-panel
+  // artwork (not point marks), so they're skipped here. Idempotent + fail-soft.
   if (order.clubAccountId) {
     try {
-      const primary = await storage.getPrimaryClubLogo(order.clubAccountId);
-      if (primary) {
+      const allLogos = await storage.listClubLogoAssets(order.clubAccountId);
+      const placeable = allLogos.filter((l) => ["primary", "secondary", "sponsor"].includes(l.kind));
+      if (placeable.length) {
         const { logoElementFromAsset, logoListHasAsset } = await import("../canva-logos.js");
-        const element = logoElementFromAsset(primary);
         let stamped = 0;
         for (const item of allItems) {
-          const existing = (item.elementUrls as any[] | null) ?? [];
-          if (logoListHasAsset(existing, primary)) continue;
-          const next = [...existing, element];
-          await db.update(orderItems).set({ elementUrls: next as any }).where(eq(orderItems.id, item.id));
-          // Mutate the local item too so the PDF render picks it up later in
-          // this same dispatch run.
-          (item as any).elementUrls = next;
-          stamped += 1;
+          let els = (item.elementUrls as any[] | null) ?? [];
+          let changed = false;
+          for (const asset of placeable) {
+            if (logoListHasAsset(els, asset)) continue;
+            els = [...els, logoElementFromAsset(asset, { defaultPosition: (asset as any).defaultPosition || undefined, defaultApplication: (asset as any).defaultApplication || undefined })];
+            changed = true;
+          }
+          if (changed) {
+            await db.update(orderItems).set({ elementUrls: els as any }).where(eq(orderItems.id, item.id));
+            (item as any).elementUrls = els; // local mutate so the PDF render picks it up
+            stamped += 1;
+          }
         }
         if (stamped > 0) {
           await storage.logOrderActivity({
             orderId: order.id,
             userId: opts.userId,
-            action: "logo_auto_attached",
-            details: {
-              clubLogoAssetId: primary.id,
-              canvaDesignId: primary.canvaDesignId,
-              canvaPageIndex: primary.canvaPageIndex,
-              itemsStamped: stamped,
-            },
+            action: "logos_auto_attached",
+            details: { logoCount: placeable.length, kinds: placeable.map((l) => l.kind), itemsStamped: stamped },
           } as any).catch(() => {});
         }
       } else {
-        console.warn(`[dispatch-po] Club ${order.clubAccountId} has no primary logo asset — PO ${order.poReference} dispatched without auto-attach`);
+        console.warn(`[dispatch-po] Club ${order.clubAccountId} has no placeable logo assets — PO ${order.poReference} dispatched without auto-attach`);
       }
     } catch (err) {
       console.error(`[dispatch-po] Logo auto-attach failed for ${order.poReference}:`, err);
