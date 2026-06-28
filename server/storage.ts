@@ -21,6 +21,8 @@ import {
   clubAccounts, supplierPrices,
   clubLogoAssets,
   type ClubLogoAsset, type InsertClubLogoAsset,
+  clubBrandIdentity,
+  type ClubBrandIdentity, type InsertClubBrandIdentity,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, desc, count, ilike } from "drizzle-orm";
@@ -52,6 +54,11 @@ export interface IStorage {
   updateClubLogoAsset(id: string, data: Partial<InsertClubLogoAsset>): Promise<ClubLogoAsset | undefined>;
   deleteClubLogoAsset(id: string): Promise<boolean>;
   listClubsMissingPrimaryLogo(): Promise<Array<{ id: string; clubName: string; shopifyOrderTag: string | null }>>;
+
+  // Club brand identity (Sideline Studio) — 1:1 brand header per club.
+  getClubBrandIdentity(clubAccountId: string): Promise<ClubBrandIdentity | undefined>;
+  ensureClubBrandIdentity(clubAccountId: string, seed?: Partial<InsertClubBrandIdentity>): Promise<ClubBrandIdentity>;
+  updateClubBrandIdentity(clubAccountId: string, data: Partial<InsertClubBrandIdentity>): Promise<ClubBrandIdentity | undefined>;
 
   // Carts
   getCart(id: string): Promise<Cart | undefined>;
@@ -252,6 +259,10 @@ export class DatabaseStorage implements IStorage {
 
   async createClubAccount(account: InsertClubAccount): Promise<ClubAccount> {
     const [created] = await db.insert(clubAccounts).values(account).returning();
+    // Sideline Studio: every club gets a Brand Identity header at creation, so
+    // its logos/colours/designs have one home from lead time. Idempotent +
+    // fail-soft — never block club creation on it.
+    await this.ensureClubBrandIdentity(created.id, { sourceChannel: "lead_intake" }).catch(() => {});
     return created;
   }
 
@@ -296,6 +307,30 @@ export class DatabaseStorage implements IStorage {
     }
     const [created] = await db.insert(clubLogoAssets).values(data).returning();
     return created;
+  }
+
+  // Club brand identity (Sideline Studio) — the 1:1 brand header per club.
+  async getClubBrandIdentity(clubAccountId: string): Promise<ClubBrandIdentity | undefined> {
+    const [row] = await db.select().from(clubBrandIdentity)
+      .where(eq(clubBrandIdentity.clubAccountId, clubAccountId)).limit(1);
+    return row;
+  }
+
+  // Idempotent on the unique club_account_id — safe to call at lead creation
+  // even if a record already exists.
+  async ensureClubBrandIdentity(clubAccountId: string, seed?: Partial<InsertClubBrandIdentity>): Promise<ClubBrandIdentity> {
+    const existing = await this.getClubBrandIdentity(clubAccountId);
+    if (existing) return existing;
+    const [row] = await db.insert(clubBrandIdentity)
+      .values({ clubAccountId, ...(seed || {}) } as any).returning();
+    return row;
+  }
+
+  async updateClubBrandIdentity(clubAccountId: string, data: Partial<InsertClubBrandIdentity>): Promise<ClubBrandIdentity | undefined> {
+    const [row] = await db.update(clubBrandIdentity)
+      .set({ ...data, updatedAt: new Date() } as any)
+      .where(eq(clubBrandIdentity.clubAccountId, clubAccountId)).returning();
+    return row;
   }
 
   async updateClubLogoAsset(id: string, data: Partial<InsertClubLogoAsset>): Promise<ClubLogoAsset | undefined> {
