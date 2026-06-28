@@ -4488,7 +4488,8 @@ const createLogoSchema = z.object({
   kind: z.enum(["primary", "secondary", "sponsor"]).default("primary"),
   displayLabel: z.string().max(200).nullable().optional(),
   previewUrl: z.string().url().nullable().optional(),
-}).refine((d) => d.canvaUrl || d.canvaDesignId, { message: "Provide canvaUrl or canvaDesignId" });
+  imageUrl: z.string().url().optional(), // direct file upload (drag-and-drop) — no Canva
+}).refine((d) => d.canvaUrl || d.canvaDesignId || d.imageUrl, { message: "Provide canvaUrl, canvaDesignId, or imageUrl" });
 
 const updateLogoSchema = z.object({
   kind: z.enum(["primary", "secondary", "sponsor"]).optional(),
@@ -4518,6 +4519,24 @@ router.post("/clubs/:id/logos", async (req, res) => {
 
     const { extractCanvaDesignId } = await import("../canva-logos.js");
     const designId = data.canvaDesignId ?? (data.canvaUrl ? extractCanvaDesignId(data.canvaUrl) : null);
+
+    // Direct file-upload path (drag-and-drop) — no Canva. The uploaded image is
+    // both the preview and the production artwork; a synthetic id satisfies the
+    // notNull canva_design_id column. This is the bottleneck-killer for support.
+    if (!designId && data.imageUrl) {
+      const created = await storage.createClubLogoAsset({
+        clubAccountId: req.params.id,
+        canvaDesignId: `upload:${Date.now()}`,
+        canvaPageIndex: null,
+        kind: data.kind,
+        displayLabel: data.displayLabel ?? `${club.clubName} — ${data.kind}`,
+        previewUrl: data.imageUrl,
+        artworkFileUrl: data.imageUrl,
+        lastSyncedAt: null,
+      } as any);
+      return res.json({ ok: true, logo: created });
+    }
+
     if (!designId) {
       return res.status(400).json({ error: "Could not extract Canva design ID from URL" });
     }
