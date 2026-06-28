@@ -317,6 +317,47 @@ function ClubCard({ club }: { club: ClubWithLogos }) {
   );
 }
 
+interface PoStatus { id: string; poReference: string; accountName: string; status: string | null; clubAccountId: string | null; itemCount: number; logos: number; sized: number; fabric: number; branding: number; needs: string[]; complete: boolean; }
+
+function Chip({ have, total, label }: { have: number; total: number; label: string }) {
+  const ok = total > 0 && have >= total;
+  return <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, whiteSpace: "nowrap", background: ok ? "rgba(134,239,172,0.12)" : "rgba(252,165,165,0.12)", color: ok ? "#86efac" : "#fca5a5", border: `1px solid ${ok ? "rgba(134,239,172,0.3)" : "rgba(252,165,165,0.3)"}` }}>{label} {have}/{total}</span>;
+}
+
+// Bulk worklist — every live PO (club or standalone) + what it still needs.
+function LivePoWorklist() {
+  const { data } = useQuery<{ ok: boolean; pos: PoStatus[] }>({ queryKey: ["/api/admin/orders/populate-status"] });
+  const [onlyGaps, setOnlyGaps] = useState(true);
+  const pos = data?.pos || [];
+  const needCount = pos.filter((p) => !p.complete).length;
+  const shown = onlyGaps ? pos.filter((p) => !p.complete) : pos;
+  return (
+    <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: 16, marginBottom: 24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>Live POs to populate <span style={{ color: "rgba(255,255,255,0.4)", fontWeight: 400 }}>· {needCount} of {pos.length} need work</span></div>
+        <button onClick={() => setOnlyGaps((s) => !s)} style={onlyGaps ? btnPrimary : btnGhost}>{onlyGaps ? "Needs work" : "Show all"}</button>
+      </div>
+      {shown.map((p) => (
+        <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid rgba(255,255,255,0.05)", fontSize: 12 }}>
+          <a href={`/admin/orders/${p.id}`} style={{ color: "#93c5fd", fontWeight: 600, width: 112, flexShrink: 0 }}>{p.poReference}</a>
+          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {p.accountName}{!p.clubAccountId && <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 10 }}> · standalone</span>}
+          </span>
+          {p.complete ? <span style={{ color: "#86efac", fontSize: 11 }}>✓ complete</span> : (
+            <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+              <Chip have={p.logos} total={p.itemCount} label="logos" />
+              <Chip have={p.sized} total={p.itemCount} label="sizes" />
+              <Chip have={p.fabric} total={p.itemCount} label="fabric" />
+              <Chip have={p.branding} total={p.itemCount} label="brand" />
+            </div>
+          )}
+        </div>
+      ))}
+      {shown.length === 0 && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", paddingTop: 8 }}>All live POs are fully populated. 🎉</div>}
+    </div>
+  );
+}
+
 export default function AdminClubLogos() {
   const { data, isLoading } = useQuery<{ ok: boolean; clubs: ClubWithLogos[] }>({ queryKey: [OVERVIEW_KEY] });
   const [filter, setFilter] = useState<"all" | "missing">("all");
@@ -341,6 +382,8 @@ export default function AdminClubLogos() {
             <button onClick={() => setFilter("missing")} style={filter === "missing" ? btnPrimary : btnGhost}>Missing only</button>
           </div>
         </div>
+
+        <LivePoWorklist />
 
         {isLoading && <p style={{ color: "rgba(255,255,255,0.5)" }}>Loading…</p>}
 
