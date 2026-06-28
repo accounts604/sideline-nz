@@ -298,7 +298,15 @@ router.get("/orders/:id", async (req, res) => {
   try {
     const result = await storage.getOrderWithDetails(req.params.id);
     if (!result) return res.status(404).json({ error: "Order not found" });
-    res.json(result);
+    // Brand colours — resolved READ-THROUGH from this PO's club brand identity
+    // (set once on the Brand Identity page, flows to every PO, no copy/drift).
+    const _R = (r: any) => (r && r.rows) ? r.rows : (Array.isArray(r) ? r : []);
+    const ord = _R(await db.execute(sql`SELECT club_account_id FROM orders WHERE id=${req.params.id}`))[0];
+    let brandColors: any = null;
+    if (ord?.club_account_id) {
+      brandColors = _R(await db.execute(sql`SELECT colors FROM club_brand_identity WHERE club_account_id=${ord.club_account_id}`))[0]?.colors || null;
+    }
+    res.json({ ...result, brandColors });
   } catch (err) {
     console.error("Admin order detail error:", err);
     res.status(500).json({ error: "Failed to load order" });
