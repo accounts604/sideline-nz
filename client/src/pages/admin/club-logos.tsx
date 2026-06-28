@@ -324,8 +324,32 @@ function Chip({ have, total, label }: { have: number; total: number; label: stri
   return <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, whiteSpace: "nowrap", background: ok ? "rgba(134,239,172,0.12)" : "rgba(252,165,165,0.12)", color: ok ? "#86efac" : "#fca5a5", border: `1px solid ${ok ? "rgba(134,239,172,0.3)" : "rgba(252,165,165,0.3)"}` }}>{label} {have}/{total}</span>;
 }
 
+// Per-PO quick logo upload — attaches straight to the order's items (any PO).
+function PoLogoUpload({ orderId, onDone }: { orderId: string; onDone: () => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  async function handle(file: File) {
+    setBusy(true);
+    try {
+      const dataBase64 = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1] || ""); r.onerror = () => rej(new Error("x")); r.readAsDataURL(file); });
+      const up = await apiRequest("POST", "/api/uploads/blob", { filename: file.name, contentType: file.type, dataBase64 });
+      const { url } = await up.json();
+      await apiRequest("POST", `/api/admin/orders/${orderId}/attach-logo`, { imageUrl: url });
+      onDone();
+    } catch { /* surfaced by absence of change */ } finally { setBusy(false); }
+  }
+  return (
+    <>
+      <button onClick={() => ref.current?.click()} disabled={busy} style={{ ...btnGhost, fontSize: 10, padding: "3px 8px", flexShrink: 0 }}>{busy ? "…" : "+ logo"}</button>
+      <input ref={ref} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handle(f); e.currentTarget.value = ""; }} />
+    </>
+  );
+}
+
 // Bulk worklist — every live PO (club or standalone) + what it still needs.
 function LivePoWorklist() {
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: ["/api/admin/orders/populate-status"] });
   const { data } = useQuery<{ ok: boolean; pos: PoStatus[] }>({ queryKey: ["/api/admin/orders/populate-status"] });
   const [onlyGaps, setOnlyGaps] = useState(true);
   const pos = data?.pos || [];
@@ -344,11 +368,12 @@ function LivePoWorklist() {
             {p.accountName}{!p.clubAccountId && <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 10 }}> · standalone</span>}
           </span>
           {p.complete ? <span style={{ color: "#86efac", fontSize: 11 }}>✓ complete</span> : (
-            <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+            <div style={{ display: "flex", gap: 5, flexShrink: 0, alignItems: "center" }}>
               <Chip have={p.logos} total={p.itemCount} label="logos" />
               <Chip have={p.sized} total={p.itemCount} label="sizes" />
               <Chip have={p.fabric} total={p.itemCount} label="fabric" />
               <Chip have={p.branding} total={p.itemCount} label="brand" />
+              {p.logos < p.itemCount && <PoLogoUpload orderId={p.id} onDone={refresh} />}
             </div>
           )}
         </div>
