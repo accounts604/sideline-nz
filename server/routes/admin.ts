@@ -4635,8 +4635,69 @@ router.get("/clubs/logos-overview", async (_req, res) => {
       arr.push(l);
       byClub.set(l.clubAccountId, arr);
     }
-    const out = clubs.map((c) => ({ ...c, logos: byClub.get(c.id) || [] }));
+    // Each club's current PO = its latest order. One select, latest-per-club in memory.
+    const allOrders = await db
+      .select({ id: orders.id, poReference: orders.poReference, status: orders.status, clubAccountId: orders.clubAccountId, createdAt: orders.createdAt })
+      .from(orders);
+    const latestByClub = new Map<string, any>();
+    for (const o of allOrders) {
+      if (!o.clubAccountId) continue;
+      const prev = latestByClub.get(o.clubAccountId);
+      if (!prev || (o.createdAt && prev.createdAt && o.createdAt > prev.createdAt)) latestByClub.set(o.clubAccountId, o);
+    }
+    const out = clubs.map((c) => {
+      const po = latestByClub.get(c.id);
+      return { ...c, logos: byClub.get(c.id) || [], currentPo: po ? { id: po.id, poReference: po.poReference, status: po.status } : null };
+    });
     res.json({ ok: true, clubs: out });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// POST /api/admin/clubs/:id/apply-logos-to-current-po — push the club's logos
+// onto its current (latest) PO's garment items: the primary logo at its
+// placement + the Sideline maker's mark. Idempotent + additive — never emails or
+// re-dispatches, just makes the live order carry the uploaded logos.
+router.post("/clubs/:id/apply-logos-to-current-po", async (req, res) => {
+  try {
+    const clubId = req.params.id;
+    const order = await storage.getClubOrder(clubId);
+    if (!order) return res.status(404).json({ error: "No PO found for this club yet" });
+    const primary = await storage.getPrimaryClubLogo(clubId);
+    if (!primary || !primary.previewUrl) return res.status(400).json({ error: "No primary logo on file — upload one first" });
+
+    const items = await storage.getOrderItems(order.id);
+    const SIDELINE_LOGO_URL = "https://quote.sidelinenz.com/sideline-assets/sideline-logo.png";
+    const markPosition = (pt?: string | null): string | null => {
+      const t = (pt || "").toLowerCase();
+      if (/(^|-)(ball|cones?|backpack|bag|towel|bottle|socks?)$/.test(t)) return null;
+      if (/cap|bucket/.test(t)) return "Center Back";
+      if (/beanie/.test(t)) return "Front Pocket";
+      if (/scarf/.test(t)) return "Bottom";
+      if (/short|pant|trouser|skort|skirt|spank|brief/.test(t)) return "Bottom";
+      return "Right Chest";
+    };
+
+    let updated = 0;
+    for (const item of items) {
+      const existing = ((item as any).elementUrls as any[] | null) ?? [];
+      const next = [...existing];
+      let changed = false;
+      const hasClub = next.some((e) => e?.url && !String(e?.name || "").toLowerCase().includes("sideline"));
+      if (!hasClub) {
+        next.push({ name: primary.displayLabel || "Club Logo", url: primary.previewUrl, position: (primary as any).defaultPosition || "Left Chest", application: (primary as any).defaultApplication || "Embroidery" });
+        changed = true;
+      }
+      const pos = markPosition((item as any).productType);
+      if (pos && !next.some((e) => String(e?.name || "").toLowerCase().includes("sideline"))) {
+        next.push({ name: "Sideline", url: SIDELINE_LOGO_URL, position: pos, application: (item as any).brandingMethod || "Embroidery", sizeMm: 60, note: "Sideline maker's mark (auto)" });
+        changed = true;
+      }
+      if (changed) { await db.update(orderItems).set({ elementUrls: next as any }).where(eq(orderItems.id, item.id)); updated += 1; }
+    }
+    await storage.logOrderActivity({ orderId: order.id, action: "logos_applied_from_club", details: { itemsUpdated: updated, primaryLogoAssetId: primary.id } } as any).catch(() => {});
+    res.json({ ok: true, poReference: order.poReference, orderId: order.id, itemsUpdated: updated });
   } catch (err: any) {
     res.status(500).json({ error: String(err?.message || err) });
   }

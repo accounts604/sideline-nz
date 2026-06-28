@@ -24,6 +24,7 @@ interface ClubWithLogos {
   clubName: string;
   shopifyOrderTag: string | null;
   logos: LogoRow[];
+  currentPo: { id: string; poReference: string | null; status: string | null } | null;
 }
 
 // The five asset types + their default garment placement (Romero's taxonomy).
@@ -206,9 +207,22 @@ function ClubCard({ club }: { club: ClubWithLogos }) {
   const [canvaUrl, setCanvaUrl] = useState("");
   const [pageIndex, setPageIndex] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [applyMsg, setApplyMsg] = useState<string | null>(null);
 
   const logos = club.logos;
   const hasPrimary = logos.some((l) => l.kind === "primary");
+
+  async function applyLogos() {
+    setApplying(true); setApplyMsg(null);
+    try {
+      const r = await apiRequest("POST", `/api/admin/clubs/${club.id}/apply-logos-to-current-po`, {});
+      const j = await r.json();
+      setApplyMsg(`✓ applied to ${j.itemsUpdated} item${j.itemsUpdated === 1 ? "" : "s"} on ${j.poReference || "the PO"}`);
+    } catch (e: any) {
+      setApplyMsg(e?.message || "Apply failed");
+    } finally { setApplying(false); }
+  }
 
   const usedSponsorSlots = new Set(logos.filter((l) => l.kind === "sponsor").map((l) => l.defaultPosition).filter(Boolean));
   const nextSponsorSlot = SPONSOR_LADDER.find((s) => !usedSponsorSlots.has(s)) || "Front Center";
@@ -251,6 +265,23 @@ function ClubCard({ club }: { club: ClubWithLogos }) {
           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>No assets yet — drop the primary logo to start.</div>
         </div>
       )}
+
+      {/* Current PO link + apply logos to it */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 14, fontSize: 12 }}>
+        {club.currentPo ? (
+          <>
+            <span style={{ color: "rgba(255,255,255,0.5)" }}>Current PO:</span>
+            <a href={`/admin/orders/${club.currentPo.id}`} style={{ color: "#93c5fd", fontWeight: 600 }}>{club.currentPo.poReference || "(draft order)"}</a>
+            {club.currentPo.status && <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 11 }}>· {club.currentPo.status}</span>}
+            <button onClick={applyLogos} disabled={applying || !hasPrimary} title={!hasPrimary ? "Upload a primary logo first" : ""} style={{ ...btnGhost, opacity: (applying || !hasPrimary) ? 0.5 : 1 }}>
+              {applying ? "Applying…" : "Apply logos to PO"}
+            </button>
+            {applyMsg && <span style={{ color: applyMsg.startsWith("✓") ? "#86efac" : "#fca5a5", fontSize: 11 }}>{applyMsg}</span>}
+          </>
+        ) : (
+          <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 11 }}>No PO yet for this club.</span>
+        )}
+      </div>
 
       {expanded && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
