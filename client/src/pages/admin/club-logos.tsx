@@ -40,12 +40,18 @@ interface BrandAsset {
   defaultPosition: string | null;
   clubAccountId: string | null;
 }
-interface BrandTeam {
-  name: string;
-  type: "account" | "order";
-  poRef: string | null;
-  poId: string | null;
+interface BrandOrder {
+  poRef: string;
+  poId: string;
   status: string | null;
+  name: string;
+}
+interface BrandTeam {
+  id: string;
+  name: string;
+  notes: string | null;
+  secondaryLogoUrl: string | null;
+  orders: BrandOrder[];
 }
 interface BrandClub {
   id: string;
@@ -421,8 +427,9 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
   const [dropKind, setDropKind] = useState<AssetKind>("primary");
   const [dropPos, setDropPos] = useState("");
 
-  // The account that "is" the club (identity-holder) isn't a distinct sub-team.
-  const teams = club.teams.filter((t) => !(t.type === "account" && t.name === club.name));
+  // Teams are real three-level entities now — render them all.
+  const teams = club.teams;
+  const teamCount = club.teams.length;
   const typeDefaultPos = ASSET_TYPES.find((t) => t.value === dropKind)?.pos || "Left Chest";
   const effectivePos = dropPos || (dropKind === "sponsor" ? "Front Center" : typeDefaultPos);
 
@@ -446,7 +453,7 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
             ? <img src={club.primaryLogoUrl} alt="" style={{ width: 26, height: 26, borderRadius: 4, objectFit: "contain", background: "#000", flexShrink: 0 }} />
             : <div style={{ width: 26, height: 26, borderRadius: 4, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>{club.kind === "school" ? "🏫" : "🛡️"}</div>}
           <span style={{ fontWeight: 700, fontSize: 15, color: "#fcd34d", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{club.name}</span>
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", flexShrink: 0 }}>{club.kind} · {teams.length} team{teams.length === 1 ? "" : "s"}</span>
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", flexShrink: 0 }}>{club.kind} · {teamCount} team{teamCount === 1 ? "" : "s"}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
           {club.primaryLogoUrl
@@ -501,22 +508,33 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
           ? <ColoursPillar clubId={club.accountId} initial={club.colors} onSaved={refresh} />
           : <div><div style={pillarLabelStyle}>Colours</div><div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No colours target</div></div>}
 
-        {/* TEAMS pillar */}
+        {/* TEAMS pillar — Team ▸ Orders nesting */}
         <div>
           <div style={pillarLabelStyle}>Teams</div>
           {teams.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {teams.map((t, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
-                  <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 3, background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.12)", flexShrink: 0 }}>{t.type === "order" ? "order" : "team"}</span>
-                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
-                  {t.poRef && <a href={`/admin/orders/${t.poId}`} style={{ color: "#93c5fd", fontSize: 11, flexShrink: 0 }}>{t.poRef}</a>}
-                  {t.poRef && t.status && <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 10, flexShrink: 0 }}>{t.status}</span>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {teams.map((t) => (
+                <div key={t.id}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.92)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                  {t.notes && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 1 }}>{t.notes}</div>}
+                  <div style={{ marginTop: 4, marginLeft: 8, paddingLeft: 10, borderLeft: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: 3 }}>
+                    {t.orders.length > 0 ? (
+                      t.orders.map((o) => (
+                        <div key={o.poId} style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 11 }}>
+                          <a href={`/admin/orders/${o.poId}`} style={{ color: "#93c5fd", flexShrink: 0 }}>{o.poRef}</a>
+                          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "rgba(255,255,255,0.45)" }}>{o.name}</span>
+                          {o.status && <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 10, flexShrink: 0 }}>{o.status}</span>}
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>no orders yet</div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No sub-teams yet.</div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No teams yet</div>
           )}
         </div>
       </div>
