@@ -568,9 +568,29 @@ export const insertShipmentEventSchema = createInsertSchema(shipmentEvents).omit
 export type InsertShipmentEvent = z.infer<typeof insertShipmentEventSchema>;
 export type ShipmentEvent = typeof shipmentEvents.$inferSelect;
 
-// Club Portal Accounts — separate login system for clubs who paid $297
+// clubs — the real CLUB or SCHOOL (e.g. "Richmond Rovers", "Aorere College").
+// Owns the SHARED primary logo + colours. club_accounts are the TEAMS under a
+// club (Senior As, Under 16s, Girls Premier Netball) — they link via clubId, a
+// team inherits the club primary and adds its own secondary. There is ALWAYS a
+// club/school then a team. See reference_sideline_clubs_vs_teams + clubs-teams.sql.
+export const clubs = pgTable("clubs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),         // "Richmond Rovers" | "Aorere College"
+  kind: text("kind").notNull().default("club"),  // "club" | "school"
+  primaryLogoUrl: text("primary_logo_url"),       // the shared crest, applied to every team's PO
+  primaryLogoLabel: text("primary_logo_label"),
+  colors: jsonb("colors"),                        // shared club colours
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertClubSchema = createInsertSchema(clubs).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertClub = z.infer<typeof insertClubSchema>;
+export type Club = typeof clubs.$inferSelect;
+
+// Club Portal Accounts — a TEAM (links to its club via clubId). Separate login.
 export const clubAccounts = pgTable("club_accounts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clubId: varchar("club_id").references(() => clubs.id), // parent club/school
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   clubName: text("club_name").notNull(),
