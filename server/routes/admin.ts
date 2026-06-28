@@ -4698,6 +4698,47 @@ router.get("/clubs/logos-overview", async (_req, res) => {
   }
 });
 
+// GET /api/admin/clubs/brand-identity — the CLUB-CENTRIC view: one entry per club/
+// school, each with its resolved brand identity (logos + designs aggregated from
+// its team accounts, colours) AND its teams nested (account-teams + standalone
+// order-teams) with PO links. This is the single coherent hierarchy the Brand
+// Identity page renders — no parallel structure/cards. `accountId` is the
+// representative team-account that uploads + colours save to.
+router.get("/clubs/brand-identity", async (_req, res) => {
+  try {
+    const R = (r: any) => (r && r.rows) ? r.rows : (Array.isArray(r) ? r : []);
+    const mapAsset = (s: any) => ({ id: s.id, kind: s.kind, displayLabel: s.display_label, previewUrl: s.preview_url, defaultPosition: s.default_position, clubAccountId: s.club_account_id });
+    const LOGO_KINDS = ["primary", "secondary", "sponsor"]; const DESIGN_KINDS = ["front-design", "back-design"];
+    const clubsRows = R(await db.execute(sql`SELECT id, name, kind, primary_logo_url FROM clubs ORDER BY name`));
+    const accts = R(await db.execute(sql`SELECT id, club_name, club_id FROM club_accounts WHERE club_id IS NOT NULL`));
+    const assets = R(await db.execute(sql`SELECT id, club_account_id, kind, display_label, preview_url, default_position FROM club_logo_assets`));
+    const colorRows = R(await db.execute(sql`SELECT club_account_id, colors FROM club_brand_identity`));
+    const ords = R(await db.execute(sql`SELECT id, account_name, po_reference, status, club_id, club_account_id, created_at FROM orders WHERE po_reference IS NOT NULL`));
+    const acctsByClub = new Map<string, any[]>(); for (const a of accts) { const x = acctsByClub.get(a.club_id) || []; x.push(a); acctsByClub.set(a.club_id, x); }
+    const assetsByAcct = new Map<string, any[]>(); for (const s of assets) { const x = assetsByAcct.get(s.club_account_id) || []; x.push(s); assetsByAcct.set(s.club_account_id, x); }
+    const colorsByAcct = new Map<string, any>(colorRows.map((r: any) => [r.club_account_id, r.colors]));
+    const latestByAcct = new Map<string, any>(); for (const o of ords) { if (!o.club_account_id) continue; const p = latestByAcct.get(o.club_account_id); if (!p || (o.created_at > p.created_at)) latestByAcct.set(o.club_account_id, o); }
+    const ordTeamsByClub = new Map<string, any[]>(); for (const o of ords) { if (o.club_id && !o.club_account_id) { const x = ordTeamsByClub.get(o.club_id) || []; x.push(o); ordTeamsByClub.set(o.club_id, x); } }
+    const out = clubsRows.map((c: any) => {
+      const cAccts = acctsByClub.get(c.id) || [];
+      const rep = cAccts.find((a: any) => a.club_name === c.name) || cAccts[0] || null;
+      const allAssets = cAccts.flatMap((a: any) => assetsByAcct.get(a.id) || []);
+      const logos = allAssets.filter((s: any) => LOGO_KINDS.includes(s.kind)).map(mapAsset);
+      const designs = allAssets.filter((s: any) => DESIGN_KINDS.includes(s.kind)).map(mapAsset);
+      const colors = rep ? (colorsByAcct.get(rep.id) || null) : null;
+      const primaryLogoUrl = (logos.find((l: any) => l.kind === "primary")?.previewUrl) || c.primary_logo_url || null;
+      const teams = [
+        ...cAccts.map((a: any) => { const po = latestByAcct.get(a.id); return { name: a.club_name, type: "account", poRef: po?.po_reference || null, poId: po?.id || null, status: po?.status || null }; }),
+        ...(ordTeamsByClub.get(c.id) || []).map((o: any) => ({ name: o.account_name, type: "order", poRef: o.po_reference, poId: o.id, status: o.status })),
+      ];
+      return { id: c.id, name: c.name, kind: c.kind, accountId: rep?.id || null, primaryLogoUrl, colors, logos, designs, teams };
+    });
+    res.json({ ok: true, clubs: out });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 // PUT /api/admin/clubs/:id/colours — save the COLOURS pillar (primary/secondary/
 // accent hex) to the club's brand identity. Single source of truth that flows
 // into the club's POs.

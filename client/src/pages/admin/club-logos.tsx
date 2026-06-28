@@ -30,6 +30,37 @@ interface ClubWithLogos {
   currentPo: { id: string; poReference: string | null; status: string | null } | null;
 }
 
+// Brand-identity endpoint — one club/school per entry, its three pillars (logos,
+// designs, colours) + its teams nested inside. The single coherent hierarchy.
+interface BrandAsset {
+  id: string;
+  kind: AssetKind;
+  displayLabel: string | null;
+  previewUrl: string | null;
+  defaultPosition: string | null;
+  clubAccountId: string | null;
+}
+interface BrandTeam {
+  name: string;
+  type: "account" | "order";
+  poRef: string | null;
+  poId: string | null;
+  status: string | null;
+}
+interface BrandClub {
+  id: string;
+  name: string;
+  kind: "club" | "school";
+  accountId: string | null;
+  primaryLogoUrl: string | null;
+  colors: ClubColors | null;
+  logos: BrandAsset[];
+  designs: BrandAsset[];
+  teams: BrandTeam[];
+}
+
+const BRAND_KEY = "/api/admin/clubs/brand-identity";
+
 // The five asset types + their default garment placement (Romero's taxonomy).
 const ASSET_TYPES: { value: AssetKind; label: string; pos: string }[] = [
   { value: "primary", label: "Primary Logo", pos: "Left Chest" },
@@ -379,6 +410,119 @@ function ClubCard({ club }: { club: ClubWithLogos }) {
   );
 }
 
+// One coherent card per club/school: its brand identity across the three pillars
+// (Logos, Designs, Colours) with its teams nested inside. Replaces the old split
+// between the Structure panel and the per-club asset cards.
+function ClubBrandCard({ club }: { club: BrandClub }) {
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: [BRAND_KEY] });
+  const [expanded, setExpanded] = useState(false);
+  const [dropKind, setDropKind] = useState<AssetKind>("primary");
+  const [dropPos, setDropPos] = useState("");
+
+  // The account that "is" the club (identity-holder) isn't a distinct sub-team.
+  const teams = club.teams.filter((t) => !(t.type === "account" && t.name === club.name));
+  const typeDefaultPos = ASSET_TYPES.find((t) => t.value === dropKind)?.pos || "Left Chest";
+  const effectivePos = dropPos || (dropKind === "sponsor" ? "Front Center" : typeDefaultPos);
+
+  // AssetTile expects a LogoRow; brand-identity assets lack the Canva/sync fields.
+  const asLogoRow = (a: BrandAsset): LogoRow => ({ ...a, canvaDesignId: "", canvaPageIndex: null, lastSyncedAt: null } as any);
+
+  return (
+    <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: 16 }}>
+      {/* HEADER */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          {club.primaryLogoUrl
+            ? <img src={club.primaryLogoUrl} alt="" style={{ width: 36, height: 36, borderRadius: 5, objectFit: "contain", background: "#000", flexShrink: 0 }} />
+            : <div style={{ width: 36, height: 36, borderRadius: 5, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{club.kind === "school" ? "🏫" : "🛡️"}</div>}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: "#fcd34d", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{club.name}</div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{club.kind} · {teams.length} team{teams.length === 1 ? "" : "s"}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          {club.primaryLogoUrl
+            ? <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(134,239,172,0.12)", color: "#86efac", border: "1px solid rgba(134,239,172,0.3)", whiteSpace: "nowrap" }}>primary ✓</span>
+            : <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(252,165,165,0.12)", color: "#fca5a5", border: "1px solid rgba(252,165,165,0.3)", whiteSpace: "nowrap" }}>no primary</span>}
+          {club.accountId && <button onClick={() => setExpanded((s) => !s)} style={btnGhost}>{expanded ? "Close" : "Manage"}</button>}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 16 }}>
+        {/* LOGOS pillar */}
+        <div>
+          <div style={pillarLabelStyle}>Logos</div>
+          {club.logos.length > 0 ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+              {club.logos.map((a) => <AssetTile key={a.id} logo={asLogoRow(a)} />)}
+            </div>
+          ) : club.accountId ? (
+            <div style={{ maxWidth: 320 }}>
+              <LogoDropZone clubId={club.accountId} compact onDone={refresh} />
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>Drop the primary logo to start.</div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No logos yet</div>
+          )}
+        </div>
+
+        {/* DESIGNS pillar */}
+        <div>
+          <div style={pillarLabelStyle}>Designs</div>
+          {club.designs.length > 0 ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+              {club.designs.map((a) => <AssetTile key={a.id} logo={asLogoRow(a)} />)}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No designs yet</div>
+          )}
+        </div>
+
+        {/* COLOURS pillar */}
+        {club.accountId
+          ? <ColoursPillar clubId={club.accountId} initial={club.colors} onSaved={refresh} />
+          : <div><div style={pillarLabelStyle}>Colours</div><div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No colours target</div></div>}
+
+        {/* TEAMS pillar */}
+        <div>
+          <div style={pillarLabelStyle}>Teams</div>
+          {teams.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {teams.map((t, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
+                  <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 3, background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.12)", flexShrink: 0 }}>{t.type === "order" ? "order" : "team"}</span>
+                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
+                  {t.poRef && <a href={`/admin/orders/${t.poId}`} style={{ color: "#93c5fd", fontSize: 11, flexShrink: 0 }}>{t.poRef}</a>}
+                  {t.poRef && t.status && <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 10, flexShrink: 0 }}>{t.status}</span>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No sub-teams yet.</div>
+          )}
+        </div>
+      </div>
+
+      {/* Add asset (Manage) */}
+      {expanded && club.accountId && (
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", maxWidth: 360 }}>
+          <div style={labelStyle}>Add an asset</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <select value={dropKind} onChange={(e) => { setDropKind(e.target.value as AssetKind); setDropPos(""); }} style={{ ...inputStyle, flex: 1, cursor: "pointer" }}>
+              {ASSET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            <select value={effectivePos} onChange={(e) => setDropPos(e.target.value)} style={{ ...inputStyle, flex: 1, cursor: "pointer" }}>
+              {placementOptions(dropKind).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <LogoDropZone clubId={club.accountId} kind={dropKind} position={effectivePos} onDone={refresh} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface PoStatus { id: string; poReference: string; accountName: string; clubName: string | null; status: string | null; clubAccountId: string | null; itemCount: number; logos: number; sized: number; fabric: number; branding: number; mockups: number; needs: string[]; complete: boolean; }
 
 // Per-PO mockup upload — drops a front/back mockup image onto the PO.
@@ -528,12 +672,12 @@ function ClubsPanel() {
 }
 
 export default function AdminClubLogos() {
-  const { data, isLoading } = useQuery<{ ok: boolean; clubs: ClubWithLogos[] }>({ queryKey: [OVERVIEW_KEY] });
+  const { data, isLoading } = useQuery<{ ok: boolean; clubs: BrandClub[] }>({ queryKey: [BRAND_KEY] });
   const [filter, setFilter] = useState<"all" | "missing">("all");
 
-  const clubs = (data?.clubs || []).slice().sort((a, b) => a.clubName.localeCompare(b.clubName));
-  const missingCount = clubs.filter((c) => !c.logos.some((l) => l.kind === "primary")).length;
-  const visible = filter === "missing" ? clubs.filter((c) => !c.logos.some((l) => l.kind === "primary")) : clubs;
+  const clubs = (data?.clubs || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  const missingCount = clubs.filter((c) => !c.primaryLogoUrl).length;
+  const visible = filter === "missing" ? clubs.filter((c) => !c.primaryLogoUrl) : clubs;
 
   return (
     <AdminLayout>
@@ -552,14 +696,12 @@ export default function AdminClubLogos() {
           </div>
         </div>
 
-        <ClubsPanel />
-
         <LivePoWorklist />
 
         {isLoading && <p style={{ color: "rgba(255,255,255,0.5)" }}>Loading…</p>}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
-          {visible.map((c) => <ClubCard key={c.id} club={c} />)}
+          {visible.map((c) => <ClubBrandCard key={c.id} club={c} />)}
         </div>
       </div>
     </AdminLayout>
