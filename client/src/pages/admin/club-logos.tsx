@@ -317,7 +317,7 @@ function ClubCard({ club }: { club: ClubWithLogos }) {
   );
 }
 
-interface PoStatus { id: string; poReference: string; accountName: string; status: string | null; clubAccountId: string | null; itemCount: number; logos: number; sized: number; fabric: number; branding: number; mockups: number; needs: string[]; complete: boolean; }
+interface PoStatus { id: string; poReference: string; accountName: string; clubName: string | null; status: string | null; clubAccountId: string | null; itemCount: number; logos: number; sized: number; fabric: number; branding: number; mockups: number; needs: string[]; complete: boolean; }
 
 // Per-PO mockup upload — drops a front/back mockup image onto the PO.
 function PoMockupUpload({ orderId, onDone }: { orderId: string; onDone: () => void }) {
@@ -383,25 +383,36 @@ function LivePoWorklist() {
         <div style={{ fontSize: 13, fontWeight: 700 }}>Live POs to populate <span style={{ color: "rgba(255,255,255,0.4)", fontWeight: 400 }}>· {needCount} of {pos.length} need work</span></div>
         <button onClick={() => setOnlyGaps((s) => !s)} style={onlyGaps ? btnPrimary : btnGhost}>{onlyGaps ? "Needs work" : "Show all"}</button>
       </div>
-      {shown.map((p) => (
-        <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid rgba(255,255,255,0.05)", fontSize: 12 }}>
-          <a href={`/admin/orders/${p.id}`} style={{ color: "#93c5fd", fontWeight: 600, width: 112, flexShrink: 0 }}>{p.poReference}</a>
-          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {p.accountName}{!p.clubAccountId && <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 10 }}> · standalone</span>}
-          </span>
-          <div style={{ display: "flex", gap: 5, flexShrink: 0, alignItems: "center" }}>
-            {p.complete ? <span style={{ color: "#86efac", fontSize: 11 }}>✓ data</span> : (<>
-              <Chip have={p.logos} total={p.itemCount} label="logos" />
-              <Chip have={p.sized} total={p.itemCount} label="sizes" />
-              <Chip have={p.fabric} total={p.itemCount} label="fabric" />
-              <Chip have={p.branding} total={p.itemCount} label="brand" />
-            </>)}
-            <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, whiteSpace: "nowrap", background: p.mockups >= 2 ? "rgba(134,239,172,0.12)" : "rgba(252,165,165,0.12)", color: p.mockups >= 2 ? "#86efac" : "#fca5a5", border: `1px solid ${p.mockups >= 2 ? "rgba(134,239,172,0.3)" : "rgba(252,165,165,0.3)"}` }}>mock {p.mockups}</span>
-            {p.logos < p.itemCount && <PoLogoUpload orderId={p.id} onDone={refresh} />}
-            <PoMockupUpload orderId={p.id} onDone={refresh} />
+      {(() => {
+        const groups: Record<string, PoStatus[]> = {};
+        for (const p of shown) { const k = p.clubName || "— No club yet (standalone) —"; (groups[k] = groups[k] || []).push(p); }
+        // Real clubs first (alpha), the "no club yet" bucket last.
+        const keys = Object.keys(groups).sort((a, b) => ((a.startsWith("—") ? 1 : 0) - (b.startsWith("—") ? 1 : 0)) || a.localeCompare(b));
+        return keys.map((club) => (
+          <div key={club}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: club.startsWith("—") ? "rgba(255,255,255,0.35)" : "#fcd34d", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 12, marginBottom: 2 }}>
+              {club} <span style={{ color: "rgba(255,255,255,0.3)", fontWeight: 400 }}>· {groups[club].length}</span>
+            </div>
+            {groups[club].map((p) => (
+              <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid rgba(255,255,255,0.05)", fontSize: 12 }}>
+                <a href={`/admin/orders/${p.id}`} style={{ color: "#93c5fd", fontWeight: 600, width: 112, flexShrink: 0 }}>{p.poReference}</a>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.accountName}</span>
+                <div style={{ display: "flex", gap: 5, flexShrink: 0, alignItems: "center" }}>
+                  {p.complete ? <span style={{ color: "#86efac", fontSize: 11 }}>✓ data</span> : (<>
+                    <Chip have={p.logos} total={p.itemCount} label="logos" />
+                    <Chip have={p.sized} total={p.itemCount} label="sizes" />
+                    <Chip have={p.fabric} total={p.itemCount} label="fabric" />
+                    <Chip have={p.branding} total={p.itemCount} label="brand" />
+                  </>)}
+                  <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, whiteSpace: "nowrap", background: p.mockups >= 2 ? "rgba(134,239,172,0.12)" : "rgba(252,165,165,0.12)", color: p.mockups >= 2 ? "#86efac" : "#fca5a5", border: `1px solid ${p.mockups >= 2 ? "rgba(134,239,172,0.3)" : "rgba(252,165,165,0.3)"}` }}>mock {p.mockups}</span>
+                  {p.logos < p.itemCount && <PoLogoUpload orderId={p.id} onDone={refresh} />}
+                  <PoMockupUpload orderId={p.id} onDone={refresh} />
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-      ))}
+        ));
+      })()}
       {shown.length === 0 && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", paddingTop: 8 }}>All live POs are fully populated. 🎉</div>}
     </div>
   );
