@@ -416,6 +416,7 @@ function ClubCard({ club }: { club: ClubWithLogos }) {
 function ClubBrandCard({ club }: { club: BrandClub }) {
   const qc = useQueryClient();
   const refresh = () => qc.invalidateQueries({ queryKey: [BRAND_KEY] });
+  const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [dropKind, setDropKind] = useState<AssetKind>("primary");
   const [dropPos, setDropPos] = useState("");
@@ -428,27 +429,43 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
   // AssetTile expects a LogoRow; brand-identity assets lack the Canva/sync fields.
   const asLogoRow = (a: BrandAsset): LogoRow => ({ ...a, canvaDesignId: "", canvaPageIndex: null, lastSyncedAt: null } as any);
 
+  // Up to 3 colour swatches for the compact header preview (skip nulls).
+  const swatches = [club.colors?.primary, club.colors?.secondary, club.colors?.accent].filter(Boolean).slice(0, 3) as string[];
+  const countChipStyle: React.CSSProperties = { fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)", border: "1px solid rgba(255,255,255,0.12)", whiteSpace: "nowrap" };
+
   return (
     <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: 16 }}>
-      {/* HEADER */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+      {/* COMPACT HEADER — clickable to toggle open; reads as a single scannable summary row */}
+      <div
+        onClick={() => setOpen((o) => !o)}
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, cursor: "pointer", flexWrap: "wrap" }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", flexShrink: 0, width: 12 }}>{open ? "▾" : "▸"}</span>
           {club.primaryLogoUrl
-            ? <img src={club.primaryLogoUrl} alt="" style={{ width: 36, height: 36, borderRadius: 5, objectFit: "contain", background: "#000", flexShrink: 0 }} />
-            : <div style={{ width: 36, height: 36, borderRadius: 5, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{club.kind === "school" ? "🏫" : "🛡️"}</div>}
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 16, color: "#fcd34d", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{club.name}</div>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{club.kind} · {teams.length} team{teams.length === 1 ? "" : "s"}</div>
-          </div>
+            ? <img src={club.primaryLogoUrl} alt="" style={{ width: 26, height: 26, borderRadius: 4, objectFit: "contain", background: "#000", flexShrink: 0 }} />
+            : <div style={{ width: 26, height: 26, borderRadius: 4, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>{club.kind === "school" ? "🏫" : "🛡️"}</div>}
+          <span style={{ fontWeight: 700, fontSize: 15, color: "#fcd34d", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{club.name}</span>
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", flexShrink: 0 }}>{club.kind} · {teams.length} team{teams.length === 1 ? "" : "s"}</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
           {club.primaryLogoUrl
             ? <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(134,239,172,0.12)", color: "#86efac", border: "1px solid rgba(134,239,172,0.3)", whiteSpace: "nowrap" }}>primary ✓</span>
             : <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(252,165,165,0.12)", color: "#fca5a5", border: "1px solid rgba(252,165,165,0.3)", whiteSpace: "nowrap" }}>no primary</span>}
-          {club.accountId && <button onClick={() => setExpanded((s) => !s)} style={btnGhost}>{expanded ? "Close" : "Manage"}</button>}
+          <span style={countChipStyle}>L{club.logos.length}</span>
+          <span style={countChipStyle}>D{club.designs.length}</span>
+          {swatches.length > 0 && (
+            <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+              {swatches.map((col, i) => (
+                <span key={i} style={{ width: 12, height: 12, borderRadius: 3, background: col, border: "1px solid rgba(255,255,255,0.2)", flexShrink: 0 }} />
+              ))}
+            </div>
+          )}
+          {club.accountId && <button onClick={(e) => { e.stopPropagation(); setOpen(true); setExpanded((s) => !s); }} style={btnGhost}>{expanded ? "Close" : "Manage"}</button>}
         </div>
       </div>
 
+      {open && (<>
       <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 16 }}>
         {/* LOGOS pillar */}
         <div>
@@ -519,6 +536,7 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
           <LogoDropZone clubId={club.accountId} kind={dropKind} position={effectivePos} onDone={refresh} />
         </div>
       )}
+      </>)}
     </div>
   );
 }
@@ -674,10 +692,20 @@ function ClubsPanel() {
 export default function AdminClubLogos() {
   const { data, isLoading } = useQuery<{ ok: boolean; clubs: BrandClub[] }>({ queryKey: [BRAND_KEY] });
   const [filter, setFilter] = useState<"all" | "missing">("all");
+  const [search, setSearch] = useState("");
 
-  const clubs = (data?.clubs || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  // Sort: clubs missing a primary logo first (surface the ones needing attention), then alpha.
+  const clubs = (data?.clubs || []).slice().sort((a, b) => {
+    const byPrimary = (a.primaryLogoUrl ? 1 : 0) - (b.primaryLogoUrl ? 1 : 0);
+    return byPrimary || a.name.localeCompare(b.name);
+  });
   const missingCount = clubs.filter((c) => !c.primaryLogoUrl).length;
-  const visible = filter === "missing" ? clubs.filter((c) => !c.primaryLogoUrl) : clubs;
+  const q = search.trim().toLowerCase();
+  const visible = clubs.filter((c) => {
+    if (filter === "missing" && c.primaryLogoUrl) return false;
+    if (!q) return true;
+    return c.name.toLowerCase().includes(q) || c.teams.some((t) => t.name.toLowerCase().includes(q));
+  });
 
   return (
     <AdminLayout>
@@ -690,7 +718,14 @@ export default function AdminClubLogos() {
               {data ? <> · <b style={{ color: missingCount ? "#fca5a5" : "#86efac" }}>{missingCount}</b> still need a primary.</> : null}
             </p>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search club or team..."
+              style={{ width: 200, padding: "5px 10px", fontSize: 12, background: "#000", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 4 }}
+            />
+            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>{visible.length} club{visible.length === 1 ? "" : "s"}</span>
             <button onClick={() => setFilter("all")} style={filter === "all" ? btnPrimary : btnGhost}>All</button>
             <button onClick={() => setFilter("missing")} style={filter === "missing" ? btnPrimary : btnGhost}>Missing only</button>
           </div>
