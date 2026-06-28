@@ -16,6 +16,17 @@ import { publicApprovalRouter } from "./approvals";
 import chatbotRouter from "./chatbot";
 import notifyRouter from "./notify";
 import cronRouter from "./cron";
+import { createHash } from "crypto";
+
+// Non-reversible fingerprint of the DATABASE_URL host — lets us confirm WHICH
+// database the running app is connected to (via /api/health) without ever
+// exposing the host or any credential. Guards against a local/live DB split.
+export function dbHostFingerprint(): string {
+  try {
+    const host = (process.env.DATABASE_URL || "").replace(/.*@([^/?]+).*/, "$1");
+    return host ? createHash("sha256").update(host).digest("hex").slice(0, 12) : "none";
+  } catch { return "unknown"; }
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -23,7 +34,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   // Health check for Railway/monitoring
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
+    res.json({ status: "ok", timestamp: new Date().toISOString(), db: dbHostFingerprint() });
   });
 
   // GHL form submissions + product sync
