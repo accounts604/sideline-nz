@@ -44,6 +44,17 @@ export function logoElementFromAsset(
   };
 }
 
+// Where a club/primary logo sits on a given garment. HATS always take the logo
+// CENTER FRONT, embroidered (Romero rule, 2026-06-29). Everything else uses the
+// asset's stored placement (or Left Chest) + its application.
+export function clubLogoPlacement(
+  productType?: string | null,
+  asset?: { defaultPosition?: string | null; defaultApplication?: string | null } | null,
+): { position: string; application: string } {
+  if (/cap|bucket|beanie|hat/i.test(productType || "")) return { position: "Center Front", application: "Embroidery" };
+  return { position: asset?.defaultPosition || "Left Chest", application: asset?.defaultApplication || "Embroidery" };
+}
+
 // Check whether a LogoElement[] already contains this asset — used by the
 // PO-raise hook to stay idempotent across re-raises and the manual "Resend
 // PDF + Drive Share" flow.
