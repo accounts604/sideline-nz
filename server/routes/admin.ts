@@ -7,6 +7,7 @@ import { notifyDesignApproved, notifyDesignRejected, notifyOrderStatusChange } f
 import { sendInviteEmail, sendSupplierPoRaisedEmail, sendSupplierPoDispatchGmail } from "../email";
 import { db } from "../db";
 import { orders, orderActivity, designFiles, orderItems, orderSizeBreakdowns, clubAccounts, clubLogoAssets, users } from "@shared/schema";
+import { clubLogoPlacement } from "../canva-logos";
 import type { OrderItem } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import {
@@ -3080,14 +3081,15 @@ async function dispatchOrderToSuppliers(
       const allLogos = await storage.listClubLogoAssets(order.clubAccountId);
       const placeable = allLogos.filter((l) => ["primary", "secondary", "sponsor"].includes(l.kind));
       if (placeable.length) {
-        const { logoElementFromAsset, logoListHasAsset } = await import("../canva-logos.js");
+        const { logoElementFromAsset, logoListHasAsset, clubLogoPlacement } = await import("../canva-logos.js");
         let stamped = 0;
         for (const item of allItems) {
           let els = (item.elementUrls as any[] | null) ?? [];
           let changed = false;
           for (const asset of placeable) {
             if (logoListHasAsset(els, asset)) continue;
-            els = [...els, logoElementFromAsset(asset, { defaultPosition: (asset as any).defaultPosition || undefined, defaultApplication: (asset as any).defaultApplication || undefined })];
+            const pl = clubLogoPlacement((item as any).productType, asset as any);
+            els = [...els, logoElementFromAsset(asset, { defaultPosition: pl.position, defaultApplication: pl.application })];
             changed = true;
           }
           if (changed) {
@@ -4723,7 +4725,8 @@ router.post("/clubs/:id/apply-logos-to-current-po", async (req, res) => {
       let changed = false;
       const hasClub = next.some((e) => e?.url && !String(e?.name || "").toLowerCase().includes("sideline"));
       if (!hasClub) {
-        next.push({ name: primary.displayLabel || "Club Logo", url: primary.previewUrl, position: (primary as any).defaultPosition || "Left Chest", application: (primary as any).defaultApplication || "Embroidery" });
+        const pl = clubLogoPlacement((item as any).productType, primary as any);
+        next.push({ name: primary.displayLabel || "Club Logo", url: primary.previewUrl, position: pl.position, application: pl.application });
         changed = true;
       }
       const pos = markPosition((item as any).productType);
@@ -4757,7 +4760,8 @@ router.post("/orders/:id/attach-logo", async (req, res) => {
       if (isNonGarment((it as any).productType)) continue;
       const existing = arr((it as any).elementUrls);
       if (existing.some((e: any) => e?.url && !String(e?.name || "").toLowerCase().includes("sideline"))) continue;
-      const next = [...existing, { name: "Logo", url: imageUrl, position: "Left Chest", application: (it as any).brandingMethod || "Embroidery" }];
+      const pl = clubLogoPlacement((it as any).productType);
+      const next = [...existing, { name: "Logo", url: imageUrl, position: pl.position, application: pl.application }];
       await db.update(orderItems).set({ elementUrls: next as any }).where(eq(orderItems.id, it.id));
       updated += 1;
     }

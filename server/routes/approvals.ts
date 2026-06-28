@@ -31,6 +31,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { approvalTokens, orderActivity, orders, designFiles, orderItems, orderSizeBreakdowns, clubBrandIdentity } from "@shared/schema";
 import { storage } from "../storage";
+import { clubLogoPlacement } from "../canva-logos";
 import { updateGhlOpportunityStage } from "./ghl";
 import { sendMockupApprovalRequest, sendClientApprovalResult } from "../email";
 
@@ -276,7 +277,8 @@ publicApprovalRouter.post("/:token", async (req, res) => {
         if (isNonGarment((it as any).productType)) continue;
         const existing = parseEls((it as any).elementUrls);
         if (existing.some((e: any) => e?.url && !String(e?.name || "").toLowerCase().includes("sideline"))) continue;
-        const next = [...existing, { name: "Customer Logo", url: primaryUrl, position: "Left Chest", application: (it as any).brandingMethod || "Embroidery" }];
+        const pl = clubLogoPlacement((it as any).productType);
+        const next = [...existing, { name: "Customer Logo", url: primaryUrl, position: pl.position, application: pl.application }];
         await db.update(orderItems).set({ elementUrls: next as any }).where(eq(orderItems.id, it.id));
       }
     }
