@@ -4666,6 +4666,10 @@ router.get("/clubs/logos-overview", async (_req, res) => {
       arr.push(l);
       byClub.set(l.clubAccountId, arr);
     }
+    // Brand colours (COLOURS pillar) per club, from club_brand_identity.
+    const _R = (r: any) => (r && r.rows) ? r.rows : (Array.isArray(r) ? r : []);
+    const colorRows = _R(await db.execute(sql`SELECT club_account_id, colors FROM club_brand_identity`));
+    const colorsByClub = new Map<string, any>(colorRows.map((r: any) => [r.club_account_id, r.colors]));
     // Each club's current PO = its latest order. One select, latest-per-club in memory.
     const allOrders = await db
       .select({ id: orders.id, poReference: orders.poReference, status: orders.status, clubAccountId: orders.clubAccountId, createdAt: orders.createdAt })
@@ -4678,9 +4682,29 @@ router.get("/clubs/logos-overview", async (_req, res) => {
     }
     const out = clubs.map((c) => {
       const po = latestByClub.get(c.id);
-      return { ...c, logos: byClub.get(c.id) || [], currentPo: po ? { id: po.id, poReference: po.poReference, status: po.status } : null };
+      return { ...c, logos: byClub.get(c.id) || [], colors: colorsByClub.get(c.id) || null, currentPo: po ? { id: po.id, poReference: po.poReference, status: po.status } : null };
     });
     res.json({ ok: true, clubs: out });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// PUT /api/admin/clubs/:id/colours — save the COLOURS pillar (primary/secondary/
+// accent hex) to the club's brand identity. Single source of truth that flows
+// into the club's POs.
+router.put("/clubs/:id/colours", async (req, res) => {
+  try {
+    const body = (req.body && req.body.colors) as { primary?: string; secondary?: string; accent?: string } | undefined;
+    if (!body || typeof body !== "object") return res.status(400).json({ error: "colors required" });
+    const clean = {
+      primary: String(body.primary || "").trim() || null,
+      secondary: String(body.secondary || "").trim() || null,
+      accent: String(body.accent || "").trim() || null,
+    };
+    await storage.ensureClubBrandIdentity(req.params.id);
+    await storage.updateClubBrandIdentity(req.params.id, { colors: clean } as any);
+    res.json({ ok: true, colors: clean });
   } catch (err: any) {
     res.status(500).json({ error: String(err?.message || err) });
   }

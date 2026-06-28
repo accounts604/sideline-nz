@@ -20,11 +20,13 @@ interface LogoRow {
   lastSyncedAt: string | null;
 }
 
+interface ClubColors { primary?: string | null; secondary?: string | null; accent?: string | null }
 interface ClubWithLogos {
   id: string;
   clubName: string;
   shopifyOrderTag: string | null;
   logos: LogoRow[];
+  colors: ClubColors | null;
   currentPo: { id: string; poReference: string | null; status: string | null } | null;
 }
 
@@ -199,6 +201,40 @@ function AssetManageRow({ clubId, logo, onChanged }: { clubId: string; logo: Log
   );
 }
 
+// COLOURS pillar — primary/secondary/accent, the single source of truth that
+// flows into every PO for this club. Saves to club_brand_identity.colors.
+function ColoursPillar({ clubId, initial, onSaved }: { clubId: string; initial: ClubColors | null; onSaved: () => void }) {
+  const [c, setC] = useState({ primary: initial?.primary || "#1e3a8a", secondary: initial?.secondary || "#ffffff", accent: initial?.accent || "#dc2626" });
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState(false);
+  async function save() {
+    setBusy(true); setSaved(false); setErr(false);
+    try {
+      const r = await apiRequest("PUT", `/api/admin/clubs/${clubId}/colours`, { colors: c });
+      const j = await r.json().catch(() => ({}));
+      if (!j?.ok) throw new Error();
+      setSaved(true); onSaved();
+    } catch { setErr(true); } finally { setBusy(false); }
+  }
+  const slots: [keyof typeof c, string][] = [["primary", "Primary"], ["secondary", "Secondary"], ["accent", "Accent"]];
+  return (
+    <div>
+      <div style={pillarLabelStyle}>Colours</div>
+      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginBottom: 8 }}>Set once. Flows into every PO for this club.</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start" }}>
+        {slots.map(([k, label]) => (
+          <label key={k} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, fontSize: 9, color: "rgba(255,255,255,0.5)" }}>
+            <input type="color" value={c[k]} onChange={(e) => { setC((s) => ({ ...s, [k]: e.target.value })); setSaved(false); }} style={{ width: 30, height: 30, padding: 0, border: "1px solid rgba(255,255,255,0.15)", background: "none", cursor: "pointer", borderRadius: 6 }} />
+            {label}
+          </label>
+        ))}
+      </div>
+      <button onClick={save} disabled={busy} style={{ ...btnGhost, fontSize: 10, padding: "3px 10px", marginTop: 10, ...(err ? { borderColor: "#fca5a5", color: "#fca5a5" } : {}) }}>{busy ? "Saving…" : err ? "⚠ retry" : saved ? "✓ Saved" : "Save colours"}</button>
+    </div>
+  );
+}
+
 function ClubCard({ club }: { club: ClubWithLogos }) {
   const qc = useQueryClient();
   const refresh = () => qc.invalidateQueries({ queryKey: [OVERVIEW_KEY] });
@@ -282,16 +318,8 @@ function ClubCard({ club }: { club: ClubWithLogos }) {
               <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No designs yet</div>
             )}
           </div>
-          {/* COLOURS pillar (placeholder — no backend yet) */}
-          <div>
-            <div style={pillarLabelStyle}>Colours</div>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginBottom: 8 }}>Club colours sync to every PO. Editing comes next.</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-              {[0, 1, 2].map((i) => (
-                <div key={i} style={{ width: 22, height: 22, borderRadius: "50%", border: "1.5px dashed rgba(255,255,255,0.22)" }} />
-              ))}
-            </div>
-          </div>
+          {/* COLOURS pillar — editable, saved to the brand identity. */}
+          <ColoursPillar clubId={club.id} initial={club.colors} onSaved={refresh} />
         </div>
       ) : (
         <div style={{ marginTop: 14, maxWidth: 320 }}>
