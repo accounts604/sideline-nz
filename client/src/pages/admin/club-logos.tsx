@@ -66,7 +66,7 @@ function LogoDropZone({ clubId, onDone, compact, kind = "primary", position }: {
       });
       const up = await apiRequest("POST", "/api/uploads/blob", { filename: file.name, contentType: file.type, dataBase64 });
       const { url } = await up.json();
-      await apiRequest("POST", `/api/admin/clubs/${clubId}/logos`, { imageUrl: url, kind, displayLabel: file.name.replace(/\.[^.]+$/, ""), defaultPosition: position });
+      await apiRequest("POST", `/api/admin/clubs/${clubId}/logos`, { imageUrl: url, kind, defaultPosition: position }); // name auto-derived server-side from club + type
       onDone();
     } catch (e: any) {
       setErr(e?.message || "Upload failed");
