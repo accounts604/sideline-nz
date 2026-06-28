@@ -418,6 +418,46 @@ function LivePoWorklist() {
   );
 }
 
+interface ClubStructure { id: string; name: string; kind: string; primaryLogoUrl: string | null; teams: { name: string; po?: string; kind: string }[]; }
+
+// Clubs & schools, each with its teams (club_accounts + standalone orders linked
+// via orders.club_id). Makes the club -> team structure visible: e.g. Richmond
+// Rovers with its Under 12s/16s/Seniors, Aorere College with Premier Netball.
+function ClubsPanel() {
+  const { data } = useQuery<{ ok: boolean; clubs: ClubStructure[] }>({ queryKey: ["/api/admin/clubs/structure"] });
+  const clubs = data?.clubs || [];
+  if (!clubs.length) return null;
+  return (
+    <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: 16, marginBottom: 24 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Clubs &amp; schools <span style={{ color: "rgba(255,255,255,0.4)", fontWeight: 400 }}>· {clubs.length} · each owns the shared primary logo; teams sit under it</span></div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
+        {clubs.map((c) => (
+          <div key={c.id} style={{ border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              {c.primaryLogoUrl
+                ? <img src={c.primaryLogoUrl} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: "contain", background: "#000" }} />
+                : <div style={{ width: 28, height: 28, borderRadius: 4, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{c.kind === "school" ? "🏫" : "🛡️"}</div>}
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#fcd34d", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>{c.kind} · {c.teams.length} team{c.teams.length === 1 ? "" : "s"} · primary {c.primaryLogoUrl ? "set" : "missing"}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {c.teams.length ? c.teams.map((t, i) => (
+                <div key={i} style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", display: "flex", gap: 6, alignItems: "baseline" }}>
+                  <span style={{ color: "rgba(255,255,255,0.3)" }}>{t.kind === "order" ? "▸" : "•"}</span>
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
+                  {t.po && <span style={{ color: "#93c5fd", fontSize: 10 }}>{t.po}</span>}
+                </div>
+              )) : <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No teams linked yet</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminClubLogos() {
   const { data, isLoading } = useQuery<{ ok: boolean; clubs: ClubWithLogos[] }>({ queryKey: [OVERVIEW_KEY] });
   const [filter, setFilter] = useState<"all" | "missing">("all");
@@ -442,6 +482,8 @@ export default function AdminClubLogos() {
             <button onClick={() => setFilter("missing")} style={filter === "missing" ? btnPrimary : btnGhost}>Missing only</button>
           </div>
         </div>
+
+        <ClubsPanel />
 
         <LivePoWorklist />
 

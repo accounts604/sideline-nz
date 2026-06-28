@@ -4622,6 +4622,30 @@ router.get("/clubs-missing-logos", async (_req, res) => {
   }
 });
 
+// GET /api/admin/clubs/structure — the CLUB/SCHOOL → TEAMS tree (clubs table),
+// each club with its teams (club_accounts linked + standalone orders linked via
+// orders.club_id) and its shared primary logo. Drives the Clubs panel so a club
+// and its teams (incl. standalone orders like Mary/Miranda) are visible together.
+router.get("/clubs/structure", async (_req, res) => {
+  try {
+    const R = (r: any) => (r && r.rows) ? r.rows : (Array.isArray(r) ? r : []);
+    const clubsRows = R(await db.execute(sql`SELECT id, name, kind, primary_logo_url FROM clubs ORDER BY name`));
+    const out: any[] = [];
+    for (const c of clubsRows) {
+      const teamAccts = R(await db.execute(sql`SELECT id, club_name FROM club_accounts WHERE club_id=${c.id} ORDER BY club_name`));
+      const teamOrders = R(await db.execute(sql`SELECT DISTINCT account_name, po_reference FROM orders WHERE club_id=${c.id} AND po_reference IS NOT NULL ORDER BY po_reference DESC`));
+      const teams = [
+        ...teamAccts.map((t: any) => ({ name: t.club_name, kind: "account" })),
+        ...teamOrders.map((o: any) => ({ name: o.account_name, po: o.po_reference, kind: "order" })),
+      ];
+      out.push({ id: c.id, name: c.name, kind: c.kind, primaryLogoUrl: c.primary_logo_url, teams });
+    }
+    res.json({ ok: true, clubs: out });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 // GET /api/admin/clubs/logos-overview — every club with ALL its logo assets in
 // one query, so the Club Logos page shows every asset at a glance (no per-club
 // expand/fetch). Two cheap selects, grouped in memory.
