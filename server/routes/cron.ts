@@ -92,7 +92,8 @@ router.post("/daily-digest", async (req, res) => {
       return res.json({ ok: true, dryRun: true, digest });
     }
     if (!isTelegramConfigured()) {
-      return res.status(500).json({ error: "Telegram not configured", hint: "Set JARVESI_BOT_TOKEN + KIG_GROUP_CHAT_ID." });
+      console.warn("[cron/daily-digest] Telegram not configured — digest built but not posted. Set JARVESI_BOT_TOKEN + KIG_GROUP_CHAT_ID on the server.");
+      return res.json({ ok: true, posted: false, reason: "telegram_not_configured", digest });
     }
     const result = await sendTelegramCard({ text: digest.text });
     res.json({ ok: true, posted: result.ok, telegramMessageId: result.messageId, digest });
@@ -154,7 +155,11 @@ router.post("/shipment-exceptions", async (req, res) => {
     if (dryRun) return res.json({ ok: true, dryRun: true, ...payload });
     if (payload.empty) return res.json({ ok: true, posted: false, reason: "no_exceptions", summary: payload.summary });
     if (!isTelegramConfigured()) {
-      return res.status(500).json({ error: "Telegram not configured", hint: "Set JARVESI_BOT_TOKEN + KIG_GROUP_CHAT_ID." });
+      // Fail-soft: exceptions were computed but can't be posted. Don't 500 (that
+      // turns the daily cron red for a config issue) — return them so the run
+      // still succeeds. Real fix: set JARVESI_BOT_TOKEN + KIG_GROUP_CHAT_ID.
+      console.warn("[cron/shipment-exceptions] Telegram not configured — exceptions computed but not posted. Set JARVESI_BOT_TOKEN + KIG_GROUP_CHAT_ID on the server.");
+      return res.json({ ok: true, posted: false, reason: "telegram_not_configured", summary: payload.summary });
     }
     const result = await sendTelegramCard({ text: payload.text, buttons: payload.buttons });
     res.json({ ok: true, posted: result.ok, telegramMessageId: result.messageId, summary: payload.summary });
