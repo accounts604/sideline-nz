@@ -114,6 +114,79 @@ function AssetTile({ logo }: { logo: LogoRow }) {
   );
 }
 
+// One asset in the Manage list — read-only until you click Edit, then explicit
+// Save / Cancel (no silent auto-save). Edit covers name, type, and placement.
+function AssetManageRow({ clubId, logo, onChanged }: { clubId: string; logo: LogoRow; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(logo.displayLabel || "");
+  const [kind, setKind] = useState<AssetKind>(logo.kind);
+  const [pos, setPos] = useState(logo.defaultPosition || "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function patch(body: any): Promise<boolean> {
+    setBusy(true); setErr(null);
+    try { await apiRequest("PATCH", `/api/admin/clubs/${clubId}/logos/${logo.id}`, body); onChanged(); return true; }
+    catch (e: any) { setErr(e?.message || "Failed"); return false; }
+    finally { setBusy(false); }
+  }
+  async function save() { if (await patch({ displayLabel: name.trim() || null, kind, defaultPosition: pos.trim() || null })) setEditing(false); }
+  function cancel() { setName(logo.displayLabel || ""); setKind(logo.kind); setPos(logo.defaultPosition || ""); setErr(null); setEditing(false); }
+  async function remove() {
+    setBusy(true); setErr(null);
+    try { await apiRequest("DELETE", `/api/admin/clubs/${clubId}/logos/${logo.id}`, undefined); onChanged(); }
+    catch (e: any) { setErr(e?.message || "Failed"); } finally { setBusy(false); }
+  }
+
+  const thumb = logo.previewUrl
+    ? <img src={logo.previewUrl} alt="" style={{ width: 34, height: 34, objectFit: "contain", background: "#fff", padding: 2, borderRadius: 3, flexShrink: 0 }} />
+    : <div style={{ width: 34, height: 34, background: "rgba(255,255,255,0.04)", borderRadius: 3, flexShrink: 0 }} />;
+
+  if (editing) {
+    return (
+      <div style={{ display: "flex", gap: 10, padding: "10px 0", borderTop: "1px solid rgba(255,255,255,0.04)", alignItems: "flex-start" }}>
+        {thumb}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Asset name" style={{ ...inputStyle, padding: "5px 8px" }} />
+          <select value={kind} onChange={(e) => { setKind(e.target.value as AssetKind); }} style={{ ...inputStyle, padding: "5px 8px", cursor: "pointer" }}>
+            {ASSET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          {kind === "sponsor" ? (
+            <select value={pos || "Front Center"} onChange={(e) => setPos(e.target.value)} style={{ ...inputStyle, padding: "5px 8px", cursor: "pointer" }}>
+              {SPONSOR_LADDER.map((s, i) => <option key={s} value={s}>{i + 1}. {s}</option>)}
+            </select>
+          ) : (
+            <input value={pos} onChange={(e) => setPos(e.target.value)} placeholder="Placement (e.g. Left Chest)" style={{ ...inputStyle, padding: "5px 8px" }} />
+          )}
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={save} disabled={busy} style={{ ...btnPrimary, opacity: busy ? 0.5 : 1 }}>{busy ? "Saving…" : "Save"}</button>
+            <button onClick={cancel} disabled={busy} style={btnGhost}>Cancel</button>
+          </div>
+          {err && <div style={{ color: "#fca5a5", fontSize: 10 }}>{err}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+      {thumb}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {logo.displayLabel || <span style={{ color: "rgba(255,255,255,0.4)" }}>(unnamed)</span>}
+        </div>
+        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
+          <span style={{ color: "rgba(255,255,255,0.6)" }}>{TYPE_LABEL[logo.kind] || logo.kind}</span>{logo.defaultPosition ? ` · ${logo.defaultPosition}` : ""}
+          {logo.canvaDesignId.startsWith("upload:") ? " · uploaded" : <> · <a href={canvaUrlOf(logo.canvaDesignId, logo.canvaPageIndex)} target="_blank" rel="noreferrer" style={{ color: "#93c5fd" }}>Canva</a></>}
+        </div>
+      </div>
+      <button onClick={() => setEditing(true)} disabled={busy} style={btnGhost}>Edit</button>
+      {logo.kind !== "primary" && <button onClick={() => patch({ kind: "primary" })} disabled={busy} style={btnGhost}>Make primary</button>}
+      <button onClick={remove} disabled={busy} style={{ ...btnGhost, color: "#fca5a5" }}>Remove</button>
+    </div>
+  );
+}
+
 function ClubCard({ club }: { club: ClubWithLogos }) {
   const qc = useQueryClient();
   const refresh = () => qc.invalidateQueries({ queryKey: [OVERVIEW_KEY] });
@@ -143,9 +216,6 @@ function ClubCard({ club }: { club: ClubWithLogos }) {
     onSuccess: () => { setCanvaUrl(""); setPageIndex(""); refresh(); },
     onError: (e: any) => setError(e?.message || "Add failed"),
   });
-  const setPrimary = useMutation({ mutationFn: async (id: string) => (await apiRequest("PATCH", `/api/admin/clubs/${club.id}/logos/${id}`, { kind: "primary" })).json(), onSuccess: refresh });
-  const renameLogo = useMutation({ mutationFn: async ({ id, displayLabel }: { id: string; displayLabel: string }) => (await apiRequest("PATCH", `/api/admin/clubs/${club.id}/logos/${id}`, { displayLabel })).json(), onSuccess: refresh });
-  const deleteLogo = useMutation({ mutationFn: async (id: string) => (await apiRequest("DELETE", `/api/admin/clubs/${club.id}/logos/${id}`, undefined)).json(), onSuccess: refresh });
 
   return (
     <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: 16 }}>
@@ -200,25 +270,9 @@ function ClubCard({ club }: { club: ClubWithLogos }) {
           </div>
           {/* Manage existing */}
           <div>
-            <div style={labelStyle}>Assets ({logos.length}) — rename, set primary, remove</div>
+            <div style={labelStyle}>Assets ({logos.length}) — Edit to rename / change type / placement</div>
             {logos.length === 0 && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>No assets yet.</div>}
-            {logos.map((l) => (
-              <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                {l.previewUrl ? <img src={l.previewUrl} alt="" style={{ width: 34, height: 34, objectFit: "contain", background: "#fff", padding: 2, borderRadius: 3 }} /> : <div style={{ width: 34, height: 34, background: "rgba(255,255,255,0.04)", borderRadius: 3 }} />}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <input defaultValue={l.displayLabel || ""} placeholder="Name this asset…"
-                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== (l.displayLabel || "")) renameLogo.mutate({ id: l.id, displayLabel: v }); }}
-                    style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} />
-                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
-                    <span style={{ color: "rgba(255,255,255,0.6)" }}>{TYPE_LABEL[l.kind] || l.kind}</span>{l.defaultPosition ? ` · ${l.defaultPosition}` : ""}
-                    {l.canvaDesignId.startsWith("upload:") ? " · uploaded" : <> · <a href={canvaUrlOf(l.canvaDesignId, l.canvaPageIndex)} target="_blank" rel="noreferrer" style={{ color: "#93c5fd" }}>Canva</a></>}
-                  </div>
-                </div>
-                {l.kind !== "primary" && <button onClick={() => setPrimary.mutate(l.id)} style={btnGhost}>Make primary</button>}
-                <button onClick={() => deleteLogo.mutate(l.id)} style={{ ...btnGhost, color: "#fca5a5" }}>Remove</button>
-              </div>
-            ))}
+            {logos.map((l) => <AssetManageRow key={l.id} clubId={club.id} logo={l} onChanged={refresh} />)}
           </div>
         </div>
       )}
