@@ -13,15 +13,22 @@ import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "romero@sidelinenz.com";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "changeme123";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD; // no weak default — set via secret
 
 async function seed() {
   console.log(`Seeding admin account: ${ADMIN_EMAIL}`);
 
-  // Check if admin already exists
+  // Idempotent: never touch an existing admin's password.
   const [existing] = await db.select().from(users).where(eq(users.email, ADMIN_EMAIL));
   if (existing) {
-    console.log("Admin account already exists — skipping.");
+    console.log("Admin account already exists — skipping (password untouched).");
+    process.exit(0);
+  }
+
+  // Fresh seed only. Refuse to create with a weak/blank password — fail soft so
+  // a deploy isn't blocked; seed later with ADMIN_PASSWORD (Railway secret) set.
+  if (!ADMIN_PASSWORD || ADMIN_PASSWORD.length < 10) {
+    console.warn("No strong ADMIN_PASSWORD set and no admin exists — skipping seed.");
     process.exit(0);
   }
 

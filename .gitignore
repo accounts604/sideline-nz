@@ -6,3 +6,6 @@ dist/
 *.log
 .mcp.json
 # esbuild output is committed so Vercel uses the pre-bundled file
+
+# Vercel rebuilds this at deploy — never commit the bundle (was 6wk stale)
+api/index.js

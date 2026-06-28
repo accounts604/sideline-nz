@@ -17,6 +17,8 @@ import chatbotRouter from "./chatbot";
 import notifyRouter from "./notify";
 import cronRouter from "./cron";
 import { createHash } from "crypto";
+import { db } from "../db";
+import { sql } from "drizzle-orm";
 
 // Non-reversible fingerprint of the DATABASE_URL host — lets us confirm WHICH
 // database the running app is connected to (via /api/health) without ever
@@ -28,13 +30,35 @@ export function dbHostFingerprint(): string {
   } catch { return "unknown"; }
 }
 
+export function commitSha(): string {
+  return process.env.RAILWAY_GIT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || "dev";
+}
+
+// Real health: actually touch the DB and assert a load-bearing column exists, in
+// ONE query (stays inside healthcheckTimeout). dbUp=false => DB unreachable, so
+// the handler returns 503 and Railway restarts. schemaOk=false => DB up but
+// missing required schema: handler returns 200 + flag so a monitor alerts
+// WITHOUT restart-looping the app on drift.
+export async function buildHealth(): Promise<{ status: string; db: string; commit: string; dbUp: boolean; schemaOk: boolean; detail?: string }> {
+  const base = { db: dbHostFingerprint(), commit: commitSha() };
+  try {
+    const r: any = await db.execute(sql`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='club_id') AS schema_ok`);
+    const row = (r.rows || r)[0] || {};
+    const schemaOk = row.schema_ok === true || row.schema_ok === "t";
+    return { ...base, status: schemaOk ? "ok" : "schema-drift", dbUp: true, schemaOk, detail: schemaOk ? undefined : "orders.club_id missing" };
+  } catch (e: any) {
+    return { ...base, status: "db-unreachable", dbUp: false, schemaOk: false, detail: String(e?.message || e).slice(0, 120) };
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Health check for Railway/monitoring
-  app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString(), db: dbHostFingerprint() });
+  // Health check for Railway/monitoring — real DB touch + schema assertion.
+  app.get("/api/health", async (_req, res) => {
+    const h = await buildHealth();
+    res.status(h.dbUp ? 200 : 503).json({ ...h, timestamp: new Date().toISOString() });
   });
 
   // GHL form submissions + product sync
