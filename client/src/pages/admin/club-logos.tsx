@@ -1,3 +1,6 @@
+// Admin "Club Logos" — every club's logo/design assets at a glance, with typed
+// drag-and-drop upload (Primary/Secondary/Front/Back/Sponsor + the sponsor
+// prominence ladder). See docs/sideline-studio.md + reference_sideline_logo_asset_taxonomy.
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
