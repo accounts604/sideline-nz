@@ -23,6 +23,8 @@ import {
   type ClubLogoAsset, type InsertClubLogoAsset,
   clubBrandIdentity,
   type ClubBrandIdentity, type InsertClubBrandIdentity,
+  clubs,
+  type Club, type InsertClub,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, desc, count, ilike } from "drizzle-orm";
@@ -59,6 +61,12 @@ export interface IStorage {
   getClubBrandIdentity(clubAccountId: string): Promise<ClubBrandIdentity | undefined>;
   ensureClubBrandIdentity(clubAccountId: string, seed?: Partial<InsertClubBrandIdentity>): Promise<ClubBrandIdentity>;
   updateClubBrandIdentity(clubAccountId: string, data: Partial<InsertClubBrandIdentity>): Promise<ClubBrandIdentity | undefined>;
+
+  // Clubs / Teams — club/school owns the shared primary; teams link via clubId.
+  getClubForTeam(clubAccountId: string): Promise<Club | undefined>;
+  ensureClub(name: string, kind?: string): Promise<Club>;
+  linkTeamToClub(clubAccountId: string, clubId: string): Promise<void>;
+  setClubPrimaryLogo(clubId: string, url: string, label?: string): Promise<void>;
 
   // Carts
   getCart(id: string): Promise<Cart | undefined>;
@@ -331,6 +339,26 @@ export class DatabaseStorage implements IStorage {
       .set({ ...data, updatedAt: new Date() } as any)
       .where(eq(clubBrandIdentity.clubAccountId, clubAccountId)).returning();
     return row;
+  }
+
+  // Clubs / Teams — a club/school owns the shared primary logo; teams link to it.
+  async getClubForTeam(clubAccountId: string): Promise<Club | undefined> {
+    const [team] = await db.select({ clubId: clubAccounts.clubId }).from(clubAccounts).where(eq(clubAccounts.id, clubAccountId)).limit(1);
+    if (!team?.clubId) return undefined;
+    const [club] = await db.select().from(clubs).where(eq(clubs.id, team.clubId)).limit(1);
+    return club;
+  }
+  async ensureClub(name: string, kind: string = "club"): Promise<Club> {
+    const [existing] = await db.select().from(clubs).where(eq(clubs.name, name)).limit(1);
+    if (existing) return existing;
+    const [row] = await db.insert(clubs).values({ name, kind } as any).returning();
+    return row;
+  }
+  async linkTeamToClub(clubAccountId: string, clubId: string): Promise<void> {
+    await db.update(clubAccounts).set({ clubId, updatedAt: new Date() } as any).where(eq(clubAccounts.id, clubAccountId));
+  }
+  async setClubPrimaryLogo(clubId: string, url: string, label?: string): Promise<void> {
+    await db.update(clubs).set({ primaryLogoUrl: url, primaryLogoLabel: label || null, updatedAt: new Date() } as any).where(eq(clubs.id, clubId));
   }
 
   async updateClubLogoAsset(id: string, data: Partial<InsertClubLogoAsset>): Promise<ClubLogoAsset | undefined> {
