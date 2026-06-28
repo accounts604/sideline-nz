@@ -317,7 +317,29 @@ function ClubCard({ club }: { club: ClubWithLogos }) {
   );
 }
 
-interface PoStatus { id: string; poReference: string; accountName: string; status: string | null; clubAccountId: string | null; itemCount: number; logos: number; sized: number; fabric: number; branding: number; needs: string[]; complete: boolean; }
+interface PoStatus { id: string; poReference: string; accountName: string; status: string | null; clubAccountId: string | null; itemCount: number; logos: number; sized: number; fabric: number; branding: number; mockups: number; needs: string[]; complete: boolean; }
+
+// Per-PO mockup upload — drops a front/back mockup image onto the PO.
+function PoMockupUpload({ orderId, onDone }: { orderId: string; onDone: () => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  async function handle(file: File) {
+    setBusy(true);
+    try {
+      const dataBase64 = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1] || ""); r.onerror = () => rej(new Error("x")); r.readAsDataURL(file); });
+      const up = await apiRequest("POST", "/api/uploads/blob", { filename: file.name, contentType: file.type, dataBase64 });
+      const { url } = await up.json();
+      await apiRequest("POST", `/api/admin/orders/${orderId}/mockup`, { imageUrl: url, fileName: file.name, mimeType: file.type, label: file.name.replace(/\.[^.]+$/, "") });
+      onDone();
+    } catch { /* */ } finally { setBusy(false); }
+  }
+  return (
+    <>
+      <button onClick={() => ref.current?.click()} disabled={busy} style={{ ...btnGhost, fontSize: 10, padding: "3px 8px", flexShrink: 0 }}>{busy ? "…" : "+ mockup"}</button>
+      <input ref={ref} type="file" accept="image/png,image/jpeg,image/webp,application/pdf" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handle(f); e.currentTarget.value = ""; }} />
+    </>
+  );
+}
 
 function Chip({ have, total, label }: { have: number; total: number; label: string }) {
   const ok = total > 0 && have >= total;
@@ -367,15 +389,17 @@ function LivePoWorklist() {
           <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {p.accountName}{!p.clubAccountId && <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 10 }}> · standalone</span>}
           </span>
-          {p.complete ? <span style={{ color: "#86efac", fontSize: 11 }}>✓ complete</span> : (
-            <div style={{ display: "flex", gap: 5, flexShrink: 0, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 5, flexShrink: 0, alignItems: "center" }}>
+            {p.complete ? <span style={{ color: "#86efac", fontSize: 11 }}>✓ data</span> : (<>
               <Chip have={p.logos} total={p.itemCount} label="logos" />
               <Chip have={p.sized} total={p.itemCount} label="sizes" />
               <Chip have={p.fabric} total={p.itemCount} label="fabric" />
               <Chip have={p.branding} total={p.itemCount} label="brand" />
-              {p.logos < p.itemCount && <PoLogoUpload orderId={p.id} onDone={refresh} />}
-            </div>
-          )}
+            </>)}
+            <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, whiteSpace: "nowrap", background: p.mockups >= 2 ? "rgba(134,239,172,0.12)" : "rgba(252,165,165,0.12)", color: p.mockups >= 2 ? "#86efac" : "#fca5a5", border: `1px solid ${p.mockups >= 2 ? "rgba(134,239,172,0.3)" : "rgba(252,165,165,0.3)"}` }}>mock {p.mockups}</span>
+            {p.logos < p.itemCount && <PoLogoUpload orderId={p.id} onDone={refresh} />}
+            <PoMockupUpload orderId={p.id} onDone={refresh} />
+          </div>
         </div>
       ))}
       {shown.length === 0 && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", paddingTop: 8 }}>All live POs are fully populated. 🎉</div>}
