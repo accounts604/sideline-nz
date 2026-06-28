@@ -1,7 +1,68 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
 import { apiRequest } from "@/lib/queryClient";
+
+// Drag-and-drop logo upload — the bottleneck-killer. Drop a PNG/JPG/SVG/WEBP,
+// it goes straight to blob storage and becomes the club's primary logo. No
+// Canva URL, no page numbers, no preview-URL hunting.
+function LogoDropZone({ clubId, onDone, compact }: { clubId: string; onDone: () => void; compact?: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [over, setOver] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFile(file: File) {
+    setErr(null);
+    if (!/^image\/(png|jpeg|svg\+xml|webp|gif)$/.test(file.type)) {
+      setErr("PNG, JPG, SVG or WEBP only");
+      return;
+    }
+    setBusy(true);
+    try {
+      const dataBase64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(",")[1] || "");
+        r.onerror = () => reject(new Error("read failed"));
+        r.readAsDataURL(file);
+      });
+      const up = await apiRequest("POST", "/api/uploads/blob", { filename: file.name, contentType: file.type, dataBase64 });
+      const { url } = await up.json();
+      await apiRequest("POST", `/api/admin/clubs/${clubId}/logos`, { imageUrl: url, kind: "primary" });
+      onDone();
+    } catch (e: any) {
+      setErr(e?.message || "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <div
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => { e.preventDefault(); setOver(false); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); }}
+        style={{
+          border: `1.5px dashed ${over ? "#93c5fd" : "rgba(255,255,255,0.22)"}`,
+          background: over ? "rgba(147,197,253,0.08)" : "rgba(255,255,255,0.02)",
+          borderRadius: 6, padding: compact ? "8px 12px" : "16px 14px",
+          textAlign: "center", cursor: busy ? "wait" : "pointer",
+          fontSize: compact ? 11 : 12, color: "rgba(255,255,255,0.6)", transition: "all .12s",
+        }}
+      >
+        {busy ? "Uploading…" : (<><b style={{ color: "#93c5fd" }}>Drop logo</b>{compact ? "" : " here"} or click to browse</>)}
+      </div>
+      <input
+        ref={inputRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
+        style={{ display: "none" }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
+      />
+      {err && <div style={{ color: "#fca5a5", fontSize: 10, marginTop: 4 }}>{err}</div>}
+    </div>
+  );
+}
 
 interface ClubRow {
   id: string;
@@ -30,8 +91,12 @@ function canvaUrlOf(designId: string, pageIndex: number | null): string {
   return pageIndex && pageIndex > 1 ? `${base}?page=${pageIndex}` : base;
 }
 
-function ClubRowEditor({ club }: { club: ClubRow }) {
+function ClubRowEditor({ club, isMissing }: { club: ClubRow; isMissing: boolean }) {
   const qc = useQueryClient();
+  const onLogoChanged = () => {
+    qc.invalidateQueries({ queryKey: [`/api/admin/clubs/${club.id}/logos`] });
+    qc.invalidateQueries({ queryKey: ["/api/admin/clubs-missing-logos"] });
+  };
   const [expanded, setExpanded] = useState(false);
   const [canvaUrl, setCanvaUrl] = useState("");
   const [pageIndex, setPageIndex] = useState<string>("");
@@ -110,8 +175,12 @@ function ClubRowEditor({ club }: { club: ClubRow }) {
                 {primary.canvaPageIndex ? <span style={{ color: "rgba(255,255,255,0.4)" }}> · p.{primary.canvaPageIndex}</span> : null}
               </div>
             </div>
+          ) : isMissing ? (
+            <div style={{ maxWidth: 280 }}>
+              <LogoDropZone clubId={club.id} compact onDone={onLogoChanged} />
+            </div>
           ) : (
-            <span style={{ color: "#fca5a5", fontSize: 12 }}>No primary logo</span>
+            <span style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>✓ logo on file</span>
           )}
         </td>
         <td style={{ ...tdStyle, textAlign: "right" }}>
@@ -129,6 +198,8 @@ function ClubRowEditor({ club }: { club: ClubRow }) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
               <div>
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Add / replace logo</div>
+                <LogoDropZone clubId={club.id} onDone={onLogoChanged} />
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", textAlign: "center", margin: "10px 0 8px" }}>— or paste a Canva URL —</div>
                 <input value={canvaUrl} onChange={(e) => setCanvaUrl(e.target.value)} placeholder="Canva URL — https://www.canva.com/design/…" style={inputStyle} />
                 <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
                   <input value={pageIndex} onChange={(e) => setPageIndex(e.target.value)} placeholder="Page # (multi-page decks only)" style={{ ...inputStyle, width: 200 }} />
@@ -199,9 +270,9 @@ export default function AdminClubLogos() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24 }}>
           <div>
             <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: "-0.4px" }}>Club Logos</h1>
-            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", margin: "6px 0 0" }}>
-              The primary logo here auto-attaches to every order_item on PO raise (Center Chest / Embroidery defaults).
-              {missingResp ? <> · <b style={{ color: "#fca5a5" }}>{missingResp.clubs.length}</b> clubs have no primary logo.</> : null}
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", margin: "6px 0 0", maxWidth: 640 }}>
+              <b style={{ color: "rgba(255,255,255,0.75)" }}>Drop a logo file on any club below</b> to set it instantly — no Canva needed. The primary logo auto-attaches to every order item on PO raise.
+              {missingResp ? <> · <b style={{ color: "#fca5a5" }}>{missingResp.clubs.length}</b> clubs still need a logo.</> : null}
             </p>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -223,7 +294,7 @@ export default function AdminClubLogos() {
                 </tr>
               </thead>
               <tbody>
-                {visible.map((c) => <ClubRowEditor key={c.id} club={c} />)}
+                {visible.map((c) => <ClubRowEditor key={c.id} club={c} isMissing={missingIds.has(c.id)} />)}
               </tbody>
             </table>
           </div>
