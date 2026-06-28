@@ -3100,6 +3100,41 @@ async function dispatchOrderToSuppliers(
     }
   }
 
+  // Step 2.7: auto-attach the Sideline maker's mark to every garment item that
+  // doesn't already have one. Position is per-garment (Right Chest for tops/
+  // jackets/singlets, Center Back for caps/hats, Front Pocket for beanies,
+  // Bottom for shorts/pants); application follows the item's own branding
+  // method. Equipment/socks/bags get nothing. Fail-soft. (Romero 2026-06-27.)
+  try {
+    const SIDELINE_LOGO_URL = "https://quote.sidelinenz.com/sideline-assets/sideline-logo.png";
+    const markPosition = (pt?: string | null): string | null => {
+      const t = (pt || "").toLowerCase();
+      if (/(^|-)(ball|cones?|backpack|bag|towel|bottle|socks?)$/.test(t)) return null; // equipment/socks/bags
+      if (/cap|bucket/.test(t)) return "Center Back";
+      if (/beanie/.test(t)) return "Front Pocket";
+      if (/scarf/.test(t)) return "Bottom";
+      if (/short|pant|trouser|skort|skirt|spank|brief/.test(t)) return "Bottom";
+      return "Right Chest"; // tops, jerseys, polos, tees, singlets, hoodies, jackets, dresses
+    };
+    let marks = 0;
+    for (const item of allItems) {
+      const pos = markPosition((item as any).productType);
+      if (!pos) continue;
+      const existing = ((item as any).elementUrls as any[] | null) ?? [];
+      if (existing.some((e) => String(e?.name || "").toLowerCase().includes("sideline"))) continue;
+      const mark = { name: "Sideline", url: SIDELINE_LOGO_URL, position: pos, application: (item as any).brandingMethod || "Embroidery", sizeMm: 60, note: "Sideline maker's mark (auto)" };
+      const next = [...existing, mark];
+      await db.update(orderItems).set({ elementUrls: next as any }).where(eq(orderItems.id, item.id));
+      (item as any).elementUrls = next;
+      marks += 1;
+    }
+    if (marks > 0) {
+      await storage.logOrderActivity({ orderId: order.id, userId: opts.userId, action: "sideline_mark_auto_attached", details: { itemsStamped: marks, logo: SIDELINE_LOGO_URL } } as any).catch(() => {});
+    }
+  } catch (err) {
+    console.error(`[dispatch-po] Sideline mark auto-attach failed for ${order.poReference}:`, err);
+  }
+
   // Step 2.7: seed the 8-stage production pipeline if it hasn't been
   // initialized yet. Idempotent on second call (storage method checks).
   // Lets admin + supplier mark checkpoints from the order detail page.
