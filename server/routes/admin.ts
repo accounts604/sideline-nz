@@ -2972,6 +2972,18 @@ async function dispatchOrderToSuppliers(
     return { ok: false, status: 400, error: "Order has no items to dispatch" };
   }
 
+  // Step 0: PO QC gate (Sideline Studio Phase 0) — block dispatch of an
+  // incomplete PO before ANY side effect. Verifies fabric, branding method,
+  // quantity, and size reconciliation on every garment line. Logo presence +
+  // supplier cost are produced by later steps and checked in a future Pass B.
+  {
+    const { assertProductionReady, summarizeFailures } = await import("../po-qc.js");
+    const qc = await assertProductionReady(order.id);
+    if (!qc.ok) {
+      return { ok: false, status: 400, error: summarizeFailures(qc.failures) };
+    }
+  }
+
   // Step 1: resolve supplier per line.
   // If opts.supplierId is set, force every line to that supplier (legacy
   // single-supplier path used by /po-decision when admin taps "Send" on a
@@ -3290,7 +3302,18 @@ router.get("/orders/:id/dispatch-preview", async (req, res) => {
       });
     }
 
-    res.json({ groups, unresolved, itemCount: items.length });
+    // PO QC gate (dry-run) — surface fabric/branding/quantity/size gaps in the
+    // preview so the operator sees what to fix before hitting dispatch.
+    const { assertProductionReady } = await import("../po-qc.js");
+    const qc = await assertProductionReady(order.id);
+
+    res.json({
+      groups,
+      unresolved,
+      itemCount: items.length,
+      qcReady: qc.ok,
+      qcFailures: qc.ok ? [] : qc.failures,
+    });
   } catch (err: any) {
     console.error("Admin dispatch-preview error:", err);
     res.status(500).json({ error: "Failed to compute dispatch preview" });
