@@ -4655,6 +4655,41 @@ router.get("/clubs/logos-overview", async (_req, res) => {
   }
 });
 
+// GET /api/admin/orders/populate-status — EVERY live PO (club or standalone) with
+// its populate gaps (logos / sizes / fabric / branding). The bulk worklist: see
+// every PO that needs work in one place, including non-club orders.
+router.get("/orders/populate-status", async (_req, res) => {
+  try {
+    const R = (r: any) => (r && r.rows) ? r.rows : (Array.isArray(r) ? r : []);
+    const arr = (e: any) => { try { const a = typeof e === "string" ? JSON.parse(e || "[]") : (e || []); return Array.isArray(a) ? a : []; } catch { return []; } };
+    const os = R(await db.execute(sql`SELECT id, po_reference, account_name, status, club_account_id, production_stage, pipeline_stage FROM orders WHERE po_reference IS NOT NULL ORDER BY po_reference DESC`));
+    const dead = (o: any) => /deliver|complete|cancel/i.test(String(o.production_stage || "")) || /deliver|complete|cancel/i.test(String(o.pipeline_stage || ""));
+    const live = os.filter((o: any) => !dead(o));
+    const pos: any[] = [];
+    for (const o of live) {
+      const its = R(await db.execute(sql`SELECT id, material, branding_method, quantity, element_urls FROM order_items WHERE order_id=${o.id}`));
+      const n = its.length;
+      let logos = 0, sized = 0, fab = 0, brand = 0;
+      for (const it of its) {
+        if (arr(it.element_urls).some((e: any) => e?.url && !String(e?.name || "").toLowerCase().includes("sideline"))) logos++;
+        const sb = R(await db.execute(sql`SELECT COALESCE(SUM(quantity),0) s FROM order_size_breakdowns WHERE order_item_id=${it.id}`))[0];
+        if (Number(sb?.s) > 0 && Number(sb.s) === Number(it.quantity)) sized++;
+        if (String(it.material || "").trim()) fab++;
+        if (String(it.branding_method || "").trim()) brand++;
+      }
+      const needs: string[] = [];
+      if (logos < n) needs.push("logos");
+      if (sized < n) needs.push("sizes");
+      if (fab < n) needs.push("fabric");
+      if (brand < n) needs.push("branding");
+      pos.push({ id: o.id, poReference: o.po_reference, accountName: o.account_name, status: o.status, clubAccountId: o.club_account_id, itemCount: n, logos, sized, fabric: fab, branding: brand, needs, complete: needs.length === 0 });
+    }
+    res.json({ ok: true, pos });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 // POST /api/admin/clubs/:id/apply-logos-to-current-po — push the club's logos
 // onto its current (latest) PO's garment items: the primary logo at its
 // placement + the Sideline maker's mark. Idempotent + additive — never emails or
