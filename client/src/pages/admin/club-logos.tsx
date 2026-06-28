@@ -1,6 +1,7 @@
-// Admin "Club Logos" — every club's logo/design assets at a glance, with typed
-// drag-and-drop upload (Primary/Secondary/Front/Back/Sponsor + the sponsor
-// prominence ladder). See docs/sideline-studio.md + reference_sideline_logo_asset_taxonomy.
+// Admin "Brand Identity" — every club & team's brand identity in one place,
+// across three pillars: Logos, Designs and Colours. Typed drag-and-drop upload
+// (Primary/Secondary/Front/Back/Sponsor + the sponsor prominence ladder); it all
+// flows into every PO. See docs/sideline-studio.md + reference_sideline_logo_asset_taxonomy.
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
@@ -212,6 +213,8 @@ function ClubCard({ club }: { club: ClubWithLogos }) {
 
   const logos = club.logos;
   const hasPrimary = logos.some((l) => l.kind === "primary");
+  const logoAssets = logos.filter((l) => l.kind === "primary" || l.kind === "secondary" || l.kind === "sponsor");
+  const designAssets = logos.filter((l) => l.kind === "front-design" || l.kind === "back-design");
 
   async function applyLogos() {
     setApplying(true); setApplyMsg(null);
@@ -254,10 +257,41 @@ function ClubCard({ club }: { club: ClubWithLogos }) {
         <button onClick={() => setExpanded((s) => !s)} style={btnGhost}>{expanded ? "Close" : "Manage"}</button>
       </div>
 
-      {/* Always-visible: every asset for this club */}
+      {/* Always-visible: this club's brand identity across three pillars */}
       {logos.length > 0 ? (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 14 }}>
-          {logos.map((l) => <AssetTile key={l.id} logo={l} />)}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 14 }}>
+          {/* LOGOS pillar */}
+          <div>
+            <div style={pillarLabelStyle}>Logos</div>
+            {logoAssets.length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+                {logoAssets.map((l) => <AssetTile key={l.id} logo={l} />)}
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No logos yet</div>
+            )}
+          </div>
+          {/* DESIGNS pillar */}
+          <div>
+            <div style={pillarLabelStyle}>Designs</div>
+            {designAssets.length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+                {designAssets.map((l) => <AssetTile key={l.id} logo={l} />)}
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No designs yet</div>
+            )}
+          </div>
+          {/* COLOURS pillar (placeholder — no backend yet) */}
+          <div>
+            <div style={pillarLabelStyle}>Colours</div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginBottom: 8 }}>Club colours sync to every PO. Editing comes next.</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              {[0, 1, 2].map((i) => (
+                <div key={i} style={{ width: 22, height: 22, borderRadius: "50%", border: "1.5px dashed rgba(255,255,255,0.22)" }} />
+              ))}
+            </div>
+          </div>
         </div>
       ) : (
         <div style={{ marginTop: 14, maxWidth: 320 }}>
@@ -436,7 +470,7 @@ function ClubsPanel() {
   if (!clubs.length) return null;
   return (
     <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: 16, marginBottom: 24 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Clubs &amp; schools <span style={{ color: "rgba(255,255,255,0.4)", fontWeight: 400 }}>· {clubs.length} · each owns the shared primary logo; teams sit under it</span></div>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Structure <span style={{ color: "rgba(255,255,255,0.4)", fontWeight: 400 }}>· {clubs.length} · each owns the shared primary logo; teams sit under it</span></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
         {clubs.map((c) => (
           <div key={c.id} style={{ border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: 12 }}>
@@ -478,9 +512,9 @@ export default function AdminClubLogos() {
       <div style={{ padding: "32px 36px", color: "#fff" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24 }}>
           <div>
-            <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: "-0.4px" }}>Club Logos</h1>
+            <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: "-0.4px" }}>Brand Identity</h1>
             <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", margin: "6px 0 0", maxWidth: 680 }}>
-              Every club's assets at a glance. <b style={{ color: "rgba(255,255,255,0.75)" }}>Drop a file</b> to add one (pick its type → placement is set automatically). The Primary logo auto-attaches to every PO.
+              Every club and team's brand identity: <b style={{ color: "rgba(255,255,255,0.75)" }}>Logos, Designs and Colours</b>. Set it once here and it flows into every PO.
               {data ? <> · <b style={{ color: missingCount ? "#fca5a5" : "#86efac" }}>{missingCount}</b> still need a primary.</> : null}
             </p>
           </div>
@@ -509,5 +543,6 @@ const inputStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4,
 };
 const labelStyle: React.CSSProperties = { fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 };
+const pillarLabelStyle: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 };
 const btnPrimary: React.CSSProperties = { padding: "6px 14px", fontSize: 11, fontWeight: 600, background: "#fff", color: "#000", border: 0, borderRadius: 4, cursor: "pointer" };
 const btnGhost: React.CSSProperties = { padding: "5px 10px", fontSize: 11, background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.8)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4, cursor: "pointer" };
