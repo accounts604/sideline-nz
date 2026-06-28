@@ -323,19 +323,22 @@ interface PoStatus { id: string; poReference: string; accountName: string; clubN
 function PoMockupUpload({ orderId, onDone }: { orderId: string; onDone: () => void }) {
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   async function handle(file: File) {
-    setBusy(true);
+    setBusy(true); setErr(null);
     try {
-      const dataBase64 = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1] || ""); r.onerror = () => rej(new Error("x")); r.readAsDataURL(file); });
+      const dataBase64 = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1] || ""); r.onerror = () => rej(new Error("read failed")); r.readAsDataURL(file); });
       const up = await apiRequest("POST", "/api/uploads/blob", { filename: file.name, contentType: file.type, dataBase64 });
       const { url } = await up.json();
-      await apiRequest("POST", `/api/admin/orders/${orderId}/mockup`, { imageUrl: url, fileName: file.name, mimeType: file.type, label: file.name.replace(/\.[^.]+$/, "") });
+      const r = await apiRequest("POST", `/api/admin/orders/${orderId}/mockup`, { imageUrl: url, fileName: file.name, mimeType: file.type, label: file.name.replace(/\.[^.]+$/, "") });
+      const j = await r.json().catch(() => ({}));
+      if (!j?.ok) throw new Error(j?.error || "upload rejected");
       onDone();
-    } catch { /* */ } finally { setBusy(false); }
+    } catch (e: any) { setErr(String(e?.message || "failed")); } finally { setBusy(false); }
   }
   return (
     <>
-      <button onClick={() => ref.current?.click()} disabled={busy} style={{ ...btnGhost, fontSize: 10, padding: "3px 8px", flexShrink: 0 }}>{busy ? "…" : "+ mockup"}</button>
+      <button onClick={() => ref.current?.click()} disabled={busy} title={err || undefined} style={{ ...btnGhost, fontSize: 10, padding: "3px 8px", flexShrink: 0, ...(err ? { borderColor: "#fca5a5", color: "#fca5a5" } : {}) }}>{busy ? "…" : err ? "⚠ retry" : "+ mockup"}</button>
       <input ref={ref} type="file" accept="image/png,image/jpeg,image/webp,application/pdf" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handle(f); e.currentTarget.value = ""; }} />
     </>
   );
@@ -350,19 +353,23 @@ function Chip({ have, total, label }: { have: number; total: number; label: stri
 function PoLogoUpload({ orderId, onDone }: { orderId: string; onDone: () => void }) {
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   async function handle(file: File) {
-    setBusy(true);
+    setBusy(true); setErr(null);
     try {
-      const dataBase64 = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1] || ""); r.onerror = () => rej(new Error("x")); r.readAsDataURL(file); });
+      const dataBase64 = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1] || ""); r.onerror = () => rej(new Error("read failed")); r.readAsDataURL(file); });
       const up = await apiRequest("POST", "/api/uploads/blob", { filename: file.name, contentType: file.type, dataBase64 });
       const { url } = await up.json();
-      await apiRequest("POST", `/api/admin/orders/${orderId}/attach-logo`, { imageUrl: url });
+      const r = await apiRequest("POST", `/api/admin/orders/${orderId}/attach-logo`, { imageUrl: url });
+      const j = await r.json().catch(() => ({}));
+      if (!j?.ok) throw new Error(j?.error || "upload rejected");
+      if (j.itemsUpdated === 0) throw new Error("no garment items to attach to");
       onDone();
-    } catch { /* surfaced by absence of change */ } finally { setBusy(false); }
+    } catch (e: any) { setErr(String(e?.message || "failed")); } finally { setBusy(false); }
   }
   return (
     <>
-      <button onClick={() => ref.current?.click()} disabled={busy} style={{ ...btnGhost, fontSize: 10, padding: "3px 8px", flexShrink: 0 }}>{busy ? "…" : "+ logo"}</button>
+      <button onClick={() => ref.current?.click()} disabled={busy} title={err || undefined} style={{ ...btnGhost, fontSize: 10, padding: "3px 8px", flexShrink: 0, ...(err ? { borderColor: "#fca5a5", color: "#fca5a5" } : {}) }}>{busy ? "…" : err ? "⚠ retry" : "+ logo"}</button>
       <input ref={ref} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handle(f); e.currentTarget.value = ""; }} />
     </>
   );

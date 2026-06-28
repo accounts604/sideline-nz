@@ -3079,7 +3079,12 @@ async function dispatchOrderToSuppliers(
   if (order.clubAccountId) {
     try {
       const allLogos = await storage.listClubLogoAssets(order.clubAccountId);
-      const placeable = allLogos.filter((l) => ["primary", "secondary", "sponsor"].includes(l.kind));
+      // Only placeable logos with a RENDERED preview image. Without previewUrl,
+      // logoElementFromAsset falls back to a Canva /edit URL, which would be
+      // stamped onto the supplier PO PDF as an unrenderable "logo" (QC Pass B
+      // only checks existence, not renderability). Skip those — they need a
+      // preview rendered first.
+      const placeable = allLogos.filter((l) => ["primary", "secondary", "sponsor"].includes(l.kind) && !!(l as any).previewUrl);
       if (placeable.length) {
         const { logoElementFromAsset, logoListHasAsset, clubLogoPlacement } = await import("../canva-logos.js");
         let stamped = 0;
@@ -4704,11 +4709,16 @@ router.get("/orders/populate-status", async (_req, res) => {
     const live = os.filter((o: any) => !dead(o));
     const pos: any[] = [];
     for (const o of live) {
-      const its = R(await db.execute(sql`SELECT id, material, branding_method, quantity, element_urls FROM order_items WHERE order_id=${o.id}`));
+      const its = R(await db.execute(sql`SELECT id, product_type, material, branding_method, quantity, element_urls FROM order_items WHERE order_id=${o.id}`));
       const n = its.length;
+      // Equipment (balls/cones/bags/towels/bottles/socks) never gets a club logo
+      // by design (attach-logo skips it), so it must NOT count against the logo
+      // denominator or a mixed PO reads "incomplete" forever.
+      const isNonGarment = (pt?: string | null) => /(^|[-_ ])(balls?|cones?|backpacks?|bags?|towels?|bottles?|socks?)$/i.test((pt || "").toLowerCase());
+      const garmentN = its.filter((it: any) => !isNonGarment(it.product_type)).length;
       let logos = 0, sized = 0, fab = 0, brand = 0;
       for (const it of its) {
-        if (arr(it.element_urls).some((e: any) => e?.url && !String(e?.name || "").toLowerCase().includes("sideline"))) logos++;
+        if (!isNonGarment(it.product_type) && arr(it.element_urls).some((e: any) => e?.url && !String(e?.name || "").toLowerCase().includes("sideline"))) logos++;
         const sb = R(await db.execute(sql`SELECT COALESCE(SUM(quantity),0) s FROM order_size_breakdowns WHERE order_item_id=${it.id}`))[0];
         if (Number(sb?.s) > 0 && Number(sb.s) === Number(it.quantity)) sized++;
         if (String(it.material || "").trim()) fab++;
@@ -4717,7 +4727,7 @@ router.get("/orders/populate-status", async (_req, res) => {
       const mk = R(await db.execute(sql`SELECT count(*)::int c FROM design_files WHERE order_id=${o.id} AND folder='mockups'`))[0];
       const mockups = Number(mk?.c || 0);
       const needs: string[] = [];
-      if (logos < n) needs.push("logos");
+      if (logos < garmentN) needs.push("logos");
       if (sized < n) needs.push("sizes");
       if (fab < n) needs.push("fabric");
       if (brand < n) needs.push("branding");
@@ -4758,8 +4768,11 @@ router.post("/clubs/:id/apply-logos-to-current-po", async (req, res) => {
       const existing = ((item as any).elementUrls as any[] | null) ?? [];
       const next = [...existing];
       let changed = false;
-      const hasClub = next.some((e) => e?.url && !String(e?.name || "").toLowerCase().includes("sideline"));
-      if (!hasClub) {
+      // Per-asset check: add the PRIMARY iff the primary specifically is absent.
+      // (The old coarse "has any non-sideline mark" test skipped the primary
+      // whenever a sponsor was already on the item.)
+      const hasPrimary = next.some((e) => e?.url && primary.previewUrl && e.url === primary.previewUrl);
+      if (!hasPrimary) {
         const pl = clubLogoPlacement((item as any).productType, primary as any);
         next.push({ name: primary.displayLabel || "Club Logo", url: primary.previewUrl, position: pl.position, application: pl.application });
         changed = true;
