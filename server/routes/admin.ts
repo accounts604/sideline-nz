@@ -4738,6 +4738,34 @@ router.post("/clubs/:id/apply-logos-to-current-po", async (req, res) => {
   }
 });
 
+// POST /api/admin/orders/:id/attach-logo — attach an uploaded logo URL to an
+// order's garment items (Left Chest), works for ANY PO incl. standalone ones.
+// Lets the worklist populate a logo on a PO directly. Idempotent.
+router.post("/orders/:id/attach-logo", async (req, res) => {
+  try {
+    const imageUrl = (req.body && req.body.imageUrl) as string | undefined;
+    if (!imageUrl) return res.status(400).json({ error: "imageUrl required" });
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const items = await storage.getOrderItems(order.id);
+    const arr = (e: any) => { try { const a = typeof e === "string" ? JSON.parse(e || "[]") : (e || []); return Array.isArray(a) ? a : []; } catch { return []; } };
+    const isNonGarment = (pt?: string | null) => /(^|[-_ ])(balls?|cones?|backpacks?|bags?|towels?|bottles?|socks?)$/i.test((pt || "").toLowerCase());
+    let updated = 0;
+    for (const it of items) {
+      if (isNonGarment((it as any).productType)) continue;
+      const existing = arr((it as any).elementUrls);
+      if (existing.some((e: any) => e?.url && !String(e?.name || "").toLowerCase().includes("sideline"))) continue;
+      const next = [...existing, { name: "Logo", url: imageUrl, position: "Left Chest", application: (it as any).brandingMethod || "Embroidery" }];
+      await db.update(orderItems).set({ elementUrls: next as any }).where(eq(orderItems.id, it.id));
+      updated += 1;
+    }
+    await storage.logOrderActivity({ orderId: order.id, action: "logo_attached_to_order", details: { itemsUpdated: updated, url: imageUrl } } as any).catch(() => {});
+    res.json({ ok: true, poReference: order.poReference, itemsUpdated: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 // ---- In-app AI worker (Phase 1: name-asset) ----
 //
 // POST /ai/name-asset
