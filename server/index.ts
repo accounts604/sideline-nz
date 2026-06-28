@@ -2,6 +2,7 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes/index";
+import { sendTelegramCard } from "./telegram";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { WebhookHandlers } from "./webhookHandlers";
@@ -67,6 +68,29 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
+// Ops alerting — throttled so a burst of the same fault doesn't spam Telegram.
+// Fail-soft: no-op if JARVESI_BOT_TOKEN/KIG_GROUP_CHAT_ID aren't set yet.
+const _alertThrottle = new Map<string, number>();
+function alertOps(key: string, text: string) {
+  const now = Date.now();
+  if (now - (_alertThrottle.get(key) || 0) < 5 * 60 * 1000) return;
+  _alertThrottle.set(key, now);
+  sendTelegramCard({ text }).catch(() => {});
+}
+
+// Crash visibility: log + alert before the process dies (or stays up). Mirrors
+// the handlers mission-control adopted — a stray fire-and-forget rejection used
+// to kill the process silently with Railway giving up after its retries.
+process.on("unhandledRejection", (reason: any) => {
+  console.error("[unhandledRejection]", reason);
+  alertOps("unhandledRejection", `⚠️ Sideline unhandledRejection\n${String(reason?.message || reason).slice(0, 300)}`);
+});
+process.on("uncaughtException", (err: any) => {
+  console.error("[uncaughtException]", err);
+  alertOps("uncaughtException", `🚨 Sideline uncaughtException — process exiting for restart\n${String(err?.message || err).slice(0, 300)}`);
+  process.exit(1);
+});
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -108,12 +132,17 @@ app.use((req, res, next) => {
 
   await registerRoutes(httpServer, app);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    res.status(status).json({ message });
-    throw err;
+    if (!res.headersSent) res.status(status).json({ message });
+    // 5xx => surface it: the worklist 500 was caught by a human, not the system.
+    // (Do NOT re-throw — that ran after headers were sent and only produced noise.)
+    if (status >= 500) {
+      console.error(`[5xx] ${req.method} ${req.path}:`, err?.stack || message);
+      alertOps(`5xx:${req.path}`, `🚨 Sideline 5xx\n${req.method} ${req.path}\n${message}`);
+    }
   });
 
   if (process.env.NODE_ENV === "production") {
