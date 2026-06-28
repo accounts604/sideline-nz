@@ -3147,6 +3147,18 @@ async function dispatchOrderToSuppliers(
     console.error(`[dispatch-po] Sideline mark auto-attach failed for ${order.poReference}:`, err);
   }
 
+  // Step 2.8: PO QC Pass B (Sideline Studio Phase 1) — logos are now attached,
+  // so verify every garment line carries BOTH a club logo and the Sideline
+  // mark. Blocks BEFORE any external side effect (Instructions doc, GHL push,
+  // supplier emails) so a logo-less PO never ships to the factory.
+  {
+    const { checkLogosAttached, summarizeFailures } = await import("../po-qc.js");
+    const logoCheck = checkLogosAttached(allItems as any);
+    if (!logoCheck.ok) {
+      return { ok: false, status: 400, error: summarizeFailures(logoCheck.failures) };
+    }
+  }
+
   // Step 2.7: seed the 8-stage production pipeline if it hasn't been
   // initialized yet. Idempotent on second call (storage method checks).
   // Lets admin + supplier mark checkpoints from the order detail page.

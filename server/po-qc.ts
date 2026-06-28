@@ -17,10 +17,16 @@ export type QcSeverity = "block" | "warn";
 export type LineFailure = {
   itemId: string;
   productName: string;
-  field: "fabric" | "branding" | "quantity" | "sizes";
+  field: "fabric" | "branding" | "quantity" | "sizes" | "logo";
   reason: string;
   severity: QcSeverity;
 };
+
+function arr(e: any): any[] {
+  if (Array.isArray(e)) return e;
+  if (typeof e === "string") { try { const a = JSON.parse(e || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } }
+  return [];
+}
 
 // Pure equipment / accessories — no fabric, branding, or sizing expected.
 const NON_GARMENT = /(^|[-_ ])(balls?|cones?|backpacks?|bags?|towels?|bottles?)$/i;
@@ -72,6 +78,32 @@ export async function assertProductionReady(
     }
   }
 
+  return failures.length ? { ok: false, failures } : { ok: true };
+}
+
+/**
+ * Phase 1 PO QC — Pass B. Run AFTER dispatch's logo auto-attach steps (2.6/2.7)
+ * on the in-memory items: every garment line must carry both a club logo
+ * (a non-Sideline element) and the Sideline maker's mark. Synchronous — operates
+ * on the already-mutated items, no DB read. Equipment/bags exempt.
+ */
+export function checkLogosAttached(
+  items: Array<{ id: string; productName?: string | null; productType?: string | null; elementUrls?: any }>,
+): { ok: true } | { ok: false; failures: LineFailure[] } {
+  const failures: LineFailure[] = [];
+  for (const it of items) {
+    if (isNonGarment(it.productType, it.productName)) continue;
+    const name = it.productName || it.productType || it.id;
+    const els = arr(it.elementUrls);
+    const hasSideline = els.some((e: any) => String(e?.name || "").toLowerCase().includes("sideline"));
+    const hasClubLogo = els.some((e: any) => e?.url && !String(e?.name || "").toLowerCase().includes("sideline"));
+    if (!hasClubLogo) {
+      failures.push({ itemId: it.id, productName: name, field: "logo", reason: "no club logo attached — add a club logo (or set the club's primary logo asset)", severity: "block" });
+    }
+    if (!hasSideline) {
+      failures.push({ itemId: it.id, productName: name, field: "logo", reason: "Sideline maker's mark missing", severity: "block" });
+    }
+  }
   return failures.length ? { ok: false, failures } : { ok: true };
 }
 
