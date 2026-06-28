@@ -4710,6 +4710,13 @@ router.get("/clubs/brand-identity", async (_req, res) => {
     const mapAsset = (s: any) => ({ id: s.id, kind: s.kind, displayLabel: s.display_label, previewUrl: s.preview_url, defaultPosition: s.default_position, clubAccountId: s.club_account_id });
     const LOGO_KINDS = ["primary", "secondary", "sponsor"]; const DESIGN_KINDS = ["front-design", "back-design"];
     const clubsRows = R(await db.execute(sql`SELECT id, name, kind, primary_logo_url FROM clubs ORDER BY name`));
+    // Parent org details — OPTIONAL: tolerate a DB without the columns yet (returns
+    // no details, never 500s). See migrations/club-parent-details.sql.
+    let detailsByClub = new Map<string, any>();
+    try {
+      const dRows = R(await db.execute(sql`SELECT id, website, delivery_address, contact_name, contact_email, contact_phone, ghl_business_id FROM clubs`));
+      detailsByClub = new Map(dRows.map((r: any) => [r.id, { website: r.website, deliveryAddress: r.delivery_address, contactName: r.contact_name, contactEmail: r.contact_email, contactPhone: r.contact_phone, ghlBusinessId: r.ghl_business_id }]));
+    } catch { /* columns not migrated yet */ }
     const accts = R(await db.execute(sql`SELECT id, club_name, club_id FROM club_accounts WHERE club_id IS NOT NULL`));
     const assets = R(await db.execute(sql`SELECT id, club_account_id, kind, display_label, preview_url, default_position FROM club_logo_assets`));
     const colorRows = R(await db.execute(sql`SELECT club_account_id, colors FROM club_brand_identity`));
@@ -4735,7 +4742,7 @@ router.get("/clubs/brand-identity", async (_req, res) => {
           .sort((a: any, b: any) => String(b.po_reference).localeCompare(String(a.po_reference)))
           .map((o: any) => ({ poRef: o.po_reference, poId: o.id, status: o.status, name: o.account_name })),
       })).sort((a: any, b: any) => a.name.localeCompare(b.name));
-      return { id: c.id, name: c.name, kind: c.kind, accountId: rep?.id || null, primaryLogoUrl, colors, logos, designs, teams };
+      return { id: c.id, name: c.name, kind: c.kind, accountId: rep?.id || null, primaryLogoUrl, colors, details: detailsByClub.get(c.id) || null, logos, designs, teams };
     });
     res.json({ ok: true, clubs: out });
   } catch (err: any) {
@@ -4758,6 +4765,27 @@ router.put("/clubs/:id/colours", async (req, res) => {
     await storage.ensureClubBrandIdentity(req.params.id);
     await storage.updateClubBrandIdentity(req.params.id, { colors: clean } as any);
     res.json({ ok: true, colors: clean });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// PUT /api/admin/clubs/:id/details — save parent (Club/School) org details:
+// website, delivery address, main contact, GHL business link. :id is the CLUB id.
+router.put("/clubs/:id/details", async (req, res) => {
+  try {
+    const b = (req.body || {}) as any;
+    const s = (v: any) => { const t = String(v ?? "").trim(); return t || null; };
+    await db.execute(sql`UPDATE clubs SET
+      website=${s(b.website)},
+      delivery_address=${s(b.deliveryAddress)},
+      contact_name=${s(b.contactName)},
+      contact_email=${s(b.contactEmail)},
+      contact_phone=${s(b.contactPhone)},
+      ghl_business_id=${s(b.ghlBusinessId)},
+      updated_at=now()
+      WHERE id=${req.params.id}`);
+    res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: String(err?.message || err) });
   }

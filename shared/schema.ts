@@ -585,6 +585,15 @@ export const clubs = pgTable("clubs", {
   primaryLogoUrl: text("primary_logo_url"),       // the shared crest, applied to every team's PO
   primaryLogoLabel: text("primary_logo_label"),
   colors: jsonb("colors"),                        // shared club colours
+  // Parent / org details (the parent IS the GHL business). website/address/main
+  // contact; ghlBusinessId links to GHL as system-of-record. deliveryAddress
+  // defaults new POs' ship-to. See reference_sideline_clubs_vs_teams.
+  website: text("website"),
+  deliveryAddress: text("delivery_address"),
+  contactName: text("contact_name"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+  ghlBusinessId: text("ghl_business_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

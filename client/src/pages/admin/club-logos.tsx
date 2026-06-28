@@ -53,6 +53,14 @@ interface BrandTeam {
   secondaryLogoUrl: string | null;
   orders: BrandOrder[];
 }
+interface BrandDetails {
+  website: string | null;
+  deliveryAddress: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  ghlBusinessId: string | null;
+}
 interface BrandClub {
   id: string;
   name: string;
@@ -60,6 +68,7 @@ interface BrandClub {
   accountId: string | null;
   primaryLogoUrl: string | null;
   colors: ClubColors | null;
+  details: BrandDetails | null;
   logos: BrandAsset[];
   designs: BrandAsset[];
   teams: BrandTeam[];
@@ -268,6 +277,69 @@ function ColoursPillar({ clubId, initial, onSaved }: { clubId: string; initial: 
         ))}
       </div>
       <button onClick={save} disabled={busy} style={{ ...btnGhost, fontSize: 10, padding: "3px 10px", marginTop: 10, ...(err ? { borderColor: "#fca5a5", color: "#fca5a5" } : {}) }}>{busy ? "Saving…" : err ? "⚠ retry" : saved ? "✓ Saved" : "Save colours"}</button>
+    </div>
+  );
+}
+
+// PARENT DETAILS pillar — the club/school as the GHL business: website, delivery
+// address (defaults a PO's ship-to), and primary contact. Saved to club details.
+function ParentDetailsPillar({ clubId, initial, onSaved }: { clubId: string; initial: BrandDetails | null; onSaved: () => void }) {
+  const [d, setD] = useState({
+    website: initial?.website || "",
+    deliveryAddress: initial?.deliveryAddress || "",
+    contactName: initial?.contactName || "",
+    contactEmail: initial?.contactEmail || "",
+    contactPhone: initial?.contactPhone || "",
+    ghlBusinessId: initial?.ghlBusinessId || "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState(false);
+  const set = (k: keyof typeof d) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { const v = e.target.value; setD((s) => ({ ...s, [k]: v })); setSaved(false); };
+  async function save() {
+    setBusy(true); setSaved(false); setErr(false);
+    try {
+      const r = await apiRequest("PUT", `/api/admin/clubs/${clubId}/details`, {
+        website: d.website, deliveryAddress: d.deliveryAddress, contactName: d.contactName,
+        contactEmail: d.contactEmail, contactPhone: d.contactPhone, ghlBusinessId: d.ghlBusinessId,
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!j?.ok) throw new Error();
+      setSaved(true); onSaved();
+    } catch { setErr(true); } finally { setBusy(false); }
+  }
+  const fieldLabel: React.CSSProperties = { fontSize: 10, color: "rgba(255,255,255,0.5)", marginBottom: 3, display: "block" };
+  return (
+    <div>
+      <div style={pillarLabelStyle}>Parent details</div>
+      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginBottom: 8 }}>The club/school is the GHL business. Address defaults a PO's ship-to.</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
+        <div style={{ flex: "1 1 220px", minWidth: 180 }}>
+          <label style={fieldLabel}>Website</label>
+          <input value={d.website} onChange={set("website")} placeholder="https://…" style={inputStyle} />
+        </div>
+        <div style={{ flex: "1 1 100%" }}>
+          <label style={fieldLabel}>Delivery address</label>
+          <textarea value={d.deliveryAddress} onChange={set("deliveryAddress")} rows={2} placeholder="Ship-to address" style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+        </div>
+        <div style={{ flex: "1 1 160px", minWidth: 140 }}>
+          <label style={fieldLabel}>Contact name</label>
+          <input value={d.contactName} onChange={set("contactName")} placeholder="Name" style={inputStyle} />
+        </div>
+        <div style={{ flex: "1 1 200px", minWidth: 160 }}>
+          <label style={fieldLabel}>Contact email</label>
+          <input value={d.contactEmail} onChange={set("contactEmail")} placeholder="email@…" style={inputStyle} />
+        </div>
+        <div style={{ flex: "1 1 150px", minWidth: 130 }}>
+          <label style={fieldLabel}>Contact phone</label>
+          <input value={d.contactPhone} onChange={set("contactPhone")} placeholder="Phone" style={inputStyle} />
+        </div>
+        <div style={{ flex: "1 1 200px", minWidth: 160 }}>
+          <label style={{ ...fieldLabel, color: "rgba(255,255,255,0.3)" }}>GHL business ID (optional)</label>
+          <input value={d.ghlBusinessId} onChange={set("ghlBusinessId")} placeholder="GHL business ID" style={{ ...inputStyle, color: "rgba(255,255,255,0.6)" }} />
+        </div>
+      </div>
+      <button onClick={save} disabled={busy} style={{ ...btnGhost, fontSize: 10, padding: "3px 10px", marginTop: 10, ...(err ? { borderColor: "#fca5a5", color: "#fca5a5" } : {}) }}>{busy ? "Saving…" : err ? "⚠ retry" : saved ? "✓ Saved" : "Save details"}</button>
     </div>
   );
 }
@@ -507,6 +579,9 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
         {club.accountId
           ? <ColoursPillar clubId={club.accountId} initial={club.colors} onSaved={refresh} />
           : <div><div style={pillarLabelStyle}>Colours</div><div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No colours target</div></div>}
+
+        {/* PARENT DETAILS pillar — editable club/school business + contact + ship-to */}
+        <ParentDetailsPillar clubId={club.id} initial={club.details} onSaved={refresh} />
 
         {/* TEAMS pillar — Team ▸ Orders nesting */}
         <div>
