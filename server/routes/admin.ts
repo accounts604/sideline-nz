@@ -4509,6 +4509,19 @@ const TYPE_DEFAULT_POSITION: Record<string, string> = {
   "back-design": "Back",
   sponsor: "Front Center",
 };
+const KIND_LABEL: Record<string, string> = {
+  primary: "Primary Logo",
+  secondary: "Secondary Logo",
+  "front-design": "Front Design",
+  "back-design": "Back Design",
+  sponsor: "Sponsor",
+};
+// Auto-name a logo asset from the club + chosen type (no filename). Sponsors
+// include their slot so multiples stay distinct. (Plain hyphen — no em dash.)
+function autoAssetName(clubName: string, kind: string, position?: string | null): string {
+  const label = KIND_LABEL[kind] || kind;
+  return kind === "sponsor" && position ? `${clubName} - ${label} (${position})` : `${clubName} - ${label}`;
+}
 
 // GET /api/admin/clubs/:id/logos — list logos for one club
 router.get("/clubs/:id/logos", async (req, res) => {
@@ -4535,16 +4548,18 @@ router.post("/clubs/:id/logos", async (req, res) => {
     // Direct file-upload path (drag-and-drop) — no Canva. The uploaded image is
     // both the preview and the production artwork; a synthetic id satisfies the
     // notNull canva_design_id column. This is the bottleneck-killer for support.
+    const position = data.defaultPosition ?? TYPE_DEFAULT_POSITION[data.kind] ?? null;
+
     if (!designId && data.imageUrl) {
       const created = await storage.createClubLogoAsset({
         clubAccountId: req.params.id,
         canvaDesignId: `upload:${Date.now()}`,
         canvaPageIndex: null,
         kind: data.kind,
-        displayLabel: data.displayLabel ?? `${club.clubName} — ${data.kind}`,
+        displayLabel: data.displayLabel ?? autoAssetName(club.clubName, data.kind, position),
         previewUrl: data.imageUrl,
         artworkFileUrl: data.imageUrl,
-        defaultPosition: data.defaultPosition ?? TYPE_DEFAULT_POSITION[data.kind] ?? null,
+        defaultPosition: position,
         lastSyncedAt: null,
       } as any);
       return res.json({ ok: true, logo: created });
@@ -4558,9 +4573,9 @@ router.post("/clubs/:id/logos", async (req, res) => {
       canvaDesignId: designId,
       canvaPageIndex: data.canvaPageIndex ?? null,
       kind: data.kind,
-      displayLabel: data.displayLabel ?? `${club.clubName} — ${data.kind}`,
+      displayLabel: data.displayLabel ?? autoAssetName(club.clubName, data.kind, position),
       previewUrl: data.previewUrl ?? null,
-      defaultPosition: data.defaultPosition ?? TYPE_DEFAULT_POSITION[data.kind] ?? null,
+      defaultPosition: position,
       lastSyncedAt: null,
     } as any);
     res.json({ ok: true, logo: created });
