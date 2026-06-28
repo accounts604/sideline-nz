@@ -1,6 +1,6 @@
--- Clubs → Teams grouping (Sideline Studio). A CLUB or SCHOOL owns the shared
--- primary logo + colours; club_accounts (teams) link to it via club_id and add
--- their own secondary. Additive + idempotent. See reference_sideline_clubs_vs_teams.
+-- Clubs to Teams grouping (Sideline Studio). A CLUB or SCHOOL owns the shared
+-- primary logo and colours. club_accounts (teams) link to it via club_id and add
+-- their own secondary. Additive and idempotent. See reference_sideline_clubs_vs_teams.
 
 CREATE TABLE IF NOT EXISTS clubs (
   id                 varchar PRIMARY KEY DEFAULT gen_random_uuid(),
