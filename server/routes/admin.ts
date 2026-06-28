@@ -4664,7 +4664,15 @@ router.get("/orders/populate-status", async (_req, res) => {
   try {
     const R = (r: any) => (r && r.rows) ? r.rows : (Array.isArray(r) ? r : []);
     const arr = (e: any) => { try { const a = typeof e === "string" ? JSON.parse(e || "[]") : (e || []); return Array.isArray(a) ? a : []; } catch { return []; } };
-    const os = R(await db.execute(sql`SELECT id, po_reference, account_name, status, club_account_id, production_stage, pipeline_stage FROM orders WHERE po_reference IS NOT NULL ORDER BY po_reference DESC`));
+    const os = R(await db.execute(sql`SELECT id, po_reference, account_name, status, club_account_id, club_id, production_stage, pipeline_stage FROM orders WHERE po_reference IS NOT NULL ORDER BY po_reference DESC`));
+    // Resolve each order's CLUB (direct order.club_id, or via its club_account).
+    const allClubs = R(await db.execute(sql`SELECT id, name FROM clubs`));
+    const clubNameById = new Map<string, string>(allClubs.map((c: any) => [c.id, c.name]));
+    const caClub = new Map<string, string>(R(await db.execute(sql`SELECT id, club_id FROM club_accounts WHERE club_id IS NOT NULL`)).map((r: any) => [r.id, r.club_id]));
+    const clubFor = (o: any): string | null => {
+      const cid = o.club_id || (o.club_account_id ? caClub.get(o.club_account_id) : null);
+      return cid ? (clubNameById.get(cid) || null) : null;
+    };
     const dead = (o: any) => /deliver|complete|cancel/i.test(String(o.production_stage || "")) || /deliver|complete|cancel/i.test(String(o.pipeline_stage || ""));
     const live = os.filter((o: any) => !dead(o));
     const pos: any[] = [];
@@ -4686,7 +4694,7 @@ router.get("/orders/populate-status", async (_req, res) => {
       if (sized < n) needs.push("sizes");
       if (fab < n) needs.push("fabric");
       if (brand < n) needs.push("branding");
-      pos.push({ id: o.id, poReference: o.po_reference, accountName: o.account_name, status: o.status, clubAccountId: o.club_account_id, itemCount: n, logos, sized, fabric: fab, branding: brand, mockups, needs, complete: needs.length === 0 });
+      pos.push({ id: o.id, poReference: o.po_reference, accountName: o.account_name, clubName: clubFor(o), status: o.status, clubAccountId: o.club_account_id, itemCount: n, logos, sized, fabric: fab, branding: brand, mockups, needs, complete: needs.length === 0 });
     }
     res.json({ ok: true, pos });
   } catch (err: any) {
