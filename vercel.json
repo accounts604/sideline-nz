@@ -2,6 +2,7 @@
   "buildCommand": "npm run build:vercel",
   "outputDirectory": "dist/public",
   "framework": "vite",
+  "git": { "deploymentEnabled": { "main": false } },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
