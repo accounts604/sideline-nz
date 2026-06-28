@@ -79,6 +79,10 @@ export const orders = pgTable("orders", {
   sessionId: text("session_id"),
   userId: varchar("user_id").references(() => users.id),
   clubAccountId: varchar("club_account_id").references(() => clubAccounts.id), // Club portal orders
+  // Parent club/school for THIS order's team (covers standalone bulk orders that
+  // have no club_account — e.g. Mary's Aorere, Miranda's Richmond U12). The
+  // order's accountName is the team. There is always a club/school then a team.
+  clubId: varchar("club_id").references(() => clubs.id),
   storeSlug: text("store_slug").notNull(),
   stripeCheckoutSessionId: text("stripe_checkout_session_id"),
   stripePaymentIntentId: text("stripe_payment_intent_id"),

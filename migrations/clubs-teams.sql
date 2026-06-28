@@ -14,3 +14,7 @@ CREATE TABLE IF NOT EXISTS clubs (
 );
 
 ALTER TABLE club_accounts ADD COLUMN IF NOT EXISTS club_id varchar REFERENCES clubs(id);
+
+-- Orders link to a club too, so standalone bulk orders (no club_account) can be
+-- teams under a club/school. The order's account_name is the team.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS club_id varchar REFERENCES clubs(id);
