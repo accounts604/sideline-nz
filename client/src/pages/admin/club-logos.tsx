@@ -6,7 +6,7 @@ import { apiRequest } from "@/lib/queryClient";
 // Drag-and-drop logo upload — the bottleneck-killer. Drop a PNG/JPG/SVG/WEBP,
 // it goes straight to blob storage and becomes the club's primary logo. No
 // Canva URL, no page numbers, no preview-URL hunting.
-function LogoDropZone({ clubId, onDone, compact }: { clubId: string; onDone: () => void; compact?: boolean }) {
+function LogoDropZone({ clubId, onDone, compact, kind = "primary" }: { clubId: string; onDone: () => void; compact?: boolean; kind?: "primary" | "secondary" | "sponsor" }) {
   const [busy, setBusy] = useState(false);
   const [over, setOver] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -28,7 +28,7 @@ function LogoDropZone({ clubId, onDone, compact }: { clubId: string; onDone: () 
       });
       const up = await apiRequest("POST", "/api/uploads/blob", { filename: file.name, contentType: file.type, dataBase64 });
       const { url } = await up.json();
-      await apiRequest("POST", `/api/admin/clubs/${clubId}/logos`, { imageUrl: url, kind: "primary" });
+      await apiRequest("POST", `/api/admin/clubs/${clubId}/logos`, { imageUrl: url, kind, displayLabel: file.name.replace(/\.[^.]+$/, "") });
       onDone();
     } catch (e: any) {
       setErr(e?.message || "Upload failed");
@@ -103,16 +103,25 @@ function ClubRowEditor({ club, isMissing }: { club: ClubRow; isMissing: boolean 
   const [label, setLabel] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [dropKind, setDropKind] = useState<"primary" | "secondary" | "sponsor">("primary");
 
   const { data, isLoading } = useQuery<ClubLogosResponse>({
     queryKey: [`/api/admin/clubs/${club.id}/logos`],
     enabled: expanded,
   });
 
+  const renameLogo = useMutation({
+    mutationFn: async ({ logoId, displayLabel }: { logoId: string; displayLabel: string }) => {
+      const r = await apiRequest("PATCH", `/api/admin/clubs/${club.id}/logos/${logoId}`, { displayLabel });
+      return r.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: [`/api/admin/clubs/${club.id}/logos`] }),
+  });
+
   const addLogo = useMutation({
     mutationFn: async () => {
       setError(null);
-      const body: any = { canvaUrl, kind: "primary" };
+      const body: any = { canvaUrl, kind: dropKind };
       if (pageIndex.trim()) body.canvaPageIndex = parseInt(pageIndex.trim(), 10);
       if (label.trim()) body.displayLabel = label.trim();
       if (previewUrl.trim()) body.previewUrl = previewUrl.trim();
@@ -197,8 +206,13 @@ function ClubRowEditor({ club, isMissing }: { club: ClubRow; isMissing: boolean 
           <td colSpan={3} style={{ padding: "12px 16px 20px", background: "rgba(255,255,255,0.02)" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
               <div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Add / replace logo</div>
-                <LogoDropZone clubId={club.id} onDone={onLogoChanged} />
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Add a logo</div>
+                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                  {(["primary", "secondary", "sponsor"] as const).map((k) => (
+                    <button key={k} onClick={() => setDropKind(k)} style={{ ...(dropKind === k ? btnPrimary : btnGhost), textTransform: "capitalize", flex: 1 }}>{k}</button>
+                  ))}
+                </div>
+                <LogoDropZone clubId={club.id} kind={dropKind} onDone={onLogoChanged} />
                 <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", textAlign: "center", margin: "10px 0 8px" }}>— or paste a Canva URL —</div>
                 <input value={canvaUrl} onChange={(e) => setCanvaUrl(e.target.value)} placeholder="Canva URL — https://www.canva.com/design/…" style={inputStyle} />
                 <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
@@ -211,12 +225,12 @@ function ClubRowEditor({ club, isMissing }: { club: ClubRow; isMissing: boolean 
                   onClick={() => addLogo.mutate()}
                   style={{ ...btnPrimary, marginTop: 10, opacity: (!canvaUrl.trim() || addLogo.isPending) ? 0.5 : 1 }}
                 >
-                  {addLogo.isPending ? "Saving…" : "Set as primary"}
+                  {addLogo.isPending ? "Saving…" : `Add Canva logo as ${dropKind}`}
                 </button>
                 {error && <div style={{ color: "#fca5a5", fontSize: 11, marginTop: 6 }}>{error}</div>}
               </div>
               <div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>All assigned logos</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>All assets{data ? ` (${data.logos.length})` : ""} — rename inline</div>
                 {isLoading && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Loading…</div>}
                 {data && data.logos.length === 0 && (
                   <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>No logos assigned yet.</div>
@@ -229,11 +243,18 @@ function ClubRowEditor({ club, isMissing }: { club: ClubRow; isMissing: boolean 
                       <div style={{ width: 32, height: 32, background: "rgba(255,255,255,0.04)", borderRadius: 3 }} />
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <a href={canvaUrlOf(l.canvaDesignId, l.canvaPageIndex)} target="_blank" rel="noreferrer" style={{ color: "#93c5fd", fontSize: 12 }}>
-                        {l.displayLabel || l.canvaDesignId}
-                      </a>
-                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>
-                        {l.kind}{l.canvaPageIndex ? ` · page ${l.canvaPageIndex}` : ""}
+                      <input
+                        defaultValue={l.displayLabel || ""}
+                        placeholder="Name this asset…"
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== (l.displayLabel || "")) renameLogo.mutate({ logoId: l.id, displayLabel: v }); }}
+                        style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }}
+                      />
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
+                        <span style={{ textTransform: "capitalize" }}>{l.kind}</span>
+                        {l.canvaDesignId.startsWith("upload:")
+                          ? " · uploaded file"
+                          : <> · <a href={canvaUrlOf(l.canvaDesignId, l.canvaPageIndex)} target="_blank" rel="noreferrer" style={{ color: "#93c5fd" }}>open in Canva</a>{l.canvaPageIndex ? ` · p.${l.canvaPageIndex}` : ""}</>}
                       </div>
                     </div>
                     {l.kind !== "primary" && (
