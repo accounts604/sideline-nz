@@ -79,10 +79,11 @@ export const orders = pgTable("orders", {
   sessionId: text("session_id"),
   userId: varchar("user_id").references(() => users.id),
   clubAccountId: varchar("club_account_id").references(() => clubAccounts.id), // Club portal orders
-  // Parent club/school for THIS order's team (covers standalone bulk orders that
-  // have no club_account — e.g. Mary's Aorere, Miranda's Richmond U12). The
-  // order's accountName is the team. There is always a club/school then a team.
+  // Three-level hierarchy: Club/School (clubId) -> Team (teamId) -> Order (this
+  // row). A team has many orders over time; this order's name (accountName)
+  // resembles the order/occasion (e.g. "September Tour"), not the parent.
   clubId: varchar("club_id").references(() => clubs.id),
+  teamId: varchar("team_id").references(() => teams.id),
   storeSlug: text("store_slug").notNull(),
   stripeCheckoutSessionId: text("stripe_checkout_session_id"),
   stripePaymentIntentId: text("stripe_payment_intent_id"),
@@ -590,6 +591,23 @@ export const clubs = pgTable("clubs", {
 export const insertClubSchema = createInsertSchema(clubs).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertClub = z.infer<typeof insertClubSchema>;
 export type Club = typeof clubs.$inferSelect;
+
+// teams — the MIDDLE level: a team belongs to a club/school and owns a LIST of
+// orders over time (Club/School -> Team -> Orders). Holds team-specific marks
+// (secondary logos); inherits the club's primary + colours. See
+// reference_sideline_clubs_vs_teams.
+export const teams = pgTable("teams", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clubId: varchar("club_id").notNull().references(() => clubs.id),
+  name: text("name").notNull(),                 // "U12s", "1st XV", "Senior As"
+  secondaryLogoUrl: text("secondary_logo_url"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertTeamSchema = createInsertSchema(teams).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTeam = z.infer<typeof insertTeamSchema>;
+export type Team = typeof teams.$inferSelect;
 
 // Club Portal Accounts — a TEAM (links to its club via clubId). Separate login.
 export const clubAccounts = pgTable("club_accounts", {
