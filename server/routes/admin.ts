@@ -6,7 +6,7 @@ import { z } from "zod";
 import { notifyDesignApproved, notifyDesignRejected, notifyOrderStatusChange } from "../notifications";
 import { sendInviteEmail, sendSupplierPoRaisedEmail, sendSupplierPoDispatchGmail } from "../email";
 import { db } from "../db";
-import { orders, orderActivity, designFiles, orderItems, orderSizeBreakdowns, clubAccounts, users } from "@shared/schema";
+import { orders, orderActivity, designFiles, orderItems, orderSizeBreakdowns, clubAccounts, clubLogoAssets, users } from "@shared/schema";
 import type { OrderItem } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import {
@@ -4600,6 +4600,28 @@ router.get("/clubs-missing-logos", async (_req, res) => {
   try {
     const rows = await storage.listClubsMissingPrimaryLogo();
     res.json({ ok: true, clubs: rows });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// GET /api/admin/clubs/logos-overview — every club with ALL its logo assets in
+// one query, so the Club Logos page shows every asset at a glance (no per-club
+// expand/fetch). Two cheap selects, grouped in memory.
+router.get("/clubs/logos-overview", async (_req, res) => {
+  try {
+    const clubs = await db
+      .select({ id: clubAccounts.id, clubName: clubAccounts.clubName, shopifyOrderTag: clubAccounts.shopifyOrderTag })
+      .from(clubAccounts);
+    const allLogos = await db.select().from(clubLogoAssets);
+    const byClub = new Map<string, any[]>();
+    for (const l of allLogos) {
+      const arr = byClub.get(l.clubAccountId) || [];
+      arr.push(l);
+      byClub.set(l.clubAccountId, arr);
+    }
+    const out = clubs.map((c) => ({ ...c, logos: byClub.get(c.id) || [] }));
+    res.json({ ok: true, clubs: out });
   } catch (err: any) {
     res.status(500).json({ error: String(err?.message || err) });
   }
