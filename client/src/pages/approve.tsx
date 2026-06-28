@@ -12,6 +12,8 @@ const NAVY = "#0A1628";
 const NAVY_LIGHT = "#122239";
 const GOLD = "#C9A84C";
 const SIZE_OPTIONS = ["OS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"];
+const brandLabel: React.CSSProperties = { display: "block", fontSize: "12px", color: "rgba(255,255,255,0.55)", marginBottom: "8px" };
+const brandInput: React.CSSProperties = { width: "100%", padding: "12px", fontSize: "14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "6px", color: "#fff", outline: "none" };
 
 type ApprovalHydrateResponse = {
   order: {
@@ -48,6 +50,30 @@ export default function ApprovePage() {
   const setSize = (itemId: string, size: string, n: number) =>
     setSizes((prev) => ({ ...prev, [itemId]: { ...(prev[itemId] || {}), [size]: Math.max(0, n || 0) } }));
 
+  // Design elements the customer provides in the same step.
+  const [colours, setColours] = useState<string[]>(["", "", ""]);
+  const [sponsors, setSponsors] = useState("");
+  const [logos, setLogos] = useState<{ name: string; url: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+  async function uploadLogo(file: File) {
+    setUploadErr(null);
+    if (!/^image\/(png|jpeg|svg\+xml|webp)$|^application\/pdf$/.test(file.type)) { setUploadErr("PNG, JPG, SVG, WEBP or PDF only"); return; }
+    setUploading(true);
+    try {
+      const dataBase64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(",")[1] || "");
+        r.onerror = () => reject(new Error("read failed"));
+        r.readAsDataURL(file);
+      });
+      const r = await apiRequest("POST", `/api/approve/${token}/upload`, { filename: file.name, contentType: file.type, dataBase64 });
+      const j = await r.json();
+      if (j.url) setLogos((p) => [...p, { name: file.name, url: j.url }]);
+      else setUploadErr(j.error || "Upload failed");
+    } catch (e: any) { setUploadErr(e?.message || "Upload failed"); } finally { setUploading(false); }
+  }
+
   const { data, isLoading, error } = useQuery<ApprovalHydrateResponse>({
     queryKey: [`/api/approve/${token}`],
     queryFn: getQueryFn({ on401: "returnNull" }),
@@ -70,6 +96,9 @@ export default function ApprovePage() {
         decision,
         changesNotes: changesNotes.trim() || undefined,
         sizes: sizesPayload,
+        colours: colours.map((c) => c.trim()).filter(Boolean),
+        sponsors: sponsors.trim() || undefined,
+        brandLogoUrls: logos.map((l) => l.url),
       });
       return res.json();
     },
@@ -165,7 +194,7 @@ export default function ApprovePage() {
           {order.poReference || order.accountName || order.orderNumber || "Your order"}
         </h1>
         <p style={{ color: "rgba(255,255,255,0.6)", fontSize: "14px", marginBottom: "32px" }}>
-          Check your mockups, fill in your sizes, add any comments, and approve to lock it in.
+          Check your mockups, add your sizes, logos, colours and sponsors, then approve to lock it in.
         </p>
 
         {/* Garment summary */}
@@ -279,6 +308,40 @@ export default function ApprovePage() {
               </div>
             );
           })}
+        </Card>
+
+        {/* Brand elements */}
+        <Card title="Your brand elements">
+          <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)", marginBottom: "16px" }}>
+            Send us your logos, colours and sponsors so we can lock the artwork, all in one go.
+          </p>
+
+          <label style={brandLabel}>Logos / design files</label>
+          <label style={{ display: "block", border: "1.5px dashed rgba(255,255,255,0.25)", borderRadius: "6px", padding: "16px", textAlign: "center", cursor: uploading ? "wait" : "pointer", fontSize: "13px", color: "rgba(255,255,255,0.65)", marginBottom: "10px" }}>
+            {uploading ? "Uploading…" : "Tap to upload a logo (PNG, SVG, PDF…)"}
+            <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,application/pdf" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); e.currentTarget.value = ""; }} />
+          </label>
+          {uploadErr && <div style={{ color: "#ef4444", fontSize: "12px", marginBottom: "8px" }}>{uploadErr}</div>}
+          {logos.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "18px" }}>
+              {logos.map((l, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "6px 10px", borderRadius: "6px", fontSize: "12px" }}>
+                  <span style={{ maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name}</span>
+                  <button onClick={() => setLogos((p) => p.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", color: "#fca5a5", cursor: "pointer", fontSize: "15px", lineHeight: 1 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <label style={brandLabel}>Team colours</label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginBottom: "18px" }}>
+            {["Primary", "Secondary", "Accent"].map((ph, i) => (
+              <input key={i} value={colours[i] || ""} onChange={(e) => setColours((p) => { const n = [...p]; n[i] = e.target.value; return n; })} placeholder={ph} style={brandInput} />
+            ))}
+          </div>
+
+          <label style={brandLabel}>Sponsors + placement</label>
+          <textarea value={sponsors} onChange={(e) => setSponsors(e.target.value)} rows={3} placeholder="e.g. Main sponsor: ACME (front centre); left sleeve: XYZ" style={{ ...brandInput, resize: "vertical", fontFamily: "inherit" }} />
         </Card>
 
         {/* Decision */}

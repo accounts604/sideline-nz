@@ -24,12 +24,12 @@
 //     → if "approved", no stage change here — Enoch issues the deposit invoice
 //        next, and Stripe webhook moves the stage to "Deposit Paid"
 
-import { Router } from "express";
+import { Router, json } from "express";
 import { z } from "zod";
 import crypto from "crypto";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { approvalTokens, orderActivity, orders, designFiles, orderItems, orderSizeBreakdowns } from "@shared/schema";
+import { approvalTokens, orderActivity, orders, designFiles, orderItems, orderSizeBreakdowns, clubBrandIdentity } from "@shared/schema";
 import { storage } from "../storage";
 import { updateGhlOpportunityStage } from "./ghl";
 import { sendMockupApprovalRequest, sendClientApprovalResult } from "../email";
@@ -163,6 +163,10 @@ const decisionSchema = z.object({
     itemId: z.string(),
     rows: z.array(z.object({ size: z.string().min(1), quantity: z.number().int().min(0) })),
   })).optional(),
+  // Design elements the customer provides in the same step (PO-push collector).
+  colours: z.array(z.string().max(60)).max(10).optional(),
+  sponsors: z.string().max(4000).optional(),
+  brandLogoUrls: z.array(z.string().url()).max(30).optional(), // uploaded via /:token/upload
 });
 
 publicApprovalRouter.post("/:token", async (req, res) => {
@@ -231,6 +235,35 @@ publicApprovalRouter.post("/:token", async (req, res) => {
       },
     });
 
+    // Capture the design elements the customer provided in the same step
+    // (colours, sponsors, uploaded logos) — record on the order timeline, and
+    // enrich the club Brand Identity if this order is club-linked.
+    const colours = (parsed.data.colours || []).map((c) => c.trim()).filter(Boolean);
+    const sponsors = (parsed.data.sponsors || "").trim();
+    const brandLogoUrls = parsed.data.brandLogoUrls || [];
+    if (colours.length || sponsors || brandLogoUrls.length) {
+      await db.insert(orderActivity).values({
+        orderId: order.id,
+        userId: null,
+        action: "design_elements_submitted",
+        details: { source: "public_approval_link", colours, sponsors: sponsors || null, logoCount: brandLogoUrls.length, logoUrls: brandLogoUrls },
+      });
+      if (order.clubAccountId) {
+        try {
+          const brand = await storage.ensureClubBrandIdentity(order.clubAccountId, { sourceChannel: "free_mockup_form" });
+          const colorObjs = colours.map((c, i) => ({ role: i === 0 ? "primary" : i === 1 ? "secondary" : "accent", hex: c.startsWith("#") ? c : undefined, name: c }));
+          const artwork = brandLogoUrls.map((u) => ({ label: "Customer-supplied logo", fileUrl: u, kind: "png" as const }));
+          await storage.updateClubBrandIdentity(order.clubAccountId, {
+            ...(colours.length ? { colors: colorObjs as any } : {}),
+            ...(sponsors ? { designBrief: `${brand.designBrief || ""}\nSponsors: ${sponsors}`.trim() } : {}),
+            ...(brandLogoUrls.length ? { artworkFiles: [...(((brand.artworkFiles as any[]) || [])), ...artwork] as any } : {}),
+          } as any);
+        } catch (e) {
+          console.error("[approve] brand identity enrich failed:", e);
+        }
+      }
+    }
+
     // Update the order's designStatus so admin UI reflects reality
     await db
       .update(orders)
@@ -264,6 +297,34 @@ publicApprovalRouter.post("/:token", async (req, res) => {
   } catch (e: any) {
     console.error("Approval submission error:", e);
     res.status(500).json({ error: "Failed to submit decision" });
+  }
+});
+
+// POST /:token/upload — customer uploads a logo / design file from the approval
+// page. Token-scoped (the token is the auth, no login). File goes to Vercel
+// Blob; the URL is returned and the client includes it in the decision submit
+// (brandLogoUrls). Route-scoped 30MB JSON limit (global is 100KB).
+const largeJson = json({ limit: "30mb" });
+publicApprovalRouter.post("/:token/upload", largeJson, async (req, res) => {
+  try {
+    const [tokenRow] = await db.select().from(approvalTokens).where(eq(approvalTokens.token, req.params.token)).limit(1);
+    if (!tokenRow) return res.status(404).json({ error: "Invalid link" });
+    if (tokenRow.expiresAt && new Date(tokenRow.expiresAt) < new Date()) return res.status(410).json({ error: "This link has expired." });
+    if (tokenRow.usedAt) return res.status(409).json({ error: "This link has already been used." });
+    const { filename, contentType, dataBase64 } = req.body as { filename?: string; contentType?: string; dataBase64?: string };
+    if (!filename || !contentType || !dataBase64) return res.status(400).json({ error: "filename, contentType, dataBase64 required" });
+    const allowed = ["image/png", "image/jpeg", "image/svg+xml", "image/webp", "application/pdf"];
+    if (!allowed.includes(contentType)) return res.status(400).json({ error: `Unsupported file type: ${contentType}` });
+    const buffer = Buffer.from(dataBase64, "base64");
+    if (buffer.byteLength > 25 * 1024 * 1024) return res.status(400).json({ error: "File over 25MB" });
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!blobToken) return res.status(500).json({ error: "Uploads are not configured on this environment" });
+    const { put } = await import("@vercel/blob");
+    const blob = await put(`approve-uploads/${filename}`, buffer, { access: "public", contentType, token: blobToken, addRandomSuffix: true });
+    res.json({ ok: true, url: blob.url });
+  } catch (e: any) {
+    console.error("Approval upload error:", e);
+    res.status(500).json({ error: "Upload failed" });
   }
 });
 
