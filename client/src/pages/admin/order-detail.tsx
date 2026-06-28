@@ -112,6 +112,7 @@ interface Order {
   assignedSupplierId: string | null;
   poReference: string | null;
   accountName: string | null;
+  brandColors?: { primary?: string | null; secondary?: string | null; accent?: string | null } | null;
   isRepeatOrder: boolean | null;
   poComments: string | null;
   deliveryAttention: string | null;
@@ -1191,6 +1192,43 @@ export default function AdminOrderDetail() {
             <span style={{ color: "#fff" }}>{items.length}</span>
           </CockpitCell>
         </div>
+
+        {/* Brand colours — synced from the club's Brand Identity */}
+        {(() => {
+          const bc = order.brandColors;
+          const slots: { key: string; label: string; hex: string }[] = [];
+          if (bc?.primary) slots.push({ key: "primary", label: "Primary", hex: bc.primary });
+          if (bc?.secondary) slots.push({ key: "secondary", label: "Secondary", hex: bc.secondary });
+          if (bc?.accent) slots.push({ key: "accent", label: "Accent", hex: bc.accent });
+          return (
+            <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>
+              <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.6px", color: "rgba(255,255,255,0.4)" }}>
+                Brand Colours
+              </span>
+              {slots.length > 0 ? (
+                <>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "14px" }}>
+                    {slots.map((s) => (
+                      <div key={s.key} style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "4px" }}>
+                        <div style={{ width: "22px", height: "22px", borderRadius: "5px", background: s.hex, border: "1px solid rgba(255,255,255,0.15)" }} />
+                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)" }}>{s.label}</span>
+                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{s.hex}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>Synced from the club's Brand Identity.</span>
+                </>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>No brand colours set yet</span>
+                  <Link href="/admin/club-logos">
+                    <span style={{ fontSize: "10px", color: "rgba(201,168,76,0.85)", cursor: "pointer", textDecoration: "underline" }}>Set on Brand Identity</span>
+                  </Link>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ──── PO Details ──── */}
