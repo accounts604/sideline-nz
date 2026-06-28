@@ -158,6 +158,7 @@ interface OrderDetail {
   comments: DesignComment[];
   sizeBreakdowns: SizeBreakdown[];
   activity: any[];
+  parent?: { name: string; deliveryAddress: string | null; contactName: string | null; contactEmail: string | null; contactPhone: string | null; website: string | null } | null;
   [key: string]: any;
 }
 
@@ -1013,7 +1014,7 @@ export default function AdminOrderDetail() {
   if (isLoading) return <AdminLayout><div style={{ padding: "40px", textAlign: "center", color: "rgba(255,255,255,0.4)" }}>Loading…</div></AdminLayout>;
   if (!data) return <AdminLayout><div style={{ padding: "40px", textAlign: "center", color: "rgba(255,255,255,0.4)" }}>Order not found</div></AdminLayout>;
 
-  const { order, items, designs, comments, sizeBreakdowns, activity } = data;
+  const { order, items, designs, comments, sizeBreakdowns, activity, parent } = data;
   const hasMockups = designs.some((d) => d.folder === "mockups");
 
   // Group size breakdowns by item
@@ -1411,6 +1412,32 @@ export default function AdminOrderDetail() {
           <Field label="Email" style={{ gridColumn: "span 2" }}><EditableField value={order.deliveryEmail} onSave={(v) => updateOrder.mutate({ deliveryEmail: v })} placeholder="delivery@email.com" /></Field>
           <Field label="Address" style={{ gridColumn: "span 2" }}><EditableField value={order.deliveryAddress} onSave={(v) => updateOrder.mutate({ deliveryAddress: v })} placeholder="Full address" multiline /></Field>
         </div>
+
+        {/* Parent default ship-to / contact — read-only, resolved from the club/school */}
+        {parent && (
+          <div style={{ marginTop: "14px", padding: "12px 14px", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", background: "rgba(255,255,255,0.02)", display: "flex", flexDirection: "column", gap: "8px" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "8px" }}>
+              <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.6px", color: "rgba(255,255,255,0.4)" }}>Parent default</span>
+              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>From {parent.name}</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+              <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.4px", color: "rgba(255,255,255,0.4)" }}>Ship-to (parent default)</span>
+              {parent.deliveryAddress
+                ? <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.85)", whiteSpace: "pre-wrap" }}>{parent.deliveryAddress}</span>
+                : <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)", fontStyle: "italic" }}>no address set on parent</span>}
+            </div>
+            {(parent.contactName || parent.contactEmail || parent.contactPhone) && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", fontSize: "12px", color: "rgba(255,255,255,0.6)" }}>
+                {parent.contactName && <span>{parent.contactName}</span>}
+                {parent.contactEmail && <a href={`mailto:${parent.contactEmail}`} style={{ color: "rgba(255,255,255,0.6)" }}>{parent.contactEmail}</a>}
+                {parent.contactPhone && <span>{parent.contactPhone}</span>}
+              </div>
+            )}
+            {parent.website && (
+              <a href={parent.website} target="_blank" rel="noreferrer" style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", textDecoration: "underline" }}>{parent.website}</a>
+            )}
+          </div>
+        )}
       </Section>
 
       {/* ──── Supplier Invoice ──── */}
