@@ -4664,15 +4664,18 @@ router.get("/orders/populate-status", async (_req, res) => {
   try {
     const R = (r: any) => (r && r.rows) ? r.rows : (Array.isArray(r) ? r : []);
     const arr = (e: any) => { try { const a = typeof e === "string" ? JSON.parse(e || "[]") : (e || []); return Array.isArray(a) ? a : []; } catch { return []; } };
-    const os = R(await db.execute(sql`SELECT id, po_reference, account_name, status, club_account_id, club_id, production_stage, pipeline_stage FROM orders WHERE po_reference IS NOT NULL ORDER BY po_reference DESC`));
-    // Resolve each order's CLUB (direct order.club_id, or via its club_account).
-    const allClubs = R(await db.execute(sql`SELECT id, name FROM clubs`));
-    const clubNameById = new Map<string, string>(allClubs.map((c: any) => [c.id, c.name]));
-    const caClub = new Map<string, string>(R(await db.execute(sql`SELECT id, club_id FROM club_accounts WHERE club_id IS NOT NULL`)).map((r: any) => [r.id, r.club_id]));
-    const clubFor = (o: any): string | null => {
-      const cid = o.club_id || (o.club_account_id ? caClub.get(o.club_account_id) : null);
-      return cid ? (clubNameById.get(cid) || null) : null;
-    };
+    const os = R(await db.execute(sql`SELECT id, po_reference, account_name, status, club_account_id, production_stage, pipeline_stage FROM orders WHERE po_reference IS NOT NULL ORDER BY po_reference DESC`));
+    // Resolve each order's CLUB — FULLY OPTIONAL. Tolerate a DB that doesn't have
+    // the clubs table / club_id columns yet: just skip grouping, never 500 the
+    // whole worklist. (club_id is queried separately, not in the orders SELECT.)
+    let clubFor = (_o: any): string | null => null;
+    try {
+      const orderClub = new Map<string, string>(R(await db.execute(sql`SELECT id, club_id FROM orders WHERE club_id IS NOT NULL`)).map((r: any) => [r.id, r.club_id]));
+      const allClubs = R(await db.execute(sql`SELECT id, name FROM clubs`));
+      const clubNameById = new Map<string, string>(allClubs.map((c: any) => [c.id, c.name]));
+      const caClub = new Map<string, string>(R(await db.execute(sql`SELECT id, club_id FROM club_accounts WHERE club_id IS NOT NULL`)).map((r: any) => [r.id, r.club_id]));
+      clubFor = (o: any) => { const cid = orderClub.get(o.id) || (o.club_account_id ? caClub.get(o.club_account_id) : null); return cid ? (clubNameById.get(cid) || null) : null; };
+    } catch (e: any) { console.warn("[populate-status] club grouping unavailable:", e?.message); }
     const dead = (o: any) => /deliver|complete|cancel/i.test(String(o.production_stage || "")) || /deliver|complete|cancel/i.test(String(o.pipeline_stage || ""));
     const live = os.filter((o: any) => !dead(o));
     const pos: any[] = [];
