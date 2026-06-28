@@ -4485,18 +4485,30 @@ const createLogoSchema = z.object({
   canvaUrl: z.string().url().optional(),
   canvaDesignId: z.string().min(8).optional(),
   canvaPageIndex: z.number().int().min(1).max(200).nullable().optional(),
-  kind: z.enum(["primary", "secondary", "sponsor"]).default("primary"),
+  kind: z.enum(["primary", "secondary", "front-design", "back-design", "sponsor"]).default("primary"),
   displayLabel: z.string().max(200).nullable().optional(),
   previewUrl: z.string().url().nullable().optional(),
   imageUrl: z.string().url().optional(), // direct file upload (drag-and-drop) — no Canva
+  defaultPosition: z.string().max(60).nullable().optional(), // placement on the garment
 }).refine((d) => d.canvaUrl || d.canvaDesignId || d.imageUrl, { message: "Provide canvaUrl, canvaDesignId, or imageUrl" });
 
 const updateLogoSchema = z.object({
-  kind: z.enum(["primary", "secondary", "sponsor"]).optional(),
+  kind: z.enum(["primary", "secondary", "front-design", "back-design", "sponsor"]).optional(),
   displayLabel: z.string().max(200).nullable().optional(),
   canvaPageIndex: z.number().int().min(1).max(200).nullable().optional(),
   previewUrl: z.string().url().nullable().optional(),
+  defaultPosition: z.string().max(60).nullable().optional(),
 }).strict();
+
+// Default garment placement per asset type (Sideline taxonomy). Sponsors pick a
+// slot down the prominence ladder, so they default to its top (Front Center).
+const TYPE_DEFAULT_POSITION: Record<string, string> = {
+  primary: "Left Chest",
+  secondary: "Center Back",
+  "front-design": "Front",
+  "back-design": "Back",
+  sponsor: "Front Center",
+};
 
 // GET /api/admin/clubs/:id/logos — list logos for one club
 router.get("/clubs/:id/logos", async (req, res) => {
@@ -4532,6 +4544,7 @@ router.post("/clubs/:id/logos", async (req, res) => {
         displayLabel: data.displayLabel ?? `${club.clubName} — ${data.kind}`,
         previewUrl: data.imageUrl,
         artworkFileUrl: data.imageUrl,
+        defaultPosition: data.defaultPosition ?? TYPE_DEFAULT_POSITION[data.kind] ?? null,
         lastSyncedAt: null,
       } as any);
       return res.json({ ok: true, logo: created });
@@ -4547,6 +4560,7 @@ router.post("/clubs/:id/logos", async (req, res) => {
       kind: data.kind,
       displayLabel: data.displayLabel ?? `${club.clubName} — ${data.kind}`,
       previewUrl: data.previewUrl ?? null,
+      defaultPosition: data.defaultPosition ?? TYPE_DEFAULT_POSITION[data.kind] ?? null,
       lastSyncedAt: null,
     } as any);
     res.json({ ok: true, logo: created });
