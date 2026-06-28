@@ -4677,12 +4677,14 @@ router.get("/orders/populate-status", async (_req, res) => {
         if (String(it.material || "").trim()) fab++;
         if (String(it.branding_method || "").trim()) brand++;
       }
+      const mk = R(await db.execute(sql`SELECT count(*)::int c FROM design_files WHERE order_id=${o.id} AND folder='mockups'`))[0];
+      const mockups = Number(mk?.c || 0);
       const needs: string[] = [];
       if (logos < n) needs.push("logos");
       if (sized < n) needs.push("sizes");
       if (fab < n) needs.push("fabric");
       if (brand < n) needs.push("branding");
-      pos.push({ id: o.id, poReference: o.po_reference, accountName: o.account_name, status: o.status, clubAccountId: o.club_account_id, itemCount: n, logos, sized, fabric: fab, branding: brand, needs, complete: needs.length === 0 });
+      pos.push({ id: o.id, poReference: o.po_reference, accountName: o.account_name, status: o.status, clubAccountId: o.club_account_id, itemCount: n, logos, sized, fabric: fab, branding: brand, mockups, needs, complete: needs.length === 0 });
     }
     res.json({ ok: true, pos });
   } catch (err: any) {
@@ -4761,6 +4763,29 @@ router.post("/orders/:id/attach-logo", async (req, res) => {
     }
     await storage.logOrderActivity({ orderId: order.id, action: "logo_attached_to_order", details: { itemsUpdated: updated, url: imageUrl } } as any).catch(() => {});
     res.json({ ok: true, poReference: order.poReference, itemsUpdated: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// POST /api/admin/orders/:id/mockup — admin attaches a front/back mockup image
+// onto a PO (uploaded via /api/uploads/blob). Stored as a design_file
+// (folder='mockups') so it shows on the approval form + production sheet.
+router.post("/orders/:id/mockup", async (req, res) => {
+  try {
+    const { imageUrl, label, fileName, mimeType } = req.body as { imageUrl?: string; label?: string; fileName?: string; mimeType?: string };
+    if (!imageUrl) return res.status(400).json({ error: "imageUrl required" });
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const userId = (req as any).user?.userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    const [df] = await db.insert(designFiles).values({
+      orderId: order.id, userId,
+      label: label || "mockup", folder: "mockups",
+      fileName: fileName || "mockup", fileUrl: imageUrl, mimeType: mimeType || "image/png",
+    } as any).returning();
+    await storage.logOrderActivity({ orderId: order.id, userId, action: "mockup_uploaded", details: { label: label || "mockup", fileId: df.id } } as any).catch(() => {});
+    res.json({ ok: true, id: df.id, poReference: order.poReference });
   } catch (err: any) {
     res.status(500).json({ error: String(err?.message || err) });
   }
