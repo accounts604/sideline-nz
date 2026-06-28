@@ -264,6 +264,23 @@ publicApprovalRouter.post("/:token", async (req, res) => {
       }
     }
 
+    // Close the loop: attach the customer's primary uploaded logo onto the
+    // order's garment items so it actually reaches the PO / production.
+    // Idempotent — skips lines that already carry a club logo, and equipment.
+    if (brandLogoUrls.length) {
+      const primaryUrl = brandLogoUrls[0];
+      const parseEls = (e: any) => { try { const a = typeof e === "string" ? JSON.parse(e || "[]") : (e || []); return Array.isArray(a) ? a : []; } catch { return []; } };
+      const isNonGarment = (pt?: string | null) => /(^|[-_ ])(balls?|cones?|backpacks?|bags?|towels?|bottles?|socks?)$/i.test((pt || "").toLowerCase());
+      const lineItems = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id));
+      for (const it of lineItems) {
+        if (isNonGarment((it as any).productType)) continue;
+        const existing = parseEls((it as any).elementUrls);
+        if (existing.some((e: any) => e?.url && !String(e?.name || "").toLowerCase().includes("sideline"))) continue;
+        const next = [...existing, { name: "Customer Logo", url: primaryUrl, position: "Left Chest", application: (it as any).brandingMethod || "Embroidery" }];
+        await db.update(orderItems).set({ elementUrls: next as any }).where(eq(orderItems.id, it.id));
+      }
+    }
+
     // Update the order's designStatus so admin UI reflects reality
     await db
       .update(orders)
