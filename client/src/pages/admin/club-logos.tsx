@@ -6,7 +6,7 @@ import { apiRequest } from "@/lib/queryClient";
 // Drag-and-drop logo upload — the bottleneck-killer. Drop a PNG/JPG/SVG/WEBP,
 // it goes straight to blob storage and becomes the club's primary logo. No
 // Canva URL, no page numbers, no preview-URL hunting.
-function LogoDropZone({ clubId, onDone, compact, kind = "primary" }: { clubId: string; onDone: () => void; compact?: boolean; kind?: "primary" | "secondary" | "sponsor" }) {
+function LogoDropZone({ clubId, onDone, compact, kind = "primary", position }: { clubId: string; onDone: () => void; compact?: boolean; kind?: AssetKind; position?: string }) {
   const [busy, setBusy] = useState(false);
   const [over, setOver] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -28,7 +28,7 @@ function LogoDropZone({ clubId, onDone, compact, kind = "primary" }: { clubId: s
       });
       const up = await apiRequest("POST", "/api/uploads/blob", { filename: file.name, contentType: file.type, dataBase64 });
       const { url } = await up.json();
-      await apiRequest("POST", `/api/admin/clubs/${clubId}/logos`, { imageUrl: url, kind, displayLabel: file.name.replace(/\.[^.]+$/, "") });
+      await apiRequest("POST", `/api/admin/clubs/${clubId}/logos`, { imageUrl: url, kind, displayLabel: file.name.replace(/\.[^.]+$/, ""), defaultPosition: position });
       onDone();
     } catch (e: any) {
       setErr(e?.message || "Upload failed");
@@ -70,13 +70,16 @@ interface ClubRow {
   shopifyOrderTag: string | null;
 }
 
+type AssetKind = "primary" | "secondary" | "front-design" | "back-design" | "sponsor";
+
 interface LogoRow {
   id: string;
-  kind: "primary" | "secondary" | "sponsor";
+  kind: AssetKind;
   displayLabel: string | null;
   canvaDesignId: string;
   canvaPageIndex: number | null;
   previewUrl: string | null;
+  defaultPosition: string | null;
   lastSyncedAt: string | null;
 }
 
@@ -85,6 +88,19 @@ interface ClubLogosResponse {
   club: { id: string; clubName: string };
   logos: LogoRow[];
 }
+
+// The five asset types + their default garment placement (Romero's taxonomy).
+const ASSET_TYPES: { value: AssetKind; label: string; pos: string }[] = [
+  { value: "primary", label: "Primary Logo", pos: "Left Chest" },
+  { value: "secondary", label: "Secondary Logo", pos: "Center Back" },
+  { value: "front-design", label: "Front Design", pos: "Front" },
+  { value: "back-design", label: "Back Design", pos: "Back" },
+  { value: "sponsor", label: "Sponsor", pos: "Front Center" },
+];
+const TYPE_LABEL: Record<string, string> = Object.fromEntries(ASSET_TYPES.map((t) => [t.value, t.label]));
+// Sponsor placement, most-prominent first (the confirmed ladder). Rank-1 sponsor
+// → Front Center, then down the list.
+const SPONSOR_LADDER = ["Front Center", "Upper Back", "Left Sleeve 1", "Right Sleeve 1", "Lower Back", "Left Sleeve 2", "Right Sleeve 2"];
 
 function canvaUrlOf(designId: string, pageIndex: number | null): string {
   const base = `https://www.canva.com/design/${designId}/edit`;
@@ -103,7 +119,8 @@ function ClubRowEditor({ club, isMissing }: { club: ClubRow; isMissing: boolean 
   const [label, setLabel] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [dropKind, setDropKind] = useState<"primary" | "secondary" | "sponsor">("primary");
+  const [dropKind, setDropKind] = useState<AssetKind>("primary");
+  const [dropPos, setDropPos] = useState("");
 
   const { data, isLoading } = useQuery<ClubLogosResponse>({
     queryKey: [`/api/admin/clubs/${club.id}/logos`],
@@ -118,10 +135,17 @@ function ClubRowEditor({ club, isMissing }: { club: ClubRow; isMissing: boolean 
     onSuccess: () => qc.invalidateQueries({ queryKey: [`/api/admin/clubs/${club.id}/logos`] }),
   });
 
+  // Sponsor placement defaults to the next free slot down the confirmed ladder;
+  // other types use their fixed default location.
+  const usedSponsorSlots = new Set((data?.logos || []).filter((l) => l.kind === "sponsor").map((l) => l.defaultPosition).filter(Boolean));
+  const nextSponsorSlot = SPONSOR_LADDER.find((s) => !usedSponsorSlots.has(s)) || "Front Center";
+  const typeDefaultPos = ASSET_TYPES.find((t) => t.value === dropKind)?.pos || "Left Chest";
+  const effectivePos = dropKind === "sponsor" ? (dropPos || nextSponsorSlot) : typeDefaultPos;
+
   const addLogo = useMutation({
     mutationFn: async () => {
       setError(null);
-      const body: any = { canvaUrl, kind: dropKind };
+      const body: any = { canvaUrl, kind: dropKind, defaultPosition: effectivePos };
       if (pageIndex.trim()) body.canvaPageIndex = parseInt(pageIndex.trim(), 10);
       if (label.trim()) body.displayLabel = label.trim();
       if (previewUrl.trim()) body.previewUrl = previewUrl.trim();
@@ -206,13 +230,20 @@ function ClubRowEditor({ club, isMissing }: { club: ClubRow; isMissing: boolean 
           <td colSpan={3} style={{ padding: "12px 16px 20px", background: "rgba(255,255,255,0.02)" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
               <div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Add a logo</div>
-                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                  {(["primary", "secondary", "sponsor"] as const).map((k) => (
-                    <button key={k} onClick={() => setDropKind(k)} style={{ ...(dropKind === k ? btnPrimary : btnGhost), textTransform: "capitalize", flex: 1 }}>{k}</button>
-                  ))}
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Add an asset</div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <select value={dropKind} onChange={(e) => { setDropKind(e.target.value as AssetKind); setDropPos(""); }} style={{ ...inputStyle, flex: 1, cursor: "pointer" }}>
+                    {ASSET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                  {dropKind === "sponsor" ? (
+                    <select value={effectivePos} onChange={(e) => setDropPos(e.target.value)} style={{ ...inputStyle, flex: 1, cursor: "pointer" }}>
+                      {SPONSOR_LADDER.map((s, i) => <option key={s} value={s}>{i + 1}. {s}</option>)}
+                    </select>
+                  ) : (
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", alignSelf: "center", whiteSpace: "nowrap" }}>→ {typeDefaultPos}</span>
+                  )}
                 </div>
-                <LogoDropZone clubId={club.id} kind={dropKind} onDone={onLogoChanged} />
+                <LogoDropZone clubId={club.id} kind={dropKind} position={effectivePos} onDone={onLogoChanged} />
                 <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", textAlign: "center", margin: "10px 0 8px" }}>— or paste a Canva URL —</div>
                 <input value={canvaUrl} onChange={(e) => setCanvaUrl(e.target.value)} placeholder="Canva URL — https://www.canva.com/design/…" style={inputStyle} />
                 <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
@@ -225,7 +256,7 @@ function ClubRowEditor({ club, isMissing }: { club: ClubRow; isMissing: boolean 
                   onClick={() => addLogo.mutate()}
                   style={{ ...btnPrimary, marginTop: 10, opacity: (!canvaUrl.trim() || addLogo.isPending) ? 0.5 : 1 }}
                 >
-                  {addLogo.isPending ? "Saving…" : `Add Canva logo as ${dropKind}`}
+                  {addLogo.isPending ? "Saving…" : `Add Canva asset as ${TYPE_LABEL[dropKind]}`}
                 </button>
                 {error && <div style={{ color: "#fca5a5", fontSize: 11, marginTop: 6 }}>{error}</div>}
               </div>
@@ -251,7 +282,7 @@ function ClubRowEditor({ club, isMissing }: { club: ClubRow; isMissing: boolean 
                         style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }}
                       />
                       <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
-                        <span style={{ textTransform: "capitalize" }}>{l.kind}</span>
+                        <span style={{ color: "rgba(255,255,255,0.6)" }}>{TYPE_LABEL[l.kind] || l.kind}</span>{l.defaultPosition ? ` · ${l.defaultPosition}` : ""}
                         {l.canvaDesignId.startsWith("upload:")
                           ? " · uploaded file"
                           : <> · <a href={canvaUrlOf(l.canvaDesignId, l.canvaPageIndex)} target="_blank" rel="noreferrer" style={{ color: "#93c5fd" }}>open in Canva</a>{l.canvaPageIndex ? ` · p.${l.canvaPageIndex}` : ""}</>}
