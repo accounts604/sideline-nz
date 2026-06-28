@@ -612,6 +612,13 @@ export const clubLogoAssets = pgTable("club_logo_assets", {
   kind: text("kind").notNull().default("primary"), // primary | secondary | sponsor
   displayLabel: text("display_label"),
   previewUrl: text("preview_url"),
+  // Per-asset placement + production artwork (Sideline Studio Phase 2) — so a
+  // specific variant carries its own defaults instead of canva-logos.ts hardcodes.
+  defaultPosition: text("default_position"),        // e.g. "Left Chest"
+  defaultApplication: text("default_application"),  // e.g. "Embroidery"
+  defaultSizeMm: text("default_size_mm"),           // e.g. "85 x 60 mm"
+  artworkFileUrl: text("artwork_file_url"),         // production vector for THIS mark
+  threadColours: jsonb("thread_colours"),           // string[] — default thread spec
   lastSyncedAt: timestamp("last_synced_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -620,6 +627,42 @@ export const clubLogoAssets = pgTable("club_logo_assets", {
 export const insertClubLogoAssetSchema = createInsertSchema(clubLogoAssets).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertClubLogoAsset = z.infer<typeof insertClubLogoAssetSchema>;
 export type ClubLogoAsset = typeof clubLogoAssets.$inferSelect;
+
+// club_brand_identity — the per-club "Brand Identity" header (Sideline Studio).
+// 1:1 with club_accounts. Created at lead time, enriched at mockup/design,
+// read by every order/PO + the AI mockup engine — so the pipeline stores a
+// club's logos/colours/designs ONCE instead of re-hunting them at every step.
+// club_logo_assets stays the per-club logo "rows" under this header.
+// See docs/sideline-studio.md + migrations/club-brand-identity.sql.
+export const clubBrandIdentity = pgTable("club_brand_identity", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clubAccountId: varchar("club_account_id").notNull().references(() => clubAccounts.id, { onDelete: "cascade" }).unique(),
+  // [{ role:"primary"|"secondary"|"accent"|"neutral", hex, name, pms?, thread? }]
+  colors: jsonb("colors"),
+  // [{ role:"heading"|"body"|"number", family, source?, fileUrl? }]
+  fonts: jsonb("fonts"),
+  // { clubLogo:{ position, application, sizeMm }, sideline:{ sizeMm } }
+  placementDefaults: jsonb("placement_defaults"),
+  // [{ label, fileUrl, kind:"ai"|"eps"|"pdf"|"svg"|"png", forLogoAssetId? }]
+  artworkFiles: jsonb("artwork_files"),
+  // [{ label, canvaDesignId, previewUrl, productType? }]
+  designTemplates: jsonb("design_templates"),
+  // [{ logoAssetId, sponsorName, placement?, contractNote?, activeUntil? }]
+  sponsors: jsonb("sponsors"),
+  designBrief: text("design_brief"),                 // carried from intake / mockup form / Gemini
+  // [{ url, label, role:"kit"|"collar"|"pattern"|"logo" }] — feeds AI generation
+  referenceImages: jsonb("reference_images"),
+  // the AI render standard for this club (no logos, inner-collar lining, 4K 4:5, …)
+  renderSpec: jsonb("render_spec"),
+  enrichmentStage: text("enrichment_stage").notNull().default("lead"), // lead | mockup | design_approved | production_ready
+  sourceChannel: text("source_channel"),             // lead_intake | free_mockup_form | mockup_request | manual
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertClubBrandIdentitySchema = createInsertSchema(clubBrandIdentity).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertClubBrandIdentity = z.infer<typeof insertClubBrandIdentitySchema>;
+export type ClubBrandIdentity = typeof clubBrandIdentity.$inferSelect;
 
 // xero_connections — Xero OAuth tokens. Single row in practice (one Sideline
 // org → one Xero org). See migrations/xero-connections.sql.
