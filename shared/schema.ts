@@ -278,6 +278,23 @@ export type LogoElement = {
   artworkFile?: string;       // e.g. "NWF-LOGO-v2.ai"
 };
 
+// Sideline's own brand mark is a standing brand element on every PO: it sits on
+// the Center Back of tops and the lower back (Bottom) of pants/shorts. Canonical
+// absolute URL so it renders identically in the admin UI, the PO PDF, and the
+// customer proof. Swap the URL here if the woven "work logo" gets its own asset.
+export const SIDELINE_BRAND_LOGO_URL = "https://sidelinenz.com/sideline-logo-vertical.png";
+export function sidelineBrandBackPosition(product?: string | null): LogoPosition {
+  return /\b(pant|short|jogger|trouser|trackpant|legging)/i.test(product || "") ? "Bottom" : "Center Back";
+}
+export function sidelineBrandElement(product?: string | null): LogoElement {
+  return {
+    name: "Sideline NZ",
+    url: SIDELINE_BRAND_LOGO_URL,
+    position: sidelineBrandBackPosition(product),
+    application: "Embroidery",
+  };
+}
+
 // GHL Product Mapping - maps GHL products to Stripe products
 export const ghlProducts = pgTable("ghl_products", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
