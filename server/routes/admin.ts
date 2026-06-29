@@ -4717,7 +4717,7 @@ router.get("/clubs/logos-overview", async (_req, res) => {
 router.get("/clubs/brand-identity", async (_req, res) => {
   try {
     const R = (r: any) => (r && r.rows) ? r.rows : (Array.isArray(r) ? r : []);
-    const mapAsset = (s: any) => ({ id: s.id, kind: s.kind, displayLabel: s.display_label, previewUrl: s.preview_url, defaultPosition: s.default_position, clubAccountId: s.club_account_id });
+    const mapAsset = (s: any) => ({ id: s.id, kind: s.kind, displayLabel: s.display_label, previewUrl: s.preview_url, defaultPosition: s.default_position, clubAccountId: s.club_account_id, canvaDesignId: s.canva_design_id, canvaPageIndex: s.canva_page_index });
     const LOGO_KINDS = ["primary", "secondary", "sponsor"]; const DESIGN_KINDS = ["front-design", "back-design"];
     const clubsRows = R(await db.execute(sql`SELECT id, name, kind, primary_logo_url FROM clubs ORDER BY name`));
     // Parent org details — OPTIONAL: tolerate a DB without the columns yet (returns
@@ -4728,7 +4728,7 @@ router.get("/clubs/brand-identity", async (_req, res) => {
       detailsByClub = new Map(dRows.map((r: any) => [r.id, { website: r.website, deliveryAddress: r.delivery_address, contactName: r.contact_name, contactEmail: r.contact_email, contactPhone: r.contact_phone, ghlBusinessId: r.ghl_business_id }]));
     } catch { /* columns not migrated yet */ }
     const accts = R(await db.execute(sql`SELECT id, club_name, club_id FROM club_accounts WHERE club_id IS NOT NULL`));
-    const assets = R(await db.execute(sql`SELECT id, club_account_id, kind, display_label, preview_url, default_position FROM club_logo_assets`));
+    const assets = R(await db.execute(sql`SELECT id, club_account_id, kind, display_label, preview_url, default_position, canva_design_id, canva_page_index FROM club_logo_assets`));
     const colorRows = R(await db.execute(sql`SELECT club_account_id, colors, enrichment_stage FROM club_brand_identity`));
     // Verified = a human advanced the brand identity past 'lead' (the human gate).
     const VERIFIED_STAGES = ["mockup", "design_approved", "production_ready"];

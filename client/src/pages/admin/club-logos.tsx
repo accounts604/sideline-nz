@@ -39,6 +39,8 @@ interface BrandAsset {
   previewUrl: string | null;
   defaultPosition: string | null;
   clubAccountId: string | null;
+  canvaDesignId?: string | null;
+  canvaPageIndex?: number | null;
 }
 interface BrandOrder {
   poRef: string;
@@ -163,8 +165,9 @@ function LogoDropZone({ clubId, onDone, compact, kind = "primary", position }: {
   );
 }
 
-// One asset tile in the always-visible strip.
-function AssetTile({ logo }: { logo: LogoRow }) {
+// One asset tile in the always-visible strip. `canonical` = the name the linked
+// Canva design SHOULD carry (Club · Type), so the Canva title matches the system.
+function AssetTile({ logo, canonical }: { logo: LogoRow; canonical?: string }) {
   return (
     <div style={{ width: 92, textAlign: "center" }}>
       {logo.previewUrl ? (
@@ -174,9 +177,10 @@ function AssetTile({ logo }: { logo: LogoRow }) {
       )}
       <div style={{ fontSize: 10, color: "rgba(255,255,255,0.85)", marginTop: 4, fontWeight: 600, lineHeight: 1.2 }}>{TYPE_LABEL[logo.kind] || logo.kind}</div>
       <div style={{ fontSize: 9, color: "rgba(255,255,255,0.45)" }}>{logo.defaultPosition || "—"}</div>
-      {logo.canvaDesignId && !logo.canvaDesignId.startsWith("upload:") && (
-        <a href={canvaUrlOf(logo.canvaDesignId, logo.canvaPageIndex)} target="_blank" rel="noreferrer" style={{ fontSize: 9, color: "#93c5fd", textDecoration: "none" }}>open in Canva ↗</a>
-      )}
+      {logo.canvaDesignId && !logo.canvaDesignId.startsWith("upload:") && (<>
+        <a href={canvaUrlOf(logo.canvaDesignId, logo.canvaPageIndex)} target="_blank" rel="noreferrer" style={{ display: "block", fontSize: 9, color: "#93c5fd", textDecoration: "none" }}>open in Canva ↗</a>
+        {canonical && <div title={`Name this Canva design: ${canonical}`} style={{ fontSize: 8, color: "rgba(255,255,255,0.4)", marginTop: 2, lineHeight: 1.2 }}>Canva name:<br /><span style={{ color: "rgba(255,255,255,0.6)" }}>{canonical}</span></div>}
+      </>)}
     </div>
   );
 }
@@ -681,7 +685,7 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
   const effectivePos = dropPos || (dropKind === "sponsor" ? "Front Center" : typeDefaultPos);
 
   // AssetTile expects a LogoRow; brand-identity assets lack the Canva/sync fields.
-  const asLogoRow = (a: BrandAsset): LogoRow => ({ ...a, canvaDesignId: "", canvaPageIndex: null, lastSyncedAt: null } as any);
+  const asLogoRow = (a: BrandAsset): LogoRow => ({ ...a, canvaDesignId: a.canvaDesignId || "", canvaPageIndex: a.canvaPageIndex ?? null, lastSyncedAt: null } as any);
 
   // Up to 3 colour swatches for the compact header preview (skip nulls).
   const swatches = [club.colors?.primary, club.colors?.secondary, club.colors?.accent].filter(Boolean).slice(0, 3) as string[];
@@ -739,7 +743,7 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
             }
             return tiles.length > 0 ? (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
-                {tiles.map((a) => <AssetTile key={a.id} logo={asLogoRow(a)} />)}
+                {tiles.map((a) => <AssetTile key={a.id} logo={asLogoRow(a)} canonical={a.canvaDesignId ? `${club.name} · ${TYPE_LABEL[a.kind] || a.kind}` : undefined} />)}
               </div>
             ) : effectiveAccountId ? (
               <div style={{ maxWidth: 320 }}>
@@ -804,7 +808,7 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
           <div style={pillarLabelStyle}>Designs</div>
           {club.designs.length > 0 ? (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
-              {club.designs.map((a) => <AssetTile key={a.id} logo={asLogoRow(a)} />)}
+              {club.designs.map((a) => <AssetTile key={a.id} logo={asLogoRow(a)} canonical={a.canvaDesignId ? `${club.name} · ${TYPE_LABEL[a.kind] || a.kind}` : undefined} />)}
             </div>
           ) : (
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No designs yet</div>
