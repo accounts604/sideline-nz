@@ -982,6 +982,20 @@ export default function AdminOrderDetail() {
     onError: (e: any) => setPortalMsg({ ok: false, text: e?.message || "Failed" }),
   });
 
+  const dispatchToCustomerMut = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/admin/orders/${params.id}/dispatch-to-customer`, {});
+      return r.json();
+    },
+    onSuccess: (r: any) => {
+      invalidate();
+      setPortalMsg({ ok: true, text: r.emailSent
+        ? `Design proof emailed to ${r.clientEmail} · ${r.url}`
+        : `Proof link created (email NOT sent — check Gmail config) · ${r.url}` });
+    },
+    onError: (e: any) => setPortalMsg({ ok: false, text: e?.message || "Failed to dispatch proof" }),
+  });
+
   const [, navigate] = useLocation();
   const deleteOrderMut = useMutation({
     mutationFn: async () => {
@@ -1130,6 +1144,39 @@ export default function AdminOrderDetail() {
                 </button>
               );
             })()}
+            {/* Preview the supplier production sheet / customer design proof in a new tab */}
+            <button
+              onClick={() => window.open(`/api/admin/orders/${order.id}/proof-preview?audience=supplier`, "_blank")}
+              title="Open the supplier production sheet exactly as the supplier receives it"
+              style={{ padding: "7px 12px", fontSize: "11px", fontWeight: 600, background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "6px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px" }}
+            >
+              <Printer size={12} /> Supplier Preview
+            </button>
+            <button
+              onClick={() => window.open(`/api/admin/orders/${order.id}/proof-preview?audience=customer`, "_blank")}
+              title="Open the customer DESIGN PROOF (interactive) exactly as the customer sees it"
+              style={{ padding: "7px 12px", fontSize: "11px", fontWeight: 600, background: "rgba(34,211,238,0.1)", color: "#22d3ee", border: "1px solid rgba(34,211,238,0.3)", borderRadius: "6px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px" }}
+            >
+              <Printer size={12} /> Customer Preview
+            </button>
+            {/* Dispatch the interactive design proof to the customer (cyan — distinct from the gold supplier dispatch) */}
+            <button
+              onClick={() => {
+                if (!hasMockups) { setPortalMsg({ ok: false, text: "Upload at least one mockup before dispatching the proof." }); return; }
+                setPortalMsg(null);
+                dispatchToCustomerMut.mutate();
+              }}
+              disabled={dispatchToCustomerMut.isPending}
+              title="Email the customer a link to the interactive design proof. On approval, the PO auto-dispatches to the supplier."
+              style={{
+                padding: "7px 14px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px",
+                background: "#06b6d4", color: "#06222b", border: "none", borderRadius: "6px",
+                cursor: dispatchToCustomerMut.isPending ? "not-allowed" : "pointer",
+                opacity: dispatchToCustomerMut.isPending ? 0.6 : 1,
+              }}
+            >
+              {dispatchToCustomerMut.isPending ? "Sending…" : "Dispatch to Customer"}
+            </button>
             {order.driveFolderId && (
               <button
                 onClick={() => genPdfMut.mutate()}

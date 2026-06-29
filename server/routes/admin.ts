@@ -4,7 +4,7 @@ import { storage } from "../storage";
 import { hashPassword, signToken, setAuthCookie, setImpersonateCookie } from "../auth";
 import { z } from "zod";
 import { notifyDesignApproved, notifyDesignRejected, notifyOrderStatusChange } from "../notifications";
-import { sendInviteEmail, sendSupplierPoRaisedEmail, sendSupplierPoDispatchGmail } from "../email";
+import { sendInviteEmail, sendSupplierPoRaisedEmail, sendSupplierPoDispatchGmail, sendCustomerDesignProofRequest } from "../email";
 import { db } from "../db";
 import { orders, orderActivity, designFiles, orderItems, orderSizeBreakdowns, clubAccounts, clubLogoAssets, users } from "@shared/schema";
 import { clubLogoPlacement } from "../canva-logos";
@@ -42,7 +42,7 @@ import {
 import { computeMilestones } from "@shared/po-milestones";
 import { extractColorsFromImage } from "../mockup/color-extract";
 import { generateDesignBrief } from "../mockup/design-brief";
-import { uploadPoPdfToDrive } from "../po-pdf";
+import { uploadPoPdfToDrive, generatePoHtml } from "../po-pdf";
 import { tracked } from "../integration-events";
 import {
   searchGhlContacts,
@@ -2968,7 +2968,7 @@ async function dispatchSupplierGroup(
 // opts.supplierId, when provided, forces ALL items to that supplier (legacy
 // single-supplier path used by /po-decision when an admin taps "Send" on a
 // specific supplier's approval card).
-async function dispatchOrderToSuppliers(
+export async function dispatchOrderToSuppliers(
   orderId: string,
   opts: { supplierId?: string; userId?: string },
 ): Promise<
@@ -3912,6 +3912,96 @@ router.post("/orders/:id/send-for-approval", async (req, res) => {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin send-for-approval error:", err);
     res.status(500).json({ error: "Failed to send approval link" });
+  }
+});
+
+// GET /orders/:id/proof-preview?audience=supplier|customer — render the PO HTML
+// (supplier production sheet OR customer DESIGN PROOF) straight to the browser
+// so admin can eyeball exactly what the supplier / customer will receive before
+// dispatching. Customer audience renders the interactive editable proof (no
+// submitUrl, so the action bar shows preview stubs — it never writes).
+router.get("/orders/:id/proof-preview", async (req, res) => {
+  try {
+    const audience = req.query.audience === "customer" ? "customer" : "supplier";
+    const html = await generatePoHtml(req.params.id, { audience, interactive: audience === "customer" });
+    if (!html) return res.status(404).send("Order not found");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(html);
+  } catch (err: any) {
+    console.error("Admin proof-preview error:", err);
+    res.status(500).send("Failed to render proof preview");
+  }
+});
+
+// POST /orders/:id/dispatch-to-customer — issues a tokenized proof link and
+// emails the customer (FROM orders@sidelinenz.com) a link to the interactive
+// customer DESIGN PROOF page (/proof/<token>). On approval the customer's
+// submit fires the supplier dispatch automatically. Guarded by the same
+// "at least one mockup attached" check the approval GET uses.
+const dispatchToCustomerSchema = z.object({
+  clientEmail: z.string().email().optional(), // defaults to order.customerEmail
+});
+router.post("/orders/:id/dispatch-to-customer", async (req, res) => {
+  try {
+    const { clientEmail: bodyEmail } = dispatchToCustomerSchema.parse(req.body ?? {});
+
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const clientEmail = bodyEmail || order.customerEmail || order.deliveryEmail;
+    if (!clientEmail) {
+      return res.status(400).json({
+        error: "No customer email on file — pass clientEmail in the body or set customerEmail on the order",
+      });
+    }
+
+    // Guard: require at least one mockup (mirrors send-for-approval + the
+    // public approval GET, which only serves files in the mockups folder).
+    const files = await storage.getDesignFilesByOrder(order.id);
+    const hasMockup = files.some((f) => f.folder === "mockups");
+    if (!hasMockup) {
+      return res.status(400).json({
+        error: "No mockup files uploaded yet. Upload at least one file with folder=mockups before dispatching the proof.",
+      });
+    }
+
+    // Mint the token but suppress the default /approve email — we send our own
+    // customer proof email pointing at /proof/<token>.
+    const { token, expiresAt } = await createApprovalToken({
+      orderId: order.id,
+      createdBy: (req as any).user?.userId,
+      clientEmail,
+      clientName: order.customerName,
+      orderNumber: order.orderNumber,
+      ghlOpportunityId: order.ghlOpportunityId,
+      sendEmail: false,
+    });
+
+    const baseUrl = process.env.BASE_URL || "https://sidelinenz.com";
+    const url = `${baseUrl}/proof/${token}`;
+
+    const messageId = await sendCustomerDesignProofRequest(
+      clientEmail,
+      order.orderNumber || "your order",
+      url,
+      order.customerName,
+    ).catch((err) => {
+      console.error("Failed to send customer design-proof email:", err);
+      return null;
+    });
+
+    await storage.logOrderActivity({
+      orderId: order.id,
+      userId: (req as any).user?.userId,
+      action: "design_proof_dispatched_to_customer",
+      details: { token, clientEmail, url, messageId, expiresAt: expiresAt.toISOString() },
+    } as any).catch(() => {});
+
+    res.json({ ok: true, token, url, clientEmail, emailSent: !!messageId, expiresAt });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin dispatch-to-customer error:", err);
+    res.status(500).json({ error: "Failed to dispatch proof to customer" });
   }
 });
 
