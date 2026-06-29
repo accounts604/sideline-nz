@@ -12,7 +12,7 @@ import { adminQuoteRouter, templateRouter, publicQuoteRouter } from "./quotes";
 import clubPortalRouter from "./club-portal";
 import supplierRouter from "./supplier";
 import shipmentsRouter from "./shipments";
-import { publicApprovalRouter } from "./approvals";
+import { publicApprovalRouter, publicProofRouter } from "./approvals";
 import chatbotRouter from "./chatbot";
 import notifyRouter from "./notify";
 import cronRouter from "./cron";
@@ -104,6 +104,11 @@ export async function registerRoutes(
 
   // Public client-approval links (no auth — validated by random URL token)
   app.use("/api/approve", publicApprovalRouter);
+
+  // Public customer DESIGN PROOF page (no auth — token in URL). Served as raw
+  // HTML before the SPA fallback so /proof/<token> renders the interactive
+  // proof, not the React app.
+  app.use("/proof", publicProofRouter);
 
   // Chatbot API for GHL Conversational AI (Jarvesi web chat)
   app.use("/api/chatbot", chatbotRouter);

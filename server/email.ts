@@ -286,6 +286,45 @@ export async function sendSupplierPoDispatchGmail(input: DispatchSupplierInput):
   });
 }
 
+/**
+ * Customer design-proof dispatch — emails the customer a link to their
+ * interactive proof page (/proof/<token>). From: orders@sidelinenz.com so the
+ * thread lives in the orders@ inbox (matches the supplier PO dispatch path).
+ * Falls back to the pluggable emailService (Resend/console) if Gmail isn't
+ * configured. Returns a message id (or null).
+ */
+export async function sendCustomerDesignProofRequest(
+  to: string,
+  orderNumber: string,
+  link: string,
+  clientName: string | null,
+): Promise<string | null> {
+  const greeting = clientName ? `Hi ${clientName},` : "Hi,";
+  const subject = `Your design proof is ready — ${orderNumber}`;
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#111;max-width:600px">
+      <p>${greeting}</p>
+      <p>Your design proof for <strong>${orderNumber}</strong> is ready to review. Open it to check the colours, logos, placement and spelling, confirm each player's size and quantity, add any names for the back, and confirm your delivery address.</p>
+      <p><a href="${link}" style="display:inline-block;padding:12px 18px;background:#5b1a2e;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Review &amp; approve your design</a></p>
+      <p style="color:#666;font-size:12px">Once you approve, we send your order straight into production. This link expires in 14 days.</p>
+      <p style="color:#666;font-size:12px">— Sideline NZ · <a href="mailto:orders@sidelinenz.com" style="color:#0A1628">orders@sidelinenz.com</a></p>
+    </div>`;
+  const text = `${greeting}\n\nYour design proof for ${orderNumber} is ready to review:\n${link}\n\nCheck the colours, logos, sizes and names, confirm your delivery address, then approve. Production starts once approved. This link expires in 14 days.\n\n— Sideline NZ`;
+
+  if (isGmailConfigured()) {
+    return sendGmail({
+      from: SIDELINE_ORDERS_FROM,
+      to,
+      cc: ["orders@sidelinenz.com"],
+      replyTo: "orders@sidelinenz.com",
+      subject,
+      html,
+    });
+  }
+  const r = await emailService.send({ to, subject, text, html, replyTo: "orders@sidelinenz.com" });
+  return r.messageId || null;
+}
+
 export async function sendSupplierPoRaisedEmail(
   to: string,
   orderNumber: string,

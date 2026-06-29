@@ -242,10 +242,13 @@ function renderLogoGrid(elements: LogoElement[], audience: "supplier" | "custome
 // Exported so smoke-test scripts can render the prod HTML into a PDF without
 // going through the Drive upload path. Not part of the public HTTP surface.
 
-export async function generatePoHtml(orderId: string, opts: { audience?: "supplier" | "customer"; interactive?: boolean } = {}): Promise<string | null> {
+export async function generatePoHtml(orderId: string, opts: { audience?: "supplier" | "customer"; interactive?: boolean; submitUrl?: string } = {}): Promise<string | null> {
   const audience = opts.audience ?? "supplier";
   const isCust = audience === "customer";
   const isInteractive = isCust && (opts.interactive ?? false);
+  // When set (public token proof page), the action bar really submits the
+  // collected form state to this URL instead of firing the alert() stubs.
+  const submitUrl = isInteractive ? (opts.submitUrl || "") : "";
   const data = await storage.getOrderWithDetails(orderId);
   if (!data) return null;
   const { order, items, sizeBreakdowns } = data as any;
@@ -326,23 +329,23 @@ export async function generatePoHtml(orderId: string, opts: { audience?: "suppli
     const rowHtml = (b: any, i: number) => isInteractive
       ? `<tr data-row style="${!b.size ? "background:#fff8ee" : ""}">
           <td style="${tdS};text-align:center;color:#888" data-idx>${i + 1}</td>
-          <td style="${tdS}"><input style="${inpS}" value="${esc(b.playerName || "")}" /></td>
-          <td style="${tdS}"><select style="${inpS}" onchange="snzRecount()">${selOpts(b.size || "")}</select></td>
-          <td style="${tdS};text-align:center"><input type="number" min="0" value="${b.quantity ?? 1}" style="${inpS};text-align:center" oninput="snzRecount()" /></td>
-          <td style="${tdS}"><input style="${inpS}" placeholder="(no name)" value="${esc(b.namePlacement || "")}" /></td>
+          <td style="${tdS}"><input data-cell="playerName" style="${inpS}" value="${esc(b.playerName || "")}" /></td>
+          <td style="${tdS}"><select data-cell="size" style="${inpS}" onchange="snzRecount()">${selOpts(b.size || "")}</select></td>
+          <td style="${tdS};text-align:center"><input data-cell="quantity" type="number" min="0" value="${b.quantity ?? 1}" style="${inpS};text-align:center" oninput="snzRecount()" /></td>
+          <td style="${tdS}"><input data-cell="nameOnBack" style="${inpS}" placeholder="(no name)" value="${esc(b.namePlacement || "")}" /></td>
           <td class="no-print" style="${tdS};text-align:center"><button type="button" onclick="this.closest('tr').remove();snzRenumber();snzRecount()" style="border:none;background:none;color:#b34;font-size:16px;cursor:pointer;line-height:1">&times;</button></td>
         </tr>`
       : `<tr><td style="${tdS};text-align:center;color:#888">${i + 1}</td><td style="${tdS}">${esc(b.playerName || "")}</td><td style="${tdS}">${esc(b.size || "")}</td><td style="${tdS};text-align:center">${b.quantity ?? ""}</td><td style="${tdS}">${esc(b.namePlacement || "")}</td></tr>`;
     const custSizeHtml = bds.length ? `
         <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">Sizes, Quantities &amp; Names</div>
         ${isInteractive ? `<div class="no-print" style="font-size:11px;color:#7a5f3f;background:#fff8ee;border:1px solid #f0d8b6;border-top:none;padding:8px 12px">Tap any field to change it. Set each player's size and quantity, add a name for the back if you want one, and use Add person for anyone missing.</div>` : ""}
-        <div class="snz-scroll"><table style="width:100%;border-collapse:collapse;border:1px solid #eee;border-top:none">
+        <div class="snz-scroll"><table${isInteractive ? ` data-roster data-item-id="${esc(item.id)}"` : ""} style="width:100%;border-collapse:collapse;border:1px solid #eee;border-top:none">
           <thead><tr><th style="${thS};text-align:center;width:30px">#</th><th style="${thS}">Player</th><th style="${thS};width:120px">Size</th><th style="${thS};width:64px;text-align:center">Qty</th><th style="${thS}">Name on back</th>${isInteractive ? `<th class="no-print" style="${thS};width:30px"></th>` : ""}</tr></thead>
           <tbody data-body>${bds.map(rowHtml).join("")}</tbody>
         </table></div>
         ${isInteractive ? `<button type="button" class="no-print" onclick="snzAddRow()" style="margin:8px 0 0;border:1.4px dashed #cdbfae;background:#fff;color:#5b1a2e;font-weight:700;font-size:12px;padding:8px 12px;border-radius:7px;cursor:pointer">+ Add person</button>` : ""}
         <div style="display:flex;justify-content:space-between;background:#2b2622;color:#fff;padding:8px 16px;font-size:12px;font-weight:700;margin-top:8px"><span>Total</span><span data-tot data-ord="${item.quantity}">${totalQty} of ${item.quantity} ordered</span></div>`
-      : `<div style="border:1px solid #eee;border-top:none;padding:12px 16px;font-size:12px">One size. Quantity: ${isInteractive ? `<input type="number" min="0" value="${totalQty}" style="${inpS};width:80px;display:inline-block" />` : `<strong>${totalQty}</strong>`}</div>`;
+      : `<div style="border:1px solid #eee;border-top:none;padding:12px 16px;font-size:12px">One size. Quantity: ${isInteractive ? `<input data-onesize data-item-id="${esc(item.id)}" type="number" min="0" value="${totalQty}" style="${inpS};width:80px;display:inline-block" />` : `<strong>${totalQty}</strong>`}</div>`;
 
     return `
     <div style="page-break-inside:avoid;margin-bottom:20px">
@@ -493,7 +496,7 @@ export async function generatePoHtml(orderId: string, opts: { audience?: "suppli
     <div style="flex:1;padding:10px 16px;font-size:12px">
       ${isCust
         ? (isInteractive
-            ? `<input style="font:inherit;font-size:12px;padding:7px 9px;border:1px solid #ccc;border-radius:5px;width:100%;box-sizing:border-box" placeholder="Enter the address to deliver your kit to" value="${esc(order.deliveryAddress || "")}" /><div style="font-size:10px;color:#888;margin-top:4px">Where should we send the finished gear?</div>`
+            ? `<input data-field="deliveryAddress" style="font:inherit;font-size:12px;padding:7px 9px;border:1px solid #ccc;border-radius:5px;width:100%;box-sizing:border-box" placeholder="Enter the address to deliver your kit to" value="${esc(order.deliveryAddress || "")}" /><div style="font-size:10px;color:#888;margin-top:4px">Where should we send the finished gear?</div>`
             : `<div>${esc(order.deliveryAddress || "To be confirmed by customer")}</div>`)
         : `${order.deliveryAttention ? `<div>Attention: ${esc(order.deliveryAttention)}</div>` : ""}<div>${esc(order.deliveryAddress || "Sideline NZ, 41 Oakland Rd Karaka, Auckland 2580")}</div>${order.deliveryPhone ? `<div>${esc(order.deliveryPhone)}</div>` : ""}`}
     </div>
@@ -516,7 +519,7 @@ ${itemsHtml}
 ${isInteractive ? `<div style="margin-bottom:18px">
   <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">Your Notes for Sideline</div>
   <div style="border:1px solid #eee;border-top:none;padding:12px 16px">
-    <textarea style="width:100%;min-height:70px;box-sizing:border-box;font:inherit;font-size:12.5px;padding:10px;border:1px solid #ccc;border-radius:6px" placeholder="Anything you'd like changed or added: colours, logo, placement, spelling, a size swap, who's still to confirm, and so on."></textarea>
+    <textarea data-field="notes" style="width:100%;min-height:70px;box-sizing:border-box;font:inherit;font-size:12.5px;padding:10px;border:1px solid #ccc;border-radius:6px" placeholder="Anything you'd like changed or added: colours, logo, placement, spelling, a size swap, who's still to confirm, and so on."></textarea>
   </div>
 </div>` : ""}
 
@@ -534,8 +537,8 @@ ${isInteractive ? `
   <div class="snz-actbar" style="max-width:900px;margin:0 auto;display:flex;gap:10px;align-items:center">
     <div style="font-size:11px;color:#666;line-height:1.25;flex:0 0 auto"><span data-left>sizes</span><br/><b style="color:#5b1a2e">${esc(order.poReference || order.orderNumber || "")}</b></div>
     <button type="button" onclick="window.print()" style="background:#fff;border:1.4px solid #e6e6e6;border-radius:9px;padding:13px 14px;font-weight:700;font-size:13px;cursor:pointer">Export PDF</button>
-    <button type="button" onclick="alert('Preview: this would save your changes and flag a change request.')" style="background:#fff;border:1.4px solid #e6e6e6;border-radius:9px;padding:13px 14px;font-weight:700;font-size:13px;cursor:pointer">Request changes</button>
-    <button type="button" onclick="alert('Preview: this would save your sizes, names, quantities and delivery address, then approve the proof.')" style="flex:1 1 auto;background:#5b1a2e;color:#fff;border:none;border-radius:9px;padding:13px 16px;font-weight:800;font-size:14px;cursor:pointer">Approve &amp; confirm</button>
+    <button type="button" onclick="${submitUrl ? "snzSubmit('changes')" : "alert('Preview: this would save your changes and flag a change request.')"}" style="background:#fff;border:1.4px solid #e6e6e6;border-radius:9px;padding:13px 14px;font-weight:700;font-size:13px;cursor:pointer">Request changes</button>
+    <button type="button" onclick="${submitUrl ? "snzSubmit('approved')" : "alert('Preview: this would save your sizes, names, quantities and delivery address, then approve the proof.')"}" style="flex:1 1 auto;background:#5b1a2e;color:#fff;border:none;border-radius:9px;padding:13px 16px;font-weight:800;font-size:14px;cursor:pointer">Approve &amp; confirm</button>
   </div>
 </div>
 <script>
@@ -543,7 +546,46 @@ function snzRenumber(){var i=0;document.querySelectorAll('[data-body] tr').forEa
 function snzRecount(){var tot=0,left=0;document.querySelectorAll('[data-body] tr').forEach(function(tr){var s=tr.querySelector('select');var q=tr.querySelector('input[type=number]');var n=q?parseInt(q.value||'0',10)||0:0;tot+=n;if(s&&!s.value)left++;});document.querySelectorAll('[data-tot]').forEach(function(t){t.textContent=tot+' of '+(t.getAttribute('data-ord')||'')+' ordered';});var lm=document.querySelector('[data-left]');if(lm)lm.textContent=(left?left+' size'+(left>1?'s':'')+' to pick':'all sizes in');}
 function snzAddRow(){var b=document.querySelector('[data-body]');if(!b||!b.rows.length)return;var tr=b.rows[0].cloneNode(true);tr.querySelectorAll('input').forEach(function(i){i.value='';});tr.querySelectorAll('select').forEach(function(s){s.selectedIndex=0;});tr.style.background='#fff8ee';b.appendChild(tr);snzRenumber();snzRecount();}
 document.addEventListener('DOMContentLoaded',snzRecount);
-</script>` : ""}
+${submitUrl ? `var SNZ_SUBMIT_URL=${JSON.stringify(submitUrl)};
+function snzVal(el){return el?(el.value||''):'';}
+function snzCollect(decision){
+  var rosters=[];
+  document.querySelectorAll('table[data-roster]').forEach(function(t){
+    var rows=[];
+    t.querySelectorAll('tbody tr').forEach(function(tr){
+      var pn=tr.querySelector('[data-cell="playerName"]');var sz=tr.querySelector('[data-cell="size"]');
+      var qt=tr.querySelector('[data-cell="quantity"]');var nb=tr.querySelector('[data-cell="nameOnBack"]');
+      rows.push({playerName:snzVal(pn),size:snzVal(sz),quantity:parseInt(snzVal(qt)||'0',10)||0,nameOnBack:snzVal(nb)});
+    });
+    rosters.push({itemId:t.getAttribute('data-item-id'),rows:rows});
+  });
+  var oneSizes=[];
+  document.querySelectorAll('input[data-onesize]').forEach(function(i){
+    oneSizes.push({itemId:i.getAttribute('data-item-id'),quantity:parseInt(snzVal(i)||'0',10)||0});
+  });
+  var firstRows=rosters.length?rosters[0].rows:[];
+  return {decision:decision,deliveryAddress:snzVal(document.querySelector('[data-field="deliveryAddress"]')),notes:snzVal(document.querySelector('[data-field="notes"]')),rows:firstRows,rosters:rosters,oneSizes:oneSizes};
+}
+function snzDone(decision){
+  var ok=decision==='approved';
+  document.body.innerHTML='<div style="max-width:560px;margin:90px auto;text-align:center;font-family:Segoe UI,Arial,sans-serif;padding:0 22px">'
+    +'<div style="font-size:42px;margin-bottom:10px">'+(ok?'\\u2713':'\\u2709')+'</div>'
+    +'<h1 style="color:#5b1a2e;font-size:22px;margin:0 0 12px">'+(ok?'Design approved \\u2014 thank you!':'Change request received')+'</h1>'
+    +'<p style="font-size:15px;color:#444;line-height:1.6">'+(ok?'Your sizes, names and delivery address are locked in and your order has been sent through to production. We\\u2019ll be in touch with updates.':'Thanks \\u2014 we\\u2019ve logged your requested changes and our team will follow up shortly.')+'</p>'
+    +'</div>';
+}
+function snzSubmit(decision){
+  if(decision==='approved'&&!confirm('Approve this design proof? Once approved this version is final and we start production.'))return;
+  var btns=document.querySelectorAll('.snz-actbar button');btns.forEach(function(b){b.disabled=true;b.style.opacity='0.6';});
+  fetch(SNZ_SUBMIT_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(snzCollect(decision))})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};}).catch(function(){return {ok:r.ok,j:{}};});})
+    .then(function(res){
+      if(!res.ok){alert((res.j&&res.j.error)||'Something went wrong. Please try again or contact orders@sidelinenz.com.');btns.forEach(function(b){b.disabled=false;b.style.opacity='1';});return;}
+      snzDone(decision);
+    })
+    .catch(function(){alert('Network error. Please check your connection and try again.');btns.forEach(function(b){b.disabled=false;b.style.opacity='1';});});
+}
+` : ""}</script>` : ""}
 </body></html>`;
 }
 
