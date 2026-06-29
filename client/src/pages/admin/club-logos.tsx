@@ -559,6 +559,73 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
   const [dropKind, setDropKind] = useState<AssetKind>("primary");
   const [dropPos, setDropPos] = useState("");
 
+  // Account-less parents (created from standalone orders) have no asset container.
+  // We lazily ensure one the first time uploads are needed, then cache its id.
+  const [ensuredAccountId, setEnsuredAccountId] = useState<string | null>(null);
+  const [ensuring, setEnsuring] = useState(false);
+  const effectiveAccountId = club.accountId || ensuredAccountId;
+
+  // Fetch-brand (logo candidates scraped from the parent's website — suggestions only).
+  type BrandCandidate = { url: string; source: string; likelyLogo?: boolean };
+  const [candidates, setCandidates] = useState<BrandCandidate[]>([]);
+  const [fetching, setFetching] = useState(false);
+  const [fetchNote, setFetchNote] = useState<string | null>(null);
+  const [pickKind, setPickKind] = useState<AssetKind>("primary");
+
+  // Resolve (or lazily create) the parent's asset-container account id.
+  async function getAccountId(): Promise<string | null> {
+    if (club.accountId) return club.accountId;
+    if (ensuredAccountId) return ensuredAccountId;
+    setEnsuring(true);
+    try {
+      const r = await apiRequest("POST", `/api/admin/clubs/${club.id}/ensure-account`, {});
+      const j = await r.json().catch(() => ({}));
+      const acct: string | null = j?.accountId || null;
+      if (acct) setEnsuredAccountId(acct);
+      return acct;
+    } catch {
+      return null;
+    } finally {
+      setEnsuring(false);
+    }
+  }
+
+  async function fetchBrand() {
+    setFetching(true); setFetchNote(null); setCandidates([]);
+    try {
+      const r = await apiRequest("POST", `/api/admin/clubs/${club.id}/fetch-brand`, {});
+      const j = await r.json().catch(() => ({}));
+      const cands: BrandCandidate[] = Array.isArray(j?.candidates) ? j.candidates : [];
+      setCandidates(cands);
+      if (j?.note) setFetchNote(String(j.note));
+      else if (cands.length === 0) setFetchNote("No logo candidates found.");
+    } catch (e: any) {
+      setFetchNote(e?.message || "Fetch failed");
+    } finally {
+      setFetching(false);
+    }
+  }
+
+  // Save a picked candidate as a real logo asset (never auto-applied).
+  async function pickCandidate(c: BrandCandidate) {
+    const acct = await getAccountId();
+    if (!acct) { setFetchNote("Couldn't resolve an account for uploads."); return; }
+    try {
+      await apiRequest("POST", `/api/admin/clubs/${acct}/logos`, { imageUrl: c.url, kind: pickKind, defaultPosition: ASSET_TYPES.find((t) => t.value === pickKind)?.pos });
+      refresh();
+      setCandidates([]); setFetchNote(null);
+    } catch (e: any) {
+      setFetchNote(e?.message || "Save failed");
+    }
+  }
+
+  // "Enable uploads" — ensures the account then reveals the dropzone.
+  const enableUploadsBtn = (
+    <button onClick={() => getAccountId()} disabled={ensuring} style={{ ...btnGhost, opacity: ensuring ? 0.6 : 1 }}>
+      {ensuring ? "Enabling…" : "Enable uploads"}
+    </button>
+  );
+
   // Teams are real three-level entities now — render them all.
   const teams = club.teams;
   const teamCount = club.teams.length;
@@ -600,7 +667,7 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
               ))}
             </div>
           )}
-          {club.accountId && <button onClick={(e) => { e.stopPropagation(); setOpen(true); setExpanded((s) => !s); }} style={btnGhost}>{expanded ? "Close" : "Manage"}</button>}
+          <button onClick={(e) => { e.stopPropagation(); setOpen(true); const next = !expanded; setExpanded(next); if (next && !effectiveAccountId) getAccountId(); }} style={btnGhost}>{expanded ? "Close" : "Manage"}</button>
         </div>
       </div>
 
@@ -609,7 +676,10 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
         {/* LOGOS pillar — includes the club-level primary (clubs.primary_logo_url)
             so it's visible even when there's no account-held asset. */}
         <div>
-          <div style={pillarLabelStyle}>Logos</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+            <div style={{ ...pillarLabelStyle, marginBottom: 0 }}>Logos</div>
+            <button onClick={fetchBrand} disabled={fetching} style={{ ...btnGhost, fontSize: 10, padding: "3px 8px", opacity: fetching ? 0.6 : 1 }}>{fetching ? "…" : "Fetch brand"}</button>
+          </div>
           {(() => {
             const tiles: BrandAsset[] = [...club.logos];
             if (club.primaryLogoUrl && !tiles.some((l) => l.kind === "primary" || l.previewUrl === club.primaryLogoUrl)) {
@@ -619,15 +689,46 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
               <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
                 {tiles.map((a) => <AssetTile key={a.id} logo={asLogoRow(a)} />)}
               </div>
-            ) : club.accountId ? (
+            ) : effectiveAccountId ? (
               <div style={{ maxWidth: 320 }}>
-                <LogoDropZone clubId={club.accountId} compact onDone={refresh} />
+                <LogoDropZone clubId={effectiveAccountId} compact onDone={refresh} />
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>Drop the primary logo to start.</div>
               </div>
             ) : (
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No logos yet</div>
+              <div style={{ maxWidth: 320 }}>
+                {enableUploadsBtn}
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>No logos yet — enable uploads to add one.</div>
+              </div>
             );
           })()}
+
+          {/* Fetch-brand candidates — suggestions scraped from the parent's website.
+              Click one to save it (admin picks; never auto-applied). */}
+          {(candidates.length > 0 || fetchNote) && (
+            <div style={{ marginTop: 12 }}>
+              {candidates.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                  <span style={{ fontSize: 10, color: "rgba(255,255,255,0.45)" }}>Save as</span>
+                  <select value={pickKind} onChange={(e) => setPickKind(e.target.value as AssetKind)} style={{ ...inputStyle, width: "auto", padding: "3px 6px", cursor: "pointer" }}>
+                    {ASSET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                  <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>— click a candidate to save it</span>
+                </div>
+              )}
+              {candidates.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                  {candidates.map((c, i) => (
+                    <div key={i} onClick={() => pickCandidate(c)} title={c.url} style={{ width: 64, textAlign: "center", cursor: "pointer" }}>
+                      <img src={c.url} alt="" style={{ width: 56, height: 56, objectFit: "contain", background: "#fff", padding: 3, borderRadius: 6, border: "1px solid rgba(255,255,255,0.15)" }} />
+                      <div style={{ fontSize: 8, color: "rgba(255,255,255,0.4)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.source}</div>
+                      {c.likelyLogo && <div style={{ fontSize: 8, color: "#86efac", fontWeight: 600 }}>logo?</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {fetchNote && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 8 }}>{fetchNote}</div>}
+            </div>
+          )}
         </div>
 
         {/* DESIGNS pillar */}
@@ -681,8 +782,9 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
         </div>
       </div>
 
-      {/* Add + EDIT assets (Manage) */}
-      {expanded && club.accountId && (
+      {/* Add + EDIT assets (Manage) — available for every club, including account-less
+          parents (we ensure an asset account the first time uploads are needed). */}
+      {expanded && (
         <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", maxWidth: 560 }}>
           <div style={labelStyle}>Add an asset</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 8, maxWidth: 360 }}>
@@ -693,11 +795,15 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
               {placementOptions(dropKind).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
-          <div style={{ maxWidth: 360 }}><LogoDropZone clubId={club.accountId} kind={dropKind} position={effectivePos} onDone={refresh} /></div>
+          <div style={{ maxWidth: 360 }}>
+            {effectiveAccountId
+              ? <LogoDropZone clubId={effectiveAccountId} kind={dropKind} position={effectivePos} onDone={refresh} />
+              : <div>{enableUploadsBtn}<div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>This parent has no asset account yet — enable uploads to add logos & designs.</div></div>}
+          </div>
           {(club.logos.length + club.designs.length) > 0 && (
             <div style={{ marginTop: 16 }}>
               <div style={labelStyle}>Edit existing — rename / change type / placement / remove</div>
-              {[...club.logos, ...club.designs].map((a) => <AssetManageRow key={a.id} clubId={a.clubAccountId || club.accountId || ""} logo={asLogoRow(a)} onChanged={refresh} />)}
+              {[...club.logos, ...club.designs].map((a) => <AssetManageRow key={a.id} clubId={a.clubAccountId || effectiveAccountId || ""} logo={asLogoRow(a)} onChanged={refresh} />)}
             </div>
           )}
         </div>

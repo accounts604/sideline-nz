@@ -4820,6 +4820,64 @@ router.get("/clubs/ghl-search", async (req, res) => {
   }
 });
 
+// Ensure a representative club_account exists for a club (so account-less parents
+// can still hold brand assets). Creates a lightweight, non-login container account.
+async function ensureRepAccountForClub(clubId: string): Promise<string | null> {
+  const R = (r: any) => (r && r.rows) ? r.rows : (Array.isArray(r) ? r : []);
+  const club = R(await db.execute(sql`SELECT id, name FROM clubs WHERE id=${clubId}`))[0];
+  if (!club) return null;
+  const ex = R(await db.execute(sql`SELECT id, club_name FROM club_accounts WHERE club_id=${clubId}`));
+  if (ex.length) { const rep = ex.find((a: any) => a.club_name === club.name) || ex[0]; return rep.id; }
+  const email = `brand-${clubId}@brand.sideline.local`;
+  const hash = (await import("crypto")).randomUUID(); // non-login placeholder
+  const ins = R(await db.execute(sql`INSERT INTO club_accounts (club_id, email, password_hash, club_name, profit_share_tier_bps) VALUES (${clubId}, ${email}, ${hash}, ${club.name}, 800) ON CONFLICT (email) DO UPDATE SET club_id=${clubId} RETURNING id`))[0];
+  return ins?.id || null;
+}
+
+// POST /api/admin/clubs/:clubId/ensure-account — resolve/create the parent's
+// asset-container account; returns its id so any parent can take logo/design uploads.
+router.post("/clubs/:clubId/ensure-account", async (req, res) => {
+  try {
+    const accountId = await ensureRepAccountForClub(req.params.clubId);
+    if (!accountId) return res.status(404).json({ error: "Club not found" });
+    res.json({ ok: true, accountId });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// POST /api/admin/clubs/:clubId/fetch-brand — read the parent's website and return
+// LOGO CANDIDATES (apple-touch-icon / favicon / og:image). Suggestions only, no save.
+router.post("/clubs/:clubId/fetch-brand", async (req, res) => {
+  try {
+    const R = (r: any) => (r && r.rows) ? r.rows : (Array.isArray(r) ? r : []);
+    const club = R(await db.execute(sql`SELECT website FROM clubs WHERE id=${req.params.clubId}`))[0];
+    let url = String(club?.website || "").trim();
+    if (!url) return res.json({ ok: true, candidates: [], note: "No website set on this parent." });
+    if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+    const abs = (u: string, base: string) => { try { return new URL(u, base).href; } catch { return u; } };
+    const pick = (html: string, re: RegExp) => { const m = html.match(re); return m ? m[1] : null; };
+    let r: Response;
+    try { r = await fetch(url, { redirect: "follow", headers: { "User-Agent": "Mozilla/5.0 Sideline/brand" }, signal: AbortSignal.timeout(12000) }); }
+    catch (e: any) { return res.json({ ok: true, candidates: [], note: `Could not reach ${url} (${String(e?.message || e).slice(0, 60)})` }); }
+    if (!r.ok) return res.json({ ok: true, candidates: [], note: `Site returned HTTP ${r.status}` });
+    const base = r.url; const html = (await r.text()).slice(0, 200000);
+    const apple = pick(html, /<link[^>]+rel=["'][^"']*apple-touch-icon[^"']*["'][^>]+href=["']([^"']+)["']/i) || pick(html, /<link[^>]+href=["']([^"']+)["'][^>]+rel=["'][^"']*apple-touch-icon/i);
+    const og = pick(html, /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
+    const icon = pick(html, /<link[^>]+rel=["'](?:shortcut )?icon["'][^>]+href=["']([^"']+)["']/i) || pick(html, /<link[^>]+href=["']([^"']+)["'][^>]+rel=["'](?:shortcut )?icon["']/i);
+    const cands: any[] = [];
+    const add = (u: string | null, source: string) => { if (!u) return; const full = abs(u, base); if (!cands.some((c) => c.url === full)) cands.push({ url: full, source, likelyLogo: /logo|crest|badge/i.test(full) }); };
+    // og:image first when it looks like a logo (NZ sporty.co.nz clubs expose og:image=logo.png), then the icons
+    if (og && /logo|crest|badge/i.test(og)) add(og, "og:image (logo)");
+    add(apple, "apple-touch-icon");
+    add(og, "og:image");
+    add(icon, "favicon");
+    res.json({ ok: true, candidates: cands, site: base });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 // GET /api/admin/orders/populate-status — EVERY live PO (club or standalone) with
 // its populate gaps (logos / sizes / fabric / branding). The bulk worklist: see
 // every PO that needs work in one place, including non-club orders.
