@@ -30,6 +30,7 @@ import crypto from "crypto";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { approvalTokens, orderActivity, orders, designFiles, orderItems, orderSizeBreakdowns, clubBrandIdentity } from "@shared/schema";
+import { ALL_CHART_SIZES } from "@shared/size-charts";
 import { storage } from "../storage";
 import { clubLogoPlacement } from "../canva-logos";
 import { updateGhlOpportunityStage } from "./ghl";
@@ -367,7 +368,12 @@ publicApprovalRouter.post("/:token/upload", largeJson, async (req, res) => {
 // "Raise PO" button uses (dispatchOrderToSuppliers in routes/admin.ts), so
 // customer approval raises + emails the PO to the supplier automatically.
 
-const KNOWN_SIZES = new Set(["12", "14", "16", "S", "M", "L", "XL", "2XL", "3XL"]);
+// Accept any size label from any assigned size chart (the customer grid lists
+// each garment's chart), plus the legacy bare-numeric/adult set and one-size.
+const KNOWN_SIZES = new Set<string>([
+  ...ALL_CHART_SIZES,
+  "12", "14", "16", "S", "M", "L", "XL", "2XL", "3XL", "One Size", "OSFA",
+]);
 
 const proofSubmitSchema = z.object({
   decision: z.enum(["approved", "changes", "changes_requested"]),

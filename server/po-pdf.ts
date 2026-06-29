@@ -10,7 +10,7 @@ import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
 import { storage } from "./storage";
 import { computeMilestones } from "@shared/po-milestones";
-import { getSizeChartTables, suggestSizeChart, SIZE_CHART_LABELS, SIZE_CHART_DIAGRAMS, type SizeChartType } from "@shared/size-charts";
+import { getSizeChartTables, suggestSizeChart, SIZE_CHART_LABELS, SIZE_CHART_DIAGRAMS, chartSizes, type SizeChartType } from "@shared/size-charts";
 import { LOGO_POSITIONS, type LogoElement, type LogoPosition } from "@shared/schema";
 import { getDesignPrints, getMockups, type DesignAsset } from "@shared/design-assets";
 import { poBaseName, poFilename } from "@shared/po-filename";
@@ -336,16 +336,44 @@ export async function generatePoHtml(orderId: string, opts: { audience?: "suppli
           <td class="no-print" style="${tdS};text-align:center"><button type="button" onclick="this.closest('tr').remove();snzRenumber();snzRecount()" style="border:none;background:none;color:#b34;font-size:16px;cursor:pointer;line-height:1">&times;</button></td>
         </tr>`
       : `<tr><td style="${tdS};text-align:center;color:#888">${i + 1}</td><td style="${tdS}">${esc(b.playerName || "")}</td><td style="${tdS}">${esc(b.size || "")}</td><td style="${tdS};text-align:center">${b.quantity ?? ""}</td><td style="${tdS}">${esc(b.namePlacement || "")}</td></tr>`;
-    const custSizeHtml = bds.length ? `
-        <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">Sizes, Quantities &amp; Names</div>
-        ${isInteractive ? `<div class="no-print" style="font-size:11px;color:#7a5f3f;background:#fff8ee;border:1px solid #f0d8b6;border-top:none;padding:8px 12px">Tap any field to change it. Set each player's size and quantity, add a name for the back if you want one, and use Add person for anyone missing.</div>` : ""}
+    // Aggregate any existing per-size quantities (for prefilling the grid).
+    const sizeMap: Record<string, number> = {};
+    for (const b of bds as any[]) { if (b.size) sizeMap[b.size] = (sizeMap[b.size] || 0) + (b.quantity || 0); }
+    const hasRoster = (bds as any[]).some((b) => b.playerName);   // named per-player run (e.g. Richmond)
+    const gridSizes = chartSizes(chartType);                       // this garment's assigned chart sizes
+
+    const sectionHead = `<div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">Sizes &amp; Quantities</div>`;
+    const totBar = `<div style="display:flex;justify-content:space-between;background:#2b2622;color:#fff;padding:8px 16px;font-size:12px;font-weight:700;margin-top:8px"><span>Total</span><span data-tot data-item-id="${esc(item.id)}" data-ord="${item.quantity}">${totalQty} of ${item.quantity} ordered</span></div>`;
+
+    let control: string;
+    if (hasRoster) {
+      // Named per-player roster (kept editable; static for non-interactive).
+      control = `${isInteractive ? `<div class="no-print" style="font-size:11px;color:#7a5f3f;background:#fff8ee;border:1px solid #f0d8b6;border-top:none;padding:8px 12px">Tap any field to change it. Set each player's size and quantity, add a name for the back if you want one, and use Add person for anyone missing.</div>` : ""}
         <div class="snz-scroll"><table${isInteractive ? ` data-roster data-item-id="${esc(item.id)}"` : ""} style="width:100%;border-collapse:collapse;border:1px solid #eee;border-top:none">
           <thead><tr><th style="${thS};text-align:center;width:30px">#</th><th style="${thS}">Player</th><th style="${thS};width:120px">Size</th><th style="${thS};width:64px;text-align:center">Qty</th><th style="${thS}">Name on back</th>${isInteractive ? `<th class="no-print" style="${thS};width:30px"></th>` : ""}</tr></thead>
-          <tbody data-body>${bds.map(rowHtml).join("")}</tbody>
+          <tbody data-body>${(bds as any[]).map(rowHtml).join("")}</tbody>
         </table></div>
-        ${isInteractive ? `<button type="button" class="no-print" onclick="snzAddRow()" style="margin:8px 0 0;border:1.4px dashed #cdbfae;background:#fff;color:#5b1a2e;font-weight:700;font-size:12px;padding:8px 12px;border-radius:7px;cursor:pointer">+ Add person</button>` : ""}
-        <div style="display:flex;justify-content:space-between;background:#2b2622;color:#fff;padding:8px 16px;font-size:12px;font-weight:700;margin-top:8px"><span>Total</span><span data-tot data-ord="${item.quantity}">${totalQty} of ${item.quantity} ordered</span></div>`
-      : `<div style="border:1px solid #eee;border-top:none;padding:12px 16px;font-size:12px">One size. Quantity: ${isInteractive ? `<input data-onesize data-item-id="${esc(item.id)}" type="number" min="0" value="${totalQty}" style="${inpS};width:80px;display:inline-block" />` : `<strong>${totalQty}</strong>`}</div>`;
+        ${isInteractive ? `<button type="button" class="no-print" onclick="snzAddRow()" style="margin:8px 0 0;border:1.4px dashed #cdbfae;background:#fff;color:#5b1a2e;font-weight:700;font-size:12px;padding:8px 12px;border-radius:7px;cursor:pointer">+ Add person</button>` : ""}`;
+    } else if (gridSizes.length) {
+      // Size-quantity grid built from the garment's assigned size chart.
+      const cell = (sz: string) => {
+        const q = sizeMap[sz] || 0;
+        return isInteractive
+          ? `<div style="display:flex;align-items:center;gap:3px;border:1px solid #e3dcd5;border-radius:8px;padding:4px 5px">
+               <span style="font-size:11px;font-weight:700;min-width:30px;text-align:center">${esc(sz)}</span>
+               <button type="button" class="no-print" onclick="snzStep(this,-1)" style="border:1px solid #ddd;background:#fff;border-radius:5px;width:22px;height:24px;font-size:14px;line-height:1;cursor:pointer">&minus;</button>
+               <input data-size="${esc(sz)}" type="number" min="0" value="${q}" oninput="snzRecount()" style="width:42px;text-align:center;font:inherit;font-size:12px;padding:4px;border:1px solid #ccc;border-radius:5px" />
+               <button type="button" class="no-print" onclick="snzStep(this,1)" style="border:1px solid #ddd;background:#fff;border-radius:5px;width:22px;height:24px;font-size:14px;line-height:1;cursor:pointer">+</button>
+             </div>`
+          : `<div style="border:1px solid #eee;border-radius:8px;padding:5px 9px;font-size:12px"><b>${esc(sz)}</b> ${q}</div>`;
+      };
+      control = `${isInteractive ? `<div class="no-print" style="font-size:11px;color:#7a5f3f;background:#fff6ec;border:1px solid #f0d8b6;border-top:none;padding:8px 12px">Set how many of each size you need. These are this garment's size chart. Use the − / + buttons or type a number.</div>` : ""}
+        <div ${isInteractive ? `data-sizegrid data-item-id="${esc(item.id)}"` : ""} style="display:flex;flex-wrap:wrap;gap:7px;padding:12px 16px;border:1px solid #eee;border-top:none">${gridSizes.map(cell).join("")}</div>`;
+    } else {
+      // True one-size item (e.g. OSFA cap).
+      control = `<div style="border:1px solid #eee;border-top:none;padding:12px 16px;font-size:12px">One size. Quantity: ${isInteractive ? `<input data-onesize data-item-id="${esc(item.id)}" type="number" min="0" value="${totalQty}" style="${inpS};width:80px;display:inline-block" />` : `<strong>${totalQty}</strong>`}</div>`;
+    }
+    const custSizeHtml = `${sectionHead}${control}${totBar}`;
 
     return `
     <div style="page-break-inside:avoid;margin-bottom:20px">
@@ -543,7 +571,8 @@ ${isInteractive ? `
 </div>
 <script>
 function snzRenumber(){var i=0;document.querySelectorAll('[data-body] tr').forEach(function(tr){var c=tr.querySelector('[data-idx]');if(c)c.textContent=(++i);});}
-function snzRecount(){var tot=0,left=0;document.querySelectorAll('[data-body] tr').forEach(function(tr){var s=tr.querySelector('select');var q=tr.querySelector('input[type=number]');var n=q?parseInt(q.value||'0',10)||0:0;tot+=n;if(s&&!s.value)left++;});document.querySelectorAll('[data-tot]').forEach(function(t){t.textContent=tot+' of '+(t.getAttribute('data-ord')||'')+' ordered';});var lm=document.querySelector('[data-left]');if(lm)lm.textContent=(left?left+' size'+(left>1?'s':'')+' to pick':'all sizes in');}
+function snzStep(b,d){var i=b.parentNode.querySelector('input[data-size]');if(!i)return;var v=(parseInt(i.value||'0',10)||0)+d;if(v<0)v=0;i.value=v;snzRecount();}
+function snzRecount(){var left=0;document.querySelectorAll('[data-cell="size"]').forEach(function(s){if(!s.value)left++;});document.querySelectorAll('[data-tot]').forEach(function(t){var id=t.getAttribute('data-item-id');var tot=0;document.querySelectorAll('[data-roster][data-item-id="'+id+'"] tbody tr input[type=number],[data-sizegrid][data-item-id="'+id+'"] input[type=number],input[data-onesize][data-item-id="'+id+'"]').forEach(function(q){tot+=parseInt(q.value||'0',10)||0;});t.textContent=tot+' of '+(t.getAttribute('data-ord')||'')+' ordered';});var lm=document.querySelector('[data-left]');if(lm)lm.textContent=(left?left+' size'+(left>1?'s':'')+' to pick':'all sizes in');}
 function snzAddRow(){var b=document.querySelector('[data-body]');if(!b||!b.rows.length)return;var tr=b.rows[0].cloneNode(true);tr.querySelectorAll('input').forEach(function(i){i.value='';});tr.querySelectorAll('select').forEach(function(s){s.selectedIndex=0;});tr.style.background='#fff8ee';b.appendChild(tr);snzRenumber();snzRecount();}
 document.addEventListener('DOMContentLoaded',snzRecount);
 ${submitUrl ? `var SNZ_SUBMIT_URL=${JSON.stringify(submitUrl)};
@@ -558,6 +587,11 @@ function snzCollect(decision){
       rows.push({playerName:snzVal(pn),size:snzVal(sz),quantity:parseInt(snzVal(qt)||'0',10)||0,nameOnBack:snzVal(nb)});
     });
     rosters.push({itemId:t.getAttribute('data-item-id'),rows:rows});
+  });
+  document.querySelectorAll('[data-sizegrid]').forEach(function(g){
+    var rows=[];
+    g.querySelectorAll('input[data-size]').forEach(function(i){var q=parseInt(i.value||'0',10)||0;if(q>0)rows.push({size:i.getAttribute('data-size'),quantity:q});});
+    rosters.push({itemId:g.getAttribute('data-item-id'),rows:rows});
   });
   var oneSizes=[];
   document.querySelectorAll('input[data-onesize]').forEach(function(i){

@@ -379,3 +379,29 @@ export function getSizeChartTables(chartType: SizeChartType): SizeTable[] {
   if (chartType === "none") return [];
   return SIZE_CHART_DATA[chartType] || [];
 }
+
+// The size LABELS for a chart (column headers minus the leading measurement
+// column), deduped and in order — e.g. ["Y2","Y4",...,"S","M",...]. Drives the
+// customer size-quantity grid so each garment lists exactly its assigned chart.
+export function chartSizes(chartType: SizeChartType): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of getSizeChartTables(chartType)) {
+    for (const h of t.headers.slice(1)) {
+      const s = (h || "").trim();
+      if (s && !seen.has(s)) { seen.add(s); out.push(s); }
+    }
+  }
+  return out;
+}
+
+// Union of every size label across all charts — used to validate customer-
+// submitted sizes server-side without hardcoding a list.
+export const ALL_CHART_SIZES: string[] = (() => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const k of Object.keys(SIZE_CHART_LABELS) as SizeChartType[]) {
+    for (const s of chartSizes(k)) if (!seen.has(s)) { seen.add(s); out.push(s); }
+  }
+  return out;
+})();
