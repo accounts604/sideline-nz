@@ -618,6 +618,13 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
     } catch { /* */ }
   }
 
+  // Delete this parent (Club/School). Non-destructive: orders + accounts survive
+  // (unparented); only the grouping + its teams are removed.
+  async function deleteParent() {
+    if (!window.confirm(`Delete parent "${club.name}" from Brand Identity?\n\nIts orders and accounts are kept (they just become unparented) — only the parent grouping + its teams are removed. You can re-parent the orders later.`)) return;
+    try { await apiRequest("DELETE", `/api/admin/clubs/${club.id}`, undefined); refresh(); } catch { /* */ }
+  }
+
   // Save a picked candidate as a real logo asset (never auto-applied).
   async function pickCandidate(c: BrandCandidate) {
     const acct = await getAccountId();
@@ -741,7 +748,7 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
               {fetchedColors.length > 0 && (
                 <div style={{ marginTop: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.45)" }}>Brand colours (from logo)</span>
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.45)" }}>Brand colours (from website)</span>
                     <button onClick={applyColours} style={{ ...btnGhost, fontSize: 10, padding: "3px 8px" }}>{coloursApplied ? "✓ Applied" : "Apply colours"}</button>
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -771,10 +778,10 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
           )}
         </div>
 
-        {/* COLOURS pillar */}
-        {club.accountId
-          ? <ColoursPillar clubId={club.accountId} initial={club.colors} onSaved={refresh} />
-          : <div><div style={pillarLabelStyle}>Colours</div><div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No colours target</div></div>}
+        {/* COLOURS pillar — every card shows the editor (account ensured on open) */}
+        {effectiveAccountId
+          ? <ColoursPillar clubId={effectiveAccountId} initial={club.colors} onSaved={refresh} />
+          : <div><div style={pillarLabelStyle}>Colours</div>{enableUploadsBtn}<div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>Enable to set colours.</div></div>}
 
         {/* PARENT DETAILS pillar — editable club/school business + contact + ship-to */}
         <ParentDetailsPillar clubId={club.id} initial={club.details} onSaved={refresh} />
@@ -843,6 +850,11 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
               {[...club.logos, ...club.designs].map((a) => <AssetManageRow key={a.id} clubId={a.clubAccountId || effectiveAccountId || ""} logo={asLogoRow(a)} onChanged={refresh} />)}
             </div>
           )}
+          {/* Danger zone — remove this parent from Brand Identity (orders kept) */}
+          <div style={{ marginTop: 18, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <button onClick={deleteParent} style={{ ...btnGhost, fontSize: 11, borderColor: "rgba(252,165,165,0.4)", color: "#fca5a5" }}>Delete parent</button>
+            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginLeft: 8 }}>removes the club/school grouping; its orders stay (become unparented)</span>
+          </div>
         </div>
       )}
       </>)}

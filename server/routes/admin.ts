@@ -4874,20 +4874,40 @@ router.post("/clubs/:clubId/fetch-brand", async (req, res) => {
     add(icon, "favicon");
     // Brand COLOURS — extract from the best logo candidate (the crest's colours are
     // the kit colours; far better than the site's generic theme-color). Gemini vision.
-    const theme = pick(html, /<meta[^>]+name=["']theme-color["'][^>]+content=["']([^"']+)["']/i);
-    let colors: any[] = [];
-    const logoForColours = cands.find((c) => c.likelyLogo) || cands[0];
-    if (logoForColours) {
-      try {
-        const { extractColorsFromImage } = await import("../mockup/color-extract.js");
-        const ex = await extractColorsFromImage(logoForColours.url);
-        if (ex) colors = ex.map((c: any) => ({ hex: c.hex, name: c.name, pms: c.pms, source: "logo" }));
-      } catch { /* colour extraction optional */ }
-    }
-    if (theme && /^#?[0-9a-f]{3,8}$/i.test(theme) && !colors.some((c) => c.hex?.toLowerCase() === theme.toLowerCase())) {
-      colors.push({ hex: theme.startsWith("#") ? theme : "#" + theme, name: "Site theme", source: "theme-color" });
+    // Brand COLOURS from the WEBSITE itself — the page CSS (inline + <style> +
+    // linked stylesheets). Rank by usage; drop white/black/greys (template noise).
+    let css = html;
+    const sheets = [...html.matchAll(/<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)["']/gi)].map((m) => abs(m[1], base)).slice(0, 3);
+    for (const href of sheets) { try { const cr = await fetch(href, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0 Sideline/brand" } }); if (cr.ok) css += "\n" + (await cr.text()).slice(0, 300000); } catch { /* skip */ } }
+    const counts = new Map<string, number>();
+    const norm = (h: string) => (h.length === 4 ? "#" + h.slice(1).split("").map((c) => c + c).join("") : h).toLowerCase();
+    for (const m of css.matchAll(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g)) { const h = norm(m[0]); counts.set(h, (counts.get(h) || 0) + 1); }
+    for (const m of css.matchAll(/rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/g)) { const h = "#" + [1, 2, 3].map((i) => Math.min(255, +m[i]).toString(16).padStart(2, "0")).join(""); counts.set(h, (counts.get(h) || 0) + 1); }
+    const isBrand = (h: string) => { const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16); const mx = Math.max(r, g, b), mn = Math.min(r, g, b); if (mx > 238 && mn > 238) return false; if (mx < 22) return false; if (mx - mn < 18) return false; return true; };
+    let colors: any[] = [...counts.entries()].filter(([h]) => isBrand(h)).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([hex, n]) => ({ hex: hex.toUpperCase(), source: "website css", count: n }));
+    // Fallback: if the site CSS yielded nothing usable, derive colours from the logo.
+    if (colors.length === 0) {
+      const logoForColours = cands.find((c) => c.likelyLogo) || cands[0];
+      if (logoForColours) { try { const { extractColorsFromImage } = await import("../mockup/color-extract.js"); const ex = await extractColorsFromImage(logoForColours.url); if (ex) colors = ex.map((c: any) => ({ hex: c.hex, name: c.name, pms: c.pms, source: "logo" })); } catch { /* */ } }
     }
     res.json({ ok: true, candidates: cands, colors, site: base });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// DELETE /api/admin/clubs/:id — remove a parent (Club/School) from Brand Identity.
+// NON-destructive to POs: unlinks orders (club_id/team_id -> NULL) and accounts,
+// deletes the club's teams, then the club. Orders + accounts survive (re-parent later).
+router.delete("/clubs/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    await db.execute(sql`UPDATE orders SET team_id=NULL WHERE team_id IN (SELECT id FROM teams WHERE club_id=${id})`);
+    await db.execute(sql`UPDATE orders SET club_id=NULL WHERE club_id=${id}`);
+    await db.execute(sql`UPDATE club_accounts SET club_id=NULL WHERE club_id=${id}`);
+    await db.execute(sql`DELETE FROM teams WHERE club_id=${id}`);
+    await db.execute(sql`DELETE FROM clubs WHERE id=${id}`);
+    res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: String(err?.message || err) });
   }
