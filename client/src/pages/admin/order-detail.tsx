@@ -1878,7 +1878,7 @@ export default function AdminOrderDetail() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "8px" }}>
                   {(item.elementUrls ?? []).map((el, i) => (
                     <LogoElementEditor
-                      key={i}
+                      key={el.url || `${el.name ?? "logo"}-${i}`}
                       element={el}
                       paletteColors={item.productColors ?? null}
                       onChange={(next) => {
