@@ -643,7 +643,7 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
     <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: 16 }}>
       {/* COMPACT HEADER — clickable to toggle open; reads as a single scannable summary row */}
       <div
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => { const n = !open; setOpen(n); if (n && !effectiveAccountId) getAccountId(); }}
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, cursor: "pointer", flexWrap: "wrap" }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
@@ -667,7 +667,7 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
               ))}
             </div>
           )}
-          <button onClick={(e) => { e.stopPropagation(); setOpen(true); const next = !expanded; setExpanded(next); if (next && !effectiveAccountId) getAccountId(); }} style={btnGhost}>{expanded ? "Close" : "Manage"}</button>
+          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", whiteSpace: "nowrap" }}>{open ? "▾ open" : "▸ open to edit"}</span>
         </div>
       </div>
 
@@ -782,11 +782,11 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
         </div>
       </div>
 
-      {/* Add + EDIT assets (Manage) — available for every club, including account-less
-          parents (we ensure an asset account the first time uploads are needed). */}
-      {expanded && (
+      {/* Add + EDIT assets — always shown when the card is open, for every club
+          (account-less parents get an asset account ensured on open). */}
+      {(
         <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", maxWidth: 560 }}>
-          <div style={labelStyle}>Add an asset</div>
+          <div style={labelStyle}>Add a logo or design</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 8, maxWidth: 360 }}>
             <select value={dropKind} onChange={(e) => { setDropKind(e.target.value as AssetKind); setDropPos(""); }} style={{ ...inputStyle, flex: 1, cursor: "pointer" }}>
               {ASSET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
