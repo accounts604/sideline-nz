@@ -49,7 +49,7 @@ function renderAssetStrip(title: string, assets: DesignAsset[], headerBg = "#000
   return `
   <div style="page-break-inside:avoid">
     <div style="background:${headerBg};color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center;letter-spacing:0.3px">${esc(title)}</div>
-    <div style="display:flex;border:1px solid #eee;border-top:none;min-height:240px">
+    <div class="snz-2col" style="display:flex;border:1px solid #eee;border-top:none;min-height:240px">
       ${assets.map((a) => `
         <div style="width:${col};padding:14px 10px;text-align:center;display:flex;flex-direction:column;border-right:1px solid #eee">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px;color:#555">${esc(a.label || "—")}</div>
@@ -82,7 +82,7 @@ function filenameFromBlobUrl(url: string | undefined): string {
   }
 }
 
-function renderLogoGrid(elements: LogoElement[]): string {
+function renderLogoGrid(elements: LogoElement[], audience: "supplier" | "customer" = "supplier"): string {
   // Multiple logos can share a position (e.g. two sponsors on Center Back).
   // A position that doesn't match one of the 9 presets is a "custom
   // placement" — rendered in its own strip under the grid.
@@ -110,6 +110,23 @@ function renderLogoGrid(elements: LogoElement[]): string {
   const colgroup = `<colgroup><col style="width:13%" />${LOGO_POSITIONS.map(() => `<col style="width:9.67%" />`).join("")}</colgroup>`;
   const empty = `<span style="color:#ccc;font-size:16px">—</span>`;
 
+  // ARTWORK FILE row exposes internal filenames + blob links — supplier only.
+  const artworkRow = audience === "customer" ? "" : `
+        <tr>
+          ${lblCell("ARTWORK FILE")}
+          ${LOGO_POSITIONS.map(p => {
+            const specs = byPosition.get(p) || [];
+            if (!specs.length) return td("");
+            return td(specs.map(s => {
+              const label = s.artworkFile || filenameFromBlobUrl(s.url) || "";
+              if (!label && !s.url) return "—";
+              return s.url
+                ? `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="font-family:monospace;font-size:9px;color:#0ea5e9;text-decoration:underline;word-break:break-all">${esc(label || "View file ↗")}</a>`
+                : `<span style="font-family:monospace;font-size:9px">${esc(label)}</span>`;
+            }).join("<br/>"));
+          }).join("")}
+        </tr>`;
+
   // Checkerboard background — keeps white/light logos visible against the
   // white paper. Same pattern as the React renderer.
   const checkerStyle =
@@ -134,7 +151,7 @@ function renderLogoGrid(elements: LogoElement[]): string {
   <div style="margin-top:0">
     <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center;letter-spacing:0.3px">Logo Placement Grid</div>
     ${unassignedStrip}
-    <table style="width:100%;border-collapse:collapse;table-layout:fixed">
+    <div class="snz-scroll"><table style="width:100%;border-collapse:collapse;table-layout:fixed">
       ${colgroup}
       <thead>
         <tr>
@@ -184,22 +201,9 @@ function renderLogoGrid(elements: LogoElement[]): string {
               : "—").join('<div style="height:4px"></div>'));
           }).join("")}
         </tr>
-        <tr>
-          ${lblCell("ARTWORK FILE")}
-          ${LOGO_POSITIONS.map(p => {
-            const specs = byPosition.get(p) || [];
-            if (!specs.length) return td("");
-            return td(specs.map(s => {
-              const label = s.artworkFile || filenameFromBlobUrl(s.url) || "";
-              if (!label && !s.url) return "—";
-              return s.url
-                ? `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="font-family:monospace;font-size:9px;color:#0ea5e9;text-decoration:underline;word-break:break-all">${esc(label || "View file ↗")}</a>`
-                : `<span style="font-family:monospace;font-size:9px">${esc(label)}</span>`;
-            }).join("<br/>"));
-          }).join("")}
-        </tr>
+        ${artworkRow}
       </tbody>
-    </table>
+    </table></div>
     ${custom.length ? `
       <div style="background:#eff6ff;border:1px solid #bfdbfe;border-top:none;padding:10px 12px">
         <div style="font-size:9px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Custom Placements (${custom.length})</div>
@@ -220,6 +224,7 @@ function renderLogoGrid(elements: LogoElement[]): string {
                   ? s.threadColours.map(c => `<span style="display:inline-block;font-size:8.5px;font-weight:700;color:#b8932f;background:#fdf6e3;border:1px solid #e6d59a;border-radius:2px;padding:0 4px;margin:1px 2px">${esc(c)}</span>`).join("")
                   : "—"}</td>
                 <td style="padding:5px 6px;text-align:center;border:1px solid #bfdbfe">${(() => {
+                  if (audience === "customer") return "—";
                   const label = s.artworkFile || filenameFromBlobUrl(s.url) || "";
                   if (!label && !s.url) return "—";
                   return s.url
@@ -237,7 +242,10 @@ function renderLogoGrid(elements: LogoElement[]): string {
 // Exported so smoke-test scripts can render the prod HTML into a PDF without
 // going through the Drive upload path. Not part of the public HTTP surface.
 
-export async function generatePoHtml(orderId: string): Promise<string | null> {
+export async function generatePoHtml(orderId: string, opts: { audience?: "supplier" | "customer"; interactive?: boolean } = {}): Promise<string | null> {
+  const audience = opts.audience ?? "supplier";
+  const isCust = audience === "customer";
+  const isInteractive = isCust && (opts.interactive ?? false);
   const data = await storage.getOrderWithDetails(orderId);
   if (!data) return null;
   const { order, items, sizeBreakdowns } = data as any;
@@ -274,13 +282,7 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
     const sizeTables = getSizeChartTables(chartType);
     const diagramSrc = SIZE_CHART_DIAGRAMS[chartType];
 
-    return `
-    <div style="page-break-inside:avoid;margin-bottom:20px">
-      <div style="background:#000;color:#fff;padding:8px 16px;font-size:13px;font-weight:700;text-align:center;letter-spacing:0.3px">
-        ${esc(item.productName)}
-      </div>
-
-      <div style="display:flex;border:1px solid #eee;border-top:none">
+    const specHtml = `
         <div style="flex:1;padding:14px 18px;font-size:12px;color:#000">
           <div style="margin-bottom:10px"><div style="font-weight:700;margin-bottom:2px">Product</div><div>${esc(item.productName)}</div></div>
           ${item.material ? `<div style="margin-bottom:10px"><div style="font-weight:700;margin-bottom:2px">Material / Spec</div><div>${esc(item.material)}</div></div>` : ""}
@@ -294,10 +296,12 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
                   <span style="font-size:11px"><strong>${esc(c.name || "")}</strong> <span style="color:#888">${c.hex}</span></span>
                 </div>`).join("")}
             </div>` : ""}
-          ${item.designBrief ? `<div style="margin-bottom:8px"><div style="font-weight:700;margin-bottom:2px">Design Brief</div><div style="font-size:10px;color:#666;line-height:1.4">${esc(item.designBrief)}</div></div>` : ""}
-          ${item.designNotes ? `<div><div style="font-weight:700;margin-bottom:2px">Notes</div><div style="font-size:11px;color:#555">${esc(item.designNotes)}</div></div>` : ""}
-        </div>
+          ${!isCust && item.designBrief ? `<div style="margin-bottom:8px"><div style="font-weight:700;margin-bottom:2px">Design Brief</div><div style="font-size:10px;color:#666;line-height:1.4">${esc(item.designBrief)}</div></div>` : ""}
+          ${!isCust && item.designNotes ? `<div><div style="font-weight:700;margin-bottom:2px">Notes</div><div style="font-size:11px;color:#555">${esc(item.designNotes)}</div></div>` : ""}
+        </div>`;
 
+    // Supplier keeps the narrow Size/Count sidebar (unchanged).
+    const sidebarHtml = `
         <div style="width:220px;padding:14px 16px;border-left:1px solid #eee">
           <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:6px"><span>Size</span><span>Count</span></div>
           ${bds.map((b: any) => {
@@ -311,18 +315,54 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
             </div>`;
           }).join("")}
           ${bds.length ? `<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-top:10px"><span>Total</span><span>${totalQty}</span></div>` : `<div style="font-size:12px;color:#999">Qty: ${totalQty}</div>`}
-        </div>
+        </div>`;
+
+    // Customer view renders the roster full-width; editable when interactive.
+    const SZOPTS = ["12", "14", "16", "S", "M", "L", "XL", "2XL", "3XL"];
+    const thS = "padding:7px 10px;background:#f3f3f3;font-size:10px;letter-spacing:0.4px;text-transform:uppercase;text-align:left;border:1px solid #eee";
+    const tdS = "padding:6px 10px;border:1px solid #eee;font-size:12px;vertical-align:middle";
+    const inpS = "font:inherit;font-size:12px;padding:6px 7px;border:1px solid #ccc;border-radius:5px;width:100%;box-sizing:border-box";
+    const selOpts = (sel: string) => `<option value="">Select size</option>` + SZOPTS.map(s => `<option${s === sel ? " selected" : ""}>${s}</option>`).join("");
+    const rowHtml = (b: any, i: number) => isInteractive
+      ? `<tr data-row style="${!b.size ? "background:#fff8ee" : ""}">
+          <td style="${tdS};text-align:center;color:#888" data-idx>${i + 1}</td>
+          <td style="${tdS}"><input style="${inpS}" value="${esc(b.playerName || "")}" /></td>
+          <td style="${tdS}"><select style="${inpS}" onchange="snzRecount()">${selOpts(b.size || "")}</select></td>
+          <td style="${tdS};text-align:center"><input type="number" min="0" value="${b.quantity ?? 1}" style="${inpS};text-align:center" oninput="snzRecount()" /></td>
+          <td style="${tdS}"><input style="${inpS}" placeholder="(no name)" value="${esc(b.namePlacement || "")}" /></td>
+          <td class="no-print" style="${tdS};text-align:center"><button type="button" onclick="this.closest('tr').remove();snzRenumber();snzRecount()" style="border:none;background:none;color:#b34;font-size:16px;cursor:pointer;line-height:1">&times;</button></td>
+        </tr>`
+      : `<tr><td style="${tdS};text-align:center;color:#888">${i + 1}</td><td style="${tdS}">${esc(b.playerName || "")}</td><td style="${tdS}">${esc(b.size || "")}</td><td style="${tdS};text-align:center">${b.quantity ?? ""}</td><td style="${tdS}">${esc(b.namePlacement || "")}</td></tr>`;
+    const custSizeHtml = bds.length ? `
+        <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">Sizes, Quantities &amp; Names</div>
+        ${isInteractive ? `<div class="no-print" style="font-size:11px;color:#7a5f3f;background:#fff8ee;border:1px solid #f0d8b6;border-top:none;padding:8px 12px">Tap any field to change it. Set each player's size and quantity, add a name for the back if you want one, and use Add person for anyone missing.</div>` : ""}
+        <div class="snz-scroll"><table style="width:100%;border-collapse:collapse;border:1px solid #eee;border-top:none">
+          <thead><tr><th style="${thS};text-align:center;width:30px">#</th><th style="${thS}">Player</th><th style="${thS};width:120px">Size</th><th style="${thS};width:64px;text-align:center">Qty</th><th style="${thS}">Name on back</th>${isInteractive ? `<th class="no-print" style="${thS};width:30px"></th>` : ""}</tr></thead>
+          <tbody data-body>${bds.map(rowHtml).join("")}</tbody>
+        </table></div>
+        ${isInteractive ? `<button type="button" class="no-print" onclick="snzAddRow()" style="margin:8px 0 0;border:1.4px dashed #cdbfae;background:#fff;color:#5b1a2e;font-weight:700;font-size:12px;padding:8px 12px;border-radius:7px;cursor:pointer">+ Add person</button>` : ""}
+        <div style="display:flex;justify-content:space-between;background:#2b2622;color:#fff;padding:8px 16px;font-size:12px;font-weight:700;margin-top:8px"><span>Total</span><span data-tot data-ord="${item.quantity}">${totalQty} of ${item.quantity} ordered</span></div>`
+      : `<div style="border:1px solid #eee;border-top:none;padding:12px 16px;font-size:12px">One size. Quantity: ${isInteractive ? `<input type="number" min="0" value="${totalQty}" style="${inpS};width:80px;display:inline-block" />` : `<strong>${totalQty}</strong>`}</div>`;
+
+    return `
+    <div style="page-break-inside:avoid;margin-bottom:20px">
+      <div style="background:#000;color:#fff;padding:8px 16px;font-size:13px;font-weight:700;text-align:center;letter-spacing:0.3px">
+        ${esc(item.productName)}
       </div>
 
-      ${renderAssetStrip("2D Design Print — Factory Artwork (true colours)", designPrints, "#0a0a0a")}
-      ${renderAssetStrip("3D Mockup — Vendor Render", mockups, "#0a0a0a")}
-      ${elements.length ? renderLogoGrid(elements) : ""}
+      ${isCust
+        ? `<div style="display:flex;border:1px solid #eee;border-top:none">${specHtml}</div>${custSizeHtml}`
+        : `<div style="display:flex;border:1px solid #eee;border-top:none">${specHtml}${sidebarHtml}</div>`}
+
+      ${isCust ? "" : renderAssetStrip("2D Design Print — Factory Artwork (true colours)", designPrints, "#0a0a0a")}
+      ${renderAssetStrip(isCust ? "Your Design — Preview" : "3D Mockup — Vendor Render", mockups, "#0a0a0a")}
+      ${elements.length ? renderLogoGrid(elements, audience) : ""}
 
       ${sizeTables.length ? `
         <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">
           Sizing Guide — ${esc(SIZE_CHART_LABELS[chartType] || String(chartType))}
         </div>
-        <div style="display:flex;align-items:flex-start;gap:16px;padding:12px 16px;border:1px solid #eee;border-top:none">
+        <div class="snz-2col" style="display:flex;align-items:flex-start;gap:16px;padding:12px 16px;border:1px solid #eee;border-top:none">
           ${diagramSrc ? `<div style="width:220px;flex-shrink:0;text-align:center"><img src="${siteUrl}${diagramSrc}" style="width:100%;max-height:280px;object-fit:contain" /><p style="font-size:9px;color:#888;margin-top:4px">Measurement reference</p></div>` : ""}
           <div style="flex:1;overflow-x:auto">
             ${sizeTables.map((t) => `
@@ -341,9 +381,9 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
   const milestonesHtml = milestones ? `
     <div style="margin-bottom:18px">
       <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">Production Schedule — 35-Day Build</div>
-      <div style="display:flex;border:1px solid #eee;border-top:none">
+      <div class="snz-scroll"><div style="display:flex;border:1px solid #eee;border-top:none;min-width:600px">
         ${milestones.map((m: any) => `<div style="flex:1;text-align:center;padding:10px 6px;border-right:1px solid #eee;font-size:10px"><div style="font-weight:700">Day ${m.dayNumber}</div><div style="font-weight:600;font-size:9px;margin:2px 0">${esc(m.label)}</div><div style="font-family:monospace;color:#555">${m.date}</div></div>`).join("")}
-      </div>
+      </div></div>
     </div>` : "";
 
 
@@ -358,7 +398,7 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
   const approvalBand = `
     <div style="margin-bottom:18px">
       <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center;letter-spacing:0.3px">Artwork Approval</div>
-      <div style="display:flex;border:1px solid #eee;border-top:none;font-size:11px">
+      <div class="snz-2col" style="display:flex;border:1px solid #eee;border-top:none;font-size:11px">
         <div style="flex:1;padding:10px 14px;border-right:1px solid #eee">
           <div style="font-weight:700;font-size:10px;color:#555;letter-spacing:0.4px;margin-bottom:3px">STATUS</div>
           <div><span style="display:inline-block;padding:3px 10px;background:${approved ? "#16a34a" : "#f59e0b"};color:#fff;border-radius:3px;font-weight:700;font-size:10px;letter-spacing:0.3px">${approved ? "APPROVED" : "PENDING"}</span></div>
@@ -389,74 +429,121 @@ export async function generatePoHtml(orderId: string): Promise<string | null> {
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${esc(docTitle)}</title>
 <style>
-  body { font-family: 'Segoe UI', Arial, sans-serif; color: #000; margin: 0; padding: 28px 36px; max-width: 900px; margin: 0 auto; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #000; margin: 0; padding: 28px 36px; max-width: 900px; margin: 0 auto; ${isInteractive ? "padding-bottom: 100px;" : ""} }
   img { max-width: 100%; }
-  @page { margin: 8mm; }
-  @media print { body { padding: 0; } }
+  @page { size: A4; margin: 8mm; }
+  @media print { body { padding: 0; } .no-print { display: none !important; } }
+  input, select, textarea { font-family: inherit; }
+  .snz-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  @media (max-width: 680px) {
+    html, body { overflow-x: hidden !important; }
+    body { padding: 16px 12px !important; }
+    .snz-scroll { max-width: 100% !important; }
+    .snz-hdr { flex-direction: column !important; gap: 14px !important; }
+    .snz-meta { min-width: 0 !important; width: 100% !important; text-align: left !important; justify-content: flex-start !important; }
+    .snz-meta h2 { text-align: left !important; }
+    .snz-meta table { margin-left: 0 !important; }
+    .snz-2col { flex-direction: column !important; }
+    .snz-2col > div { border-left: none !important; border-right: none !important; }
+    .snz-actbar { flex-wrap: wrap !important; }
+    .snz-actbar > button { flex: 1 1 auto !important; }
+  }
 </style></head><body>
 
 <!-- Header -->
-<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
+<div class="snz-hdr" style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
   <div>
     <div style="margin-bottom:10px"><img src="${siteUrl}/sideline-logo-vertical.png" style="height:56px;object-fit:contain" /></div>
     <div style="font-size:11px;color:#333;line-height:1.6">
       Sideline NZ (Sideline Custom Goods Ltd)<br/>Unit 2, 66 Cavendish Drive Manukau<br/>Auckland, 2104<br/>022 412 7205<br/>info@sidelinenz.com<br/><span style="color:#0ea5e9">www.sidelinenz.com</span>
     </div>
   </div>
-  <div style="text-align:right;min-width:420px;display:flex;gap:14px;align-items:flex-start;justify-content:flex-end">
+  <div class="snz-meta" style="text-align:right;min-width:420px;display:flex;gap:14px;align-items:flex-start;justify-content:flex-end">
     <div>
-      <h2 style="font-size:15px;font-weight:800;margin:0 0 12px;letter-spacing:0.5px">PRODUCTION SHEET</h2>
+      <h2 style="font-size:15px;font-weight:800;margin:0 0 12px;letter-spacing:0.5px">${isCust ? "DESIGN PROOF" : "PRODUCTION SHEET"}</h2>
       <table style="font-size:12px;margin-left:auto;border-collapse:collapse">
         <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">DATE</td><td style="background:#f2f2f2;padding:4px 10px;min-width:180px">${dateStr}</td></tr>
         <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">ORDER REF</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.poReference || order.orderNumber)}</td></tr>
         <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">ACCOUNT</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.accountName || "")}</td></tr>
         <tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">TYPE</td><td style="background:#f2f2f2;padding:4px 10px">${order.isRepeatOrder ? "Repeat" : "New"}</td></tr>
         ${order.dueDate ? `<tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">DUE</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.dueDate)}</td></tr>` : ""}
-        ${order.poComments ? `<tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">COMMENTS</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.poComments)}</td></tr>` : ""}
+        ${!isCust && order.poComments ? `<tr><td style="font-weight:700;padding:4px 12px 4px 0;text-align:right">COMMENTS</td><td style="background:#f2f2f2;padding:4px 10px">${esc(order.poComments)}</td></tr>` : ""}
       </table>
     </div>
-    <div style="text-align:center">
+    ${isCust ? "" : `<div style="text-align:center">
       <img src="${qrSrc}" style="width:88px;height:88px;border:1px solid #ddd;padding:4px;background:#fff" />
       <div style="font-size:8px;color:#888;margin-top:4px;letter-spacing:0.3px">SCAN FOR LIVE ORDER</div>
-    </div>
+    </div>`}
   </div>
 </div>
 
 <!-- Customer / Delivery -->
 <div style="margin-bottom:18px">
-  <div style="display:flex">
-    <div style="flex:1;background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700">Customer</div>
-    <div style="flex:1;background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700">Delivery Address</div>
+  <div class="snz-2col" style="display:flex">
+    <div style="flex:1;background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700">${isCust ? "Prepared For" : "Customer"}</div>
+    <div style="flex:1;background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700">${isCust ? "Deliver To (your address)" : "Delivery Address"}</div>
   </div>
-  <div style="display:flex;border:1px solid #eee;border-top:none">
+  <div class="snz-2col" style="display:flex;border:1px solid #eee;border-top:none">
     <div style="flex:1;padding:10px 16px;font-size:12px">
-      <div style="display:flex;justify-content:space-between;gap:12px">
+      <div class="snz-2col" style="display:flex;justify-content:space-between;gap:12px">
         <span>${esc(contact)}</span>
-        <span style="color:#0ea5e9">${esc(order.customerEmail || "")}</span>
+        <span style="color:#0ea5e9;word-break:break-all">${esc(order.customerEmail || "")}</span>
       </div>
     </div>
     <div style="flex:1;padding:10px 16px;font-size:12px">
-      ${order.deliveryAttention ? `<div>Attention: ${esc(order.deliveryAttention)}</div>` : ""}
-      <div>${esc(order.deliveryAddress || "Sideline NZ, 41 Oakland Rd Karaka, Auckland 2580")}</div>
-      ${order.deliveryPhone ? `<div>${esc(order.deliveryPhone)}</div>` : ""}
+      ${isCust
+        ? (isInteractive
+            ? `<input style="font:inherit;font-size:12px;padding:7px 9px;border:1px solid #ccc;border-radius:5px;width:100%;box-sizing:border-box" placeholder="Enter the address to deliver your kit to" value="${esc(order.deliveryAddress || "")}" /><div style="font-size:10px;color:#888;margin-top:4px">Where should we send the finished gear?</div>`
+            : `<div>${esc(order.deliveryAddress || "To be confirmed by customer")}</div>`)
+        : `${order.deliveryAttention ? `<div>Attention: ${esc(order.deliveryAttention)}</div>` : ""}<div>${esc(order.deliveryAddress || "Sideline NZ, 41 Oakland Rd Karaka, Auckland 2580")}</div>${order.deliveryPhone ? `<div>${esc(order.deliveryPhone)}</div>` : ""}`}
     </div>
   </div>
 </div>
 
 ${approvalBand}
 ${milestonesHtml}
+${isCust ? `<div style="margin-bottom:18px">
+  <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">What We Need From You</div>
+  <div style="border:1px solid #eee;border-top:none;padding:12px 16px;font-size:12.5px;line-height:1.8">
+    <div><strong>1.</strong> Check the design below: colours, logos, placement and spelling.</div>
+    <div><strong>2.</strong> Confirm or adjust each player's size and quantity in the table.</div>
+    <div><strong>3.</strong> Add a name for the back of any tee if you want one (leave blank for none).</div>
+    <div><strong>4.</strong> Send us anything still outstanding: an updated club logo as a clear PNG, and your final player list.</div>
+    <div><strong>5.</strong> Confirm your delivery address above, then approve below. Production starts once approved.</div>
+  </div>
+</div>` : ""}
 ${itemsHtml}
+${isInteractive ? `<div style="margin-bottom:18px">
+  <div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">Your Notes for Sideline</div>
+  <div style="border:1px solid #eee;border-top:none;padding:12px 16px">
+    <textarea style="width:100%;min-height:70px;box-sizing:border-box;font:inherit;font-size:12.5px;padding:10px;border:1px solid #ccc;border-radius:6px" placeholder="Anything you'd like changed or added: colours, logo, placement, spelling, a size swap, who's still to confirm, and so on."></textarea>
+  </div>
+</div>` : ""}
 
 <!-- Disclaimer -->
 <div style="margin-top:28px;border-top:3px solid #1a1a1a;padding-top:14px">
   <p style="font-size:11px;font-weight:700;text-align:center;margin-bottom:10px">Disclaimer: Final Design Proof Approval</p>
   <div style="font-size:10px;color:#555;line-height:1.6;text-align:center">
-    <p>This production sheet is the intellectual property of Sideline NZ (Sideline Custom Goods Ltd). By approving, the customer confirms all design elements — colours, logos, placement, spelling, sizing — are correct. Once approved, this version is final.</p>
+    <p>This ${isCust ? "design proof" : "production sheet"} is the intellectual property of Sideline NZ (Sideline Custom Goods Ltd). By approving, the customer confirms all design elements — colours, logos, placement, spelling, sizing — are correct. Once approved, this version is final.</p>
     <p style="margin-top:8px">The customer is fully responsible for the approved design. Sideline NZ will not be liable for any errors after approval, nor for delays caused by external factors.</p>
     <p style="margin-top:10px;font-weight:600">&copy; ${new Date().getFullYear()} Sideline NZ (Sideline Custom Goods Ltd). All rights reserved.</p>
   </div>
 </div>
-
+${isInteractive ? `
+<div class="no-print" style="position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,0.97);border-top:1px solid #e6e6e6;box-shadow:0 -6px 20px rgba(0,0,0,0.08);padding:10px 16px">
+  <div class="snz-actbar" style="max-width:900px;margin:0 auto;display:flex;gap:10px;align-items:center">
+    <div style="font-size:11px;color:#666;line-height:1.25;flex:0 0 auto"><span data-left>sizes</span><br/><b style="color:#5b1a2e">${esc(order.poReference || order.orderNumber || "")}</b></div>
+    <button type="button" onclick="window.print()" style="background:#fff;border:1.4px solid #e6e6e6;border-radius:9px;padding:13px 14px;font-weight:700;font-size:13px;cursor:pointer">Export PDF</button>
+    <button type="button" onclick="alert('Preview: this would save your changes and flag a change request.')" style="background:#fff;border:1.4px solid #e6e6e6;border-radius:9px;padding:13px 14px;font-weight:700;font-size:13px;cursor:pointer">Request changes</button>
+    <button type="button" onclick="alert('Preview: this would save your sizes, names, quantities and delivery address, then approve the proof.')" style="flex:1 1 auto;background:#5b1a2e;color:#fff;border:none;border-radius:9px;padding:13px 16px;font-weight:800;font-size:14px;cursor:pointer">Approve &amp; confirm</button>
+  </div>
+</div>
+<script>
+function snzRenumber(){var i=0;document.querySelectorAll('[data-body] tr').forEach(function(tr){var c=tr.querySelector('[data-idx]');if(c)c.textContent=(++i);});}
+function snzRecount(){var tot=0,left=0;document.querySelectorAll('[data-body] tr').forEach(function(tr){var s=tr.querySelector('select');var q=tr.querySelector('input[type=number]');var n=q?parseInt(q.value||'0',10)||0:0;tot+=n;if(s&&!s.value)left++;});document.querySelectorAll('[data-tot]').forEach(function(t){t.textContent=tot+' of '+(t.getAttribute('data-ord')||'')+' ordered';});var lm=document.querySelector('[data-left]');if(lm)lm.textContent=(left?left+' size'+(left>1?'s':'')+' to pick':'all sizes in');}
+function snzAddRow(){var b=document.querySelector('[data-body]');if(!b||!b.rows.length)return;var tr=b.rows[0].cloneNode(true);tr.querySelectorAll('input').forEach(function(i){i.value='';});tr.querySelectorAll('select').forEach(function(s){s.selectedIndex=0;});tr.style.background='#fff8ee';b.appendChild(tr);snzRenumber();snzRecount();}
+document.addEventListener('DOMContentLoaded',snzRecount);
+</script>` : ""}
 </body></html>`;
 }
 
