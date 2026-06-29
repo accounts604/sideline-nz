@@ -168,8 +168,8 @@ export const SIDELINE_PRODUCTS: SidelineProduct[] = [
   { id: "tag-shorts",            name: "Tag Shorts",                 category: "Tag",     sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Polyester Tricot", puffinCostKey: "training-short" },
 
   // ─── Football / Soccer ───
-  { id: "football-jersey",       name: "Football Jersey",            category: "Football",sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Micro-Mesh Polyester", minOrder: 11, puffinCostKey: "soccer-jersey" },
-  { id: "football-shorts",       name: "Football Shorts",            category: "Football",sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Polyester Tricot", puffinCostKey: "soccer-short" },
+  { id: "football-jersey",       name: "Football Jersey",            category: "Football",sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Micro-Mesh Polyester", pricing: tiers(44,42,40,38,36), minOrder: 11, puffinCostKey: "soccer-jersey" }, // priced at standard jersey tier 2026-06-29 (was unpriced → getUnitPrice null)
+  { id: "football-shorts",       name: "Football Shorts",            category: "Football",sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Polyester Tricot", pricing: tiers(40,38,36,34,33), minOrder: 10, puffinCostKey: "soccer-short" }, // priced at standard shorts tier 2026-06-29 (was unpriced)
   { id: "football-socks",        name: "Football Socks",             category: "Football",sizes: SOCKS,         defaultMaterial: "Nylon/Elastane Knit", puffinCostKey: "sublimated-socks" },
 
   // ─── Basketball ───
