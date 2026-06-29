@@ -364,23 +364,25 @@ export class DatabaseStorage implements IStorage {
   }
   // Find-or-create a team under a club (the middle level: Club -> Team -> Orders).
   async ensureTeam(clubId: string, name: string): Promise<string> {
-    const ex = (await db.execute(sql`SELECT id FROM teams WHERE club_id=${clubId} AND name=${name} LIMIT 1`) as any).rows?.[0];
+    const rows = (r: any) => (r && r.rows) ? r.rows : (Array.isArray(r) ? r : []);
+    const ex = rows(await db.execute(sql`SELECT id FROM teams WHERE club_id=${clubId} AND name=${name} LIMIT 1`))[0];
     if (ex) return ex.id;
-    const ins = (await db.execute(sql`INSERT INTO teams (club_id, name) VALUES (${clubId}, ${name}) RETURNING id`) as any).rows?.[0];
+    const ins = rows(await db.execute(sql`INSERT INTO teams (club_id, name) VALUES (${clubId}, ${name}) RETURNING id`))[0];
     return ins?.id;
   }
   // Resolve or lazily create a club's asset-container account (so any club can
   // carry brand assets + receive the dispatch logo auto-attach gated on clubAccountId).
   async ensureRepAccountForClub(clubId: string): Promise<string | null> {
-    const club = (await db.execute(sql`SELECT id, name FROM clubs WHERE id=${clubId}`) as any).rows?.[0];
+    const rows = (r: any) => (r && r.rows) ? r.rows : (Array.isArray(r) ? r : []);
+    const club = rows(await db.execute(sql`SELECT id, name FROM clubs WHERE id=${clubId}`))[0];
     if (!club) return null;
-    const ex = (await db.execute(sql`SELECT id, club_name FROM club_accounts WHERE club_id=${clubId}`) as any).rows || [];
+    const ex = rows(await db.execute(sql`SELECT id, club_name FROM club_accounts WHERE club_id=${clubId}`));
     if (ex.length) { const rep = ex.find((a: any) => a.club_name === club.name) || ex[0]; return rep.id; }
     const email = `brand-${clubId}@brand.sideline.local`;
     const hash = (await import("crypto")).randomUUID();
     await db.execute(sql`INSERT INTO club_accounts (club_id, email, password_hash, club_name, profit_share_tier_bps) VALUES (${clubId}, ${email}, ${hash}, ${club.name}, 800) ON CONFLICT (email) DO UPDATE SET club_id=${clubId}`);
     // Re-select by email — robust against RETURNING quirks on upsert.
-    const row = (await db.execute(sql`SELECT id FROM club_accounts WHERE email=${email} LIMIT 1`) as any).rows?.[0];
+    const row = rows(await db.execute(sql`SELECT id FROM club_accounts WHERE email=${email} LIMIT 1`))[0];
     return row?.id || null;
   }
 
