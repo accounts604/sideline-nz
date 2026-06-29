@@ -378,8 +378,10 @@ export class DatabaseStorage implements IStorage {
     if (ex.length) { const rep = ex.find((a: any) => a.club_name === club.name) || ex[0]; return rep.id; }
     const email = `brand-${clubId}@brand.sideline.local`;
     const hash = (await import("crypto")).randomUUID();
-    const ins = (await db.execute(sql`INSERT INTO club_accounts (club_id, email, password_hash, club_name, profit_share_tier_bps) VALUES (${clubId}, ${email}, ${hash}, ${club.name}, 800) ON CONFLICT (email) DO UPDATE SET club_id=${clubId} RETURNING id`) as any).rows?.[0];
-    return ins?.id || null;
+    await db.execute(sql`INSERT INTO club_accounts (club_id, email, password_hash, club_name, profit_share_tier_bps) VALUES (${clubId}, ${email}, ${hash}, ${club.name}, 800) ON CONFLICT (email) DO UPDATE SET club_id=${clubId}`);
+    // Re-select by email — robust against RETURNING quirks on upsert.
+    const row = (await db.execute(sql`SELECT id FROM club_accounts WHERE email=${email} LIMIT 1`) as any).rows?.[0];
+    return row?.id || null;
   }
 
   async updateClubLogoAsset(id: string, data: Partial<InsertClubLogoAsset>): Promise<ClubLogoAsset | undefined> {
