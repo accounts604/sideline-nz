@@ -4877,14 +4877,18 @@ router.post("/clubs/:clubId/fetch-brand", async (req, res) => {
     // Brand COLOURS from the WEBSITE itself — the page CSS (inline + <style> +
     // linked stylesheets). Rank by usage; drop white/black/greys (template noise).
     let css = html;
-    const sheets = [...html.matchAll(/<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)["']/gi)].map((m) => abs(m[1], base)).slice(0, 3);
+    const sheetRe = /<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)["']/gi;
+    const sheets: string[] = []; let sm: RegExpExecArray | null;
+    while ((sm = sheetRe.exec(html)) !== null && sheets.length < 3) sheets.push(abs(sm[1], base));
     for (const href of sheets) { try { const cr = await fetch(href, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0 Sideline/brand" } }); if (cr.ok) css += "\n" + (await cr.text()).slice(0, 300000); } catch { /* skip */ } }
     const counts = new Map<string, number>();
     const norm = (h: string) => (h.length === 4 ? "#" + h.slice(1).split("").map((c) => c + c).join("") : h).toLowerCase();
-    for (const m of css.matchAll(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g)) { const h = norm(m[0]); counts.set(h, (counts.get(h) || 0) + 1); }
-    for (const m of css.matchAll(/rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/g)) { const h = "#" + [1, 2, 3].map((i) => Math.min(255, +m[i]).toString(16).padStart(2, "0")).join(""); counts.set(h, (counts.get(h) || 0) + 1); }
+    const hexRe = /#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g; let hm: RegExpExecArray | null;
+    while ((hm = hexRe.exec(css)) !== null) { const h = norm(hm[0]); counts.set(h, (counts.get(h) || 0) + 1); }
+    const rgbRe = /rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/g; let rm: RegExpExecArray | null;
+    while ((rm = rgbRe.exec(css)) !== null) { const h = "#" + [1, 2, 3].map((i) => Math.min(255, +rm![i]).toString(16).padStart(2, "0")).join(""); counts.set(h, (counts.get(h) || 0) + 1); }
     const isBrand = (h: string) => { const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16); const mx = Math.max(r, g, b), mn = Math.min(r, g, b); if (mx > 238 && mn > 238) return false; if (mx < 22) return false; if (mx - mn < 18) return false; return true; };
-    let colors: any[] = [...counts.entries()].filter(([h]) => isBrand(h)).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([hex, n]) => ({ hex: hex.toUpperCase(), source: "website css", count: n }));
+    let colors: any[] = Array.from(counts.entries()).filter((e) => isBrand(e[0])).sort((a, b) => b[1] - a[1]).slice(0, 6).map((e) => ({ hex: e[0].toUpperCase(), source: "website css", count: e[1] }));
     // Fallback: if the site CSS yielded nothing usable, derive colours from the logo.
     if (colors.length === 0) {
       const logoForColours = cands.find((c) => c.likelyLogo) || cands[0];
