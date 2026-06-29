@@ -191,11 +191,6 @@ export interface DispatchSupplierInput {
  * same address so the thread lives in the orders@ inbox.
  */
 export async function sendSupplierPoDispatchGmail(input: DispatchSupplierInput): Promise<string | null> {
-  if (!isGmailConfigured()) {
-    console.log("[email] Gmail not configured — would dispatch PO to", input.to);
-    return null;
-  }
-
   const portalUrl = input.supplierPortalUrl || `${process.env.BASE_URL || "https://sidelinenz.com"}/supplier`;
   const milestones = input.dueDate ? computeMilestones(input.dueDate) : null;
 
@@ -276,14 +271,24 @@ export async function sendSupplierPoDispatchGmail(input: DispatchSupplierInput):
     "orders@sidelinenz.com",
   ].filter((e, i, a) => !!e && a.indexOf(e) === i);
 
-  return sendGmail({
-    from: SIDELINE_ORDERS_FROM,
-    to: input.to,
-    cc: ccList,
-    replyTo: "orders@sidelinenz.com",
-    subject,
-    html,
-  });
+  // Try Gmail (orders@ send-as) first; fall back to Resend if Gmail is
+  // unconfigured OR the send fails (e.g. expired GOOGLE_REFRESH_TOKEN in prod) —
+  // otherwise dispatch emails silently vanish. See email-send resilience fix.
+  if (isGmailConfigured()) {
+    const id = await sendGmail({
+      from: SIDELINE_ORDERS_FROM,
+      to: input.to,
+      cc: ccList,
+      replyTo: "orders@sidelinenz.com",
+      subject,
+      html,
+    });
+    if (id) return id;
+    console.warn(`[email] Gmail send failed for supplier dispatch ${ref} — falling back to Resend`);
+  }
+  const text = `${input.supplierName ? `Hi ${input.supplierName},` : "Hi team,"}\n\nA new production sheet has been raised: ${ref}${input.accountName ? ` - ${input.accountName}` : ""}.\nSupplier portal: ${portalUrl}\n\nReply if the spec or dates need to change before production starts.\n— Sideline NZ`;
+  const r = await emailService.send({ to: input.to, cc: ccList, subject, text, html, replyTo: "orders@sidelinenz.com" });
+  return r.messageId || null;
 }
 
 /**
@@ -312,7 +317,7 @@ export async function sendCustomerDesignProofRequest(
   const text = `${greeting}\n\nYour design proof for ${orderNumber} is ready to review:\n${link}\n\nCheck the colours, logos, sizes and names, confirm your delivery address, then approve. Production starts once approved. This link expires in 14 days.\n\n— Sideline NZ`;
 
   if (isGmailConfigured()) {
-    return sendGmail({
+    const id = await sendGmail({
       from: SIDELINE_ORDERS_FROM,
       to,
       cc: ["orders@sidelinenz.com"],
@@ -320,8 +325,10 @@ export async function sendCustomerDesignProofRequest(
       subject,
       html,
     });
+    if (id) return id;
+    console.warn(`[email] Gmail send failed for customer proof ${orderNumber} — falling back to Resend`);
   }
-  const r = await emailService.send({ to, subject, text, html, replyTo: "orders@sidelinenz.com" });
+  const r = await emailService.send({ to, cc: ["orders@sidelinenz.com"], subject, text, html, replyTo: "orders@sidelinenz.com" });
   return r.messageId || null;
 }
 
