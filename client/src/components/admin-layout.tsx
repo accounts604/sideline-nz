@@ -28,7 +28,7 @@ const NAV_ITEMS = [
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
   { href: "/admin/triage", label: "Triage", icon: Activity },
   { href: "/admin/supporter-campaigns", label: "Supporter Campaigns", icon: Wand2 },
-  { href: "/admin/club-logos", label: "Club Logos", icon: ImageIcon },
+  { href: "/admin/club-logos", label: "Brand Identity", icon: ImageIcon },
   { href: "/admin/customers", label: "Customers", icon: Users },
   { href: "/admin/suppliers", label: "Suppliers", icon: Factory },
   { href: "/admin/vault", label: "File Vault", icon: FolderOpen },

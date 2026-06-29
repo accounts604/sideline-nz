@@ -295,7 +295,33 @@ function ParentDetailsPillar({ clubId, initial, onSaved }: { clubId: string; ini
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState(false);
+  type GhlResult = { id: string; label: string; website: string | null; deliveryAddress: string | null; contactName: string | null; contactEmail: string | null; contactPhone: string | null; ghlBusinessId: string | null };
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<GhlResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const set = (k: keyof typeof d) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { const v = e.target.value; setD((s) => ({ ...s, [k]: v })); setSaved(false); };
+  async function runSearch() {
+    const q = query.trim();
+    if (q.length < 2) return;
+    setSearching(true); setDropdownOpen(true);
+    try {
+      const r = await apiRequest("GET", `/api/admin/clubs/ghl-search?q=${encodeURIComponent(q)}`);
+      const { results: rows } = await r.json();
+      setResults(Array.isArray(rows) ? rows : []);
+    } catch { /* quiet */ } finally { setSearching(false); }
+  }
+  function pick(res: GhlResult) {
+    setD((s) => ({
+      website: res.website ?? s.website,
+      deliveryAddress: res.deliveryAddress ?? s.deliveryAddress,
+      contactName: res.contactName ?? s.contactName,
+      contactEmail: res.contactEmail ?? s.contactEmail,
+      contactPhone: res.contactPhone ?? s.contactPhone,
+      ghlBusinessId: res.ghlBusinessId ?? s.ghlBusinessId,
+    }));
+    setSaved(false); setDropdownOpen(false); setResults([]);
+  }
   async function save() {
     setBusy(true); setSaved(false); setErr(false);
     try {
@@ -313,6 +339,40 @@ function ParentDetailsPillar({ clubId, initial, onSaved }: { clubId: string; ini
     <div>
       <div style={pillarLabelStyle}>Parent details</div>
       <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginBottom: 8 }}>The club/school is the GHL business. Address defaults a PO's ship-to.</div>
+      <div style={{ position: "relative", marginBottom: 12, maxWidth: 340 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); runSearch(); } }}
+            placeholder="Look up in GHL (name, club, email)…"
+            style={{ ...inputStyle, width: 240, flex: "0 1 240px" }}
+          />
+          <button onClick={runSearch} disabled={searching || query.trim().length < 2} style={{ ...btnGhost, opacity: (searching || query.trim().length < 2) ? 0.5 : 1 }}>{searching ? "…" : "Search"}</button>
+        </div>
+        {dropdownOpen && !searching && results.length === 0 && (
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 4 }}>No GHL matches</div>
+        )}
+        {results.length > 0 && (
+          <div style={{ position: "absolute", zIndex: 20, left: 0, right: 0, marginTop: 4, background: "#16181d", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 4, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
+            {results.map((res) => (
+              <div
+                key={res.id}
+                onClick={() => pick(res)}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.08)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+                style={{ padding: "6px 9px", cursor: "pointer", borderTop: "1px solid rgba(255,255,255,0.06)" }}
+              >
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.9)" }}>{res.label}</div>
+                {(res.contactEmail || res.contactPhone) && (
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>{[res.contactEmail, res.contactPhone].filter(Boolean).join(" · ")}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 4 }}>Fills the fields from your GHL CRM — review, then Save.</div>
+      </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
         <div style={{ flex: "1 1 220px", minWidth: 180 }}>
           <label style={fieldLabel}>Website</label>
@@ -614,11 +674,11 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
         </div>
       </div>
 
-      {/* Add asset (Manage) */}
+      {/* Add + EDIT assets (Manage) */}
       {expanded && club.accountId && (
-        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", maxWidth: 360 }}>
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", maxWidth: 560 }}>
           <div style={labelStyle}>Add an asset</div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8, maxWidth: 360 }}>
             <select value={dropKind} onChange={(e) => { setDropKind(e.target.value as AssetKind); setDropPos(""); }} style={{ ...inputStyle, flex: 1, cursor: "pointer" }}>
               {ASSET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
@@ -626,7 +686,13 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
               {placementOptions(dropKind).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
-          <LogoDropZone clubId={club.accountId} kind={dropKind} position={effectivePos} onDone={refresh} />
+          <div style={{ maxWidth: 360 }}><LogoDropZone clubId={club.accountId} kind={dropKind} position={effectivePos} onDone={refresh} /></div>
+          {(club.logos.length + club.designs.length) > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={labelStyle}>Edit existing — rename / change type / placement / remove</div>
+              {[...club.logos, ...club.designs].map((a) => <AssetManageRow key={a.id} clubId={a.clubAccountId || club.accountId || ""} logo={asLogoRow(a)} onChanged={refresh} />)}
+            </div>
+          )}
         </div>
       )}
       </>)}

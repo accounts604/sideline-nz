@@ -4801,6 +4801,25 @@ router.put("/clubs/:id/details", async (req, res) => {
   }
 });
 
+// GET /api/admin/clubs/ghl-search?q= — look up GHL contacts/businesses to fast-fill
+// a parent's details. Returns ready-to-apply field sets. (The parent IS the GHL org.)
+router.get("/clubs/ghl-search", async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim();
+    if (q.length < 2) return res.json({ ok: true, results: [] });
+    const { searchGhlContacts } = await import("../ghl-contacts.js");
+    const { contacts } = await searchGhlContacts(q, 8);
+    const results = (contacts || []).map((c: any) => {
+      const name = c.name || [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || c.companyName || "(no name)";
+      const addr = [c.address1, c.city, c.state, c.postalCode, c.country].filter(Boolean).join(", ");
+      return { id: c.id, label: c.companyName && c.companyName !== name ? `${name} · ${c.companyName}` : name, website: c.website || null, deliveryAddress: addr || null, contactName: name, contactEmail: c.email || null, contactPhone: c.phone || null, ghlBusinessId: c.id };
+    });
+    res.json({ ok: true, results });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 // GET /api/admin/orders/populate-status — EVERY live PO (club or standalone) with
 // its populate gaps (logos / sizes / fabric / branding). The bulk worklist: see
 // every PO that needs work in one place, including non-club orders.
