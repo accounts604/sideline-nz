@@ -174,6 +174,9 @@ function AssetTile({ logo }: { logo: LogoRow }) {
       )}
       <div style={{ fontSize: 10, color: "rgba(255,255,255,0.85)", marginTop: 4, fontWeight: 600, lineHeight: 1.2 }}>{TYPE_LABEL[logo.kind] || logo.kind}</div>
       <div style={{ fontSize: 9, color: "rgba(255,255,255,0.45)" }}>{logo.defaultPosition || "—"}</div>
+      {logo.canvaDesignId && !logo.canvaDesignId.startsWith("upload:") && (
+        <a href={canvaUrlOf(logo.canvaDesignId, logo.canvaPageIndex)} target="_blank" rel="noreferrer" style={{ fontSize: 9, color: "#93c5fd", textDecoration: "none" }}>open in Canva ↗</a>
+      )}
     </div>
   );
 }
@@ -559,6 +562,10 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
   const [expanded, setExpanded] = useState(false);
   const [dropKind, setDropKind] = useState<AssetKind>("primary");
   const [dropPos, setDropPos] = useState("");
+  const [canvaUrl, setCanvaUrl] = useState("");
+  const [canvaKind, setCanvaKind] = useState<AssetKind>("front-design");
+  const [canvaBusy, setCanvaBusy] = useState(false);
+  const [canvaErr, setCanvaErr] = useState<string | null>(null);
 
   // Account-less parents (created from standalone orders) have no asset container.
   // We lazily ensure one the first time uploads are needed, then cache its id.
@@ -630,6 +637,21 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
   async function verifyBrand(e?: any) {
     if (e) e.stopPropagation();
     try { await apiRequest("POST", `/api/admin/clubs/${club.id}/verify-brand`, { verified: !club.verified }); refresh(); } catch { /* */ }
+  }
+
+  // Link a Canva design (paste its URL) as a Design on the brand identity — the
+  // live source of truth (edited on Canva), connected to the parent + its POs.
+  async function linkCanva() {
+    const url = canvaUrl.trim(); if (!url) return;
+    setCanvaBusy(true); setCanvaErr(null);
+    try {
+      const acct = await getAccountId();
+      if (!acct) { setCanvaErr("no account"); return; }
+      const r = await apiRequest("POST", `/api/admin/clubs/${acct}/logos`, { canvaUrl: url, kind: canvaKind, defaultPosition: ASSET_TYPES.find((t) => t.value === canvaKind)?.pos });
+      const j = await r.json().catch(() => ({}));
+      if (!j?.ok) throw new Error(j?.error || "link failed");
+      setCanvaUrl(""); refresh();
+    } catch (e: any) { setCanvaErr(String(e?.message || "failed")); } finally { setCanvaBusy(false); }
   }
 
   // Save a picked candidate as a real logo asset (never auto-applied).
@@ -852,6 +874,16 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
                 </div>
               ))}
             </div>
+            {/* Link a live Canva design (the source of truth — edited on Canva) */}
+            <div style={{ ...pillarLabelStyle, marginTop: 14 }}>Link a Canva design</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", maxWidth: 560 }}>
+              <input value={canvaUrl} onChange={(e) => { setCanvaUrl(e.target.value); setCanvaErr(null); }} placeholder="Paste Canva design URL" style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
+              <select value={canvaKind} onChange={(e) => setCanvaKind(e.target.value as AssetKind)} style={{ ...inputStyle, width: "auto", cursor: "pointer" }}>
+                {ASSET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+              <button onClick={linkCanva} disabled={canvaBusy || !canvaUrl.trim()} style={{ ...btnGhost, opacity: (canvaBusy || !canvaUrl.trim()) ? 0.5 : 1 }}>{canvaBusy ? "Linking…" : "Link design"}</button>
+            </div>
+            <div style={{ fontSize: 10, color: canvaErr ? "#fca5a5" : "rgba(255,255,255,0.4)", marginTop: 4 }}>{canvaErr || "Links the live design (always current) + an 'open in Canva' on its tile."}</div>
           </>) : (
             <div style={{ maxWidth: 360 }}>{enableUploadsBtn}<div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>This parent has no asset account yet — enable uploads to add logos &amp; designs.</div></div>
           )}
