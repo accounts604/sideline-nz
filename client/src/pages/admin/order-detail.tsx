@@ -14,7 +14,7 @@ import { computeMilestones } from "@shared/po-milestones";
 import { productsGroupedByCategory, getProductById, getShopifyCost, PUFFIN_USD_TO_NZD } from "@shared/product-catalog";
 import { BRANDING_METHODS } from "@shared/branding-methods";
 import { SIZE_CHART_LABELS, suggestSizeChart, getSizeChartTables, type SizeChartType } from "@shared/size-charts";
-import { LOGO_POSITIONS, NAME_PLACEMENT_OPTIONS, type LogoElement, type LogoPosition } from "@shared/schema";
+import { LOGO_POSITIONS, NAME_PLACEMENT_OPTIONS, SIDELINE_BRAND_LOGO_URL, sidelineBrandElement, type LogoElement, type LogoPosition } from "@shared/schema";
 import { suggestLogoSizes, ALL_LOGO_SIZES } from "@shared/logo-size-suggestions";
 import { ALL_ORDER_STAGES } from "@shared/order-stages";
 import { getDesignPrints, getMockups, type DesignAsset } from "@shared/design-assets";
@@ -1878,7 +1878,7 @@ export default function AdminOrderDetail() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "8px" }}>
                   {(item.elementUrls ?? []).map((el, i) => (
                     <LogoElementEditor
-                      key={i}
+                      key={el.url || `${el.name ?? "logo"}-${i}`}
                       element={el}
                       paletteColors={item.productColors ?? null}
                       onChange={(next) => {
@@ -1904,6 +1904,28 @@ export default function AdminOrderDetail() {
                     }}
                     vaultImages={designs.filter((d) => d.folder === "logos" && d.mimeType?.startsWith("image/")).map((d) => ({ id: d.id, fileUrl: d.fileUrl, fileName: d.fileName }))}
                   />
+                  {(() => {
+                    const existing = (item.elementUrls ?? []) as LogoElement[];
+                    const already = existing.some((e) => e.url === SIDELINE_BRAND_LOGO_URL);
+                    const el = sidelineBrandElement((item as any).productType ?? item.productName);
+                    return (
+                      <button
+                        type="button"
+                        disabled={already}
+                        title={already ? "Sideline brand logo already on this garment" : `Add the Sideline NZ logo at ${el.position}`}
+                        onClick={() => updateItem.mutate({ itemId: item.id, elementUrls: [...existing, el] })}
+                        style={{
+                          padding: "6px 10px", fontSize: "11px", fontWeight: 700, borderRadius: "6px", cursor: already ? "default" : "pointer",
+                          background: already ? "rgba(255,255,255,0.04)" : "rgba(14,165,233,0.12)",
+                          color: already ? "rgba(255,255,255,0.35)" : "#0ea5e9",
+                          border: `1px solid ${already ? "rgba(255,255,255,0.1)" : "rgba(14,165,233,0.35)"}`,
+                          alignSelf: "center", whiteSpace: "nowrap",
+                        }}
+                      >
+                        {already ? "✓ Sideline logo" : `+ Sideline logo (${el.position})`}
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
 
