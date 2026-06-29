@@ -5,6 +5,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { apiRequest } from "@/lib/queryClient";
 
 type AssetKind = "primary" | "secondary" | "front-design" | "back-design" | "sponsor";
@@ -1058,6 +1059,7 @@ function ClubsPanel() {
 }
 
 export default function AdminClubLogos() {
+  const isMobile = useIsMobile();
   const { data, isLoading } = useQuery<{ ok: boolean; clubs: BrandClub[] }>({ queryKey: [BRAND_KEY] });
   const [filter, setFilter] = useState<"all" | "missing">("all");
   const [search, setSearch] = useState("");
@@ -1077,10 +1079,10 @@ export default function AdminClubLogos() {
 
   return (
     <AdminLayout>
-      <div style={{ padding: "32px 36px", color: "#fff" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24 }}>
+      <div style={{ padding: isMobile ? "2px 0" : "32px 36px", color: "#fff" }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-end", gap: isMobile ? 12 : 0, marginBottom: isMobile ? 16 : 24 }}>
           <div>
-            <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: "-0.4px" }}>Brand Identity</h1>
+            <h1 style={{ fontSize: isMobile ? 22 : 26, fontWeight: 700, margin: 0, letterSpacing: "-0.4px" }}>Brand Identity</h1>
             <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", margin: "6px 0 0", maxWidth: 680 }}>
               Every club and team's brand identity: <b style={{ color: "rgba(255,255,255,0.75)" }}>Logos, Designs and Colours</b>. Set it once here and it flows into every PO.
               {data ? <> · <b style={{ color: missingCount ? "#fca5a5" : "#86efac" }}>{missingCount}</b> still need a primary.</> : null}
@@ -1091,7 +1093,7 @@ export default function AdminClubLogos() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search club or team..."
-              style={{ width: 200, padding: "5px 10px", fontSize: 12, background: "#000", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 4 }}
+              style={{ width: isMobile ? "100%" : 200, flex: isMobile ? "1 1 100%" : undefined, padding: isMobile ? "9px 12px" : "5px 10px", fontSize: isMobile ? 16 : 12, background: "#000", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 4 }}
             />
             <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>{visible.length} club{visible.length === 1 ? "" : "s"}</span>
             <button onClick={() => setFilter("all")} style={filter === "all" ? btnPrimary : btnGhost}>All</button>

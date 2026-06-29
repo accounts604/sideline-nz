@@ -219,7 +219,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </button>
         </div>
 
-        <div style={{ padding: "32px", maxWidth: "1200px" }}>
+        <div className="admin-content" style={{ maxWidth: "1200px" }}>
           {children}
         </div>
       </main>
@@ -229,10 +229,12 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
       {/* Responsive CSS */}
       <style>{`
+        .admin-content { padding: 32px; }
         @media (max-width: 768px) {
           .admin-sidebar-desktop { display: none !important; }
           .admin-main { margin-left: 0 !important; }
           .admin-mobile-header { display: flex !important; }
+          .admin-content { padding: 14px 12px; }
         }
         @media (min-width: 769px) {
           .admin-sidebar-mobile { display: none !important; }
