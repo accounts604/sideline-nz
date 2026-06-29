@@ -606,21 +606,28 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
 
       {open && (<>
       <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 16 }}>
-        {/* LOGOS pillar */}
+        {/* LOGOS pillar — includes the club-level primary (clubs.primary_logo_url)
+            so it's visible even when there's no account-held asset. */}
         <div>
           <div style={pillarLabelStyle}>Logos</div>
-          {club.logos.length > 0 ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
-              {club.logos.map((a) => <AssetTile key={a.id} logo={asLogoRow(a)} />)}
-            </div>
-          ) : club.accountId ? (
-            <div style={{ maxWidth: 320 }}>
-              <LogoDropZone clubId={club.accountId} compact onDone={refresh} />
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>Drop the primary logo to start.</div>
-            </div>
-          ) : (
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No logos yet</div>
-          )}
+          {(() => {
+            const tiles: BrandAsset[] = [...club.logos];
+            if (club.primaryLogoUrl && !tiles.some((l) => l.kind === "primary" || l.previewUrl === club.primaryLogoUrl)) {
+              tiles.unshift({ id: "club-primary", kind: "primary", displayLabel: "Primary Logo", previewUrl: club.primaryLogoUrl, defaultPosition: null, clubAccountId: null });
+            }
+            return tiles.length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+                {tiles.map((a) => <AssetTile key={a.id} logo={asLogoRow(a)} />)}
+              </div>
+            ) : club.accountId ? (
+              <div style={{ maxWidth: 320 }}>
+                <LogoDropZone clubId={club.accountId} compact onDone={refresh} />
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>Drop the primary logo to start.</div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No logos yet</div>
+            );
+          })()}
         </div>
 
         {/* DESIGNS pillar */}
