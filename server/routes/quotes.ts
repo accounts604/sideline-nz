@@ -28,6 +28,7 @@ import { db } from "../db";
 import { quotes, quoteItems, quoteTemplates, orders, orderItems } from "../../shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { requireAdmin } from "../auth";
+import { storage } from "../storage";
 import { emailService } from "../email";
 import { createGhlContact } from "./ghl";
 import { syncGhlTag } from "../ghl-sync";
@@ -353,6 +354,25 @@ adminQuoteRouter.post("/:id/convert", async (req, res) => {
     const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(orders);
     const orderNumber = `PO-${String(Number(count) + 1).padStart(4, "0")}`;
 
+    // Resolve the CLUB GRAPH (Club/School -> Team) from the quote's team name, so
+    // the PO inherits the brand identity: setting clubAccountId unlocks the dispatch
+    // logo auto-attach, and clubId/teamId link the PO to its parent + team.
+    let clubId: string | null = null, teamId: string | null = null, clubAccountId: string | null = null;
+    const teamName = String(quote.teamName || "").trim();
+    if (teamName) {
+      try {
+        const isSchool = /college|school|grammar|academy|intermediate|primary/i.test(teamName);
+        const matched = (await db.execute(sql`SELECT id, name FROM clubs WHERE ${teamName} ILIKE name || '%' ORDER BY length(name) DESC LIMIT 1`) as any).rows?.[0];
+        const club = matched ? { id: matched.id as string, name: matched.name as string } : await storage.ensureClub(teamName, isSchool ? "school" : "club");
+        clubId = club.id;
+        const teamLabel = teamName.toLowerCase().startsWith(club.name.toLowerCase())
+          ? (teamName.slice(club.name.length).replace(/^[\s\-—:]+/, "").trim() || "Main")
+          : "Main";
+        teamId = await storage.ensureTeam(club.id, teamLabel);
+        clubAccountId = await storage.ensureRepAccountForClub(club.id);
+      } catch (e) { console.warn("[Quotes] club-graph resolve failed:", e); }
+    }
+
     // Create order from quote
     const [order] = await db
       .insert(orders)
@@ -368,7 +388,10 @@ adminQuoteRouter.post("/:id/convert", async (req, res) => {
         total: quote.total,
         poReference: quote.quoteNumber,
         accountName: quote.teamName,
-      })
+        clubId,
+        teamId,
+        clubAccountId,
+      } as any)
       .returning();
 
     // Create order items
