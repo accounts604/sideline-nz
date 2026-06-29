@@ -13,7 +13,7 @@ import { getQueryFn } from "@/lib/queryClient";
 import { computeMilestones } from "@shared/po-milestones";
 import { productsGroupedByCategory, getProductById, getShopifyCost, PUFFIN_USD_TO_NZD } from "@shared/product-catalog";
 import { BRANDING_METHODS } from "@shared/branding-methods";
-import { SIZE_CHART_LABELS, suggestSizeChart, getSizeChartTables, type SizeChartType } from "@shared/size-charts";
+import { SIZE_CHART_LABELS, suggestSizeChart, getSizeChartTables, chartSizes, type SizeChartType } from "@shared/size-charts";
 import { LOGO_POSITIONS, NAME_PLACEMENT_OPTIONS, SIDELINE_BRAND_LOGO_URL, sidelineBrandElement, type LogoElement, type LogoPosition } from "@shared/schema";
 import { suggestLogoSizes, ALL_LOGO_SIZES } from "@shared/logo-size-suggestions";
 import { ALL_ORDER_STAGES } from "@shared/order-stages";
@@ -524,6 +524,55 @@ function ImageUploadSlot({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Size-quantity grid (standard size editor) ───────────────────────
+//
+// Lists every size from the garment's assigned size chart with a -/+ stepper.
+// Quantity per size maps to a single aggregate order_size_breakdown row:
+// set >0 creates/updates it, set 0 deletes it. Sizes that already have named
+// per-player rows are shown read-only (edit those in the chips below).
+
+function SizeQtyCell({ size, qty, disabled, onCommit }: {
+  size: string; qty: number; disabled?: boolean; onCommit: (q: number) => void;
+}) {
+  const [v, setV] = useState(qty);
+  const commit = (n: number) => { const c = Math.max(0, n); setV(c); if (c !== qty) onCommit(c); };
+  const stepBtn: React.CSSProperties = { width: "22px", height: "24px", fontSize: "14px", lineHeight: 1, cursor: disabled ? "default" : "pointer", background: "rgba(255,255,255,0.06)", color: "#fff", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "4px" };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "3px", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "6px", padding: "3px 4px", opacity: disabled ? 0.45 : 1 }}>
+      <span style={{ fontSize: "11px", fontWeight: 700, minWidth: "34px", textAlign: "center", color: "#fff" }}>{size}</span>
+      <button type="button" disabled={disabled} onClick={() => commit(v - 1)} style={stepBtn}>−</button>
+      <input type="number" min={0} value={v} disabled={disabled}
+        onChange={(e) => setV(Math.max(0, Number(e.target.value) || 0))}
+        onBlur={() => commit(v)}
+        style={{ width: "44px", textAlign: "center", fontSize: "12px", padding: "4px", background: "rgba(255,255,255,0.06)", color: "#fff", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "4px" }} />
+      <button type="button" disabled={disabled} onClick={() => commit(v + 1)} style={stepBtn}>+</button>
+    </div>
+  );
+}
+
+function SizeQtyGrid({ chartType, productType, bds, onSet }: {
+  chartType: string | null | undefined;
+  productType: string | null | undefined;
+  bds: { id: string; size: string; quantity: number; playerName: string | null }[];
+  onSet: (size: string, row: { id: string } | null, qty: number) => void;
+}) {
+  const sizes = chartSizes((chartType || suggestSizeChart(productType || "")) as SizeChartType);
+  if (!sizes.length) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
+      {sizes.map((sz) => {
+        const rows = bds.filter((b) => b.size === sz);
+        const named = rows.some((r) => r.playerName);
+        const qty = rows.reduce((s, r) => s + r.quantity, 0);
+        return (
+          <SizeQtyCell key={`${sz}-${qty}-${named}`} size={sz} qty={qty} disabled={named}
+            onCommit={(q) => onSet(sz, rows[0] || null, q)} />
+        );
+      })}
     </div>
   );
 }
@@ -1933,6 +1982,16 @@ export default function AdminOrderDetail() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                 <div>
                   <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1px", color: "rgba(255,255,255,0.4)", marginBottom: "6px" }}>Size Run</p>
+                  <SizeQtyGrid
+                    chartType={(item as any).sizeChartType}
+                    productType={(item as any).productType}
+                    bds={bds}
+                    onSet={(sz, row, q) => {
+                      if (!row && q > 0) addSizeMut.mutate({ orderItemId: item.id, size: sz, quantity: q });
+                      else if (row && q > 0) updateSizeMut.mutate({ bid: row.id, quantity: q });
+                      else if (row && q === 0) deleteSizeMut.mutate(row.id);
+                    }}
+                  />
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px", alignItems: "center" }}>
                     {bds.map((b) => (
                       <SizeBreakdownChip
