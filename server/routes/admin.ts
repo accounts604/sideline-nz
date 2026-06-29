@@ -4872,7 +4872,22 @@ router.post("/clubs/:clubId/fetch-brand", async (req, res) => {
     add(apple, "apple-touch-icon");
     add(og, "og:image");
     add(icon, "favicon");
-    res.json({ ok: true, candidates: cands, site: base });
+    // Brand COLOURS — extract from the best logo candidate (the crest's colours are
+    // the kit colours; far better than the site's generic theme-color). Gemini vision.
+    const theme = pick(html, /<meta[^>]+name=["']theme-color["'][^>]+content=["']([^"']+)["']/i);
+    let colors: any[] = [];
+    const logoForColours = cands.find((c) => c.likelyLogo) || cands[0];
+    if (logoForColours) {
+      try {
+        const { extractColorsFromImage } = await import("../mockup/color-extract.js");
+        const ex = await extractColorsFromImage(logoForColours.url);
+        if (ex) colors = ex.map((c: any) => ({ hex: c.hex, name: c.name, pms: c.pms, source: "logo" }));
+      } catch { /* colour extraction optional */ }
+    }
+    if (theme && /^#?[0-9a-f]{3,8}$/i.test(theme) && !colors.some((c) => c.hex?.toLowerCase() === theme.toLowerCase())) {
+      colors.push({ hex: theme.startsWith("#") ? theme : "#" + theme, name: "Site theme", source: "theme-color" });
+    }
+    res.json({ ok: true, candidates: cands, colors, site: base });
   } catch (err: any) {
     res.status(500).json({ error: String(err?.message || err) });
   }

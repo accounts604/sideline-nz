@@ -567,10 +567,13 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
 
   // Fetch-brand (logo candidates scraped from the parent's website — suggestions only).
   type BrandCandidate = { url: string; source: string; likelyLogo?: boolean };
+  type BrandColor = { hex: string; name?: string; pms?: string; source?: string };
   const [candidates, setCandidates] = useState<BrandCandidate[]>([]);
+  const [fetchedColors, setFetchedColors] = useState<BrandColor[]>([]);
   const [fetching, setFetching] = useState(false);
   const [fetchNote, setFetchNote] = useState<string | null>(null);
   const [pickKind, setPickKind] = useState<AssetKind>("primary");
+  const [coloursApplied, setColoursApplied] = useState(false);
 
   // Resolve (or lazily create) the parent's asset-container account id.
   async function getAccountId(): Promise<string | null> {
@@ -591,19 +594,28 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
   }
 
   async function fetchBrand() {
-    setFetching(true); setFetchNote(null); setCandidates([]);
+    setFetching(true); setFetchNote(null); setCandidates([]); setFetchedColors([]); setColoursApplied(false);
     try {
       const r = await apiRequest("POST", `/api/admin/clubs/${club.id}/fetch-brand`, {});
       const j = await r.json().catch(() => ({}));
       const cands: BrandCandidate[] = Array.isArray(j?.candidates) ? j.candidates : [];
-      setCandidates(cands);
+      const cols: BrandColor[] = Array.isArray(j?.colors) ? j.colors : [];
+      setCandidates(cands); setFetchedColors(cols);
       if (j?.note) setFetchNote(String(j.note));
-      else if (cands.length === 0) setFetchNote("No logo candidates found.");
+      else if (cands.length === 0 && cols.length === 0) setFetchNote("Nothing found on the site.");
     } catch (e: any) {
       setFetchNote(e?.message || "Fetch failed");
     } finally {
       setFetching(false);
     }
+  }
+
+  // Apply the top fetched colours to the brand identity (primary/secondary/accent).
+  async function applyColours() {
+    try {
+      await apiRequest("PUT", `/api/admin/clubs/${club.id}/colours`, { colors: { primary: fetchedColors[0]?.hex || null, secondary: fetchedColors[1]?.hex || null, accent: fetchedColors[2]?.hex || null } });
+      setColoursApplied(true); refresh();
+    } catch { /* */ }
   }
 
   // Save a picked candidate as a real logo asset (never auto-applied).
@@ -704,7 +716,7 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
 
           {/* Fetch-brand candidates — suggestions scraped from the parent's website.
               Click one to save it (admin picks; never auto-applied). */}
-          {(candidates.length > 0 || fetchNote) && (
+          {(candidates.length > 0 || fetchedColors.length > 0 || fetchNote) && (
             <div style={{ marginTop: 12 }}>
               {candidates.length > 0 && (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
@@ -724,6 +736,22 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
                       {c.likelyLogo && <div style={{ fontSize: 8, color: "#86efac", fontWeight: 600 }}>logo?</div>}
                     </div>
                   ))}
+                </div>
+              )}
+              {fetchedColors.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.45)" }}>Brand colours (from logo)</span>
+                    <button onClick={applyColours} style={{ ...btnGhost, fontSize: 10, padding: "3px 8px" }}>{coloursApplied ? "✓ Applied" : "Apply colours"}</button>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {fetchedColors.map((c, i) => (
+                      <div key={i} title={`${c.name || ""} ${c.hex}${c.pms ? " · " + c.pms : ""}`.trim()} style={{ textAlign: "center" }}>
+                        <span style={{ display: "block", width: 22, height: 22, borderRadius: 4, background: c.hex, border: "1px solid rgba(255,255,255,0.2)" }} />
+                        <div style={{ fontSize: 8, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>{c.hex}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               {fetchNote && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 8 }}>{fetchNote}</div>}
@@ -785,21 +813,30 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
       {/* Add + EDIT assets — always shown when the card is open, for every club
           (account-less parents get an asset account ensured on open). */}
       {(
-        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", maxWidth: 560 }}>
-          <div style={labelStyle}>Add a logo or design</div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 8, maxWidth: 360 }}>
-            <select value={dropKind} onChange={(e) => { setDropKind(e.target.value as AssetKind); setDropPos(""); }} style={{ ...inputStyle, flex: 1, cursor: "pointer" }}>
-              {ASSET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-            <select value={effectivePos} onChange={(e) => setDropPos(e.target.value)} style={{ ...inputStyle, flex: 1, cursor: "pointer" }}>
-              {placementOptions(dropKind).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-          <div style={{ maxWidth: 360 }}>
-            {effectiveAccountId
-              ? <LogoDropZone clubId={effectiveAccountId} kind={dropKind} position={effectivePos} onDone={refresh} />
-              : <div>{enableUploadsBtn}<div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>This parent has no asset account yet — enable uploads to add logos & designs.</div></div>}
-          </div>
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <div style={labelStyle}>Add logos &amp; designs — one labelled drop zone per type</div>
+          {effectiveAccountId ? (<>
+            <div style={{ ...pillarLabelStyle, marginTop: 6 }}>Logos</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
+              {ASSET_TYPES.filter((t) => ["primary", "secondary", "sponsor"].includes(t.value)).map((t) => (
+                <div key={t.value} style={{ width: 168 }}>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", marginBottom: 4, fontWeight: 600 }}>{t.label}</div>
+                  <LogoDropZone clubId={effectiveAccountId} kind={t.value} position={t.pos} compact onDone={refresh} />
+                </div>
+              ))}
+            </div>
+            <div style={pillarLabelStyle}>Designs</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+              {ASSET_TYPES.filter((t) => ["front-design", "back-design"].includes(t.value)).map((t) => (
+                <div key={t.value} style={{ width: 168 }}>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", marginBottom: 4, fontWeight: 600 }}>{t.label}</div>
+                  <LogoDropZone clubId={effectiveAccountId} kind={t.value} position={t.pos} compact onDone={refresh} />
+                </div>
+              ))}
+            </div>
+          </>) : (
+            <div style={{ maxWidth: 360 }}>{enableUploadsBtn}<div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>This parent has no asset account yet — enable uploads to add logos &amp; designs.</div></div>
+          )}
           {(club.logos.length + club.designs.length) > 0 && (
             <div style={{ marginTop: 16 }}>
               <div style={labelStyle}>Edit existing — rename / change type / placement / remove</div>
