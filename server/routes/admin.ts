@@ -4729,7 +4729,10 @@ router.get("/clubs/brand-identity", async (_req, res) => {
     } catch { /* columns not migrated yet */ }
     const accts = R(await db.execute(sql`SELECT id, club_name, club_id FROM club_accounts WHERE club_id IS NOT NULL`));
     const assets = R(await db.execute(sql`SELECT id, club_account_id, kind, display_label, preview_url, default_position FROM club_logo_assets`));
-    const colorRows = R(await db.execute(sql`SELECT club_account_id, colors FROM club_brand_identity`));
+    const colorRows = R(await db.execute(sql`SELECT club_account_id, colors, enrichment_stage FROM club_brand_identity`));
+    // Verified = a human advanced the brand identity past 'lead' (the human gate).
+    const VERIFIED_STAGES = ["mockup", "design_approved", "production_ready"];
+    const verifiedByAcct = new Map<string, boolean>(colorRows.map((r: any) => [r.club_account_id, VERIFIED_STAGES.includes(String(r.enrichment_stage || "lead"))]));
     const ords = R(await db.execute(sql`SELECT id, account_name, po_reference, status, club_id, club_account_id, team_id, created_at FROM orders WHERE po_reference IS NOT NULL`));
     const teamRows = R(await db.execute(sql`SELECT id, name, notes, secondary_logo_url, club_id FROM teams`));
     const acctsByClub = new Map<string, any[]>(); for (const a of accts) { const x = acctsByClub.get(a.club_id) || []; x.push(a); acctsByClub.set(a.club_id, x); }
@@ -4752,7 +4755,8 @@ router.get("/clubs/brand-identity", async (_req, res) => {
           .sort((a: any, b: any) => String(b.po_reference).localeCompare(String(a.po_reference)))
           .map((o: any) => ({ poRef: o.po_reference, poId: o.id, status: o.status, name: o.account_name })),
       })).sort((a: any, b: any) => a.name.localeCompare(b.name));
-      return { id: c.id, name: c.name, kind: c.kind, accountId: rep?.id || null, primaryLogoUrl, colors, details: detailsByClub.get(c.id) || null, logos, designs, teams };
+      const verified = rep ? !!verifiedByAcct.get(rep.id) : false;
+      return { id: c.id, name: c.name, kind: c.kind, accountId: rep?.id || null, primaryLogoUrl, colors, verified, details: detailsByClub.get(c.id) || null, logos, designs, teams };
     });
     res.json({ ok: true, clubs: out });
   } catch (err: any) {
@@ -4775,6 +4779,23 @@ router.put("/clubs/:id/colours", async (req, res) => {
     await storage.ensureClubBrandIdentity(req.params.id);
     await storage.updateClubBrandIdentity(req.params.id, { colors: clean } as any);
     res.json({ ok: true, colors: clean });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// POST /api/admin/clubs/:clubId/verify-brand — the HUMAN GATE. A person confirms
+// the parent's brand identity (logos + colours) is correct; only then may free
+// mockups be generated for it. Toggles the rep account's brand identity between
+// 'lead' (unverified) and 'mockup' (verified-ready). :clubId is the CLUB id.
+router.post("/clubs/:clubId/verify-brand", async (req, res) => {
+  try {
+    const verified = (req.body && req.body.verified) !== false; // default true
+    const accountId = await storage.ensureRepAccountForClub(req.params.clubId);
+    if (!accountId) return res.status(404).json({ error: "Club not found" });
+    await storage.ensureClubBrandIdentity(accountId);
+    await storage.updateClubBrandIdentity(accountId, { enrichmentStage: verified ? "mockup" : "lead" } as any);
+    res.json({ ok: true, verified });
   } catch (err: any) {
     res.status(500).json({ error: String(err?.message || err) });
   }

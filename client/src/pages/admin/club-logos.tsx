@@ -68,6 +68,7 @@ interface BrandClub {
   accountId: string | null;
   primaryLogoUrl: string | null;
   colors: ClubColors | null;
+  verified: boolean;
   details: BrandDetails | null;
   logos: BrandAsset[];
   designs: BrandAsset[];
@@ -625,6 +626,12 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
     try { await apiRequest("DELETE", `/api/admin/clubs/${club.id}`, undefined); refresh(); } catch { /* */ }
   }
 
+  // The HUMAN GATE: confirm the brand identity is correct before free mockups go out.
+  async function verifyBrand(e?: any) {
+    if (e) e.stopPropagation();
+    try { await apiRequest("POST", `/api/admin/clubs/${club.id}/verify-brand`, { verified: !club.verified }); refresh(); } catch { /* */ }
+  }
+
   // Save a picked candidate as a real logo asset (never auto-applied).
   async function pickCandidate(c: BrandCandidate) {
     const acct = await getAccountId();
@@ -679,6 +686,10 @@ function ClubBrandCard({ club }: { club: BrandClub }) {
             : <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(252,165,165,0.12)", color: "#fca5a5", border: "1px solid rgba(252,165,165,0.3)", whiteSpace: "nowrap" }}>no primary</span>}
           <span style={countChipStyle}>L{club.logos.length}</span>
           <span style={countChipStyle}>D{club.designs.length}</span>
+          {/* HUMAN GATE — verify before free mockups can go out */}
+          {club.verified
+            ? <button onClick={verifyBrand} title="Verified — click to un-verify" style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(134,239,172,0.15)", color: "#86efac", border: "1px solid rgba(134,239,172,0.4)", whiteSpace: "nowrap", cursor: "pointer" }}>✓ brand verified</button>
+            : <button onClick={verifyBrand} title="Confirm the brand identity is correct to unlock free mockups" style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(250,204,21,0.15)", color: "#fde047", border: "1px solid rgba(250,204,21,0.4)", whiteSpace: "nowrap", cursor: "pointer", fontWeight: 600 }}>⚠ verify brand</button>}
           {swatches.length > 0 && (
             <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
               {swatches.map((col, i) => (
