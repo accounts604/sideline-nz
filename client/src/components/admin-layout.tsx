@@ -17,7 +17,7 @@ import {
   Settings as SettingsIcon,
 } from "lucide-react";
 import { useState } from "react";
-import { SidelineLogo } from "./sideline-logo";
+import logoHorizontal from "@assets/Sideline_NZ_logo_Horizontal_Wite_1767355724062.png";
 import { EzraLauncher } from "./ezra-launcher";
 
 // Sidebar — eight items. Ezra lives in the bottom-right launcher (mounted
@@ -87,7 +87,23 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       <div style={{ padding: "24px 20px 32px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
         <Link href="/admin">
           <div style={{ cursor: "pointer" }}>
-            <SidelineLogo subtitle="Admin Portal" />
+            <img
+              src={logoHorizontal}
+              alt="Sideline NZ"
+              style={{ height: "30px", width: "auto", objectFit: "contain", display: "block" }}
+            />
+            <p
+              style={{
+                fontSize: "11px",
+                color: "rgba(255,255,255,0.35)",
+                marginTop: "8px",
+                letterSpacing: "2px",
+                textTransform: "uppercase",
+                lineHeight: 1,
+              }}
+            >
+              Admin Portal
+            </p>
           </div>
         </Link>
       </div>

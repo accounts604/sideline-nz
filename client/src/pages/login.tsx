@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowRight } from "lucide-react";
-import { SidelineMark } from "@/components/sideline-logo";
+import logoHorizontal from "@assets/Sideline_NZ_logo_Horizontal_Wite_1767355724062.png";
 
 export default function LoginPage() {
   const { login, user } = useAuth();
@@ -59,7 +59,7 @@ export default function LoginPage() {
       <div style={{ width: "100%", maxWidth: "400px", textAlign: "center" }}>
         <Link href="/">
           <div style={{ cursor: "pointer", display: "inline-block", marginBottom: "12px" }}>
-            <SidelineMark size={48} />
+            <img src={logoHorizontal} alt="Sideline NZ" style={{ height: "46px", width: "auto", objectFit: "contain" }} />
           </div>
         </Link>
         <h1
