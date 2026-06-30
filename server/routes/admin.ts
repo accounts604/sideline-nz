@@ -2802,6 +2802,11 @@ function buildSupplierInstructions(input: {
 
 const raisePoSchema = z.object({
   supplierId: z.string().optional(), // optional if already assigned
+  // Admin-only: dispatch even when the QC gate fails (sizes/quantities not yet
+  // final, logos pending). Sizes & quantities always change, so the admin can
+  // force the PO out and adjust later. Only reachable via the requireAdmin
+  // router — the customer-approval auto-dispatch path never sets this.
+  override: z.boolean().optional(),
 });
 
 // Resolve which supplier should receive a given order line.
@@ -2970,7 +2975,7 @@ async function dispatchSupplierGroup(
 // specific supplier's approval card).
 export async function dispatchOrderToSuppliers(
   orderId: string,
-  opts: { supplierId?: string; userId?: string },
+  opts: { supplierId?: string; userId?: string; override?: boolean },
 ): Promise<
   | {
       ok: true;
@@ -2980,8 +2985,9 @@ export async function dispatchOrderToSuppliers(
       instructionsDocId: string | null;
       ghlPushed: boolean;
       ghlPushReason: string | undefined;
+      overrideWarnings: string[];
     }
-  | { ok: false; status: number; error: string }
+  | { ok: false; status: number; error: string; overridable?: boolean }
 > {
   const order = await storage.getOrder(orderId);
   if (!order) return { ok: false, status: 404, error: "Order not found" };
@@ -2991,6 +2997,11 @@ export async function dispatchOrderToSuppliers(
     return { ok: false, status: 400, error: "Order has no items to dispatch" };
   }
 
+  // Collected when opts.override is set and a QC gate would normally block —
+  // logged on the dispatch activity so there's an audit trail of exactly what
+  // was incomplete when the admin forced the PO out.
+  const overrideWarnings: string[] = [];
+
   // Step 0: PO QC gate (Sideline Studio Phase 0) — block dispatch of an
   // incomplete PO before ANY side effect. Verifies fabric, branding method,
   // quantity, and size reconciliation on every garment line. Logo presence +
@@ -2999,7 +3010,12 @@ export async function dispatchOrderToSuppliers(
     const { assertProductionReady, summarizeFailures } = await import("../po-qc.js");
     const qc = await assertProductionReady(order.id);
     if (!qc.ok) {
-      return { ok: false, status: 400, error: summarizeFailures(qc.failures) };
+      if (!opts.override) {
+        return { ok: false, status: 400, error: summarizeFailures(qc.failures), overridable: true };
+      }
+      // Admin override: dispatch despite incomplete sizes/quantities/spec.
+      overrideWarnings.push(summarizeFailures(qc.failures));
+      console.warn(`[dispatch-po] ADMIN OVERRIDE — ${order.poReference}: ${summarizeFailures(qc.failures)}`);
     }
   }
 
@@ -3180,7 +3196,11 @@ export async function dispatchOrderToSuppliers(
     const { checkLogosAttached, summarizeFailures } = await import("../po-qc.js");
     const logoCheck = checkLogosAttached(allItems as any);
     if (!logoCheck.ok) {
-      return { ok: false, status: 400, error: summarizeFailures(logoCheck.failures) };
+      if (!opts.override) {
+        return { ok: false, status: 400, error: summarizeFailures(logoCheck.failures), overridable: true };
+      }
+      overrideWarnings.push(summarizeFailures(logoCheck.failures));
+      console.warn(`[dispatch-po] ADMIN OVERRIDE (logos) — ${order.poReference}: ${summarizeFailures(logoCheck.failures)}`);
     }
   }
 
@@ -3269,9 +3289,20 @@ export async function dispatchOrderToSuppliers(
     .set({ poDispatchedAt: new Date(), poHeldAt: null, poHoldReason: null, poHeldBy: null, updatedAt: new Date() })
     .where(eq(orders.id, order.id));
 
+  // Audit trail when the admin forced the dispatch past the QC gate.
+  if (overrideWarnings.length) {
+    await storage.logOrderActivity({
+      orderId: order.id,
+      userId: opts.userId,
+      action: "po_dispatched_with_override",
+      details: { incomplete: overrideWarnings },
+    } as any).catch(() => {});
+  }
+
   return {
     ok: true,
     groups,
+    overrideWarnings,
     poPdfUploaded: !!poPdfResult,
     poPdfUrl: poPdfResult?.pdfUrl || null,
     instructionsDocId,
@@ -3282,12 +3313,13 @@ export async function dispatchOrderToSuppliers(
 
 router.post("/orders/:id/raise-po", async (req, res) => {
   try {
-    const { supplierId: bodySupplierId } = raisePoSchema.parse(req.body ?? {});
+    const { supplierId: bodySupplierId, override } = raisePoSchema.parse(req.body ?? {});
     const result = await dispatchOrderToSuppliers(req.params.id, {
       supplierId: bodySupplierId,
       userId: (req as any).user?.userId,
+      override,
     });
-    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    if (!result.ok) return res.status(result.status).json({ error: result.error, overridable: result.overridable });
     res.json(result);
   } catch (err: any) {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });

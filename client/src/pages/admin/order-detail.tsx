@@ -1012,10 +1012,32 @@ export default function AdminOrderDetail() {
     onError: (e: any) => setPortalMsg({ ok: false, text: e?.message || "Failed" }),
   });
 
+  const postRaisePo = async (override?: boolean) => {
+    const res = await fetch(`/api/admin/orders/${params.id}/raise-po`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ supplierId: selectedSupplierId || undefined, override }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  };
+
   const raisePoMut = useMutation({
     mutationFn: async () => {
-      const r = await apiRequest("POST", `/api/admin/orders/${params.id}/raise-po`, { supplierId: selectedSupplierId || undefined });
-      return r.json();
+      let { res, data } = await postRaisePo(false);
+      // Admin override: the QC gate blocks an incomplete PO, but sizes &
+      // quantities always change — so the admin can force it through and adjust
+      // later. Confirm, then re-send with override:true.
+      if (!res.ok && res.status === 400 && data?.overridable) {
+        const proceed = window.confirm(
+          `This PO isn't production-ready yet:\n\n${data.error}\n\nDispatch to the supplier anyway? Sizes & quantities can still be updated and re-sent later.`,
+        );
+        if (!proceed) throw new Error("__cancelled__");
+        ({ res, data } = await postRaisePo(true));
+      }
+      if (!res.ok) throw new Error(data?.error || `Failed (${res.status})`);
+      return data;
     },
     onSuccess: (r: any) => {
       invalidate();
@@ -1024,11 +1046,17 @@ export default function AdminOrderDetail() {
       const supplierBlurb = groupCount > 1
         ? `split across ${groupCount} suppliers (${r.groups.map((g: any) => `${g.supplierName} ${g.itemCount}`).join(", ")})`
         : `supplier emailed`;
-      setPortalMsg({ ok: true, text: r.ghlPushed
+      const overrode = r.overrideWarnings?.length
+        ? ` · ⚠ OVERRIDE (incomplete: ${r.overrideWarnings.join("; ")})`
+        : "";
+      setPortalMsg({ ok: true, text: (r.ghlPushed
         ? `PO raised · ${supplierBlurb} · GHL → PO Raised`
-        : `PO raised · ${supplierBlurb} · GHL skipped (${r.ghlPushReason})` });
+        : `PO raised · ${supplierBlurb} · GHL skipped (${r.ghlPushReason})`) + overrode });
     },
-    onError: (e: any) => setPortalMsg({ ok: false, text: e?.message || "Failed" }),
+    onError: (e: any) => {
+      if (e?.message === "__cancelled__") return; // admin declined the override
+      setPortalMsg({ ok: false, text: e?.message || "Failed" });
+    },
   });
 
   const dispatchToCustomerMut = useMutation({
