@@ -144,6 +144,7 @@ _(no prompts shipped yet)_
 ---
 
 ## Done
+- **AP-11 — BUG: logos/mockups not syncing to Drive** _(2026-07-01)_ — Uploads (`POST /orders/:id/designs`, plus the `/mockup` + `/attach-logo` API paths) only mirrored to Drive `if (order.driveFolderId)` — so any order **without a Drive folder yet** (e.g. the proof orders) silently never synced. Fix: added `ensureOrderDriveFolder()` which creates the PO's Drive folder on demand, then mirrors. All three upload paths now create-folder-if-missing → mirror to the correct `mockups`/`logos`/`artwork` subfolder. Typecheck clean.
 - **AP-03 — Real Sideline logo** _(2026-06-30)_ — Replaced the placeholder SVG "S" mark + "Sideline" wordmark with the real white horizontal logo (`attached_assets/Sideline_NZ_logo_Horizontal_Wite_…png`) in two places: the **admin sidebar header** (`admin-layout.tsx`, keeps the "Admin Portal" subtitle under it) and the **login page** (`login.tsx`, black bg). Both are dark-themed so the white logo fits. Typecheck clean.
 
 ---

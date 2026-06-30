@@ -3813,6 +3813,33 @@ const adminUploadDesignSchema = z.object({
   mimeType: z.string().optional(),
 });
 
+// Ensure the order has a Drive folder, creating it on demand so uploads always
+// have somewhere to sync. Returns the folder id (null if creation failed) and
+// mutates `order` so the caller can mirror immediately. Without this, uploads
+// to a folder-less order silently never reach Drive.
+async function ensureOrderDriveFolder(order: any): Promise<string | null> {
+  if (order.driveFolderId) return order.driveFolderId;
+  const dateStr = (order.createdAt ? new Date(order.createdAt) : new Date()).toISOString().slice(0, 10);
+  const companyForFolder = order.accountName?.trim() || "Sideline";
+  const contactForFolder =
+    [order.customerFirstName, order.customerLastName].filter(Boolean).join(" ").trim() ||
+    order.customerName?.trim() || order.customerEmail || "Unnamed Contact";
+  try {
+    const folder = await createClientFolder({ date: dateStr, companyName: companyForFolder, contactName: contactForFolder });
+    if (!folder) return null;
+    await storage.updateOrder(order.id, {
+      driveFolderId: folder.id, driveFolderUrl: folder.webViewLink, driveFolderName: folder.name,
+    });
+    order.driveFolderId = folder.id;
+    order.driveFolderUrl = folder.webViewLink;
+    order.driveFolderName = folder.name;
+    return folder.id;
+  } catch (e) {
+    console.error("[ensureOrderDriveFolder] failed:", e);
+    return null;
+  }
+}
+
 router.post("/orders/:id/designs", async (req, res) => {
   try {
     const user = (req as any).user;
@@ -3834,10 +3861,12 @@ router.post("/orders/:id/designs", async (req, res) => {
       version: 1,
     });
 
-    // Mirror legacy File Vault uploads into the PO's Drive folder too, so
-    // the Drive sub-folder is the single source of truth regardless of
-    // which upload path was used. Fire-and-forget.
-    if (order.driveFolderId) {
+    // Mirror uploads into the PO's Drive folder so it's the single source of
+    // truth regardless of upload path. Auto-create the folder if the order
+    // doesn't have one yet — otherwise uploads to a folder-less order silently
+    // never sync to Drive. Fire-and-forget once the folder exists.
+    const designFolderId = await ensureOrderDriveFolder(order);
+    if (designFolderId) {
       const slotMap: Record<typeof data.folder, "mockups" | "logos" | "artwork" | "approvals" | undefined> = {
         mockups: "mockups",
         logos: "logos",
@@ -3847,11 +3876,14 @@ router.post("/orders/:id/designs", async (req, res) => {
       };
       const slot = slotMap[data.folder];
       mirrorBlobToPoFolder({
-        poFolderId: order.driveFolderId,
+        poFolderId: designFolderId,
         slot,
         blobUrl: data.fileUrl,
         fileName: data.fileName,
+        orderId: order.id,
       }).catch((err) => console.error("[designs-upload] Drive mirror failed:", err));
+    } else {
+      console.warn(`[designs-upload] no Drive folder for ${order.poReference || order.id} — upload not mirrored`);
     }
 
     await db.insert(orderActivity).values({
@@ -5187,6 +5219,14 @@ router.post("/orders/:id/attach-logo", async (req, res) => {
       await db.update(orderItems).set({ elementUrls: next as any }).where(eq(orderItems.id, it.id));
       updated += 1;
     }
+    // Sync the logo asset into the PO's Drive folder (create the folder if needed).
+    const logoFolderId = await ensureOrderDriveFolder(order);
+    if (logoFolderId) {
+      mirrorBlobToPoFolder({
+        poFolderId: logoFolderId, slot: "logos", blobUrl: imageUrl,
+        fileName: (imageUrl.split("/").pop()?.split("?")[0]) || "logo.png", orderId: order.id,
+      }).catch((err) => console.error("[attach-logo] Drive mirror failed:", err));
+    }
     await storage.logOrderActivity({ orderId: order.id, action: "logo_attached_to_order", details: { itemsUpdated: updated, url: imageUrl } } as any).catch(() => {});
     res.json({ ok: true, poReference: order.poReference, itemsUpdated: updated });
   } catch (err: any) {
@@ -5210,6 +5250,14 @@ router.post("/orders/:id/mockup", async (req, res) => {
       label: label || "mockup", folder: "mockups",
       fileName: fileName || "mockup", fileUrl: imageUrl, mimeType: mimeType || "image/png",
     } as any).returning();
+    // Sync the mockup into the PO's Drive folder (create the folder if needed).
+    const mockupFolderId = await ensureOrderDriveFolder(order);
+    if (mockupFolderId) {
+      mirrorBlobToPoFolder({
+        poFolderId: mockupFolderId, slot: "mockups", blobUrl: imageUrl,
+        fileName: fileName || `${order.poReference || "mockup"}.png`, orderId: order.id,
+      }).catch((err) => console.error("[mockup-upload] Drive mirror failed:", err));
+    }
     await storage.logOrderActivity({ orderId: order.id, userId, action: "mockup_uploaded", details: { label: label || "mockup", fileId: df.id } } as any).catch(() => {});
     res.json({ ok: true, id: df.id, poReference: order.poReference });
   } catch (err: any) {
