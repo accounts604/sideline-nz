@@ -328,7 +328,15 @@ export async function generatePoHtml(orderId: string, opts: { audience?: "suppli
     const thS = "padding:7px 10px;background:#f3f3f3;font-size:10px;letter-spacing:0.4px;text-transform:uppercase;text-align:left;border:1px solid #eee";
     const tdS = "padding:6px 10px;border:1px solid #eee;font-size:12px;vertical-align:middle";
     const inpS = "font:inherit;font-size:12px;padding:6px 7px;border:1px solid #ccc;border-radius:5px;width:100%;box-sizing:border-box";
-    const selOpts = (sel: string) => `<option value="">Select size</option>` + SZOPTS.map(s => `<option${s === sel ? " selected" : ""}>${s}</option>`).join("");
+    // Aggregate any existing per-size quantities (for prefilling the grid).
+    const sizeMap: Record<string, number> = {};
+    for (const b of bds as any[]) { if (b.size) sizeMap[b.size] = (sizeMap[b.size] || 0) + (b.quantity || 0); }
+    const hasRoster = (bds as any[]).some((b) => b.playerName);   // named per-player run (e.g. Richmond)
+    const gridSizes = chartSizes(chartType);                       // this garment's assigned chart sizes
+    // The personalise table's size dropdown lists this garment's own chart when
+    // it has one, otherwise the legacy generic set.
+    const rosterSizes = gridSizes.length ? gridSizes : SZOPTS;
+    const selOpts = (sel: string) => `<option value="">Select size</option>` + rosterSizes.map(s => `<option${s === sel ? " selected" : ""}>${s}</option>`).join("");
     const rowHtml = (b: any, i: number) => isInteractive
       ? `<tr data-row style="${!b.size ? "background:#fff8ee" : ""}">
           <td style="${tdS};text-align:center;color:#888" data-idx>${i + 1}</td>
@@ -336,42 +344,62 @@ export async function generatePoHtml(orderId: string, opts: { audience?: "suppli
           <td style="${tdS}"><select data-cell="size" style="${inpS}" onchange="snzRecount()">${selOpts(b.size || "")}</select></td>
           <td style="${tdS};text-align:center"><input data-cell="quantity" type="number" min="0" value="${b.quantity ?? 1}" style="${inpS};text-align:center" oninput="snzRecount()" /></td>
           <td style="${tdS}"><input data-cell="nameOnBack" style="${inpS}" placeholder="(no name)" value="${esc(b.namePlacement || "")}" /></td>
-          <td class="no-print" style="${tdS};text-align:center"><button type="button" onclick="this.closest('tr').remove();snzRenumber();snzRecount()" style="border:none;background:none;color:#b34;font-size:16px;cursor:pointer;line-height:1">&times;</button></td>
+          <td class="no-print" style="${tdS};text-align:center"><button type="button" onclick="var tb=this.closest('tbody');this.closest('tr').remove();snzRenumber(tb);snzRecount()" style="border:none;background:none;color:#b34;font-size:16px;cursor:pointer;line-height:1">&times;</button></td>
         </tr>`
       : `<tr><td style="${tdS};text-align:center;color:#888">${i + 1}</td><td style="${tdS}">${esc(b.playerName || "")}</td><td style="${tdS}">${esc(b.size || "")}</td><td style="${tdS};text-align:center">${b.quantity ?? ""}</td><td style="${tdS}">${esc(b.namePlacement || "")}</td></tr>`;
-    // Aggregate any existing per-size quantities (for prefilling the grid).
-    const sizeMap: Record<string, number> = {};
-    for (const b of bds as any[]) { if (b.size) sizeMap[b.size] = (sizeMap[b.size] || 0) + (b.quantity || 0); }
-    const hasRoster = (bds as any[]).some((b) => b.playerName);   // named per-player run (e.g. Richmond)
-    const gridSizes = chartSizes(chartType);                       // this garment's assigned chart sizes
 
     const sectionHead = `<div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">Sizes &amp; Quantities</div>`;
     const totBar = `<div style="display:flex;justify-content:space-between;background:#2b2622;color:#fff;padding:8px 16px;font-size:12px;font-weight:700;margin-top:8px"><span>Total</span><span data-tot data-item-id="${esc(item.id)}" data-ord="${item.quantity}">${totalQty} of ${item.quantity} ordered</span></div>`;
 
-    let control: string;
-    if (hasRoster) {
-      // Named per-player roster (kept editable; static for non-interactive).
-      control = `${isInteractive ? `<div class="no-print" style="font-size:11px;color:#7a5f3f;background:#fff8ee;border:1px solid #f0d8b6;border-top:none;padding:8px 12px">Tap any field to change it. Set each player's size and quantity, add a name for the back if you want one, and use Add person for anyone missing.</div>` : ""}
-        <div class="snz-scroll"><table${isInteractive ? ` data-roster data-item-id="${esc(item.id)}"` : ""} style="width:100%;border-collapse:collapse;border:1px solid #eee;border-top:none">
+    // ── Reusable size-grid chips (customer picks how many of each size) ──
+    const gridCell = (sz: string) => {
+      const q = sizeMap[sz] || 0;
+      return isInteractive
+        ? `<div style="display:flex;align-items:center;gap:3px;border:1px solid #e3dcd5;border-radius:8px;padding:4px 5px">
+             <span style="font-size:11px;font-weight:700;min-width:30px;text-align:center">${esc(sz)}</span>
+             <button type="button" class="no-print" onclick="snzStep(this,-1)" style="border:1px solid #ddd;background:#fff;border-radius:5px;width:22px;height:24px;font-size:14px;line-height:1;cursor:pointer">&minus;</button>
+             <input data-size="${esc(sz)}" type="number" min="0" value="${q}" oninput="snzRecount()" style="width:42px;text-align:center;font:inherit;font-size:12px;padding:4px;border:1px solid #ccc;border-radius:5px" />
+             <button type="button" class="no-print" onclick="snzStep(this,1)" style="border:1px solid #ddd;background:#fff;border-radius:5px;width:22px;height:24px;font-size:14px;line-height:1;cursor:pointer">+</button>
+           </div>`
+        : `<div style="border:1px solid #eee;border-radius:8px;padding:5px 9px;font-size:12px"><b>${esc(sz)}</b> ${q}</div>`;
+    };
+    const gridBanner = isInteractive ? `<div class="no-print" style="font-size:11px;color:#7a5f3f;background:#fff6ec;border:1px solid #f0d8b6;border-top:none;padding:8px 12px">Set how many of each size you need. These are this garment's size chart. Use the − / + buttons or type a number.</div>` : "";
+    const gridInner = (attrs: string) => `${gridBanner}<div ${attrs} style="display:flex;flex-wrap:wrap;gap:7px;padding:12px 16px;border:1px solid #eee;border-top:none">${gridSizes.map(gridCell).join("")}</div>`;
+
+    // ── Reusable personalise table (per-person name + size + qty + name on back) ──
+    // Prefill from existing breakdowns; seed one blank row when there are none
+    // so "Add person" has a template to clone.
+    const rosterSeed = (bds.length ? bds : (isInteractive ? [{ size: "", quantity: 1, playerName: "", playerNumber: null, namePlacement: "" }] : [])) as any[];
+    const rosterBanner = isInteractive ? `<div class="no-print" style="font-size:11px;color:#7a5f3f;background:#fff8ee;border:1px solid #f0d8b6;border-top:none;padding:8px 12px">Add a row per person. Set each player's size and quantity, add a name for the back if you want one, and use Add person for anyone missing.</div>` : "";
+    const rosterInner = (attrs: string) => `${rosterBanner}
+        <div class="snz-scroll"><table${attrs ? ` ${attrs}` : ""} style="width:100%;border-collapse:collapse;border:1px solid #eee;border-top:none">
           <thead><tr><th style="${thS};text-align:center;width:30px">#</th><th style="${thS}">Player</th><th style="${thS};width:120px">Size</th><th style="${thS};width:64px;text-align:center">Qty</th><th style="${thS}">Name on back</th>${isInteractive ? `<th class="no-print" style="${thS};width:30px"></th>` : ""}</tr></thead>
-          <tbody data-body>${(bds as any[]).map(rowHtml).join("")}</tbody>
+          <tbody data-body>${rosterSeed.map(rowHtml).join("")}</tbody>
         </table></div>
-        ${isInteractive ? `<button type="button" class="no-print" onclick="snzAddRow()" style="margin:8px 0 0;border:1.4px dashed #cdbfae;background:#fff;color:#5b1a2e;font-weight:700;font-size:12px;padding:8px 12px;border-radius:7px;cursor:pointer">+ Add person</button>` : ""}`;
-    } else if (gridSizes.length) {
-      // Size-quantity grid built from the garment's assigned size chart.
-      const cell = (sz: string) => {
-        const q = sizeMap[sz] || 0;
-        return isInteractive
-          ? `<div style="display:flex;align-items:center;gap:3px;border:1px solid #e3dcd5;border-radius:8px;padding:4px 5px">
-               <span style="font-size:11px;font-weight:700;min-width:30px;text-align:center">${esc(sz)}</span>
-               <button type="button" class="no-print" onclick="snzStep(this,-1)" style="border:1px solid #ddd;background:#fff;border-radius:5px;width:22px;height:24px;font-size:14px;line-height:1;cursor:pointer">&minus;</button>
-               <input data-size="${esc(sz)}" type="number" min="0" value="${q}" oninput="snzRecount()" style="width:42px;text-align:center;font:inherit;font-size:12px;padding:4px;border:1px solid #ccc;border-radius:5px" />
-               <button type="button" class="no-print" onclick="snzStep(this,1)" style="border:1px solid #ddd;background:#fff;border-radius:5px;width:22px;height:24px;font-size:14px;line-height:1;cursor:pointer">+</button>
-             </div>`
-          : `<div style="border:1px solid #eee;border-radius:8px;padding:5px 9px;font-size:12px"><b>${esc(sz)}</b> ${q}</div>`;
+        ${isInteractive ? `<button type="button" class="no-print" onclick="snzAddRow(this)" style="margin:8px 0 0;border:1.4px dashed #cdbfae;background:#fff;color:#5b1a2e;font-weight:700;font-size:12px;padding:8px 12px;border-radius:7px;cursor:pointer">+ Add person</button>` : ""}`;
+
+    let control: string;
+    if (isInteractive && gridSizes.length) {
+      // Sized garment: give the customer BOTH modes and let them choose. Default
+      // to personalise when the order was seeded with names, else the size grid.
+      const defMode = hasRoster ? "roster" : "grid";
+      const btn = (mode: string, label: string) => {
+        const on = mode === defMode;
+        return `<button type="button" data-modebtn="${mode}" onclick="snzMode('${esc(item.id)}','${mode}')" style="flex:1;padding:8px 10px;font-size:11.5px;font-weight:700;border:1px solid #d8cbb8;border-radius:7px;cursor:pointer;background:${on ? "#5b1a2e" : "#fff"};color:${on ? "#fff" : "#5b1a2e"}">${label}</button>`;
       };
-      control = `${isInteractive ? `<div class="no-print" style="font-size:11px;color:#7a5f3f;background:#fff6ec;border:1px solid #f0d8b6;border-top:none;padding:8px 12px">Set how many of each size you need. These are this garment's size chart. Use the − / + buttons or type a number.</div>` : ""}
-        <div ${isInteractive ? `data-sizegrid data-item-id="${esc(item.id)}"` : ""} style="display:flex;flex-wrap:wrap;gap:7px;padding:12px 16px;border:1px solid #eee;border-top:none">${gridSizes.map(cell).join("")}</div>`;
+      control = `<div data-item-block data-item-id="${esc(item.id)}" data-mode="${defMode}">
+        <div class="no-print" data-modetoggle style="display:flex;gap:6px;padding:8px 12px;border:1px solid #eee;border-top:none;background:#faf7f3">
+          ${btn("grid", "Sizes &amp; quantities")}${btn("roster", "Personalise (name + size)")}
+        </div>
+        <div data-modepanel="grid"${defMode === "grid" ? "" : " hidden"}>${gridInner(`data-sizegrid data-item-id="${esc(item.id)}"`)}</div>
+        <div data-modepanel="roster"${defMode === "roster" ? "" : " hidden"}>${rosterInner(`data-roster data-item-id="${esc(item.id)}"`)}</div>
+      </div>`;
+    } else if (hasRoster) {
+      // No assignable size chart but named roster present — personalise only.
+      control = rosterInner(isInteractive ? `data-roster data-item-id="${esc(item.id)}"` : "");
+    } else if (gridSizes.length) {
+      // Static size grid (non-interactive customer/PDF render).
+      control = gridInner(isInteractive ? `data-sizegrid data-item-id="${esc(item.id)}"` : "");
     } else {
       // True one-size item (e.g. OSFA cap).
       control = `<div style="border:1px solid #eee;border-top:none;padding:12px 16px;font-size:12px">One size. Quantity: ${isInteractive ? `<input data-onesize data-item-id="${esc(item.id)}" type="number" min="0" value="${totalQty}" style="${inpS};width:80px;display:inline-block" />` : `<strong>${totalQty}</strong>`}</div>`;
@@ -573,16 +601,22 @@ ${isInteractive ? `
   </div>
 </div>
 <script>
-function snzRenumber(){var i=0;document.querySelectorAll('[data-body] tr').forEach(function(tr){var c=tr.querySelector('[data-idx]');if(c)c.textContent=(++i);});}
+// An input only counts / submits when its mode panel is the active one (a
+// sized garment renders both a size grid and a personalise table; the inactive
+// one is [hidden]). Items without a toggle have no [data-modepanel] → visible.
+function snzVis(el){var p=el.closest('[data-modepanel]');return !(p&&p.hasAttribute('hidden'));}
+function snzMode(id,mode){var blk=document.querySelector('[data-item-block][data-item-id="'+id+'"]');if(!blk)return;blk.setAttribute('data-mode',mode);blk.querySelectorAll('[data-modepanel]').forEach(function(p){if(p.getAttribute('data-modepanel')===mode)p.removeAttribute('hidden');else p.setAttribute('hidden','');});blk.querySelectorAll('[data-modebtn]').forEach(function(b){var on=b.getAttribute('data-modebtn')===mode;b.style.background=on?'#5b1a2e':'#fff';b.style.color=on?'#fff':'#5b1a2e';});snzRecount();}
+function snzRenumber(tb){var bodies=tb?[tb]:document.querySelectorAll('[data-body]');Array.prototype.forEach.call(bodies,function(b){var n=0;b.querySelectorAll('tr').forEach(function(tr){var c=tr.querySelector('[data-idx]');if(c)c.textContent=(++n);});});}
 function snzStep(b,d){var i=b.parentNode.querySelector('input[data-size]');if(!i)return;var v=(parseInt(i.value||'0',10)||0)+d;if(v<0)v=0;i.value=v;snzRecount();}
-function snzRecount(){var left=0;document.querySelectorAll('[data-cell="size"]').forEach(function(s){if(!s.value)left++;});document.querySelectorAll('[data-tot]').forEach(function(t){var id=t.getAttribute('data-item-id');var tot=0;document.querySelectorAll('[data-roster][data-item-id="'+id+'"] tbody tr input[type=number],[data-sizegrid][data-item-id="'+id+'"] input[type=number],input[data-onesize][data-item-id="'+id+'"]').forEach(function(q){tot+=parseInt(q.value||'0',10)||0;});t.textContent=tot+' of '+(t.getAttribute('data-ord')||'')+' ordered';});var lm=document.querySelector('[data-left]');if(lm)lm.textContent=(left?left+' size'+(left>1?'s':'')+' to pick':'all sizes in');}
-function snzAddRow(){var b=document.querySelector('[data-body]');if(!b||!b.rows.length)return;var tr=b.rows[0].cloneNode(true);tr.querySelectorAll('input').forEach(function(i){i.value='';});tr.querySelectorAll('select').forEach(function(s){s.selectedIndex=0;});tr.style.background='#fff8ee';b.appendChild(tr);snzRenumber();snzRecount();}
+function snzRecount(){var left=0;document.querySelectorAll('[data-cell="size"]').forEach(function(s){if(snzVis(s)&&!s.value)left++;});document.querySelectorAll('[data-tot]').forEach(function(t){var id=t.getAttribute('data-item-id');var tot=0;document.querySelectorAll('[data-roster][data-item-id="'+id+'"] tbody tr input[type=number],[data-sizegrid][data-item-id="'+id+'"] input[type=number],input[data-onesize][data-item-id="'+id+'"]').forEach(function(q){if(snzVis(q))tot+=parseInt(q.value||'0',10)||0;});t.textContent=tot+' of '+(t.getAttribute('data-ord')||'')+' ordered';});var lm=document.querySelector('[data-left]');if(lm)lm.textContent=(left?left+' size'+(left>1?'s':'')+' to pick':'all sizes in');}
+function snzAddRow(btn){var scope=(btn&&(btn.closest('[data-modepanel]')||btn.parentNode))||document;var b=scope.querySelector('[data-body]');if(!b||!b.rows.length)return;var tr=b.rows[0].cloneNode(true);tr.querySelectorAll('input').forEach(function(i){i.value='';});tr.querySelectorAll('select').forEach(function(s){s.selectedIndex=0;});tr.style.background='#fff8ee';b.appendChild(tr);snzRenumber(b);snzRecount();}
 document.addEventListener('DOMContentLoaded',snzRecount);
 ${submitUrl ? `var SNZ_SUBMIT_URL=${JSON.stringify(submitUrl)};
 function snzVal(el){return el?(el.value||''):'';}
 function snzCollect(decision){
   var rosters=[];
   document.querySelectorAll('table[data-roster]').forEach(function(t){
+    if(!snzVis(t))return;   // skip the personalise table when the size grid is active
     var rows=[];
     t.querySelectorAll('tbody tr').forEach(function(tr){
       var pn=tr.querySelector('[data-cell="playerName"]');var sz=tr.querySelector('[data-cell="size"]');
@@ -592,6 +626,7 @@ function snzCollect(decision){
     rosters.push({itemId:t.getAttribute('data-item-id'),rows:rows});
   });
   document.querySelectorAll('[data-sizegrid]').forEach(function(g){
+    if(!snzVis(g))return;   // skip the size grid when the personalise table is active
     var rows=[];
     g.querySelectorAll('input[data-size]').forEach(function(i){var q=parseInt(i.value||'0',10)||0;if(q>0)rows.push({size:i.getAttribute('data-size'),quantity:q});});
     rosters.push({itemId:g.getAttribute('data-item-id'),rows:rows});
