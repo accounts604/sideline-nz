@@ -1,0 +1,27 @@
+name: CI
+
+# Guardrail: typecheck + render the customer DESIGN PROOF against its known
+# crash class (numeric sizeMm, null fields, both toggle modes) on every change
+# to main. If the proof would 500 for customers, this fails the build BEFORE it
+# can deploy. See scripts/test-proof-render.ts.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run check
+      - name: Customer proof render guard
+        run: npm run test:proof

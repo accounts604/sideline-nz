@@ -11,6 +11,7 @@
     "build:vercel": "vite build && node scripts/bundle-api.mjs",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "test:proof": "tsx scripts/test-proof-render.ts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
