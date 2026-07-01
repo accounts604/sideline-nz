@@ -33,8 +33,11 @@ async function getAccessToken(): Promise<string | null> {
   return (await res.json()).access_token;
 }
 
-function esc(s: string | null | undefined): string {
-  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// Accepts anything: element data comes from untyped jsonb, so a field the type
+// says is a string (e.g. sizeMm) can be a number at runtime. Coerce before
+// escaping so a stray non-string can never throw and take down the whole proof.
+function esc(s: unknown): string {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 // ─── Design asset strip ─────────────────────────────────────────

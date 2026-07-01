@@ -3175,7 +3175,7 @@ export async function dispatchOrderToSuppliers(
       if (!pos) continue;
       const existing = ((item as any).elementUrls as any[] | null) ?? [];
       if (existing.some((e) => String(e?.name || "").toLowerCase().includes("sideline"))) continue;
-      const mark = { name: "Sideline", url: SIDELINE_LOGO_URL, position: pos, application: (item as any).brandingMethod || "Embroidery", sizeMm: 60, note: "Sideline maker's mark (auto)" };
+      const mark = { name: "Sideline", url: SIDELINE_LOGO_URL, position: pos, application: (item as any).brandingMethod || "Embroidery", sizeMm: "60 mm", note: "Sideline maker's mark (auto)" };
       const next = [...existing, mark];
       await db.update(orderItems).set({ elementUrls: next as any }).where(eq(orderItems.id, item.id));
       (item as any).elementUrls = next;
@@ -5185,7 +5185,7 @@ router.post("/clubs/:id/apply-logos-to-current-po", async (req, res) => {
       }
       const pos = markPosition((item as any).productType);
       if (pos && !next.some((e) => String(e?.name || "").toLowerCase().includes("sideline"))) {
-        next.push({ name: "Sideline", url: SIDELINE_LOGO_URL, position: pos, application: (item as any).brandingMethod || "Embroidery", sizeMm: 60, note: "Sideline maker's mark (auto)" });
+        next.push({ name: "Sideline", url: SIDELINE_LOGO_URL, position: pos, application: (item as any).brandingMethod || "Embroidery", sizeMm: "60 mm", note: "Sideline maker's mark (auto)" });
         changed = true;
       }
       if (changed) { await db.update(orderItems).set({ elementUrls: next as any }).where(eq(orderItems.id, item.id)); updated += 1; }
