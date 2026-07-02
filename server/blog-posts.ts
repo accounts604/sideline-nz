@@ -26,8 +26,8 @@ const posts: BlogPost[] = [
       "Onewhero Rugby's 2026 supporters gear photographed off the production line, side by side with the design mockups the club approved. Custom rugby jerseys, hoodies, tees and knitted beanies by Sideline NZ.",
     publishedAt: "2026-07-03",
     featuredImage:
-      "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/onewhero-rugby-long-sleeve-jersey-2026-real.jpg?v=1783003483",
-    featuredImageAlt: "Finished Onewhero Rugby 2026 long sleeve supporters jersey",
+      "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/onewhero-rugby-supporters-cover.png?v=1783005771",
+    featuredImageAlt: "Supporter in the Onewhero Rugby 2026 long sleeve jersey under the floodlights",
     tags: ["rugby union", "supporters merch", "custom teamwear", "Onewhero Rugby"],
     body: teamstoreify(`<p>When Onewhero Rugby asked us for a 2026 supporters range, we showed them digital mockups within days. A few weeks later, the real thing landed in Auckland. Here is how the finished gear stacks up against the designs the club approved, straight off the production line.</p>
 
@@ -68,8 +68,8 @@ const posts: BlogPost[] = [
       "Wesley College's 2026 rugby supporters range, from approved digital mockups to finished jerseys, tapa print tees, windbreakers and knitted beanies. Custom school sportswear by Sideline NZ.",
     publishedAt: "2026-07-03",
     featuredImage:
-      "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/wesley-college-supporters-jersey-2026-real.jpg?v=1783003661",
-    featuredImageAlt: "Finished Wesley College 2026 supporters rugby jersey",
+      "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/wesley-college-supporters-cover.png?v=1783005771",
+    featuredImageAlt: "Supporter in the Wesley College 2026 hooped supporters jersey at a floodlit ground",
     tags: ["rugby union", "supporters merch", "school sport", "Wesley College"],
     body: teamstoreify(`<p>Wesley College is the oldest registered school in New Zealand, established 1844, and their 2026 rugby supporters range needed to carry that history. Here is the finished gear next to the mockups the school approved, photographed as it came off the line.</p>
 
@@ -108,8 +108,8 @@ const posts: BlogPost[] = [
       "The St Peter's College 1st XV 2026 supporters range photographed at production: royal and gold rugby jersey, fleece hoodie, tee and jacquard knitted scarf, next to the mockups the college approved.",
     publishedAt: "2026-07-03",
     featuredImage:
-      "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/st-peters-1st-xv-rugby-jersey-2026-real.jpg?v=1783003661",
-    featuredImageAlt: "Finished St Peter's College 1st XV 2026 rugby jersey",
+      "https://cdn.shopify.com/s/files/1/0697/0972/5811/files/st-peters-1st-xv-supporters-cover.png?v=1783005771",
+    featuredImageAlt: "Supporter in the St Peter's College 1st XV royal and gold jersey facing the posts",
     tags: ["rugby union", "supporters merch", "school sport", "St Peter's College"],
     body: teamstoreify(`<p>The St Peter's College 1st XV supporters range was one of the most popular drops on our team store this season, and now the physical gear is out in the world. Here is the finished kit photographed at production, side by side with the mockups the college approved.</p>
 
