@@ -18,11 +18,17 @@ function DesktopNavItem({ link, location }: { link: NavLink; location: string })
   );
 
   if (link.external) {
+    const offsite = link.href.startsWith("http");
     return (
-      <a href={link.href} target="_blank" rel="noopener noreferrer" className={itemClass}>
+      <a
+        href={link.href}
+        target={offsite ? "_blank" : undefined}
+        rel={offsite ? "noopener noreferrer" : undefined}
+        className={itemClass}
+      >
         <span className="inline-flex items-center gap-0.5">
           {link.label}
-          <ArrowUpRight size={11} />
+          {offsite && <ArrowUpRight size={11} />}
         </span>
       </a>
     );
@@ -152,13 +158,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                       <a
                         key={link.href}
                         href={link.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        target={link.href.startsWith("http") ? "_blank" : undefined}
+                        rel={link.href.startsWith("http") ? "noopener noreferrer" : undefined}
                         className="text-xs tracking-wider uppercase text-white/25 hover:text-white transition-colors"
                       >
                         <span className="inline-flex items-center gap-0.5">
                           {link.label}
-                          <ArrowUpRight size={10} />
+                          {link.href.startsWith("http") && <ArrowUpRight size={10} />}
                         </span>
                       </a>
                     ) : (
