@@ -15,6 +15,7 @@ import Schools from "@/pages/schools";
 import Quote from "@/pages/quote";
 import Contact from "@/pages/contact";
 import Sports from "@/pages/sports";
+import SportDetail from "@/pages/sport-detail";
 import OurWorkPage from "@/pages/our-work";
 import CaseStudyDetailPage from "@/pages/case-study-detail";
 import TeamStoresPage from "@/pages/team-stores";
@@ -111,6 +112,7 @@ function Router() {
         <Route path="/clubs" component={Clubs} />
         <Route path="/schools" component={Schools} />
         <Route path="/sports" component={Sports} />
+        <Route path="/sports/:id" component={SportDetail} />
         <Route path="/team-stores" component={TeamStoresPage} />
         <Route path="/team-stores/:slug" component={TeamStoreDetailPage} />
         <Route path="/our-work" component={OurWorkPage} />
