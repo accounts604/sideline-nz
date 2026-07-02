@@ -48,18 +48,19 @@ export function MobileMenu({ isOpen, onClose }: MobileMenuProps) {
           <nav className="flex flex-col py-4">
             {NAV_LINKS.map((link) => {
               if (link.external) {
+                const offsite = link.href.startsWith("http");
                 return (
                   <a
                     key={link.href}
                     href={link.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    target={offsite ? "_blank" : undefined}
+                    rel={offsite ? "noopener noreferrer" : undefined}
                     className="px-6 py-4 text-lg font-display uppercase tracking-wide block cursor-pointer transition-colors text-black/50 hover:text-black hover:bg-black/5"
                     onClick={onClose}
                   >
                     <span className="inline-flex items-center gap-1">
                       {link.label}
-                      <ArrowUpRight size={16} />
+                      {offsite && <ArrowUpRight size={16} />}
                     </span>
                   </a>
                 );

@@ -16,6 +16,7 @@ import { publicApprovalRouter, publicProofRouter } from "./approvals";
 import chatbotRouter from "./chatbot";
 import notifyRouter from "./notify";
 import cronRouter from "./cron";
+import blogRouter from "./blog";
 import { createHash } from "crypto";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
@@ -118,6 +119,9 @@ export async function registerRoutes(
 
   // Scheduled / cron-triggered jobs (admin cookie OR X-Cron-Secret header)
   app.use("/api/cron", cronRouter);
+
+  // Server-rendered blog (SEO) — must beat the SPA fallback
+  app.use(blogRouter);
 
   return httpServer;
 }

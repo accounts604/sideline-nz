@@ -53,6 +53,7 @@ export const FOOTER_COLUMNS: { title: string; links: NavLink[] }[] = [
       { href: "/free-mockup", label: "Get a Free Mockup" },
       { href: "/quote", label: "Get a Quote" },
       { href: "/our-work", label: "Our Work" },
+      { href: "/blog", label: "Blog", external: true },
       { href: "/contact", label: "Contact" },
     ],
   },
