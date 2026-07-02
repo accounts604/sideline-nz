@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, ArrowRight, Check, Loader2, HelpCircle, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TeamStoreExplainerModal } from "@/components/team-store-explainer-modal";
+import { getSport } from "@/data/sports";
 
 type UserType = "club" | "school" | "other";
 
@@ -216,6 +217,13 @@ export default function Quote() {
     if (params.get("teamStore") === "yes") setForm((f) => ({ ...f, team_store_interest: "Yes" }));
     if (params.get("fundraise") === "yes") setForm((f) => ({ ...f, fundraising_interest: "Yes please" }));
     if (params.get("mockup") === "yes") setForm((f) => ({ ...f, mockup_interest: "Yes please" }));
+    const sportParam = params.get("sport");
+    if (sportParam) {
+      const sport = getSport(sportParam);
+      if (sport && SPORTS.includes(sport.pillLabel)) {
+        setForm((f) => (f.sports.includes(sport.pillLabel) ? f : { ...f, sports: [...f.sports, sport.pillLabel] }));
+      }
+    }
   }, []);
 
   useEffect(() => {

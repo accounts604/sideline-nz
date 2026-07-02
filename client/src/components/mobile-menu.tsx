@@ -1,44 +1,20 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { X, Instagram, Facebook, Twitter, LogIn, User } from "lucide-react";
+import { X, LogIn, User, ChevronDown, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
-
-const TikTokIcon = ({ className }: { className?: string }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-  >
-    <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
-  </svg>
-);
+import { NAV_LINKS } from "@/config/nav";
 
 interface MobileMenuProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const navLinks = [
-  { href: "/clubs", label: "Clubs" },
-  { href: "/schools", label: "Schools" },
-  { href: "/sponsor-placement", label: "Sponsors" },
-  { href: "/team-stores", label: "Team Stores" },
-  { href: "/our-work", label: "Our Work" },
-  { href: "/contact", label: "Contact" },
-];
-
 export function MobileMenu({ isOpen, onClose }: MobileMenuProps) {
   const [location] = useLocation();
   const { user } = useAuth();
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -55,13 +31,13 @@ export function MobileMenu({ isOpen, onClose }: MobileMenuProps) {
 
   return (
     <div className="fixed inset-0 z-[100] flex justify-start">
-      <div 
+      <div
         className="absolute inset-0 bg-black/40 animate-in fade-in duration-300"
         onClick={onClose}
       />
 
       <div className="relative w-[85%] max-w-sm h-full bg-white text-black shadow-2xl animate-in slide-in-from-left duration-300 flex flex-col">
-        
+
         <div className="flex justify-end p-4 border-b border-black/10">
           <button onClick={onClose} className="p-2 hover:bg-black/5 rounded-full transition-colors">
             <X size={24} />
@@ -70,21 +46,90 @@ export function MobileMenu({ isOpen, onClose }: MobileMenuProps) {
 
         <div className="flex-1 overflow-y-auto">
           <nav className="flex flex-col py-4">
-            {navLinks.map((link) => (
-              <Link key={link.href} href={link.href}>
-                <span 
-                  className={cn(
-                    "px-6 py-4 text-lg font-display uppercase tracking-wide block cursor-pointer transition-colors",
-                    location === link.href 
-                      ? "text-black font-semibold" 
-                      : "text-black/50 hover:text-black hover:bg-black/5"
-                  )}
-                  onClick={onClose}
-                >
-                  {link.label}
-                </span>
-              </Link>
-            ))}
+            {NAV_LINKS.map((link) => {
+              if (link.external) {
+                return (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-6 py-4 text-lg font-display uppercase tracking-wide block cursor-pointer transition-colors text-black/50 hover:text-black hover:bg-black/5"
+                    onClick={onClose}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {link.label}
+                      <ArrowUpRight size={16} />
+                    </span>
+                  </a>
+                );
+              }
+
+              if (link.children) {
+                const isExpanded = expanded === link.href;
+                return (
+                  <div key={link.href}>
+                    <div className="flex items-stretch">
+                      <Link href={link.href}>
+                        <span
+                          className={cn(
+                            "px-6 py-4 text-lg font-display uppercase tracking-wide block cursor-pointer transition-colors flex-1",
+                            location === link.href || location.startsWith(`${link.href}/`)
+                              ? "text-black font-semibold"
+                              : "text-black/50 hover:text-black hover:bg-black/5"
+                          )}
+                          onClick={onClose}
+                        >
+                          {link.label}
+                        </span>
+                      </Link>
+                      <button
+                        className="px-6 text-black/40 hover:text-black transition-colors"
+                        onClick={() => setExpanded(isExpanded ? null : link.href)}
+                        aria-label={`Toggle ${link.label} submenu`}
+                      >
+                        <ChevronDown size={18} className={cn("transition-transform", isExpanded && "rotate-180")} />
+                      </button>
+                    </div>
+                    {isExpanded && (
+                      <div className="pb-2 bg-black/[0.03]">
+                        {link.children.map((child) => (
+                          <Link key={child.href} href={child.href}>
+                            <span
+                              className={cn(
+                                "pl-10 pr-6 py-3 text-base font-display uppercase tracking-wide block cursor-pointer transition-colors",
+                                location === child.href
+                                  ? "text-black font-semibold"
+                                  : "text-black/40 hover:text-black hover:bg-black/5"
+                              )}
+                              onClick={onClose}
+                            >
+                              {child.label}
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <Link key={link.href} href={link.href}>
+                  <span
+                    className={cn(
+                      "px-6 py-4 text-lg font-display uppercase tracking-wide block cursor-pointer transition-colors",
+                      location === link.href
+                        ? "text-black font-semibold"
+                        : "text-black/50 hover:text-black hover:bg-black/5"
+                    )}
+                    onClick={onClose}
+                  >
+                    {link.label}
+                  </span>
+                </Link>
+              );
+            })}
           </nav>
 
           <div className="px-6 py-4 space-y-3">
@@ -115,23 +160,6 @@ export function MobileMenu({ isOpen, onClose }: MobileMenuProps) {
                 {user ? "My Portal" : "Login"}
               </Button>
             </Link>
-          </div>
-        </div>
-
-        <div className="p-5 border-t border-black/10">
-          <div className="flex w-full border border-black/20 divide-x divide-black/20">
-            <a href="#" className="flex-1 flex items-center justify-center py-3 hover:bg-black/5 transition-colors text-black/40 hover:text-black">
-              <Instagram size={20} />
-            </a>
-            <a href="#" className="flex-1 flex items-center justify-center py-3 hover:bg-black/5 transition-colors text-black/40 hover:text-black">
-              <Facebook size={20} />
-            </a>
-            <a href="#" className="flex-1 flex items-center justify-center py-3 hover:bg-black/5 transition-colors text-black/40 hover:text-black">
-              <Twitter size={20} />
-            </a>
-            <a href="#" className="flex-1 flex items-center justify-center py-3 hover:bg-black/5 transition-colors text-black/40 hover:text-black">
-              <TikTokIcon className="w-5 h-5" />
-            </a>
           </div>
         </div>
       </div>

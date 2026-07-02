@@ -1,22 +1,11 @@
 import Layout from "@/components/layout";
 import { Link } from "wouter";
-
-const SPORTS = [
-  { id: "rugby", name: "Rugby", description: "Custom jerseys, shorts, socks and training gear for rugby clubs and schools." },
-  { id: "league", name: "League", description: "Performance rugby league kits designed for durability and comfort." },
-  { id: "football", name: "Football", description: "Professional football kits from training to match day." },
-  { id: "netball", name: "Netball", description: "Custom netball dresses and training apparel for all ages." },
-  { id: "basketball", name: "Basketball", description: "Reversible singlets, shorts and warm-ups for basketball teams." },
-  { id: "hockey", name: "Hockey", description: "Custom hockey uniforms for turf and indoor teams." },
-  { id: "cricket", name: "Cricket", description: "Whites, polos and training gear for cricket clubs." },
-  { id: "touch", name: "Touch Rugby", description: "Lightweight, breathable touch rugby apparel." },
-  { id: "other", name: "Other Sports", description: "Can't find your sport? We cover athletics, volleyball, and more." },
-];
+import { SPORTS } from "@/data/sports";
 
 export default function Sports() {
   return (
     <Layout>
-      <section className="py-10 sm:py-14 bg-primary text-white text-center">
+      <section className="pt-28 pb-10 sm:pb-14 bg-primary text-white text-center">
         <div className="container mx-auto px-4">
           <h1 className="font-heading text-3xl sm:text-4xl text-white mb-4 uppercase tracking-wider">Find Your Sport</h1>
           <p className="text-lg text-white/60 max-w-2xl mx-auto">
@@ -30,8 +19,8 @@ export default function Sports() {
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
             {SPORTS.map(sport => (
-              <Link key={sport.id} href={`/quote?sport=${sport.id}`}>
-                <div 
+              <Link key={sport.id} href={sport.id === "other" ? "/quote" : `/sports/${sport.id}`}>
+                <div
                   className="group bg-white rounded-xl border border-border p-6 hover:shadow-lg hover:border-accent/50 transition-all cursor-pointer h-full"
                   data-testid={`card-sport-${sport.id}`}
                 >
