@@ -1,7 +1,18 @@
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import Layout from "@/components/layout";
 import { CASE_STUDIES } from "@/data/case-studies";
 import { ArrowRight } from "lucide-react";
+
+interface StoryPost {
+  slug: string;
+  title: string;
+  summary: string;
+  publishedAt: string;
+  coverImage: string;
+  coverImageAlt: string;
+  badge: string;
+}
 
 function CaseStudyCard({ study, index }: { study: typeof CASE_STUDIES[0]; index: number }) {
   return (
@@ -43,6 +54,48 @@ function CaseStudyCard({ study, index }: { study: typeof CASE_STUDIES[0]; index:
   );
 }
 
+// Story pages are server-rendered at /our-work/:slug — use a plain anchor so
+// navigation does a full page load instead of the SPA router.
+function StoryCard({ post }: { post: StoryPost }) {
+  return (
+    <a href={`/our-work/${post.slug}`}>
+      <div
+        className="group relative overflow-hidden cursor-pointer"
+        style={{ borderRadius: 6 }}
+        data-testid={`card-story-${post.slug}`}
+      >
+        <div className="relative w-full overflow-hidden h-[240px] sm:h-[360px]">
+          <img
+            src={post.coverImage}
+            alt={post.coverImageAlt}
+            className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
+
+          <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6">
+            <span
+              className="inline-block px-2 py-0.5 text-xs font-medium text-white rounded mb-2"
+              style={{ backgroundColor: "rgba(255,255,255,0.2)" }}
+            >
+              {post.badge}
+            </span>
+            <h3 className="font-heading text-lg sm:text-xl font-bold text-white uppercase tracking-wide mb-1">
+              {post.title}
+            </h3>
+            <p className="text-sm text-white/70 line-clamp-2 mb-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+              {post.summary}
+            </p>
+            <div className="flex items-center text-white text-sm font-medium opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300">
+              Read Story <ArrowRight size={14} className="ml-1" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </a>
+  );
+}
+
 function PlaceholderCard() {
   return (
     <Link href="/quote">
@@ -72,8 +125,17 @@ function PlaceholderCard() {
 }
 
 export default function OurWorkPage() {
-  const needsPlaceholders = CASE_STUDIES.length < 6;
-  const placeholderCount = needsPlaceholders ? Math.max(0, 6 - CASE_STUDIES.length) : 0;
+  const [stories, setStories] = useState<StoryPost[]>([]);
+
+  useEffect(() => {
+    fetch("/api/blog/posts")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => Array.isArray(data) && setStories(data))
+      .catch(() => {});
+  }, []);
+
+  const cardCount = CASE_STUDIES.length + stories.length;
+  const placeholderCount = cardCount < 6 ? Math.max(0, 6 - cardCount) : 0;
 
   return (
     <Layout>
@@ -105,6 +167,9 @@ export default function OurWorkPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-5">
             {CASE_STUDIES.map((study, index) => (
               <CaseStudyCard key={study.slug} study={study} index={index} />
+            ))}
+            {stories.map((post) => (
+              <StoryCard key={post.slug} post={post} />
             ))}
             {Array.from({ length: placeholderCount }).map((_, i) => (
               <PlaceholderCard key={`placeholder-${i}`} />

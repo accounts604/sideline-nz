@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { BLOG_POSTS, getPost, type BlogPost } from "../blog-posts";
+import { BLOG_POSTS, getPost } from "../blog-posts";
 
 // Server-rendered blog: real HTML for crawlers (the SPA is client-rendered, so
 // SEO content lives here instead). Registered before the SPA fallback.
@@ -87,54 +87,47 @@ ${opts.jsonLd ? `<script type="application/ld+json">${JSON.stringify(opts.jsonLd
   <nav>
     <a href="/sports">Sports</a>
     <a href="/team-stores">Team Stores</a>
-    <a href="/blog">Blog</a>
+    <a href="/our-work">Our Work</a>
     <a href="/contact">Contact</a>
     <a class="cta" href="/free-mockup">Get free mockup</a>
   </nav>
 </div></header>
 <main>${opts.content}</main>
 <footer>
-  <div><a href="/">Home</a><a href="/blog">Blog</a><a href="https://teamstore.sidelinenz.com">Shop</a><a href="/terms">Terms</a></div>
+  <div><a href="/">Home</a><a href="/our-work">Our Work</a><a href="https://teamstore.sidelinenz.com">Shop</a><a href="/terms">Terms</a></div>
   <div style="margin-top:10px">&copy; ${new Date().getFullYear()} Sideline Custom Goods Ltd</div>
 </footer>
 </body>
 </html>`;
 }
 
-function postCard(p: BlogPost): string {
-  return `<a class="card" href="/blog/${p.slug}">
-    <img src="${p.featuredImage}" alt="${esc(p.featuredImageAlt)}" loading="lazy">
-    <div class="pad"><h2>${esc(p.title)}</h2><p>${esc(p.summary)}</p>
-    <p class="meta" style="margin-top:10px">${fmtDate(p.publishedAt)}</p></div>
-  </a>`;
-}
-
-router.get("/blog", (_req, res) => {
-  const html = page({
-    title: "Blog | Sideline NZ — Custom Teamwear & Supporters Merch",
-    description:
-      "Stories from the Sideline NZ production line: club and school supporter ranges from approved mockup to finished kit, fundraising team stores, and custom teamwear across New Zealand.",
-    canonical: `${SITE}/blog`,
-    ogType: "website",
-    ogImage: BLOG_POSTS[0]?.featuredImage,
-    jsonLd: {
-      "@context": "https://schema.org",
-      "@type": "Blog",
-      name: "Sideline NZ Blog",
-      url: `${SITE}/blog`,
-      publisher: { "@type": "Organization", name: "Sideline NZ", url: SITE },
-    },
-    content: `<p class="meta">Sideline NZ</p><h1>From the Sideline</h1>
-      <p style="color:rgba(255,255,255,.6);max-width:640px">Real gear, real clubs. What we design, what we deliver, and how supporter ranges fund grassroots sport in New Zealand.</p>
-      <div class="cards">${BLOG_POSTS.map(postCard).join("")}</div>`,
-  });
-  res.type("html").send(html);
+// Post list for the SPA's Our Work page (stories section)
+router.get("/api/blog/posts", (_req, res) => {
+  res.json(
+    BLOG_POSTS.map((p) => ({
+      slug: p.slug,
+      title: p.title,
+      summary: p.summary,
+      publishedAt: p.publishedAt,
+      coverImage: p.featuredImage,
+      coverImageAlt: p.featuredImageAlt,
+      badge: p.tags[0] ?? "story",
+    }))
+  );
 });
 
+// Posts live under /our-work alongside the SPA's case studies. Known blog
+// slugs are server-rendered here; anything else falls through to the SPA.
+router.get("/blog", (_req, res) => res.redirect(301, "/our-work"));
 router.get("/blog/:slug", (req, res, next) => {
+  if (!getPost(req.params.slug)) return next();
+  res.redirect(301, `/our-work/${req.params.slug}`);
+});
+
+router.get("/our-work/:slug", (req, res, next) => {
   const post = getPost(req.params.slug);
   if (!post) return next();
-  const canonical = `${SITE}/blog/${post.slug}`;
+  const canonical = `${SITE}/our-work/${post.slug}`;
   const html = page({
     title: `${post.title} | Sideline NZ`,
     description: post.summary,
@@ -162,7 +155,7 @@ router.get("/blog/:slug", (req, res, next) => {
         <p style="color:rgba(255,255,255,.6)">Free design mockups. A free online team store. Your supporters buy direct and your club keeps the margin.</p>
         <a class="btn" href="/free-mockup">Get a free mockup</a>
       </div>
-      <p style="margin-top:28px"><a href="/blog">&larr; All posts</a></p>`,
+      <p style="margin-top:28px"><a href="/our-work">&larr; Back to Our Work</a></p>`,
   });
   res.type("html").send(html);
 });
