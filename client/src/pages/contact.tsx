@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 import { Mail, Phone, MapPin, Send, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,6 +64,7 @@ export default function Contact() {
   if (success) {
     return (
       <Layout>
+      <Seo title="Contact Us" description="Get in touch with Sideline NZ for custom uniforms, team stores and teamwear. We reply fast and design is always free to start." path="/contact" />
         <section className="min-h-screen bg-black py-20 sm:py-[80px] px-5 sm:px-[52px]">
           <div className="container mx-auto max-w-2xl">
             <div className="bg-[#111] rounded-[6px] border border-white/[0.08] p-8 sm:p-12 text-center">
@@ -89,6 +91,7 @@ export default function Contact() {
 
   return (
     <Layout>
+      <Seo title="Contact Us" description="Get in touch with Sideline NZ for custom uniforms, team stores and teamwear. We reply fast and design is always free to start." path="/contact" />
       <section className="relative bg-black py-20 sm:py-[80px] px-5 sm:px-[52px]">
         <div className="container mx-auto max-w-6xl">
           <h1 className="font-heading text-4xl sm:text-6xl text-white mb-4 uppercase tracking-wider">

@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 import { MapPin, ArrowRight, Search, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useCollections } from "@/hooks/use-shopify";
@@ -54,6 +55,7 @@ export default function TeamStoresPage() {
 
   return (
     <Layout>
+      <Seo title="Team Stores" description="Shop the official online team stores for clubs and schools partnered with Sideline NZ. Supporter jerseys, hoodies, caps and more, made to order." path="/team-stores" />
       <section className="pt-32 pb-16 md:pb-20 bg-white text-[#111]">
         <div className="container mx-auto px-5 md:px-[52px] text-center">
           <h1

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 import { CASE_STUDIES } from "@/data/case-studies";
 import { ArrowRight } from "lucide-react";
 
@@ -139,6 +140,7 @@ export default function OurWorkPage() {
 
   return (
     <Layout>
+      <Seo title="Our Work" description="See the custom kit Sideline NZ has delivered for New Zealand clubs, schools and tournaments. Real teams, real jerseys, real results." path="/our-work" />
       <section className="relative py-20 sm:py-28" style={{ background: "#000" }}>
         <div
           className="absolute inset-0 opacity-30"

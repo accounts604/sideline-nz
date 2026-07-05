@@ -1,6 +1,7 @@
 import { useParams, Link, Redirect } from "wouter";
 import { useState, useEffect } from "react";
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 import { ShoppingBag, ArrowLeft, ArrowRight, Users, Calendar, Package, Loader2, Clock, AlertTriangle, Gift } from "lucide-react";
 import { getCampaign, isCampaignClosed, getTimeRemaining, type StoreCampaign } from "@/lib/campaigns";
 import { Button } from "@/components/ui/button";
@@ -265,6 +266,12 @@ export default function TeamStoreDetailPage() {
   return (
     <StoreGate storeName={collection.title} storeHandle={handle}>
     <Layout>
+      <Seo
+        title={collection.title}
+        description={collection.description || `Shop the official ${collection.title} team store. Supporter jerseys, teamwear and merch, made to order by Sideline NZ.`}
+        path={`/team-stores/${handle}`}
+        image={collection.image?.url}
+      />
       {/* Campaign Banner */}
       {campaign && <CampaignBanner campaign={campaign} />}
 

@@ -1,5 +1,6 @@
 import { useRoute, Link } from "wouter";
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 import { ArrowRight, Loader2, ArrowLeft } from "lucide-react";
 import { useCollections } from "@/hooks/use-shopify";
 import type { ShopifyCollection } from "@/lib/shopify";
@@ -77,6 +78,18 @@ export default function CompetitionPage() {
 
   return (
     <Layout>
+      <Seo
+        title={`${competition.name} Team Stores`}
+        description={`Shop official team stores for every ${competition.name} club. ${competition.description}`}
+        path={`/competitions/${competition.slug}`}
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "CollectionPage",
+          name: `${competition.name} Team Stores`,
+          description: competition.description,
+          url: `https://sidelinenz.com/competitions/${competition.slug}`,
+        }}
+      />
       {/* Competition banner */}
       <section className="pt-32 pb-14 md:pb-16 bg-[#111] text-white">
         <div className="container mx-auto px-5 md:px-[52px]">

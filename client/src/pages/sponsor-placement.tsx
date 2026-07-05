@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, DollarSign, Target, Map, Paintbrush } from "lucide-react";
 import {
@@ -248,6 +249,7 @@ export default function SponsorPlacementPage() {
 
   return (
     <Layout>
+      <Seo title="Sponsor Placement on Team Kit" description="Put your sponsors on the jersey. Sideline NZ makes it easy to add and manage sponsor logos on your team's custom kit." path="/sponsor-placement" />
       {/* ─── Section 1: Hero ─── */}
       <section className="sponsor-hero" style={{
         background: "#000",

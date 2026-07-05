@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
@@ -37,6 +38,7 @@ export default function Home() {
 
   return (
     <Layout>
+      <Seo title="Custom Sports Uniforms & Team Stores" description="Sideline NZ designs and delivers custom sublimated uniforms, teamwear and free online team stores for New Zealand rugby, league and sports clubs and schools. Get a free mockup." path="/" />
       <TeamStoreExplainerModal
         isOpen={isTeamStoreModalOpen}
         onClose={() => setIsTeamStoreModalOpen(false)}

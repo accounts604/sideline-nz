@@ -2,6 +2,8 @@ import manurewaImg from "@assets/Manurewa_Womens_Rugby_June_2025_1767430285397.p
 import maristImg from "@assets/Marist_Samoa_NZ_RFC_November_2025_1767430285399.png";
 import americanSamoaImg from "@assets/American_Samoa_Tag_December_2025_1767430285402.png";
 import mangereImg from "@assets/Mangere_East_Queenz_July_2025_1767430285404.png";
+import asrfuCase from "@assets/asrfu-village-league-case.jpg";
+import metroCase from "@assets/metro-lions-raiders-case.png";
 
 export interface CaseStudy {
   slug: string;
@@ -80,8 +82,38 @@ export const CASE_STUDIES: CaseStudy[] = [
     solution: "We created custom sublimated jackets with a bold camo-style design in their signature green and black. The coordinated look brought the whole team together.",
     outcome: "The full team of 20+ players received matching jackets and training gear. The distinctive style has become their trademark at local competitions.",
   },
+  {
+    slug: "auckland-samoa-rfu-village-league",
+    name: "Auckland Samoa RFU Village League",
+    location: "Auckland",
+    sport: "Rugby",
+    tagline: "A store for every village - a whole competition, kitted out",
+    coverImage: asrfuCase,
+    accentColor: "text-green-600",
+    accentBg: "bg-green-600",
+    description: "Rolling out custom supporter stores for every village club in the Auckland Samoa RFU village league.",
+    services: ["Custom Kit Design", "Online Team Stores", "Supporter Range", "Competition Directory"],
+    challenge: "The Auckland Samoa RFU village league brings village clubs together each season, each wanting their own kit and merch, but with no easy way for supporters and aiga to order.",
+    solution: "We built a store engine that turns each club's design into a full online supporter store - jerseys, tees, hoodies, caps and scarves in their village colours - all grouped under one competition directory.",
+    outcome: "Village stores like Vaimoso, Pineula Salani and Malisi Samoa NZ went live in days, made to order with no cost or stock for the clubs. Supporters order direct and back their village.",
+  },
+  {
+    slug: "metro-lions-raiders",
+    name: "Metro Lions",
+    location: "Auckland",
+    sport: "American Football",
+    tagline: "Raiders black - NZ's oldest gridiron club gets a club store",
+    coverImage: metroCase,
+    accentColor: "text-neutral-700",
+    accentBg: "bg-neutral-800",
+    description: "A personalised Raiders jersey and club store for Metro Lions, New Zealand's biggest and oldest American football club.",
+    services: ["Custom Gridiron Jersey", "Name & Number Personalisation", "Online Club Store"],
+    challenge: "Metro Lions wanted a sharp, personalised gridiron jersey their players and supporters could order themselves, ready for the tournament season.",
+    solution: "We designed a black and silver Raiders jersey with the club crest front and back, then set up an online store where each player adds their own name and number at checkout.",
+    outcome: "The club store went live with sizes from kids to 3XL, made to order, so the whole club can kit up without the committee handling a single order.",
+  },
 ];
 
 export function getCaseStudyBySlug(slug: string): CaseStudy | undefined {
-  return CASE_STUDIES.find((study) => study.slug === slug);
+  return CASE_STUDIES.find((s) => s.slug === slug);
 }
