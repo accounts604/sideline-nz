@@ -22,7 +22,14 @@ export const NAV_LINKS: NavLink[] = [
   { href: "/clubs", label: "Clubs" },
   { href: "/schools", label: "Schools" },
   { href: "/sponsor-placement", label: "Sponsors" },
-  { href: "/team-stores", label: "Team Stores" },
+  {
+    href: "/team-stores",
+    label: "Team Stores",
+    children: [
+      { href: "/team-stores", label: "All Team Stores" },
+      { href: "/competitions/auckland-samoa-rfu", label: "Auckland Samoa RFU" },
+    ],
+  },
   { href: "/our-work", label: "Our Work" },
   { href: "https://teamstore.sidelinenz.com", label: "Shop", external: true },
   { href: "/contact", label: "Contact" },
