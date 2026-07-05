@@ -85,10 +85,18 @@ export default function CompetitionPage() {
               <ArrowLeft size={14} className="mr-1" /> All Team Stores
             </span>
           </Link>
-          <p className="text-[#e2001a] uppercase tracking-[0.2em] text-sm font-semibold mb-3">{competition.tagline}</p>
-          <h1 className="text-4xl sm:text-5xl md:text-7xl uppercase tracking-wider mb-5" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
-            {competition.name}
-          </h1>
+          <p className="text-[#e2001a] uppercase tracking-[0.2em] text-sm font-semibold mb-4">{competition.tagline}</p>
+          {competition.logo ? (
+            <img
+              src={competition.logo}
+              alt={competition.name}
+              className="h-20 sm:h-24 md:h-32 w-auto mb-5 object-contain object-left"
+            />
+          ) : (
+            <h1 className="text-4xl sm:text-5xl md:text-7xl uppercase tracking-wider mb-5" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
+              {competition.name}
+            </h1>
+          )}
           <p className="text-lg text-white/70 max-w-2xl">{competition.description}</p>
           <div className="mt-6 text-white/50 text-sm uppercase tracking-wider">
             {teams.length} {teams.length === 1 ? "Team Store" : "Team Stores"}
