@@ -9,7 +9,7 @@ import { useLocation } from "wouter";
  * Loads gtag.js once, then fires a page_view on every client-side route change
  * (this is an SPA, so navigations don't reload the page).
  */
-const GA_ID = (import.meta as any).env?.VITE_GA_ID as string | undefined;
+const GA_ID = ((import.meta as any).env?.VITE_GA_ID as string | undefined) || 'G-DEN31RKFCT';
 
 declare global {
   interface Window {
