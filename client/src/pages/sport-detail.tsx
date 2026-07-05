@@ -1,4 +1,5 @@
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 import { Link, useParams } from "wouter";
 import { getSport, SPORTS } from "@/data/sports";
 import { Check, ArrowRight } from "lucide-react";
@@ -24,6 +25,11 @@ export default function SportDetail() {
 
   return (
     <Layout>
+      <Seo
+        title={`Custom ${sport.name} Uniforms & Teamwear`}
+        description={`Custom sublimated ${sport.name.toLowerCase()} jerseys, kit and supporter apparel for New Zealand teams. Free design mockups from Sideline NZ.`}
+        path={`/sports/${sport.id}`}
+      />
       <section className="pt-28 pb-12 sm:pb-16 bg-primary text-white text-center">
         <div className="container mx-auto px-4">
           <p className="text-xs tracking-widest uppercase text-white/40 mb-3">Custom Teamwear</p>

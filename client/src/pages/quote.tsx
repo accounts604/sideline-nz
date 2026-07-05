@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -312,6 +313,7 @@ export default function Quote() {
   if (success) {
     return (
       <Layout>
+      <Seo title="Get a Free Quote" description="Tell us about your team and get a fast, no-obligation quote for custom uniforms and teamwear from Sideline NZ. Free design mockups included." path="/quote" />
         <section className="py-20 bg-black min-h-screen">
           <div className="container mx-auto px-4 max-w-2xl">
             <div className="bg-[#111] rounded-md border border-white/10 p-8 sm:p-12 text-center">
@@ -345,6 +347,7 @@ export default function Quote() {
 
   return (
     <Layout>
+      <Seo title="Get a Free Quote" description="Tell us about your team and get a fast, no-obligation quote for custom uniforms and teamwear from Sideline NZ. Free design mockups included." path="/quote" />
       <TeamStoreExplainerModal isOpen={isTeamStoreModalOpen} onClose={() => setIsTeamStoreModalOpen(false)}
         onInclude={() => setForm((f) => ({ ...f, team_store_interest: "Yes" }))} context="form"
       />

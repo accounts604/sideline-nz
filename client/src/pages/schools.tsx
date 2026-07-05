@@ -1,4 +1,5 @@
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Check, FileCheck, Users } from "lucide-react";
@@ -7,6 +8,7 @@ import heroImage from "@assets/20250719_120007_1767526990051.jpg";
 export default function Schools() {
   return (
     <Layout>
+      <Seo title="Custom School Sports Uniforms" description="Custom uniforms, PE kit and supporter apparel for New Zealand schools and colleges. Durable sublimation, easy reordering and a free online store." path="/schools" />
       {/* Hero */}
       <section className="relative h-[60vh] min-h-[400px] flex items-end overflow-hidden bg-black">
         <div className="absolute inset-0 z-0">

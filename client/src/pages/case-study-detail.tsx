@@ -1,5 +1,6 @@
 import { useParams, Link, Redirect } from "wouter";
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 import { getCaseStudyBySlug } from "@/data/case-studies";
 import { MapPin, ArrowLeft, CheckCircle, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,22 @@ export default function CaseStudyDetailPage() {
 
   return (
     <Layout>
+      <Seo
+        title={`${study.name} — ${study.tagline}`}
+        description={study.description}
+        path={`/our-work/${study.slug}`}
+        image={typeof study.coverImage === "string" ? study.coverImage : undefined}
+        type="article"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "Article",
+          headline: `${study.name} — ${study.tagline}`,
+          description: study.description,
+          image: typeof study.coverImage === "string" ? study.coverImage : undefined,
+          about: study.sport,
+          publisher: { "@type": "Organization", name: "Sideline NZ" },
+        }}
+      />
       <section className="relative bg-black">
         <div className="aspect-[21/9] sm:aspect-[3/1] w-full overflow-hidden">
           <img 

@@ -1,4 +1,5 @@
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { MessageSquare, ShoppingBag, Truck } from "lucide-react";
@@ -7,6 +8,7 @@ import heroImage from "@assets/500099664_1162305082363258_1517772351045028970_n_
 export default function Clubs() {
   return (
     <Layout>
+      <Seo title="Custom Club Uniforms & Teamwear" description="Custom sublimated jerseys, training kit and supporter merch for New Zealand rugby and sports clubs. Free design mockups and your own online team store." path="/clubs" />
       {/* Hero */}
       <section style={{ position: "relative", height: "clamp(400px, 55vh, 620px)", display: "flex", alignItems: "flex-end", overflow: "hidden", background: "#000" }}>
         <div style={{ position: "absolute", inset: 0, zIndex: 0 }}>

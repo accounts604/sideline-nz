@@ -1,10 +1,12 @@
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 import { Link } from "wouter";
 import { SPORTS } from "@/data/sports";
 
 export default function Sports() {
   return (
     <Layout>
+      <Seo title="Custom Uniforms by Sport" description="Custom teamwear for every code: rugby union, rugby league, netball, football, basketball and more. See what Sideline NZ builds for your sport." path="/sports" />
       <section className="pt-28 pb-10 sm:pb-14 bg-primary text-white text-center">
         <div className="container mx-auto px-4">
           <h1 className="font-heading text-3xl sm:text-4xl text-white mb-4 uppercase tracking-wider">Find Your Sport</h1>

@@ -1,10 +1,12 @@
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 
 const LAST_UPDATED = "25 May 2026";
 
 export default function Terms() {
   return (
     <Layout>
+      <Seo title="Terms & Conditions" description="Sideline NZ terms and conditions for custom apparel orders, team stores and supporter campaigns." path="/terms" />
       <section style={{ background: "#fff", paddingTop: "120px", paddingBottom: "40px" }}>
         <div style={{ maxWidth: "780px", margin: "0 auto", padding: "0 20px", textAlign: "center" }}>
           <h1 style={{ fontSize: "clamp(32px, 5vw, 48px)", fontWeight: 700, color: "#111", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "12px" }}>

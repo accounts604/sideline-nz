@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Layout from "@/components/layout";
+import Seo from "@/components/seo";
 
 type GarmentType = "tshirt" | "hoodie" | "singlet" | "shorts" | "trackpants" | "rain-jacket" | "tracksuit-jacket" | "baseball-jersey" | "rugby-jersey" | "socks" | "beanie";
 
@@ -346,6 +347,7 @@ export default function SizeChartPage() {
 
   return (
     <Layout>
+      <Seo title="Size Chart" description="Sideline NZ size charts for jerseys, shorts, hoodies and teamwear. Find the right fit for kids and adults before you order." path="/size-chart" />
       <section style={{ background: "#fff", paddingTop: "120px", paddingBottom: "40px" }}>
         <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "0 20px", textAlign: "center" }}>
           <h1 style={{ fontSize: "clamp(32px, 5vw, 48px)", fontWeight: 700, color: "#111", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "12px" }}>
