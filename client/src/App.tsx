@@ -19,6 +19,7 @@ import SportDetail from "@/pages/sport-detail";
 import OurWorkPage from "@/pages/our-work";
 import CaseStudyDetailPage from "@/pages/case-study-detail";
 import TeamStoresPage from "@/pages/team-stores";
+import CompetitionPage from "@/pages/competition";
 import TeamStoreDetailPage from "@/pages/team-store-detail";
 import SponsorPlacement from "@/pages/sponsor-placement";
 import SizeChartPage from "@/pages/size-chart";
@@ -115,6 +116,7 @@ function Router() {
         <Route path="/sports/:id" component={SportDetail} />
         <Route path="/team-stores" component={TeamStoresPage} />
         <Route path="/team-stores/:slug" component={TeamStoreDetailPage} />
+        <Route path="/competitions/:slug" component={CompetitionPage} />
         <Route path="/our-work" component={OurWorkPage} />
         <Route path="/our-work/:slug" component={CaseStudyDetailPage} />
         <Route path="/sponsor-placement" component={SponsorPlacement} />
