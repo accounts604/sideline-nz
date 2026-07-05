@@ -8,6 +8,7 @@ import { ClientShell } from "@/components/client-shell";
 import { AuthProvider } from "@/lib/auth-context";
 import { ProtectedRoute, AdminRoute, ClubPortalRoute, SupplierRoute } from "@/components/protected-route";
 import NotFound from "@/pages/not-found";
+import Analytics from "@/components/analytics";
 
 import Home from "@/pages/home";
 import Clubs from "@/pages/clubs";
@@ -107,6 +108,7 @@ function Router() {
     <>
       <ScrollToTop />
       <GhlChatVisibility />
+      <Analytics />
       <Switch>
         {/* Public pages */}
         <Route path="/" component={Home} />
