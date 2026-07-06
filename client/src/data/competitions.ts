@@ -28,6 +28,7 @@ export const COMPETITIONS: Competition[] = [
       "2026-vaimoso-tama-ole-mau-team-kit",
       "2026-pineula-salani-supporters-range",
       "2026-malisi-samoa-nz-supporters-range",
+      "2026-nations-rugby-supporters-range",
     ],
   },
 ];
