@@ -61,7 +61,10 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
 // (so dev/test deployments don't accidentally accept anything).
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   const serviceToken = req.headers["x-service-token"];
-  const expectedServiceToken = process.env.SERVICE_TOKEN;
+  // Accept either env name: SERVICE_TOKEN (original) or SIDELINE_SERVICE_TOKEN (what the
+  // mission-control bridge actually carries). The /po-decision route already accepted both;
+  // this unifies it for ALL back-of-house automation (e.g. quote->PO create-po push).
+  const expectedServiceToken = process.env.SERVICE_TOKEN || process.env.SIDELINE_SERVICE_TOKEN;
   if (serviceToken && expectedServiceToken && serviceToken === expectedServiceToken) {
     (req as any).user = { userId: "service:telegram-bridge", role: "admin" } as JwtPayload;
     return next();
