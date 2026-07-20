@@ -382,6 +382,10 @@ export const designerJobs = pgTable("designer_jobs", {
   qcReason: text("qc_reason"),
   qcFailedItems: jsonb("qc_failed_items"), // number[] of failed checklist items (evidence-based reject)
   practice: boolean("practice").notNull().default(false),
+  clientEmail: text("client_email"), // club contact — used to find/create the club account for brand handoff
+  // { colors:[{role,name,hex?}], concepts?:[...] } — captured at quote/design time,
+  // written through to club_brand_identity when the drop passes QC.
+  brand: jsonb("brand"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
