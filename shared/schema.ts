@@ -357,6 +357,39 @@ export const insertDesignCommentSchema = createInsertSchema(designComments).omit
 export type InsertDesignComment = z.infer<typeof insertDesignCommentSchema>;
 export type DesignComment = typeof designComments.$inferSelect;
 
+// Designer jobs — the Drop Designer pipeline (SL-#### quote → assigned drop → QC → pay).
+// One row per drop; UNIQUE(quote_id) makes duplicate job creation structurally impossible
+// (the 2026-07-20 master plan idempotency rule). Public page served at /job/<token>.
+export const designerJobs = pgTable("designer_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  quoteId: text("quote_id").notNull().unique(), // SL-####
+  token: text("token").notNull().unique(), // unguessable public-page token
+  club: text("club"),
+  designerName: text("designer_name").notNull().default("ashan"),
+  briefMd: text("brief_md"), // markdown brief rendered on the public job page
+  assetsBase: text("assets_base"), // absolute URL folder holding refs + brand kit
+  assetFiles: jsonb("asset_files"), // string[] of filenames under assetsBase
+  assignedAt: timestamp("assigned_at"),
+  deadlineAt: timestamp("deadline_at"), // weekend-safe (computed by the workspace clock)
+  pausedMs: integer("paused_ms").notNull().default(0), // closed engine-down pauses (extends deadline)
+  pauseOpenAt: timestamp("pause_open_at"), // open pause start, null when running
+  status: text("status").notNull().default("in_progress"), // in_progress | submitted | revision | approved | rejected
+  submittedAt: timestamp("submitted_at"), // on_time is ALWAYS judged from this, never QC latency
+  revisions: integer("revisions").notNull().default(0),
+  qcBy: text("qc_by"),
+  qcAt: timestamp("qc_at"),
+  qcOnTime: boolean("qc_on_time"),
+  qcReason: text("qc_reason"),
+  qcFailedItems: jsonb("qc_failed_items"), // number[] of failed checklist items (evidence-based reject)
+  practice: boolean("practice").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertDesignerJobSchema = createInsertSchema(designerJobs).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertDesignerJob = z.infer<typeof insertDesignerJobSchema>;
+export type DesignerJob = typeof designerJobs.$inferSelect;
+
 // Order size breakdowns — detailed per-item size/quantity/player info
 export const orderSizeBreakdowns = pgTable("order_size_breakdowns", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
