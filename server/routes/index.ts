@@ -13,6 +13,7 @@ import clubPortalRouter from "./club-portal";
 import supplierRouter from "./supplier";
 import shipmentsRouter from "./shipments";
 import { publicApprovalRouter, publicProofRouter } from "./approvals";
+import { adminDesignerJobsRouter, publicJobRouter } from "./designer-jobs";
 import chatbotRouter from "./chatbot";
 import notifyRouter from "./notify";
 import cronRouter from "./cron";
@@ -110,6 +111,11 @@ export async function registerRoutes(
   // HTML before the SPA fallback so /proof/<token> renders the interactive
   // proof, not the React app.
   app.use("/proof", publicProofRouter);
+
+  // Designer jobs (Drop Designer pipeline): admin/service API + the designer's
+  // public job page (no auth — unguessable token in URL, same pattern as /proof).
+  app.use("/api/admin/designer-jobs", adminDesignerJobsRouter);
+  app.use("/job", publicJobRouter);
 
   // Chatbot API for GHL Conversational AI (Jarvesi web chat)
   app.use("/api/chatbot", chatbotRouter);
