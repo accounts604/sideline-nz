@@ -22,6 +22,44 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { designerJobs } from "@shared/schema";
 import { requireAdmin } from "../auth";
+import { storage } from "../storage";
+
+/**
+ * Brand handoff (Romero directive 2026-07-21): the moment a drop passes QC,
+ * everything the design flow learned about the club — colours, crest/refs,
+ * the brief — is written through to club_brand_identity so the PO setup
+ * finds it already there once the order is quoted/closed. Never blocks the
+ * approve (best-effort, logged).
+ */
+async function brandHandoff(job: typeof designerJobs.$inferSelect): Promise<string> {
+  const email = (job.clientEmail || "").trim().toLowerCase();
+  if (!email && !job.club) return "skipped: no clientEmail/club on job";
+  let account = email ? await storage.getClubAccountByEmail(email) : undefined;
+  if (!account) {
+    if (!email) return "skipped: no club account and no clientEmail to create one";
+    // Shell account (not portal-invited): random non-bcrypt hash = login impossible
+    // until a real invite flow sets a password. createClubAccount auto-seeds identity.
+    account = await storage.createClubAccount({
+      email,
+      passwordHash: "!handoff:" + crypto.randomBytes(24).toString("hex"),
+      clubName: job.club || job.quoteId,
+    } as any);
+  }
+  const brand = (job.brand || {}) as { colors?: unknown[] };
+  const files: string[] = Array.isArray(job.assetFiles) ? (job.assetFiles as string[]) : [];
+  const role = (f: string) => (/collar/i.test(f) ? "collar" : /logo|crest|wordmark/i.test(f) ? "logo" : /pattern/i.test(f) ? "pattern" : "kit");
+  const referenceImages = job.assetsBase
+    ? files.filter((f) => /\.(png|jpe?g|webp)$/i.test(f)).map((f) => ({ url: `${job.assetsBase}/${encodeURIComponent(f)}`, label: f, role: role(f) }))
+    : undefined;
+  await storage.ensureClubBrandIdentity(account.id, { sourceChannel: "designer_job" });
+  await storage.updateClubBrandIdentity(account.id, {
+    ...(Array.isArray(brand.colors) && brand.colors.length ? { colors: brand.colors } : {}),
+    ...(referenceImages?.length ? { referenceImages } : {}),
+    ...(job.briefMd ? { designBrief: job.briefMd } : {}),
+    enrichmentStage: "design_approved",
+  } as any);
+  return `enriched club_brand_identity for account ${account.id} (${account.clubName})`;
+}
 
 const esc = (s: unknown) =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -45,6 +83,8 @@ const upsertSchema = z.object({
   pauseOpenAt: z.string().datetime().nullable().optional(),
   submittedAt: z.string().datetime().nullable().optional(),
   practice: z.boolean().optional(),
+  clientEmail: z.string().email().optional(),
+  brand: z.object({ colors: z.array(z.object({ role: z.string().max(20), name: z.string().max(60), hex: z.string().max(9).optional() })).max(12) }).optional(),
 });
 
 adminDesignerJobsRouter.post("/", async (req, res) => {
@@ -65,6 +105,8 @@ adminDesignerJobsRouter.post("/", async (req, res) => {
     pauseOpenAt: b.pauseOpenAt ? new Date(b.pauseOpenAt) : b.pauseOpenAt === null ? null : undefined,
     submittedAt: b.submittedAt ? new Date(b.submittedAt) : b.submittedAt === null ? null : undefined,
     practice: b.practice,
+    clientEmail: b.clientEmail,
+    brand: b.brand,
   } as const;
   // Idempotent upsert on UNIQUE(quote_id): content refreshes, token/QC never clobbered.
   const defined = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined));
@@ -125,7 +167,10 @@ adminDesignerJobsRouter.post("/:quoteId/qc", async (req, res) => {
       .set({ status: "approved", qcBy: by, qcAt: now, qcOnTime: onTime, qcReason: null, qcFailedItems: null, updatedAt: now })
       .where(eq(designerJobs.quoteId, quoteId))
       .returning();
-    return res.json({ ok: true, job: row });
+    let handoff = "";
+    try { handoff = await brandHandoff(row); console.log(`[designer-jobs] brand handoff ${quoteId}: ${handoff}`); }
+    catch (e: any) { handoff = "failed: " + e.message; console.error(`[designer-jobs] brand handoff ${quoteId} FAILED:`, e.message); }
+    return res.json({ ok: true, job: row, brandHandoff: handoff });
   }
 
   // Evidence-based rejection: WHICH checklist items failed is mandatory.
