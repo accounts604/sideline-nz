@@ -1213,7 +1213,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async logOrderActivity(activity: InsertOrderActivity): Promise<OrderActivity> {
-    const [row] = await db.insert(orderActivity).values(activity).returning();
+    // Service-token principals ("service:telegram-bridge", quote->PO push, etc.)
+    // are not rows in `users`, and order_activity.user_id has an FK to users.id.
+    // Logging with a synthetic id blew up the ENTIRE create-po request with a
+    // 500 AFTER the order was already created (2026-07-21/22, Railway logs:
+    // order_activity_user_id_users_id_fk violation). user_id is nullable, so
+    // service actors log as null user and keep the actor in details.
+    let toInsert = activity;
+    if (activity.userId && String(activity.userId).startsWith("service:")) {
+      toInsert = {
+        ...activity,
+        userId: null,
+        details: { ...(activity.details as object ?? {}), serviceActor: activity.userId },
+      };
+    }
+    const [row] = await db.insert(orderActivity).values(toInsert).returning();
     return row;
   }
 }
