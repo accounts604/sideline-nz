@@ -134,6 +134,26 @@ app.use((req, res, next) => {
   await registerRoutes(httpServer, app);
   registerSeoRoutes(app); // /robots.txt + /sitemap.xml — must be before static SPA catch-all
 
+  // Seed the service principal so FK'd tables (design_files.user_id) accept
+  // service-token writes. Idempotent; the password is not a valid bcrypt hash,
+  // so this account can never log in interactively.
+  try {
+    const { db } = await import("./db");
+    const { users } = await import("@shared/schema");
+    await db
+      .insert(users)
+      .values({
+        id: "service:telegram-bridge",
+        username: "service-telegram-bridge",
+        password: "!service-account-no-login",
+        role: "admin",
+        teamName: "KIG Service",
+      })
+      .onConflictDoNothing();
+  } catch (err) {
+    console.error("[startup] service user seed failed:", err);
+  }
+
   app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
