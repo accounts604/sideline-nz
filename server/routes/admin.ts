@@ -3924,6 +3924,30 @@ router.patch("/designs/:id/folder", async (req, res) => {
   }
 });
 
+// PATCH /designs/:id/file-url — repoint a design file at a new stored URL.
+// Repair tool for rows registered with non-renderable URLs (e.g. Drive /view
+// HTML pages) — repoint them at a Vercel Blob URL so the admin previews load.
+const updateFileUrlSchema = z.object({
+  fileUrl: z.string().url(),
+});
+
+router.patch("/designs/:id/file-url", async (req, res) => {
+  try {
+    const { fileUrl } = updateFileUrlSchema.parse(req.body);
+    const [updated] = await db
+      .update(designFiles)
+      .set({ fileUrl })
+      .where(eq(designFiles.id, req.params.id))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Design file not found" });
+    res.json({ ok: true, fileUrl: updated.fileUrl });
+  } catch (err: any) {
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
+    console.error("Admin update file-url error:", err);
+    res.status(500).json({ error: "Failed to update file URL" });
+  }
+});
+
 // POST /orders/:id/send-for-approval — issues a tokenized approval link,
 // emails the client, and pushes GHL to "Mockup Sent".
 // Client clicks the link, lands on /approve/:token (public), approves or
