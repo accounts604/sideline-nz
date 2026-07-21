@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { poBaseName } from "@shared/po-filename";
 import { useParams, Link } from "wouter";
 import { ArrowLeft, Printer } from "lucide-react";
@@ -573,6 +573,18 @@ export default function PurchaseOrderView() {
     enabled: !!params.id,
   });
 
+  // Phone/tablet: zoom the fixed 900px sheet down to the viewport so the
+  // preview matches the printed A4 layout (PDF-viewer style) instead of a
+  // squashed reflow. zoom (not transform) so document height tracks the
+  // scale; the print stylesheet forces zoom back to 1.
+  const [docZoom, setDocZoom] = useState(1);
+  useEffect(() => {
+    const update = () => setDocZoom(Math.min(1, window.innerWidth / 940));
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
   // Set document.title to the proper naming convention so Chrome's
   // "Save as PDF" dialog pre-fills the filename. Restored on unmount.
   useEffect(() => {
@@ -598,7 +610,11 @@ export default function PurchaseOrderView() {
   const allDesigns = (designs ?? []) as any[];
   const mockupFiles = allDesigns.filter((f: any) => f.folder === "mockups" && f.mimeType?.startsWith("image/"));
   const logoFiles = allDesigns.filter((f: any) => f.folder === "logos" && f.mimeType?.startsWith("image/"));
-  const hasItemDesigns = items.some((i) => i.frontDesignUrl || i.backDesignUrl);
+  // Items count as "designed" when they carry any renderable asset — the new
+  // mockupImages/designPrints arrays or the legacy front/back columns (both
+  // covered by the shared helpers). Keying off the legacy columns alone made
+  // fully-populated POs fall back to the flat order-level gallery below.
+  const hasItemDesigns = items.some((i) => getMockups(i as any).length > 0 || getDesignPrints(i as any).length > 0);
 
   // Group breakdowns by item
   const breakdownsByItem = new Map<string, OrderSizeBreakdown[]>();
@@ -629,8 +645,10 @@ export default function PurchaseOrderView() {
         </button>
       </div>
 
-      {/* PO Document */}
-      <div style={{ maxWidth: "900px", margin: "0 auto", padding: "32px 40px", fontFamily: "'Segoe UI', Arial, sans-serif", color: "#000" }}>
+      {/* PO Document — fixed A4-ish width; on narrow screens the snz-doc rule
+          zooms the whole sheet down so phones see the print layout, not a
+          squashed reflow. Print always renders at zoom 1. */}
+      <div className="snz-doc" style={{ width: "900px", maxWidth: "900px", margin: "0 auto", padding: "32px 40px", fontFamily: "'Segoe UI', Arial, sans-serif", color: "#000", background: "#fff", boxSizing: "border-box", zoom: docZoom }}>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
           <div>
@@ -877,6 +895,7 @@ export default function PurchaseOrderView() {
       <style>{`
         @media print {
           .no-print { display: none !important; }
+          .snz-doc { zoom: 1 !important; width: auto !important; max-width: none !important; padding: 0 !important; }
           body { background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           @page { margin: 10mm; }
         }
