@@ -3924,23 +3924,29 @@ router.patch("/designs/:id/folder", async (req, res) => {
   }
 });
 
-// PATCH /designs/:id/file-url — repoint a design file at a new stored URL.
-// Repair tool for rows registered with non-renderable URLs (e.g. Drive /view
-// HTML pages) — repoint them at a Vercel Blob URL so the admin previews load.
+// PATCH /designs/:id/file-url — repoint a design file at a new stored URL,
+// optionally correcting its fileName/label at the same time. Repair tool for
+// rows registered with non-renderable URLs (e.g. Drive /view HTML pages) or
+// misnamed files — repoint at a Vercel Blob URL so the admin previews load.
 const updateFileUrlSchema = z.object({
   fileUrl: z.string().url(),
+  fileName: z.string().min(1).optional(),
+  label: z.string().min(1).optional(),
 });
 
 router.patch("/designs/:id/file-url", async (req, res) => {
   try {
-    const { fileUrl } = updateFileUrlSchema.parse(req.body);
+    const { fileUrl, fileName, label } = updateFileUrlSchema.parse(req.body);
+    const patch: Record<string, unknown> = { fileUrl };
+    if (fileName) patch.fileName = fileName;
+    if (label) patch.label = label;
     const [updated] = await db
       .update(designFiles)
-      .set({ fileUrl })
+      .set(patch)
       .where(eq(designFiles.id, req.params.id))
       .returning();
     if (!updated) return res.status(404).json({ error: "Design file not found" });
-    res.json({ ok: true, fileUrl: updated.fileUrl });
+    res.json({ ok: true, fileUrl: updated.fileUrl, fileName: updated.fileName, label: updated.label });
   } catch (err: any) {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid data", details: err.errors });
     console.error("Admin update file-url error:", err);
