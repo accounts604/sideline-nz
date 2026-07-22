@@ -25,11 +25,14 @@ export type SizeChartType =
   | "singlet"
   | "shorts"
   | "trackpants"
+  | "jacket"
+  | "stadium-jacket"
   | "rain-jacket"
   | "kokonut-jacket"
   | "tracksuit-jacket"
   | "baseball-jersey"
   | "rugby-jersey"
+  | "rugby-jersey-supporters"
   | "socks"
   | "beanie"
   | "none"; // "none" → skip the Sizing Guide section entirely on the PO
@@ -40,11 +43,14 @@ export const SIZE_CHART_LABELS: Record<SizeChartType, string> = {
   singlet: "Singlets",
   shorts: "Shorts",
   trackpants: "Trackpants",
-  "rain-jacket": "Rain / Wet Weather Jackets",
-  "kokonut-jacket": "Jackets — Kokonut Productions",
-  "tracksuit-jacket": "Tracksuit / Softshell Jackets",
+  jacket: "Jackets — Softshell / Shell / Windbreaker / ¼-Zip",
+  "stadium-jacket": "Stadium Jacket (Longline)",
+  "rain-jacket": "Rain / Wet Weather Jackets (legacy)",
+  "kokonut-jacket": "Jackets — Kokonut Productions (legacy)",
+  "tracksuit-jacket": "Tracksuit / Softshell Jackets (legacy)",
   "baseball-jersey": "Baseball Jersey",
-  "rugby-jersey": "Rugby Jersey + Shorts",
+  "rugby-jersey": "Rugby Kit — Playing Cut (Sports Fit)",
+  "rugby-jersey-supporters": "Rugby Kit — Supporters Cut (Relaxed)",
   socks: "Socks",
   beanie: "Beanie (Pom-Pom)",
   none: "",
@@ -169,6 +175,36 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       tolerance: "± 1.5cm",
     },
   ],
+  // ONE jacket chart for every standard jacket style (softshell, rugby shell,
+  // windbreaker, quarter-zip, gameday/anthem, tracksuit) so the same size fits
+  // the same across the range. Adult chest/length follow the NZ-standard
+  // contact-top reference (locked 2026-07-22); 4XL interpolated; sleeve values
+  // carried from the previous chart pending sizing-kit verification.
+  jacket: [
+    {
+      title: "Jackets — All Styles (Youth / Adult Unisex)",
+      headers: ["", "YXS", "YS", "YM", "YL", "YXL", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      rows: [
+        { label: "A. ½ Chest", values: [41,44,47,50,53,56,59,62,65,68,72,76,79,82] },
+        { label: "B. Length (HSP to hem)", values: [54,58,62,66,70,71,75,77,79,81,83,85,87,89] },
+        { label: "C. Sleeve (neck to cuff)", values: [57,60,62,65,68,71,74,77,81,84,87,90,93,"—"] },
+      ],
+      tolerance: "± 2.0cm",
+    },
+  ],
+  // Longline sub coat — below the knee. Widths/lengths follow the NZ-standard
+  // sideline jacket reference (locked 2026-07-22). No 4XL/6XL columns by design.
+  "stadium-jacket": [
+    {
+      title: "Stadium Jacket — Longline (Adults)",
+      headers: ["", "XS", "S", "M", "L", "XL", "2XL", "3XL", "5XL", "7XL"],
+      rows: [
+        { label: "A. ½ Chest", values: [55,58,61,64,67,70,73,79,85] },
+        { label: "B. Length (HSP to hem)", values: [100,104,106,108,110,112,114,118,122] },
+      ],
+      tolerance: "± 2.0cm",
+    },
+  ],
   "kokonut-jacket": [
     {
       title: "Mens",
@@ -268,9 +304,34 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       tolerance: "± 1.5cm",
     },
   ],
+  // Playing cut = the sports-fit production chart approved with the factory
+  // 2026-07-22 (snug chest, shorter athletic body). Kids labels K6–K16 on the
+  // source chart map 1:1 to Y6–Y16 here.
   "rugby-jersey": [
     {
-      title: "Rugby Jersey",
+      title: "Rugby Jersey — Playing Cut (Sports Fit)",
+      headers: ["", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
+      rows: [
+        { label: "A. ½ Chest", values: [38,40,42,44,46,48,48,50,52,54,56,59,62,64,66,68] },
+        { label: "B. Length", values: [45,47,50,53,56,58,60,62,64,66,68,70,70,70,70,72] },
+      ],
+      tolerance: "± 2.0cm",
+    },
+    {
+      title: "Rugby Shorts — Playing Cut (Sports Fit)",
+      headers: ["", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
+      rows: [
+        { label: "A. ½ Waist", values: [26,27,28,30,32,34,36,38,40,42,44,47,49,52,55,58] },
+        { label: "B. Outside Leg", values: [24,26,28,30,30,31,32,33,34,35,36,37,38,38,38,38] },
+      ],
+      tolerance: "± 2.0cm",
+    },
+  ],
+  // Supporters cut = the original relaxed Sideline chart — longer body, fuller
+  // fit. Offered as the alternative jersey cut at order time.
+  "rugby-jersey-supporters": [
+    {
+      title: "Rugby Jersey — Supporters Cut (Relaxed)",
       headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
       rows: [
         { label: "A. ½ Chest", values: [35,37,39,41,43,45,43.5,46,48.5,51,53.5,56,58.5,61,63.5,66,68.5] },
@@ -279,7 +340,7 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       tolerance: "± 2.0cm",
     },
     {
-      title: "Rugby Shorts",
+      title: "Rugby Shorts — Supporters Cut (Relaxed)",
       headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
       rows: [
         { label: "A. ½ Waist", values: [26,28,30,32,34,36,40,42,44,45,48,50,52,54,56,58,"—"] },
@@ -334,9 +395,9 @@ const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "hoodie-cotton-poly": "hoodie",
   "hoodie-zip-cotton-poly": "hoodie",
   "jumper-sweatshirt": "hoodie",
-  "winter-softshell": "tracksuit-jacket",
-  "jacket-half-zipper": "tracksuit-jacket",
-  "jacket-mesh-lining": "rain-jacket",
+  "winter-softshell": "jacket",
+  "jacket-half-zipper": "jacket",
+  "jacket-mesh-lining": "jacket",
   // One-size by default (Romero rule): hats and scarfs only.
   "cap": "none",
   "bucket-hat": "none",
@@ -371,17 +432,17 @@ const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "track-pants": "trackpants",
   "hoodie": "hoodie",
   "zip-hoodie": "hoodie",
-  "quarter-zip": "tracksuit-jacket",
+  "quarter-zip": "jacket",
   "crew-neck": "hoodie",
-  "softshell-jacket": "rain-jacket",
-  "puffer-jacket": "rain-jacket",
-  "wet-weather-jacket": "rain-jacket",
-  "gameday-jacket": "tracksuit-jacket",
-  "anthem-jacket": "tracksuit-jacket",
-  "rugby-shell-jacket": "rain-jacket",
-  "windbreaker-jacket": "rain-jacket",
-  "stadium-jacket": "tracksuit-jacket",
-  "tracksuit": "tracksuit-jacket",
+  "softshell-jacket": "jacket",
+  "puffer-jacket": "jacket",
+  "wet-weather-jacket": "jacket",
+  "gameday-jacket": "jacket",
+  "anthem-jacket": "jacket",
+  "rugby-shell-jacket": "jacket",
+  "windbreaker-jacket": "jacket",
+  "stadium-jacket": "stadium-jacket",
+  "tracksuit": "jacket",
   "rugby-set": "rugby-jersey",
   "basketball-socks": "socks",
   "scarf": "none", // one-size by default (Romero rule)
@@ -407,11 +468,14 @@ export const SIZE_CHART_DIAGRAMS: Record<SizeChartType, string> = {
   singlet: "/size-charts/singlet-diagram.png",
   shorts: "/size-charts/shorts-diagram.png",
   trackpants: "/size-charts/trackpants-diagram.png",
+  jacket: "/size-charts/rain-jacket-diagram.png",
+  "stadium-jacket": "/size-charts/tracksuit-jacket-diagram.png",
   "rain-jacket": "/size-charts/rain-jacket-diagram.png",
   "kokonut-jacket": "/size-charts/rain-jacket-diagram.png",
   "tracksuit-jacket": "/size-charts/tracksuit-jacket-diagram.png",
   "baseball-jersey": "/size-charts/baseball-jersey-diagram.png",
   "rugby-jersey": "/size-charts/rugby-jersey-diagram.png",
+  "rugby-jersey-supporters": "/size-charts/rugby-jersey-diagram.png",
   socks: "/size-charts/socks-diagram.png",
   beanie: "/size-charts/beanie-diagram.png",
   none: "",
