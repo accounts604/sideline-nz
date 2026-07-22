@@ -309,7 +309,7 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
   // source chart map 1:1 to Y6–Y16 here.
   "rugby-jersey": [
     {
-      title: "Rugby Jersey — Playing Cut (Sports Fit)",
+      title: "Rugby Jersey",
       headers: ["", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
       rows: [
         { label: "A. ½ Chest", values: [38,40,42,44,46,48,48,50,52,54,56,59,62,64,66,68] },
@@ -318,7 +318,7 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       tolerance: "± 2.0cm",
     },
     {
-      title: "Rugby Shorts — Playing Cut (Sports Fit)",
+      title: "Rugby Shorts",
       headers: ["", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
       rows: [
         { label: "A. ½ Waist", values: [26,27,28,30,32,34,36,38,40,42,44,47,49,52,55,58] },
@@ -331,7 +331,7 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
   // fit. Offered as the alternative jersey cut at order time.
   "rugby-jersey-supporters": [
     {
-      title: "Rugby Jersey — Supporters Cut (Relaxed)",
+      title: "Rugby Jersey",
       headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
       rows: [
         { label: "A. ½ Chest", values: [35,37,39,41,43,45,43.5,46,48.5,51,53.5,56,58.5,61,63.5,66,68.5] },
@@ -340,7 +340,7 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       tolerance: "± 2.0cm",
     },
     {
-      title: "Rugby Shorts — Supporters Cut (Relaxed)",
+      title: "Rugby Shorts",
       headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
       rows: [
         { label: "A. ½ Waist", values: [26,28,30,32,34,36,40,42,44,45,48,50,52,54,56,58,"—"] },
