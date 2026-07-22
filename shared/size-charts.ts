@@ -26,6 +26,7 @@ export type SizeChartType =
   | "shorts"
   | "trackpants"
   | "rain-jacket"
+  | "kokonut-jacket"
   | "tracksuit-jacket"
   | "baseball-jersey"
   | "rugby-jersey"
@@ -40,6 +41,7 @@ export const SIZE_CHART_LABELS: Record<SizeChartType, string> = {
   shorts: "Shorts",
   trackpants: "Trackpants",
   "rain-jacket": "Rain / Wet Weather Jackets",
+  "kokonut-jacket": "Jackets — Kokonut Productions",
   "tracksuit-jacket": "Tracksuit / Softshell Jackets",
   "baseball-jersey": "Baseball Jersey",
   "rugby-jersey": "Rugby Jersey + Shorts",
@@ -165,6 +167,39 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
         { label: "C. ½ Leg Opening (Tapered)", values: [12.5,13,13.5,14,14.5,15,15,15.5,15.5,16] },
       ],
       tolerance: "± 1.5cm",
+    },
+  ],
+  "kokonut-jacket": [
+    {
+      title: "Mens",
+      headers: ["", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
+      rows: [
+        { label: "A. Chest", values: [58,60,63,66,69,72,75,78,81,84] },
+        { label: "B. Length", values: [72,74,76,79,81,84,87,90,93,95] },
+        { label: "C. Sleeve", values: [78,80,84,85,88,90,92,92,92,92] },
+      ],
+      tolerance: "\u00b1 2.0cm",
+    },
+    {
+      title: "Womens",
+      headers: ["", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
+      rows: [
+        // 6XL chest printed as 71 on the source chart — clear typo between 78 and 84; transcribed as 81.
+        { label: "A. Chest", values: [58,60,63,66,69,72,75,78,81,84] },
+        { label: "B. Length", values: [72,74,76,78,80,82,84,86,88,90] },
+        { label: "C. Sleeve", values: [78,80,82,84,86,88,90,90,90,90] },
+      ],
+      tolerance: "\u00b1 2.0cm",
+    },
+    {
+      title: "Kids",
+      headers: ["", "K6", "K8", "K10", "K12", "K14", "K16"],
+      rows: [
+        { label: "A. Chest", values: [40,42,44,47,50,54] },
+        { label: "B. Length", values: [54,56,60,63,66,69] },
+        { label: "C. Sleeve", values: [60,62,64,67,70,74] },
+      ],
+      tolerance: "\u00b1 2.0cm",
     },
   ],
   "rain-jacket": [
@@ -358,6 +393,7 @@ export const SIZE_CHART_DIAGRAMS: Record<SizeChartType, string> = {
   shorts: "/size-charts/shorts-diagram.png",
   trackpants: "/size-charts/trackpants-diagram.png",
   "rain-jacket": "/size-charts/rain-jacket-diagram.png",
+  "kokonut-jacket": "/size-charts/rain-jacket-diagram.png",
   "tracksuit-jacket": "/size-charts/tracksuit-jacket-diagram.png",
   "baseball-jersey": "/size-charts/baseball-jersey-diagram.png",
   "rugby-jersey": "/size-charts/rugby-jersey-diagram.png",
