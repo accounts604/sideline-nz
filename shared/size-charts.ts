@@ -28,7 +28,7 @@ export type SizeChartType =
   | "jacket"
   | "stadium-jacket"
   | "rain-jacket"
-  | "kokonut-jacket"
+  | "jacket-hooded"
   | "tracksuit-jacket"
   | "baseball-jersey"
   | "rugby-jersey"
@@ -46,7 +46,7 @@ export const SIZE_CHART_LABELS: Record<SizeChartType, string> = {
   jacket: "Jackets — Softshell / Shell / Windbreaker / ¼-Zip",
   "stadium-jacket": "Stadium Jacket (Longline)",
   "rain-jacket": "Rain / Wet Weather Jackets (legacy)",
-  "kokonut-jacket": "Jackets — Kokonut Productions (legacy)",
+  "jacket-hooded": "Jackets — Hooded / Zip",
   "tracksuit-jacket": "Tracksuit / Softshell Jackets (legacy)",
   "baseball-jersey": "Baseball Jersey",
   "rugby-jersey": "Rugby Kit — Playing Cut (Sports Fit)",
@@ -205,7 +205,7 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       tolerance: "± 2.0cm",
     },
   ],
-  "kokonut-jacket": [
+  "jacket-hooded": [
     {
       title: "Mens",
       headers: ["", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
@@ -220,7 +220,7 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       title: "Womens",
       headers: ["", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
       rows: [
-        // 6XL chest printed as 71 on the source chart — clear typo between 78 and 84; transcribed as 81.
+        // 6XL chest printed as 71 on the supplier's source chart — clear typo between 78 and 84; transcribed as 81.
         { label: "A. Chest", values: [58,60,63,66,69,72,75,78,81,84] },
         { label: "B. Length", values: [72,74,76,78,80,82,84,86,88,90] },
         { label: "C. Sleeve", values: [78,80,82,84,86,88,90,90,90,90] },
@@ -471,7 +471,7 @@ export const SIZE_CHART_DIAGRAMS: Record<SizeChartType, string> = {
   jacket: "/size-charts/jacket-diagram.svg",
   "stadium-jacket": "/size-charts/stadium-jacket-diagram.svg",
   "rain-jacket": "/size-charts/rain-jacket-diagram.png",
-  "kokonut-jacket": "/size-charts/rain-jacket-diagram.png",
+  "jacket-hooded": "/size-charts/rain-jacket-diagram.png",
   "tracksuit-jacket": "/size-charts/tracksuit-jacket-diagram.png",
   "baseball-jersey": "/size-charts/baseball-jersey-diagram.png",
   "rugby-jersey": "/size-charts/rugby-jersey-diagram.png",

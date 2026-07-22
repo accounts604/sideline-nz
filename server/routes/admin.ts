@@ -3954,6 +3954,23 @@ router.patch("/designs/:id/file-url", async (req, res) => {
   }
 });
 
+// DELETE /designs/:id — remove a design file row (e.g. an asset attached in
+// error). Deletes the DB row only; stored blobs and Drive mirrors are cleaned
+// up by the operator, keeping this endpoint side-effect free.
+router.delete("/designs/:id", async (req, res) => {
+  try {
+    const [deleted] = await db
+      .delete(designFiles)
+      .where(eq(designFiles.id, req.params.id))
+      .returning({ id: designFiles.id, fileName: designFiles.fileName });
+    if (!deleted) return res.status(404).json({ error: "Design file not found" });
+    res.json({ ok: true, deleted });
+  } catch (err: any) {
+    console.error("Admin delete design error:", err);
+    res.status(500).json({ error: "Failed to delete design file" });
+  }
+});
+
 // POST /orders/:id/send-for-approval — issues a tokenized approval link,
 // emails the client, and pushes GHL to "Mockup Sent".
 // Client clicks the link, lands on /approve/:token (public), approves or
