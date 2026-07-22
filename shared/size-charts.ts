@@ -490,9 +490,22 @@ export function suggestSizeChart(productType: string | null | undefined): SizeCh
   return PRODUCT_TO_CHART[productType] || "none";
 }
 
+// Chart ids that existed briefly and may be stamped on old order_items rows.
+// Normalized here so those rows keep rendering; remove once the DB is migrated.
+const LEGACY_CHART_IDS: Record<string, SizeChartType> = {
+  "kokonut-jacket": "stadium-jacket",
+};
+
+export function normalizeChartType(chartType: string | null | undefined): SizeChartType {
+  if (!chartType) return "none";
+  const t = LEGACY_CHART_IDS[chartType] || (chartType as SizeChartType);
+  return SIZE_CHART_DATA[t] || t === "none" ? t : "none";
+}
+
 export function getSizeChartTables(chartType: SizeChartType): SizeTable[] {
-  if (chartType === "none") return [];
-  return SIZE_CHART_DATA[chartType] || [];
+  const t = normalizeChartType(chartType);
+  if (t === "none") return [];
+  return SIZE_CHART_DATA[t] || [];
 }
 
 // The size LABELS for a chart (column headers minus the leading measurement
