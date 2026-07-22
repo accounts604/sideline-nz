@@ -755,6 +755,26 @@ export async function uploadPoPdfToDrive(
       if (brief) targetFolder = brief.id;
     }
 
+    // Replace-in-place: if a PDF with this name already exists in the target
+    // folder, update its content instead of adding a same-name sibling (every
+    // regenerate used to leave a stale duplicate the operator had to prune).
+    const dupQ = `'${targetFolder}' in parents and name = '${fileName.replace(/'/g, "\\'")}' and trashed = false`;
+    const dupRes = await fetch(`${DRIVE_API}/files?q=${encodeURIComponent(dupQ)}&fields=files(id)&pageSize=1&supportsAllDrives=true&includeItemsFromAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
+    const existingId: string | null = dupRes.ok ? (((await dupRes.json()).files || [])[0]?.id ?? null) : null;
+    if (existingId) {
+      const updRes = await fetch(`${UPLOAD_API}/files/${existingId}?uploadType=media&fields=id,webViewLink&supportsAllDrives=true`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/pdf", "Content-Length": String(pdfBuf.length) },
+        body: pdfBuf,
+      });
+      if (updRes.ok) {
+        const f = await updRes.json();
+        console.log(`[po-pdf] Replaced in place: ${f.id}`);
+        return { pdfId: f.id, pdfUrl: f.webViewLink || `https://drive.google.com/file/d/${f.id}/view` };
+      }
+      console.warn("[po-pdf] in-place update failed, falling back to new upload:", updRes.status);
+    }
+
     const boundary = `--po-pdf-${Date.now().toString(36)}`;
     const meta = JSON.stringify({ name: fileName, parents: [targetFolder] });
     const body = Buffer.concat([
