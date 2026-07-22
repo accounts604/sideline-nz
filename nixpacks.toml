@@ -2,10 +2,12 @@
 nixPkgs = ["nodejs_22", "npm-10_x", "openssl", "chromium"]
 
 [phases.install]
-# Clear the node_modules cache mount before install — Railway's persisted
-# mount corrupted (ENOTEMPTY/ENOTDIR on three consecutive builds 2026-07-22)
-# and npm cannot replace the directory itself.
-cmds = ["find /app/node_modules -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true", "npm install --force"]
+# cacheDirectories intentionally empty: Railway's persisted node_modules
+# cache mount corrupted (buildkit "cannot replace directory ... with file",
+# 5 failed builds 2026-07-22). Installing without the mount trades ~1 min of
+# build time for deterministic builds.
+cacheDirectories = []
+cmds = ["npm install --force"]
 
 [phases.build]
 cmds = ["npm run build"]
