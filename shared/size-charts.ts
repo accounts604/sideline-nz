@@ -356,14 +356,15 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
   // standard pending verification off the first supplier sample.
   headwear: [
     {
-      title: "Bucket Hat — One Size Fits Most",
-      headers: ["", "One Size"],
+      // B-Series two-size reference (S/M 56.5 fits 53.5-56.5, L/XL 60 fits
+      // 57-60) scaled at 62/60 so the top size hits the locked 62cm.
+      title: "Bucket Hat — Two Sizes",
+      headers: ["", "S/M", "L/XL"],
       rows: [
-        { label: "A. Circumference (inner band)", values: [62] },
-        { label: "B. Crown Depth", values: [10] },
-        { label: "C. Brim Width", values: [6.5] },
+        { label: "A. Circumference (inner band)", values: [58.5, 62] },
+        { label: "Fits Head (cm)", values: ["55.5–58.5", "59–62"] },
       ],
-      tolerance: "± 1.0cm",
+      tolerance: "± 1.5cm",
     },
     {
       // Five-panel essential reference (10 / 18 / 6.5 / 55-58) scaled to the
