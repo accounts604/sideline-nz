@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" font-family="Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <!-- ============ BUCKET HAT (left) ============ -->
+  <g stroke="#3a3a3a" stroke-width="3" fill="#f8f8f8" stroke-linejoin="round" stroke-linecap="round">
+    <!-- crown -->
+    <path d="M160,250 C160,170 200,130 250,130 C300,130 340,170 340,250 Z"/>
+    <!-- downward brim -->
+    <path d="M160,250 L110,320 L390,320 L340,250 Z"/>
+  </g>
+  <g stroke="#8a8a8a" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <path d="M205,140 C195,175 190,210 188,248"/>
+    <path d="M295,140 C305,175 310,210 312,248"/>
+    <path d="M160,232 L340,232"/>
+  </g>
+  <!-- A: inner band circumference (dashed band) -->
+  <g stroke="#2563eb" stroke-width="3" fill="none">
+    <ellipse cx="250" cy="250" rx="92" ry="16" stroke-dasharray="8 7"/>
+    <path d="M118,314 L214,314" marker-start="url(#ah)" marker-end="url(#ah)" transform="translate(0,-2)"/>
+    <path d="M370,150 L370,246" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  </g>
+  <g>
+    <circle cx="250" cy="286" r="17" fill="#2563eb"/>
+    <text x="250" y="292" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">A</text>
+    <circle cx="370" cy="198" r="17" fill="#2563eb"/>
+    <text x="370" y="204" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">B</text>
+    <circle cx="166" cy="340" r="17" fill="#2563eb"/>
+    <text x="166" y="346" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">C</text>
+  </g>
+  <text x="250" y="390" text-anchor="middle" font-size="15" fill="#999">BUCKET HAT</text>
+
+  <!-- ============ 5-PANEL CAP (right, side view) ============ -->
+  <g stroke="#3a3a3a" stroke-width="3" fill="#f8f8f8" stroke-linejoin="round" stroke-linecap="round">
+    <!-- crown: flat front panel silhouette -->
+    <path d="M545,265 C545,190 590,145 655,145 C720,145 770,190 780,265 Z"/>
+    <!-- brim -->
+    <path d="M545,265 C500,258 460,268 452,285 C448,295 470,300 500,298 L560,282 Z"/>
+    <!-- back band / closure -->
+    <path d="M780,265 L545,265" fill="none"/>
+  </g>
+  <g stroke="#8a8a8a" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <path d="M600,152 C585,185 570,225 562,262"/>
+    <path d="M700,150 C707,185 713,225 716,262"/>
+  </g>
+  <g stroke="#2563eb" stroke-width="3" fill="none">
+    <ellipse cx="662" cy="265" rx="118" ry="16" stroke-dasharray="8 7"/>
+    <path d="M810,150 L810,260" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M455,305 L557,283" marker-start="url(#ah)" marker-end="url(#ah)" transform="translate(0,10)"/>
+  </g>
+  <g>
+    <circle cx="662" cy="302" r="17" fill="#2563eb"/>
+    <text x="662" y="308" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">A</text>
+    <circle cx="810" cy="205" r="17" fill="#2563eb"/>
+    <text x="810" y="211" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">B</text>
+    <circle cx="497" cy="330" r="17" fill="#2563eb"/>
+    <text x="497" y="336" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">C</text>
+  </g>
+  <text x="655" y="390" text-anchor="middle" font-size="15" fill="#999">5-PANEL CAP</text>
+
+  <!-- ============ legend ============ -->
+  <g font-size="20" fill="#333">
+    <text x="450" y="460" text-anchor="middle" font-weight="700">HEADWEAR</text>
+    <text x="450" y="492" text-anchor="middle" font-size="15" fill="#666">A. Circumference (inner band) &#183; B. Crown Depth &#183; C. Brim</text>
+    <text x="450" y="518" text-anchor="middle" font-size="14" fill="#999">One size fits most &#183; 62cm standard adult circumference</text>
+  </g>
+</svg>

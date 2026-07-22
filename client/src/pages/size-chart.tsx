@@ -18,6 +18,7 @@ const GARMENTS = [
   "rugby-jersey-supporters",
   "baseball-jersey",
   "socks",
+  "headwear",
   "beanie",
 ] as const;
 
@@ -35,6 +36,7 @@ const GARMENT_LABELS: Record<GarmentType, string> = {
   "rugby-jersey-supporters": "Rugby Kit — Supporters",
   "baseball-jersey": "Baseball Jersey",
   socks: "Socks",
+  headwear: "Headwear",
   beanie: "Beanie",
 };
 
@@ -50,6 +52,7 @@ const SIZE_DATA: Record<GarmentType, SizeTable[]> = Object.fromEntries(
 // Short fit descriptions shown under the tab row where a garment has a
 // deliberate cut philosophy the customer should know before choosing sizes.
 const FIT_NOTES: Partial<Record<GarmentType, string>> = {
+  headwear: "One size fits most — 62cm inner circumference, cut for a generous adult fit.",
   jacket: "One chart for all Sideline jacket styles — the same size fits the same whether it's a softshell, shell, windbreaker or quarter-zip.",
   "stadium-jacket": "Longline sideline coat — cut to sit below the knee.",
   "rugby-jersey": "Sports fit — snug chest and shorter athletic body, made for on-field play. For a fuller fit see the Supporters cut.",
