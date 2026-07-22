@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 660" font-family="Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+  <g stroke="#3a3a3a" stroke-width="3" fill="#f8f8f8" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M310,168 L215,290 L255,335 L322,282 Z"/>
+    <path d="M590,168 L685,290 L645,335 L578,282 Z"/>
+    <path d="M310,168 C340,152 380,148 450,148 C520,148 560,152 590,168 L588,300 L582,540 L318,540 L312,300 Z"/>
+  </g>
+  <g stroke="#8a8a8a" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <path d="M392,152 C410,182 490,182 508,152"/>
+  </g>
+  <g stroke="#2563eb" stroke-width="3" fill="none">
+    <path d="M322,290 L578,290" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M450,190 L450,536" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  </g>
+  <g>
+    <circle cx="380" cy="290" r="17" fill="#2563eb"/>
+    <text x="380" y="296" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">A</text>
+    <circle cx="450" cy="400" r="17" fill="#2563eb"/>
+    <text x="450" y="406" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">B</text>
+  </g>
+  <g font-size="20" fill="#333">
+    <text x="450" y="600" text-anchor="middle" font-weight="700">T-SHIRTS &#183; POLOS</text>
+    <text x="450" y="630" text-anchor="middle" font-size="15" fill="#666">A. &#189; Chest &#183; B. Centre Back Length</text>
+  </g>
+</svg>
