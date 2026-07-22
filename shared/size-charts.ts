@@ -34,6 +34,7 @@ export type SizeChartType =
   | "rugby-jersey"
   | "rugby-jersey-supporters"
   | "socks"
+  | "headwear"
   | "beanie"
   | "none"; // "none" → skip the Sizing Guide section entirely on the PO
 
@@ -52,6 +53,7 @@ export const SIZE_CHART_LABELS: Record<SizeChartType, string> = {
   "rugby-jersey": "Rugby Kit — Playing Cut (Sports Fit)",
   "rugby-jersey-supporters": "Rugby Kit — Supporters Cut (Relaxed)",
   socks: "Socks",
+  headwear: "Headwear — Bucket Hat / 5-Panel Cap",
   beanie: "Beanie (Pom-Pom)",
   none: "",
 };
@@ -349,6 +351,31 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       tolerance: "± 2.0cm",
     },
   ],
+  // One-size adult headwear. The 62cm circumference is the locked Sideline
+  // spec (standard adult head, generous fit); brim/crown dims are industry
+  // standard pending verification off the first supplier sample.
+  headwear: [
+    {
+      title: "Bucket Hat — One Size Fits Most",
+      headers: ["", "One Size"],
+      rows: [
+        { label: "A. Circumference (inner band)", values: [62] },
+        { label: "B. Crown Depth", values: [10] },
+        { label: "C. Brim Width", values: [6.5] },
+      ],
+      tolerance: "± 1.0cm",
+    },
+    {
+      title: "5-Panel Cap — One Size Fits Most (adjustable)",
+      headers: ["", "One Size"],
+      rows: [
+        { label: "A. Circumference (adjustable)", values: ["58–62"] },
+        { label: "B. Crown Depth", values: [11] },
+        { label: "C. Brim Length", values: [7] },
+      ],
+      tolerance: "± 1.0cm",
+    },
+  ],
   beanie: [
     {
       title: "Pom-Pom Beanie — One Size Fits Most",
@@ -399,8 +426,8 @@ const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "jacket-half-zipper": "jacket",
   "jacket-mesh-lining": "jacket",
   // One-size by default (Romero rule): hats and scarfs only.
-  "cap": "none",
-  "bucket-hat": "none",
+  "cap": "headwear",
+  "bucket-hat": "headwear",
   "rugby-match-jersey": "rugby-jersey",
   "rugby-long-sleeve": "tshirt",
   "rugby-shorts": "rugby-jersey", // rugby shorts table is inside the rugby-jersey entry
@@ -451,8 +478,8 @@ const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "supporters-tee": "tshirt",
   "supporters-polo": "tshirt",
   "supporters-singlet": "singlet",
-  "cap-structured": "none", // one-size (hats)
-  "cap-snapback": "none", // one-size (hats)
+  "cap-structured": "headwear",
+  "cap-snapback": "headwear",
   "beanie": "beanie",
   "kit-bag": "tshirt",
   "backpack": "tshirt",
@@ -477,6 +504,7 @@ export const SIZE_CHART_DIAGRAMS: Record<SizeChartType, string> = {
   "rugby-jersey": "/size-charts/rugby-jersey-diagram.svg",
   "rugby-jersey-supporters": "/size-charts/rugby-jersey-diagram.svg",
   socks: "/size-charts/socks-diagram.svg",
+  headwear: "/size-charts/headwear-diagram.svg",
   beanie: "/size-charts/beanie-diagram.svg",
   none: "",
 };
