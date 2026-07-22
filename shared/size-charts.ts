@@ -366,13 +366,15 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       tolerance: "± 1.0cm",
     },
     {
-      // NZ-standard low-profile flat-peak cap scaled 58→62cm circumference
-      // (Romero spec); height scaled at the same rate (9.5 × 62/58 = 10.2).
-      title: "5-Panel Cap — Low Profile, Flat Peak (One Size)",
+      // Five-panel essential reference (10 / 18 / 6.5 / 55-58) scaled to the
+      // locked 62cm perimeter at the same rate (× 62/58).
+      title: "5-Panel Cap — One Size",
       headers: ["", "One Size"],
       rows: [
-        { label: "A. Circumference", values: [62] },
-        { label: "B. Height", values: [10.2] },
+        { label: "A. Height", values: [10.7] },
+        { label: "B. Width", values: [19.2] },
+        { label: "C. Length (peak)", values: [6.9] },
+        { label: "D. Perimeter", values: [62] },
       ],
       tolerance: "± 1.5cm",
     },
