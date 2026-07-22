@@ -2,7 +2,10 @@
 nixPkgs = ["nodejs_22", "npm-10_x", "openssl", "chromium"]
 
 [phases.install]
-cmds = ["npm install --force"]
+# Clear the node_modules cache mount before install — Railway's persisted
+# mount corrupted (ENOTEMPTY/ENOTDIR on three consecutive builds 2026-07-22)
+# and npm cannot replace the directory itself.
+cmds = ["find /app/node_modules -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true", "npm install --force"]
 
 [phases.build]
 cmds = ["npm run build"]
