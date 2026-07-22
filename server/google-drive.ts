@@ -368,7 +368,15 @@ export async function mirrorBlobToPoFolder({
     const contentType = blobRes.headers.get("content-type") || "application/octet-stream";
     const buf = Buffer.from(await blobRes.arrayBuffer());
 
-    const name = fileName || blobUrl.split("/").pop()?.split("?")[0] || "file";
+    // Derive a stable name: decode URL-encoding and strip Vercel Blob's random
+    // suffix (<name>-<20+ alnum>.<ext>) so re-mirrors dedupe against the clean
+    // file already in the folder instead of piling up suffixed duplicates.
+    let name = fileName || "";
+    if (!name) {
+      const seg = decodeURIComponent(blobUrl.split("/").pop()?.split("?")[0] || "file");
+      const m = seg.match(/^(.+)-[A-Za-z0-9]{20,}(\.[A-Za-z0-9]+)$/);
+      name = m ? `${m[1]}${m[2]}` : seg;
+    }
 
     // Deduplicate: if a file of the same name already lives in this folder
     // (because the admin pressed upload twice on the same URL), skip the copy.
