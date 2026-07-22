@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 900" font-family="Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <!-- ================= garment (longline sub coat) ================= -->
+  <g stroke="#3a3a3a" stroke-width="3" fill="#f8f8f8" stroke-linejoin="round" stroke-linecap="round">
+    <!-- hood -->
+    <path d="M378,180 C383,100 421,65 450,65 C479,65 517,100 522,180 C498,168 474,163 450,163 C426,163 402,168 378,180 Z"/>
+    <!-- left sleeve -->
+    <path d="M305,197 C265,225 215,330 190,450 L184,492 L248,510 L261,468 C278,408 290,352 295,305 Z"/>
+    <!-- right sleeve -->
+    <path d="M595,197 C635,225 685,330 710,450 L716,492 L652,510 L639,468 C622,408 610,352 605,305 Z"/>
+    <!-- long body, below the knee -->
+    <path d="M378,180 C402,168 426,163 450,163 C474,163 498,168 522,180 L595,197 C604,250 610,330 610,400 L610,750 L290,750 L290,400 C290,330 296,250 305,197 Z"/>
+    <!-- cuffs -->
+    <path d="M184,492 L248,510" fill="none"/>
+    <path d="M716,492 L652,510" fill="none"/>
+  </g>
+  <!-- details: zip, collar, pockets, hem, quilt lines -->
+  <g stroke="#8a8a8a" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <path d="M450,175 L450,746"/>
+    <path d="M378,180 C402,196 498,196 522,180"/>
+    <path d="M320,520 L368,520 L368,580 L320,580"/>
+    <path d="M580,520 L532,520 L532,580 L580,580"/>
+    <path d="M290,720 L610,720"/>
+    <path d="M290,340 L610,340" stroke-dasharray="2 8"/>
+  </g>
+
+  <!-- ================= measurements ================= -->
+  <g stroke="#2563eb" stroke-width="3" fill="none">
+    <!-- A: half chest at bottom of armhole -->
+    <path d="M298,305 L602,305" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <!-- B: length HSP to hem -->
+    <path d="M562,190 L562,746" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  </g>
+  <g>
+    <circle cx="380" cy="305" r="17" fill="#2563eb"/>
+    <text x="380" y="311" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">A</text>
+    <circle cx="562" cy="460" r="17" fill="#2563eb"/>
+    <text x="562" y="466" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">B</text>
+  </g>
+
+  <!-- ================= legend ================= -->
+  <g font-size="20" fill="#333">
+    <text x="450" y="820" text-anchor="middle" font-weight="700">STADIUM JACKET — LONGLINE</text>
+    <text x="450" y="852" text-anchor="middle" font-size="16" fill="#666">A. ½ Chest (bottom of armhole) &#183; B. Length (HSP to hem, below the knee)</text>
+  </g>
+</svg>
