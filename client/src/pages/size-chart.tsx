@@ -3,32 +3,42 @@ import Layout from "@/components/layout";
 import { SIZE_CHART_DATA, SIZE_CHART_DIAGRAMS, type SizeTable } from "@shared/size-charts";
 import Seo from "@/components/seo";
 
-type GarmentType = "tshirt" | "hoodie" | "singlet" | "shorts" | "trackpants" | "rain-jacket" | "tracksuit-jacket" | "baseball-jersey" | "rugby-jersey" | "socks" | "beanie";
+// The garments shown on the public page, in display order. Data comes from
+// shared/size-charts.ts — the same source the PO PDF and supplier dispatch
+// render from, so the site can never drift from what production is told.
+const GARMENTS = [
+  "tshirt",
+  "hoodie",
+  "singlet",
+  "shorts",
+  "trackpants",
+  "jacket",
+  "stadium-jacket",
+  "rugby-jersey",
+  "rugby-jersey-supporters",
+  "baseball-jersey",
+  "socks",
+  "beanie",
+] as const;
+
+type GarmentType = (typeof GARMENTS)[number];
 
 const GARMENT_LABELS: Record<GarmentType, string> = {
-  tshirt: "T-Shirts",
+  tshirt: "T-Shirts & Polos",
   hoodie: "Hoodies",
   singlet: "Singlets",
   shorts: "Shorts",
   trackpants: "Trackpants",
-  "rain-jacket": "Rain Jackets",
-  "tracksuit-jacket": "Tracksuit Jackets",
+  jacket: "Jackets",
+  "stadium-jacket": "Stadium Jacket",
+  "rugby-jersey": "Rugby Kit — Playing",
+  "rugby-jersey-supporters": "Rugby Kit — Supporters",
   "baseball-jersey": "Baseball Jersey",
-  "rugby-jersey": "Rugby Jersey",
   socks: "Socks",
   beanie: "Beanie",
 };
 
 const DIAGRAM_IMAGES: Record<GarmentType, string> = SIZE_CHART_DIAGRAMS;
-
-/* ------------------------------------------------------------------ */
-/*  Size data tables                                                   */
-/* ------------------------------------------------------------------ */
-
-interface SizeRow {
-  label: string;
-  values: (string | number)[];
-}
 
 // Chart data lives in shared/size-charts.ts — the single source of truth
 // shared with the admin PO PDF and supplier dispatch. This page just picks
@@ -36,6 +46,15 @@ interface SizeRow {
 const SIZE_DATA: Record<GarmentType, SizeTable[]> = Object.fromEntries(
   (Object.keys(GARMENT_LABELS) as GarmentType[]).map((k) => [k, SIZE_CHART_DATA[k] ?? []])
 ) as Record<GarmentType, SizeTable[]>;
+
+// Short fit descriptions shown under the tab row where a garment has a
+// deliberate cut philosophy the customer should know before choosing sizes.
+const FIT_NOTES: Partial<Record<GarmentType, string>> = {
+  jacket: "One chart for all Sideline jacket styles — the same size fits the same whether it's a softshell, shell, windbreaker or quarter-zip.",
+  "stadium-jacket": "Longline sideline coat — cut to sit below the knee.",
+  "rugby-jersey": "Sports fit — snug chest and shorter athletic body, made for on-field play. For a fuller fit see the Supporters cut.",
+  "rugby-jersey-supporters": "Relaxed fit — longer body and fuller cut, made for wearing on the sideline. For match gear see the Playing cut.",
+};
 
 function SizeTableComponent({ table }: { table: SizeTable }) {
   return (
@@ -143,6 +162,12 @@ export default function SizeChartPage() {
               </button>
             ))}
           </div>
+
+          {FIT_NOTES[activeGarment] && (
+            <p style={{ fontSize: "13px", color: "#666", padding: "12px 0 0", fontStyle: "italic" }}>
+              {FIT_NOTES[activeGarment]}
+            </p>
+          )}
 
           {/* Diagram + How to Measure */}
           <div className="grid md:grid-cols-2 gap-8 py-10" style={{ borderBottom: "1px solid #e5e5e5" }}>
