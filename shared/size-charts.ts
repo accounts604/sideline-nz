@@ -324,6 +324,22 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
 // Returns "none" if we don't have a verified chart — the PO renderer will
 // omit the Sizing Guide section entirely rather than guess wrong.
 const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
+  // Puffin cost-key productTypes — what quote-to-po stamps on order_items.
+  // Without these the whole rugby set fell through to "none" (one-size).
+  "rugby-jersey": "rugby-jersey",
+  "rugby-short-lycra": "rugby-jersey",
+  "sublimated-socks": "socks",
+  "t-shirt": "tshirt",
+  "polo-shirt": "tshirt",
+  "hoodie-cotton-poly": "hoodie",
+  "hoodie-zip-cotton-poly": "hoodie",
+  "jumper-sweatshirt": "hoodie",
+  "winter-softshell": "tracksuit-jacket",
+  "jacket-half-zipper": "tracksuit-jacket",
+  "jacket-mesh-lining": "rain-jacket",
+  // One-size by default (Romero rule): hats and scarfs only.
+  "cap": "none",
+  "bucket-hat": "none",
   "rugby-match-jersey": "rugby-jersey",
   "rugby-long-sleeve": "tshirt",
   "rugby-shorts": "rugby-jersey", // rugby shorts table is inside the rugby-jersey entry
@@ -368,7 +384,7 @@ const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "tracksuit": "tracksuit-jacket",
   "rugby-set": "rugby-jersey",
   "basketball-socks": "socks",
-  "scarf": "tshirt",
+  "scarf": "none", // one-size by default (Romero rule)
   "shoe-bag": "tshirt",
   "american-football-jersey": "tshirt",
   "supporters-tee": "tshirt",
