@@ -390,9 +390,8 @@ const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "supporters-tee": "tshirt",
   "supporters-polo": "tshirt",
   "supporters-singlet": "singlet",
-  "bucket-hat": "tshirt", // no specific hat chart; won't render in PO
-  "cap-structured": "tshirt",
-  "cap-snapback": "tshirt",
+  "cap-structured": "none", // one-size (hats)
+  "cap-snapback": "none", // one-size (hats)
   "beanie": "beanie",
   "kit-bag": "tshirt",
   "backpack": "tshirt",
