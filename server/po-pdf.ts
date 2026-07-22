@@ -10,7 +10,7 @@ import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
 import { storage } from "./storage";
 import { computeMilestones } from "@shared/po-milestones";
-import { getSizeChartTables, suggestSizeChart, SIZE_CHART_LABELS, SIZE_CHART_DIAGRAMS, chartSizes, type SizeChartType } from "@shared/size-charts";
+import { getSizeChartTables, suggestSizeChart, normalizeChartType, SIZE_CHART_LABELS, SIZE_CHART_DIAGRAMS, chartSizes, type SizeChartType } from "@shared/size-charts";
 import { LOGO_POSITIONS, type LogoElement, type LogoPosition } from "@shared/schema";
 import { getDesignPrints, getMockups, type DesignAsset } from "@shared/design-assets";
 import { poBaseName, poFilename } from "@shared/po-filename";
@@ -284,7 +284,7 @@ export async function generatePoHtml(orderId: string, opts: { audience?: "suppli
     const mockups = getMockups(item);
     const bds = bdByItem.get(item.id) || [];
     const totalQty = bds.length ? bds.reduce((s: number, b: any) => s + b.quantity, 0) : item.quantity;
-    const chartType = (item.sizeChartType || suggestSizeChart(item.productType)) as SizeChartType;
+    const chartType = normalizeChartType(item.sizeChartType || suggestSizeChart(item.productType));
     const sizeTables = getSizeChartTables(chartType);
     const diagramSrc = SIZE_CHART_DIAGRAMS[chartType];
 

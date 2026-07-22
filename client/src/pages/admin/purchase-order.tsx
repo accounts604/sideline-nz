@@ -4,7 +4,7 @@ import { poBaseName } from "@shared/po-filename";
 import { useParams, Link } from "wouter";
 import { ArrowLeft, Printer } from "lucide-react";
 import { computeMilestones } from "@shared/po-milestones";
-import { suggestSizeChart, getSizeChartTables, SIZE_CHART_LABELS, SIZE_CHART_DIAGRAMS, type SizeChartType, type SizeTable } from "@shared/size-charts";
+import { normalizeChartType, suggestSizeChart, getSizeChartTables, SIZE_CHART_LABELS, SIZE_CHART_DIAGRAMS, type SizeChartType, type SizeTable } from "@shared/size-charts";
 import { LOGO_POSITIONS, type LogoElement, type LogoPosition } from "@shared/schema";
 import { getDesignPrints, getMockups, type DesignAsset } from "@shared/design-assets";
 
@@ -538,7 +538,7 @@ function ProductLineSection({ item, breakdowns }: { item: OrderItem; breakdowns:
 
       {/* Sizing Guide — hidden when chart is "none" (unknown/unverified) */}
       {(() => {
-        const chartType = ((item as any).sizeChartType || suggestSizeChart(item.productType)) as SizeChartType;
+        const chartType = normalizeChartType((item as any).sizeChartType || suggestSizeChart(item.productType));
         const tables = getSizeChartTables(chartType);
         if (tables.length === 0) return null;
         const diagramSrc = SIZE_CHART_DIAGRAMS[chartType];
