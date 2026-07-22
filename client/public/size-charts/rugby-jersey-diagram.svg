@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 680" font-family="Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+  <g stroke="#3a3a3a" stroke-width="3" fill="#f8f8f8" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M120,190 L40,300 L78,340 L132,292 Z"/>
+    <path d="M400,190 L480,300 L442,340 L388,292 Z"/>
+    <path d="M120,190 C150,172 190,168 260,168 C330,168 370,172 400,190 L398,310 L392,520 L128,520 L122,310 Z"/>
+    <path d="M520,200 L800,200 L830,440 L685,440 L660,320 L635,440 L490,440 Z"/>
+  </g>
+  <g stroke="#8a8a8a" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <path d="M202,172 C220,200 300,200 318,172"/>
+    <path d="M232,171 L288,171"/>
+    <path d="M520,222 L800,222"/>
+  </g>
+  <g stroke="#2563eb" stroke-width="3" fill="none">
+    <path d="M132,300 L388,300" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M340,205 L340,516" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M528,211 L792,211" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M858,200 L858,440" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  </g>
+  <g>
+    <circle cx="190" cy="300" r="17" fill="#2563eb"/>
+    <text x="190" y="306" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">A</text>
+    <circle cx="340" cy="420" r="17" fill="#2563eb"/>
+    <text x="340" y="426" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">B</text>
+    <circle cx="600" cy="211" r="17" fill="#2563eb"/>
+    <text x="600" y="217" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">A</text>
+    <circle cx="858" cy="320" r="17" fill="#2563eb"/>
+    <text x="858" y="326" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">B</text>
+  </g>
+  <g font-size="15" fill="#999"><text x="260" y="560" text-anchor="middle">JERSEY</text><text x="660" y="480" text-anchor="middle">SHORTS</text></g>
+  <g font-size="20" fill="#333">
+    <text x="450" y="620" text-anchor="middle" font-weight="700">RUGBY KIT</text>
+    <text x="450" y="650" text-anchor="middle" font-size="15" fill="#666">Jersey — A. &#189; Chest &#183; B. Length &#160;&#160;|&#160;&#160; Shorts — A. &#189; Waist &#183; B. Outside Leg</text>
+  </g>
+</svg>

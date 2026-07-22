@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 710" font-family="Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+  <g stroke="#3a3a3a" stroke-width="3" fill="#f8f8f8" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M375,175 C380,95 420,60 450,60 C480,60 520,95 525,175 C500,163 475,158 450,158 C425,158 400,163 375,175 Z"/>
+    <path d="M302,192 C260,220 205,330 178,455 L172,498 L238,516 L252,472 C270,410 284,350 291,300 Z"/>
+    <path d="M598,192 C640,220 695,330 722,455 L728,498 L662,516 L648,472 C630,410 616,350 609,300 Z"/>
+    <path d="M375,175 C400,163 425,158 450,158 C475,158 500,163 525,175 L598,192 C606,230 612,300 612,360 L612,560 L288,560 L288,360 C288,300 294,230 302,192 Z"/>
+  </g>
+  <g stroke="#8a8a8a" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <path d="M288,540 L612,540"/>
+    <path d="M380,430 L520,430 L545,530 L355,530 Z"/>
+    <path d="M430,195 L425,240"/>
+    <path d="M470,195 L475,240"/>
+    <path d="M172,498 L238,516"/>
+    <path d="M728,498 L662,516"/>
+  </g>
+  <g stroke="#2563eb" stroke-width="3" fill="none">
+    <path d="M560,185 L560,556" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M296,300 L604,300" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M436,178 L212,492" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  </g>
+  <g>
+    <circle cx="560" cy="380" r="17" fill="#2563eb"/>
+    <text x="560" y="386" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">A</text>
+    <circle cx="352" cy="300" r="17" fill="#2563eb"/>
+    <text x="352" y="306" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">B</text>
+    <circle cx="324" cy="362" r="17" fill="#2563eb"/>
+    <text x="324" y="368" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">C</text>
+  </g>
+  <g font-size="20" fill="#333">
+    <text x="450" y="640" text-anchor="middle" font-weight="700">HOODIES &#183; CREW NECKS</text>
+    <text x="450" y="670" text-anchor="middle" font-size="15" fill="#666">A. Centre Back Length &#183; B. &#189; Chest &#183; C. Sleeve (neck to cuff)</text>
+  </g>
+</svg>

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 720" font-family="Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+  <g stroke="#3a3a3a" stroke-width="3" fill="#f8f8f8" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M370,110 L530,110 L530,400 C560,430 610,470 640,500 C670,530 650,580 610,580 L450,580 C400,580 370,550 370,500 Z"/>
+  </g>
+  <g stroke="#8a8a8a" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <path d="M370,180 L530,180"/>
+    <path d="M370,145 L530,145"/>
+    <path d="M385,215 L385,390 M415,215 L415,390 M445,215 L445,390 M475,215 L475,390 M505,215 L505,390"/>
+  </g>
+  <g stroke="#2563eb" stroke-width="3" fill="none">
+    <path d="M340,110 L340,180" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M560,185 L560,395" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M340,215 L340,500" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M540,425 L610,495" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  </g>
+  <g>
+    <circle cx="310" cy="145" r="17" fill="#2563eb"/>
+    <text x="310" y="151" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">C</text>
+    <circle cx="560" cy="290" r="17" fill="#2563eb"/>
+    <text x="560" y="296" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">D</text>
+    <circle cx="310" cy="360" r="17" fill="#2563eb"/>
+    <text x="310" y="366" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">B</text>
+    <circle cx="600" cy="440" r="17" fill="#2563eb"/>
+    <text x="600" y="446" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">A</text>
+  </g>
+  <g font-size="20" fill="#333">
+    <text x="450" y="660" text-anchor="middle" font-weight="700">RUGBY SOCKS</text>
+    <text x="450" y="690" text-anchor="middle" font-size="15" fill="#666">A. Heel &#183; B. Heel Flap &#183; C. Cuff &#183; D. Ribbed Top</text>
+  </g>
+</svg>

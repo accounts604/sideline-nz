@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 590" font-family="Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+  <g stroke="#3a3a3a" stroke-width="3" fill="#f8f8f8" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M120,170 L400,170 L430,420 L285,420 L260,300 L235,420 L90,420 Z"/>
+    <path d="M500,170 L780,170 L810,420 L665,420 L640,300 L615,420 L470,420 Z"/>
+  </g>
+  <g stroke="#8a8a8a" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <path d="M120,192 L400,192"/>
+    <path d="M500,192 L780,192"/>
+    <path d="M255,195 C258,196 262,196 265,195"/>
+  </g>
+  <g stroke="#2563eb" stroke-width="3" fill="none">
+    <path d="M128,181 L392,181" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M96,405 L232,405" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M260,196 L260,296" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M268,306 L285,412" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M505,250 L775,250" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M640,196 L640,296" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  </g>
+  <g>
+    <circle cx="180" cy="181" r="17" fill="#2563eb"/>
+    <text x="180" y="187" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">A</text>
+    <circle cx="150" cy="405" r="17" fill="#2563eb"/>
+    <text x="150" y="411" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">C</text>
+    <circle cx="300" cy="246" r="17" fill="#2563eb"/>
+    <text x="300" y="252" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">D</text>
+    <circle cx="320" cy="370" r="17" fill="#2563eb"/>
+    <text x="320" y="376" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">F</text>
+    <circle cx="560" cy="250" r="17" fill="#2563eb"/>
+    <text x="560" y="256" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">B</text>
+    <circle cx="680" cy="246" r="17" fill="#2563eb"/>
+    <text x="680" y="252" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">E</text>
+  </g>
+  <g font-size="15" fill="#999"><text x="260" y="460" text-anchor="middle">FRONT</text><text x="640" y="460" text-anchor="middle">BACK</text></g>
+  <g font-size="20" fill="#333">
+    <text x="450" y="530" text-anchor="middle" font-weight="700">SHORTS</text>
+    <text x="450" y="560" text-anchor="middle" font-size="15" fill="#666">A. &#189; Waist &#183; B. &#189; Hip &#183; C. Leg Opening &#183; D. Front Rise &#183; E. Back Rise &#183; F. Inseam</text>
+  </g>
+</svg>

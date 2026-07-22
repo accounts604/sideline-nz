@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620" font-family="Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+  <g stroke="#3a3a3a" stroke-width="3" fill="#f8f8f8" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M420,90 C420,60 480,60 480,90 C480,112 420,112 420,90 Z"/>
+    <path d="M290,360 C290,190 360,105 450,105 C540,105 610,190 610,360 Z"/>
+    <path d="M285,360 L615,360 L615,440 L285,440 Z"/>
+  </g>
+  <g stroke="#8a8a8a" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <path d="M340,150 C330,220 325,290 325,355"/>
+    <path d="M395,120 C388,200 385,280 385,355"/>
+    <path d="M450,110 L450,355"/>
+    <path d="M505,120 C512,200 515,280 515,355"/>
+    <path d="M560,150 C570,220 575,290 575,355"/>
+  </g>
+  <g stroke="#2563eb" stroke-width="3" fill="none">
+    <path d="M292,480 L608,480" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M650,105 L650,440" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M250,360 L250,440" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  </g>
+  <g>
+    <circle cx="450" cy="480" r="17" fill="#2563eb"/>
+    <text x="450" y="486" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">A</text>
+    <circle cx="650" cy="270" r="17" fill="#2563eb"/>
+    <text x="650" y="276" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">B</text>
+    <circle cx="250" cy="400" r="17" fill="#2563eb"/>
+    <text x="250" y="406" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">C</text>
+  </g>
+  <g font-size="20" fill="#333">
+    <text x="450" y="560" text-anchor="middle" font-weight="700">POM-POM BEANIE</text>
+    <text x="450" y="590" text-anchor="middle" font-size="15" fill="#666">A. Width (&#189; flat) &#183; B. Height (excl pom-pom) &#183; C. Cuff Depth</text>
+  </g>
+</svg>

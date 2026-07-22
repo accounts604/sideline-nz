@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 680" font-family="Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+  <g stroke="#3a3a3a" stroke-width="3" fill="#f8f8f8" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M340,150 C355,210 545,210 560,150 L595,175 C588,260 585,340 585,420 L585,560 L315,560 L315,420 C315,340 312,260 305,175 Z"/>
+  </g>
+  <g stroke="#8a8a8a" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <path d="M340,150 C330,190 322,230 318,270"/>
+    <path d="M560,150 C570,190 578,230 582,270"/>
+  </g>
+  <g stroke="#2563eb" stroke-width="3" fill="none">
+    <path d="M318,285 L582,285" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M450,205 L450,556" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  </g>
+  <g>
+    <circle cx="380" cy="285" r="17" fill="#2563eb"/>
+    <text x="380" y="291" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">A</text>
+    <circle cx="450" cy="420" r="17" fill="#2563eb"/>
+    <text x="450" y="426" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">B</text>
+  </g>
+  <g font-size="20" fill="#333">
+    <text x="450" y="620" text-anchor="middle" font-weight="700">SINGLETS</text>
+    <text x="450" y="650" text-anchor="middle" font-size="15" fill="#666">A. &#189; Chest &#183; B. Back Length</text>
+  </g>
+</svg>
