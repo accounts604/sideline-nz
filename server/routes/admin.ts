@@ -28,6 +28,7 @@ import { suggestSizeChart } from "@shared/size-charts";
 import { triageOrder } from "@shared/triage";
 import { updateGhlOpportunityStage } from "./ghl";
 import { createApprovalToken } from "./approvals";
+import { getLastPoViewTimes } from "../po-views";
 import { withPoNumberRetry, buildPoReference } from "../po-number";
 import {
   createClientFolder,
@@ -316,7 +317,10 @@ router.get("/orders/:id", async (req, res) => {
         if (p) parent = { name: p.name, deliveryAddress: p.delivery_address, contactName: p.contact_name, contactEmail: p.contact_email, contactPhone: p.contact_phone, website: p.website };
       } catch { /* parent-detail columns not migrated yet */ }
     }
-    res.json({ ...result, brandColors, parent });
+    // Last supplier/customer PO views — derived from order_activity, no schema
+    // change. Powers the "Supplier last viewed" line in the PO header.
+    const { lastSupplierViewAt, lastCustomerViewAt } = await getLastPoViewTimes(req.params.id);
+    res.json({ ...result, brandColors, parent, lastSupplierViewAt, lastCustomerViewAt });
   } catch (err) {
     console.error("Admin order detail error:", err);
     res.status(500).json({ error: "Failed to load order" });

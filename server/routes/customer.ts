@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../auth";
 import { storage } from "../storage";
 import { z } from "zod";
+import { recordPoView, PO_VIEWED_BY_CUSTOMER } from "../po-views";
 
 const router = Router();
 
@@ -27,6 +28,18 @@ router.get("/orders/:id", async (req, res) => {
     const result = await storage.getOrderWithDetails(req.params.id);
     if (!result) return res.status(404).json({ error: "Order not found" });
     if (result.order.userId !== user.userId) return res.status(403).json({ error: "Not your order" });
+
+    // View tracking — fire-and-forget, deduped inside recordPoView (one event
+    // per customer per PO per hour).
+    void recordPoView({
+      orderId: result.order.id,
+      action: PO_VIEWED_BY_CUSTOMER,
+      userId: user.userId,
+      viewerKey: user.userId,
+      userAgent: req.headers["user-agent"],
+      path: req.originalUrl,
+    });
+
     res.json(result);
   } catch (err) {
     console.error("Portal order detail error:", err);
