@@ -53,7 +53,7 @@ export const SIZE_CHART_LABELS: Record<SizeChartType, string> = {
   "baseball-jersey": "Baseball Jersey",
   "rugby-jersey": "Rugby Kit — Playing Cut (Sports Fit)",
   "rugby-jersey-supporters": "Rugby Kit — Supporters Cut (Relaxed)",
-  "rugby-long-sleeve": "Rugby Long Sleeve Jersey (Oversized)",
+  "rugby-long-sleeve": "Rugby Long Sleeve Jersey (Classic Relaxed)",
   socks: "Socks",
   headwear: "Headwear — Bucket Hat / 5-Panel Cap",
   beanie: "Beanie (Pom-Pom)",
@@ -353,19 +353,29 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       tolerance: "± 2.0cm",
     },
   ],
-  // Long sleeve rugby jersey: OVERSIZED fit (Romero call 2026-07-23) — every
-  // label carries the playing-cut measurements from TWO sizes up, so the
-  // factory still cuts from its existing long-sleeve patterns, just two
-  // pattern sizes larger than the ordered label. 6XL/7XL extrapolated on the
-  // same grading.
+  // Long sleeve rugby jersey: classic relaxed rugby jersey proportions from
+  // the NZ-standard reference (locked 2026-07-23) — the roomy chest ALSO
+  // matches Romero's 2-sizes-up oversized call, and the long body (72-92cm)
+  // is what a size-shift on the short sports-fit chart could never deliver.
+  // 6XL/7XL extrapolated on the same grading; sleeves from factory patterns.
   "rugby-long-sleeve": [
     {
-      title: "Rugby Long Sleeve Jersey — Oversized Fit",
-      headers: ["", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
+      title: "Rugby Long Sleeve Jersey — Classic Relaxed Fit (Adults)",
+      headers: ["", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
       rows: [
-        { label: "A. ½ Chest", values: [42,44,46,48,48,50,52,54,56,59,62,64,66,68,70,72] },
-        { label: "B. Length", values: [50,53,56,58,60,62,64,66,68,70,70,70,70,72,74,76] },
-        { label: "C. Sleeve (neck to cuff)", values: [50,53,56,59,62,65,68,71,74,76,78,80,82,84,86,88] },
+        { label: "A. ½ Chest", values: [48,51,54,57,60,63,66,69,72,75,78] },
+        { label: "B. Length (HSP to hem)", values: [72,74,76,78,80,82,84,86,88,90,92] },
+        { label: "C. Sleeve (neck to cuff)", values: [65,68,71,74,76,78,80,82,84,86,88] },
+      ],
+      tolerance: "± 2.0cm",
+    },
+    {
+      title: "Rugby Long Sleeve Jersey — Youth",
+      headers: ["", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16"],
+      rows: [
+        { label: "A. ½ Chest", values: [42,44,46,48,48,50] },
+        { label: "B. Length", values: [50,53,56,58,60,62] },
+        { label: "C. Sleeve (neck to cuff)", values: [50,53,56,59,62,65] },
       ],
       tolerance: "± 2.0cm",
     },
