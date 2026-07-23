@@ -33,6 +33,7 @@ export type SizeChartType =
   | "baseball-jersey"
   | "rugby-jersey"
   | "rugby-jersey-supporters"
+  | "rugby-long-sleeve"
   | "socks"
   | "headwear"
   | "beanie"
@@ -52,6 +53,7 @@ export const SIZE_CHART_LABELS: Record<SizeChartType, string> = {
   "baseball-jersey": "Baseball Jersey",
   "rugby-jersey": "Rugby Kit — Playing Cut (Sports Fit)",
   "rugby-jersey-supporters": "Rugby Kit — Supporters Cut (Relaxed)",
+  "rugby-long-sleeve": "Rugby Long Sleeve Jersey",
   socks: "Socks",
   headwear: "Headwear — Bucket Hat / 5-Panel Cap",
   beanie: "Beanie (Pom-Pom)",
@@ -351,6 +353,21 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       tolerance: "± 2.0cm",
     },
   ],
+  // Long sleeve rugby jersey: playing-cut chest and length with the factory's
+  // proven long-sleeve pattern sleeves (neck to cuff), so it cuts from existing
+  // patterns. Kids K-labels map 1:1 to Y-labels.
+  "rugby-long-sleeve": [
+    {
+      title: "Rugby Long Sleeve Jersey — Playing Cut (Sports Fit)",
+      headers: ["", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
+      rows: [
+        { label: "A. ½ Chest", values: [38,40,42,44,46,48,48,50,52,54,56,59,62,64,66,68] },
+        { label: "B. Length", values: [45,47,50,53,56,58,60,62,64,66,68,70,70,70,70,72] },
+        { label: "C. Sleeve (neck to cuff)", values: [44,47,50,53,56,59,62,65,68,71,74,76,78,80,82,84] },
+      ],
+      tolerance: "± 2.0cm",
+    },
+  ],
   // One-size adult headwear. The 62cm circumference is the locked Sideline
   // spec (standard adult head, generous fit); brim/crown dims are industry
   // standard pending verification off the first supplier sample.
@@ -433,7 +450,7 @@ const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "cap": "headwear",
   "bucket-hat": "headwear",
   "rugby-match-jersey": "rugby-jersey",
-  "rugby-long-sleeve": "tshirt",
+  "rugby-long-sleeve": "rugby-long-sleeve",
   "rugby-shorts": "rugby-jersey", // rugby shorts table is inside the rugby-jersey entry
   "rugby-socks": "socks",
   "league-jersey": "tshirt",
@@ -507,6 +524,7 @@ export const SIZE_CHART_DIAGRAMS: Record<SizeChartType, string> = {
   "baseball-jersey": "/size-charts/baseball-jersey-diagram.svg",
   "rugby-jersey": "/size-charts/rugby-jersey-diagram.svg",
   "rugby-jersey-supporters": "/size-charts/rugby-jersey-diagram.svg",
+  "rugby-long-sleeve": "/size-charts/rugby-ls-diagram.svg",
   socks: "/size-charts/socks-diagram.svg",
   headwear: "/size-charts/headwear-diagram.svg",
   beanie: "/size-charts/beanie-diagram.svg",

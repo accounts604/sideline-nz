@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700" font-family="Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <!-- ================= garment: long sleeve jersey ================= -->
+  <g stroke="#3a3a3a" stroke-width="3" fill="#f8f8f8" stroke-linejoin="round" stroke-linecap="round">
+    <!-- left sleeve -->
+    <path d="M312,182 C270,210 218,330 192,455 L186,498 L250,514 L263,472 C280,410 292,352 299,300 Z"/>
+    <!-- right sleeve -->
+    <path d="M588,182 C630,210 682,330 708,455 L714,498 L650,514 L637,472 C620,410 608,352 601,300 Z"/>
+    <!-- body -->
+    <path d="M312,182 C340,166 380,160 450,160 C520,160 560,166 588,182 L596,300 L592,560 L308,560 L304,300 Z"/>
+    <!-- cuffs -->
+    <path d="M186,498 L250,514" fill="none"/>
+    <path d="M714,498 L650,514" fill="none"/>
+  </g>
+  <!-- details: rugby collar + cuff ribs -->
+  <g stroke="#8a8a8a" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <path d="M398,164 C412,192 488,192 502,164"/>
+    <path d="M398,164 L410,150 L490,150 L502,164"/>
+    <path d="M192,482 L256,498"/>
+    <path d="M708,482 L644,498"/>
+  </g>
+
+  <!-- ================= measurements ================= -->
+  <g stroke="#2563eb" stroke-width="3" fill="none">
+    <path d="M308,300 L592,300" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M540,192 L540,556" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M436,182 L222,494" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  </g>
+  <g>
+    <circle cx="368" cy="300" r="17" fill="#2563eb"/>
+    <text x="368" y="306" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">A</text>
+    <circle cx="540" cy="400" r="17" fill="#2563eb"/>
+    <text x="540" y="406" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">B</text>
+    <circle cx="316" cy="366" r="17" fill="#2563eb"/>
+    <text x="316" y="372" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">C</text>
+  </g>
+
+  <!-- ================= legend ================= -->
+  <g font-size="20" fill="#333">
+    <text x="450" y="630" text-anchor="middle" font-weight="700">RUGBY LONG SLEEVE JERSEY</text>
+    <text x="450" y="662" text-anchor="middle" font-size="16" fill="#666">A. &#189; Chest &#183; B. Length &#183; C. Sleeve (neck to cuff)</text>
+  </g>
+</svg>
