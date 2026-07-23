@@ -53,7 +53,7 @@ export const SIZE_CHART_LABELS: Record<SizeChartType, string> = {
   "baseball-jersey": "Baseball Jersey",
   "rugby-jersey": "Rugby Kit — Playing Cut (Sports Fit)",
   "rugby-jersey-supporters": "Rugby Kit — Supporters Cut (Relaxed)",
-  "rugby-long-sleeve": "Rugby Long Sleeve Jersey",
+  "rugby-long-sleeve": "Rugby Long Sleeve Jersey (Oversized)",
   socks: "Socks",
   headwear: "Headwear — Bucket Hat / 5-Panel Cap",
   beanie: "Beanie (Pom-Pom)",
@@ -353,17 +353,19 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       tolerance: "± 2.0cm",
     },
   ],
-  // Long sleeve rugby jersey: playing-cut chest and length with the factory's
-  // proven long-sleeve pattern sleeves (neck to cuff), so it cuts from existing
-  // patterns. Kids K-labels map 1:1 to Y-labels.
+  // Long sleeve rugby jersey: OVERSIZED fit (Romero call 2026-07-23) — every
+  // label carries the playing-cut measurements from TWO sizes up, so the
+  // factory still cuts from its existing long-sleeve patterns, just two
+  // pattern sizes larger than the ordered label. 6XL/7XL extrapolated on the
+  // same grading.
   "rugby-long-sleeve": [
     {
-      title: "Rugby Long Sleeve Jersey — Playing Cut (Sports Fit)",
+      title: "Rugby Long Sleeve Jersey — Oversized Fit",
       headers: ["", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
       rows: [
-        { label: "A. ½ Chest", values: [38,40,42,44,46,48,48,50,52,54,56,59,62,64,66,68] },
-        { label: "B. Length", values: [45,47,50,53,56,58,60,62,64,66,68,70,70,70,70,72] },
-        { label: "C. Sleeve (neck to cuff)", values: [44,47,50,53,56,59,62,65,68,71,74,76,78,80,82,84] },
+        { label: "A. ½ Chest", values: [42,44,46,48,48,50,52,54,56,59,62,64,66,68,70,72] },
+        { label: "B. Length", values: [50,53,56,58,60,62,64,66,68,70,70,70,70,72,74,76] },
+        { label: "C. Sleeve (neck to cuff)", values: [50,53,56,59,62,65,68,71,74,76,78,80,82,84,86,88] },
       ],
       tolerance: "± 2.0cm",
     },
