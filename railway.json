@@ -7,7 +7,7 @@
   "deploy": {
     "startCommand": "npm run start",
     "healthcheckPath": "/api/health",
-    "healthcheckTimeout": 30,
+    "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3,
     "preDeploy": "ADMIN_EMAIL=romero@sidelinenz.com npx tsx scripts/seed-admin.ts"
