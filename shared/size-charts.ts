@@ -52,7 +52,7 @@ export const SIZE_CHART_LABELS: Record<SizeChartType, string> = {
   "tracksuit-jacket": "Tracksuit / Softshell Jackets (legacy)",
   "baseball-jersey": "Baseball Jersey",
   "rugby-jersey": "Rugby Kit — Playing Cut (Sports Fit)",
-  "rugby-jersey-supporters": "Rugby Kit — Supporters Cut (Relaxed)",
+  "rugby-jersey-supporters": "Rugby Kit — Supporters Cut (Replica Fit)",
   "rugby-long-sleeve": "Rugby Long Sleeve Jersey (Classic Relaxed)",
   socks: "Socks",
   headwear: "Headwear — Bucket Hat / 5-Panel Cap",
@@ -335,11 +335,15 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
   // fit. Offered as the alternative jersey cut at order time.
   "rugby-jersey-supporters": [
     {
+      // Widened to NZ replica-jersey dimensions (Romero call 2026-07-23): the
+      // old cut measured about 9cm narrower than the replica jerseys
+      // supporters own, at every size. Youth regraded on the same curve;
+      // Y16/XS composite column split into separate sizes.
       title: "Rugby Jersey",
-      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16/XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
+      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
       rows: [
-        { label: "A. ½ Chest", values: [35,37,39,41,43,45,43.5,46,48.5,51,53.5,56,58.5,61,63.5,66,68.5] },
-        { label: "B. Length", values: [50,54,58,62,66,70,72,74,76,78,80,82,84,86,88,90,92] },
+        { label: "A. ½ Chest", values: [35,37.5,40,42.5,45,47.5,50,52.5,55,57.5,60,62.5,65,67.5,70,72.5,75,77.5] },
+        { label: "B. Length", values: [52,55,58,61,64,67,70,73,75,77,79,81,83,84,85,86,87,88] },
       ],
       tolerance: "± 2.0cm",
     },
