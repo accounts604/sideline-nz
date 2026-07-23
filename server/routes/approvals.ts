@@ -35,6 +35,7 @@ import { storage } from "../storage";
 import { clubLogoPlacement } from "../canva-logos";
 import { updateGhlOpportunityStage } from "./ghl";
 import { sendMockupApprovalRequest, sendClientApprovalResult } from "../email";
+import { recordPoView, PO_VIEWED_BY_CUSTOMER } from "../po-views";
 
 // ===== Exported helper: create a token + send the email =====
 
@@ -119,6 +120,18 @@ publicApprovalRouter.get("/:token", async (req, res) => {
 
     const [order] = await db.select().from(orders).where(eq(orders.id, tokenRow.orderId)).limit(1);
     if (!order) return res.status(404).json({ error: "Order not found" });
+
+    // View tracking — the customer opened their PO via the emailed approval
+    // link. Fire-and-forget; deduped per token per hour inside recordPoView.
+    void recordPoView({
+      orderId: order.id,
+      action: PO_VIEWED_BY_CUSTOMER,
+      userId: null,
+      viewerKey: `token:${tokenRow.token}`,
+      viewer: { via: "approval_link" },
+      userAgent: req.headers["user-agent"],
+      path: req.originalUrl,
+    });
 
     // Fetch mockup files only (role-scoped reads — clients see /mockups folder)
     const allFiles = await db.select().from(designFiles).where(eq(designFiles.orderId, order.id));
@@ -619,6 +632,19 @@ publicProofRouter.get("/:token", async (req, res) => {
           : "Thanks — we've already received your response on this proof. Our team will follow up shortly.",
       ));
     }
+
+    // View tracking — the customer opened the interactive design proof (their
+    // PO) via the emailed link. Same viewerKey as the approval hydrate so the
+    // two surfaces dedupe together (one event per token per hour).
+    void recordPoView({
+      orderId: tokenRow.orderId,
+      action: PO_VIEWED_BY_CUSTOMER,
+      userId: null,
+      viewerKey: `token:${tokenRow.token}`,
+      viewer: { via: "proof_link" },
+      userAgent: req.headers["user-agent"],
+      path: req.originalUrl,
+    });
 
     const { generatePoHtml } = await import("../po-pdf");
     // Relative submit URL — resolves to the same origin serving this page.

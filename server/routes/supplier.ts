@@ -19,6 +19,7 @@ import type { JwtPayload } from "../auth";
 import { db } from "../db";
 import { orderActivity } from "@shared/schema";
 import { linkOrdersToShipment, findOrdersByPoReferences } from "../shipments";
+import { recordPoView, PO_VIEWED_BY_SUPPLIER } from "../po-views";
 
 const router = Router();
 
@@ -86,6 +87,17 @@ router.get("/orders/:id", async (req, res) => {
     const { userId } = (req as any).user as JwtPayload;
     const order = await getSupplierOrder(req.params.id, userId);
     if (!order) return res.status(404).json({ error: "Order not found" });
+
+    // View tracking — fire-and-forget so it never slows or breaks the read.
+    // Deduped inside recordPoView (one event per supplier per PO per hour).
+    void recordPoView({
+      orderId: order.id,
+      action: PO_VIEWED_BY_SUPPLIER,
+      userId,
+      viewerKey: userId,
+      userAgent: req.headers["user-agent"],
+      path: req.originalUrl,
+    });
 
     // Fetch design files and filter to tech-pack folder only
     const allFiles = await storage.getDesignFilesByOrder(order.id);

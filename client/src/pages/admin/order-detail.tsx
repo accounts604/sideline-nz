@@ -159,6 +159,8 @@ interface OrderDetail {
   sizeBreakdowns: SizeBreakdown[];
   activity: any[];
   parent?: { name: string; deliveryAddress: string | null; contactName: string | null; contactEmail: string | null; contactPhone: string | null; website: string | null } | null;
+  lastSupplierViewAt?: string | null;
+  lastCustomerViewAt?: string | null;
   [key: string]: any;
 }
 
@@ -1312,6 +1314,11 @@ export default function AdminOrderDetail() {
             {supplierName
               ? <span style={{ color: "#fff" }}>{supplierName}</span>
               : <span style={{ color: "rgba(234,179,8,0.9)" }}>not assigned</span>}
+            {(supplierName || data.lastSupplierViewAt) && (
+              <div style={{ fontSize: "10px", marginTop: "2px", color: data.lastSupplierViewAt ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.3)" }} title="Last time the supplier opened this PO in their portal">
+                {data.lastSupplierViewAt ? `Last viewed ${new Date(data.lastSupplierViewAt).toLocaleString()}` : "Never viewed"}
+              </div>
+            )}
           </CockpitCell>
           <CockpitCell label="Lines">
             <span style={{ color: "#fff" }}>{items.length}</span>
