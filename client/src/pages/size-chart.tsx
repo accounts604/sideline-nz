@@ -59,7 +59,7 @@ const FIT_NOTES: Partial<Record<GarmentType, string>> = {
   "stadium-jacket": "Longline sideline coat — cut to sit below the knee.",
   "rugby-jersey": "Sports fit — snug chest and shorter athletic body, made for on-field play. For a fuller fit see the Supporters cut.",
   "rugby-jersey-supporters": "Relaxed fit — longer body and fuller cut, made for wearing on the sideline. For match gear see the Playing cut.",
-  "rugby-long-sleeve": "Sports fit with full-length sleeves — playing cut body, sleeve measured neck to cuff.",
+  "rugby-long-sleeve": "Classic relaxed rugby jersey — roomy through the chest with the traditional long body. Sleeve measured neck to cuff.",
 };
 
 function SizeTableComponent({ table }: { table: SizeTable }) {
