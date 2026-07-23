@@ -25,10 +25,10 @@ const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
   footer{margin-top:24px;color:#999;font-size:9.5px;border-top:1px solid #ddd;padding-top:6px;}
 </style></head><body>
   <h1>Sideline NZ &middot; Master Size Charts</h1>
-  <div class="sub">Version July 2026 (rev 2, adds Rugby Long Sleeve Jersey) &middot; All measurements in centimetres, garment laid flat and relaxed &middot; Also published at sidelinenz.com/size-chart</div>
+  <div class="sub">Version July 2026 (rev 3, Rugby Long Sleeve Jersey in classic relaxed fit) &middot; All measurements in centimetres, garment laid flat and relaxed &middot; Also published at sidelinenz.com/size-chart</div>
   <div class="rules"><b>Production rules:</b> Every PO prints the centimetre measurements from these charts. Cut to the printed centimetres; size labels are names only. Where a chart or measurement is unclear, pause that line and ask before cutting. Playing Kit uses the Kokonut chart (identical numbers below) so existing Kokonut patterns can be used for those garments only. All other garments follow these tables, never the Kokonut chart.</div>
   ${section('1. Playing Kit — Sports Fit', 'Rugby jerseys and rugby shorts, match wear. These numbers are identical to the Kokonut chart: use those patterns. Kids K6 to K16 = our Y6 to Y16.', ['rugby-jersey'])}
-  ${section('2. Rugby Long Sleeve Jersey — Sports Fit', 'Playing-cut body with full-length sleeves from your existing long sleeve patterns. Sleeve measured neck to cuff.', ['rugby-long-sleeve'])}
+  ${section('2. Rugby Long Sleeve Jersey — Classic Relaxed Fit', 'Traditional rugby jersey: roomy chest and LONG body (72 to 92 cm). This is NOT the playing cut and NOT the Kokonut pattern. Cut to these centimetres. FABRIC: cotton or cotton blend, 330 gsm, confirmed before production.', ['rugby-long-sleeve'])}
   ${section('3. Rugby Kit — Supporters Cut (Relaxed)', 'Optional fuller cut, ordered by name on the PO line. Longer body, relaxed fit.', ['rugby-jersey-supporters'])}
   ${section('4. Jackets — All Styles', 'ONE chart for softshell, rugby shell, windbreaker and quarter zip: the same size fits the same across every style. Do not use house or Kokonut jacket patterns.', ['jacket'])}
   ${section('5. Stadium Jacket — Longline', 'Sub coat cut below the knee. Note the body lengths: this is NOT the standard jacket pattern.', ['stadium-jacket'])}
