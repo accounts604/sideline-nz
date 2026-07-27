@@ -92,13 +92,28 @@ function GhlChatVisibility() {
   const [location] = useLocation();
 
   useEffect(() => {
-    const widget = document.querySelector("chat-widget") as HTMLElement | null;
-    if (!widget) return;
     const internal = /^\/(admin|portal|club-portal|supplier|s\/)/.test(location);
     const scraperReferrer = /admin\.shopify\.com|googleusercontent\.com|linkedin\.com\/preview/i.test(
       document.referrer || "",
     );
-    widget.style.display = internal || scraperReferrer ? "none" : "";
+    const hide = internal || scraperReferrer;
+
+    // The GHL script injects <chat-widget> asynchronously. Reading it once on mount
+    // loses the race on a direct page load: the element does not exist yet, so the
+    // widget appears afterwards and is never hidden. Apply now if present, and keep
+    // watching so it is hidden the moment it is injected.
+    const apply = () => {
+      const widget = document.querySelector("chat-widget") as HTMLElement | null;
+      if (!widget) return false;
+      widget.style.display = hide ? "none" : "";
+      return true;
+    };
+
+    if (apply() || !hide) return;
+
+    const observer = new MutationObserver(() => { if (apply()) observer.disconnect(); });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
   }, [location]);
 
   return null;
