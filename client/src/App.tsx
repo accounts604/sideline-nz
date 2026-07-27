@@ -94,7 +94,7 @@ function GhlChatVisibility() {
   useEffect(() => {
     const widget = document.querySelector("chat-widget") as HTMLElement | null;
     if (!widget) return;
-    const internal = /^\/(admin|portal|club-portal|supplier)/.test(location);
+    const internal = /^\/(admin|portal|club-portal|supplier|s\/)/.test(location);
     const scraperReferrer = /admin\.shopify\.com|googleusercontent\.com|linkedin\.com\/preview/i.test(
       document.referrer || "",
     );
