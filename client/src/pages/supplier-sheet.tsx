@@ -52,13 +52,13 @@ function Row({ token, o }: { token: string; o: SheetOrder }) {
   }
 
   return (
-    <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16, marginBottom: 14, background: "#fff" }}>
+    <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16, marginBottom: 14, background: "#fff", color: "#111" }}>
       <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>{o.poReference}</div>
+          <div style={{ fontWeight: 700, fontSize: 16, color: "#111" }}>{o.poReference}</div>
           <div style={{ color: "#555" }}>{o.client} · {o.units} units</div>
         </div>
-        <div style={{ textAlign: "right", fontSize: 13 }}>
+        <div style={{ textAlign: "right", fontSize: 13, color: "#333" }}>
           <div>Stage: <b>{o.stage}</b></div>
           <div>Sent to you: {d(o.sentToYou) || "not yet"}</div>
           <div style={{ color: late ? "#c62828" : "#555", fontWeight: late ? 700 : 400 }}>
@@ -70,20 +70,20 @@ function Row({ token, o }: { token: string; o: SheetOrder }) {
       <div style={{ fontSize: 13, color: "#444", margin: "10px 0" }}>{o.lines.join(" · ")}</div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <label style={{ fontSize: 13 }}>
+        <label style={{ fontSize: 13, color: "#111" }}>
           <div style={{ marginBottom: 4 }}>When will it ship?</div>
           <input type="date" value={shipDate} onChange={(e) => setShipDate(e.target.value)}
-                 style={{ padding: 8, border: "1px solid #bbb", borderRadius: 6, fontSize: 15 }} />
+                 style={{ padding: 8, border: "1px solid #bbb", borderRadius: 6, fontSize: 15, color: "#111", background: "#fff" }} />
         </label>
-        <label style={{ fontSize: 13, flex: "1 1 200px" }}>
+        <label style={{ fontSize: 13, color: "#111", flex: "1 1 200px" }}>
           <div style={{ marginBottom: 4 }}>Tracking number</div>
           <input value={trackingNumber} onChange={(e) => setTracking(e.target.value)} placeholder="Add when you have it"
-                 style={{ padding: 8, border: "1px solid #bbb", borderRadius: 6, fontSize: 15, width: "100%" }} />
+                 style={{ padding: 8, border: "1px solid #bbb", borderRadius: 6, fontSize: 15, width: "100%", color: "#111", background: "#fff" }} />
         </label>
-        <label style={{ fontSize: 13, flex: "1 1 260px" }}>
+        <label style={{ fontSize: 13, color: "#111", flex: "1 1 260px" }}>
           <div style={{ marginBottom: 4 }}>Anything we should know?</div>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. waiting on sizes from you"
-                 style={{ padding: 8, border: "1px solid #bbb", borderRadius: 6, fontSize: 15, width: "100%" }} />
+                 style={{ padding: 8, border: "1px solid #bbb", borderRadius: 6, fontSize: 15, width: "100%", color: "#111", background: "#fff" }} />
         </label>
         <button onClick={save} disabled={state === "saving"}
                 style={{ padding: "10px 20px", background: "#004A48", color: "#fff", border: 0, borderRadius: 6,
@@ -114,8 +114,8 @@ export default function SupplierSheetPage() {
   if (error || !data) return <div style={{ padding: 40, fontFamily: "Arial", textAlign: "center" }}>This link is not valid. Please ask Sideline NZ for a new one.</div>;
 
   return (
-    <div style={{ fontFamily: "Arial, sans-serif", maxWidth: 860, margin: "0 auto", padding: "24px 16px 60px", background: "#f7f7f7", minHeight: "100vh" }}>
-      <h1 style={{ fontSize: 22, margin: "0 0 6px" }}>Order tracking sheet</h1>
+    <div style={{ fontFamily: "Arial, sans-serif", maxWidth: 860, margin: "0 auto", padding: "24px 16px 60px", background: "#f7f7f7", minHeight: "100vh", color: "#111" }}>
+      <h1 style={{ fontSize: 22, margin: "0 0 6px", color: "#111", fontWeight: 700 }}>Order tracking sheet</h1>
       <p style={{ color: "#555", margin: "0 0 4px" }}>{data.supplier} and Sideline NZ</p>
       <p style={{ color: "#555", fontSize: 14, margin: "0 0 22px", lineHeight: 1.6 }}>
         These are the orders open with you. For each one, tell us when it will ship and add the
