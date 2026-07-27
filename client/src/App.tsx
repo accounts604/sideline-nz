@@ -68,6 +68,7 @@ import MockupReviewPage from "@/pages/club-portal/mockup-review";
 import OrderTrackingPage from "@/pages/club-portal/order-tracking";
 import ClubSupporterDashboard from "@/pages/club-portal/supporter-dashboard";
 import SupplierLoginPage from "@/pages/supplier/login";
+import SupplierSheetPage from "@/pages/supplier-sheet";
 import SupplierDashboard from "@/pages/supplier/dashboard";
 import SupplierOrderDetail from "@/pages/supplier/order-detail";
 import ApprovePage from "@/pages/approve";
@@ -234,6 +235,8 @@ function Router() {
         <Route path="/approve/:token" component={ApprovePage} />
 
         {/* Supplier Portal */}
+        {/* Public no-login supplier tracking sheet. Token in the URL, no auth gate. */}
+        <Route path="/s/:token" component={SupplierSheetPage} />
         <Route path="/supplier/login" component={SupplierLoginPage} />
         <Route path="/supplier/orders/:id">
           {() => <SupplierRoute><SupplierOrderDetail /></SupplierRoute>}

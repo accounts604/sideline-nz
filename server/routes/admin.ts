@@ -2163,6 +2163,22 @@ const assignSupplierSchema = z.object({
   supplierId: z.string().min(1, "supplierId is required"),
 });
 
+// GET /suppliers/:id/sheet-link — mint the no-login tracking sheet URL for a supplier.
+// The server signs it with its own secret, so nobody has to handle SUPPLIER_SHEET_SECRET
+// by hand. Share the URL with the supplier; rotate the secret to revoke every link.
+router.get("/suppliers/:id/sheet-link", async (req, res) => {
+  try {
+    const user = await storage.getUser(req.params.id);
+    if (!user || user.role !== "supplier") return res.status(404).json({ error: "Supplier not found" });
+    const { signSupplierToken } = await import("./supplier-sheet");
+    const base = process.env.BASE_URL || "https://sidelinenz.com";
+    res.json({ supplier: user.teamName || user.username, url: `${base}/s/${signSupplierToken(user.id)}` });
+  } catch (err: any) {
+    console.error("sheet-link error:", err);
+    res.status(500).json({ error: "Could not mint link" });
+  }
+});
+
 router.post("/orders/:id/assign-supplier", async (req, res) => {
   try {
     const { supplierId } = assignSupplierSchema.parse(req.body);
