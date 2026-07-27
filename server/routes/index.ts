@@ -11,6 +11,7 @@ import { mockupPublicRouter, adminMockupRouter } from "./mockups";
 import { adminQuoteRouter, templateRouter, publicQuoteRouter } from "./quotes";
 import clubPortalRouter from "./club-portal";
 import supplierRouter from "./supplier";
+import supplierSheetRouter from "./supplier-sheet";
 import shipmentsRouter from "./shipments";
 import { publicApprovalRouter, publicProofRouter } from "./approvals";
 import { adminDesignerJobsRouter, publicJobRouter } from "./designer-jobs";
@@ -103,6 +104,9 @@ export async function registerRoutes(
 
   // Supplier portal (Phase 5 — sideline order management portal)
   app.use("/api/supplier", supplierRouter);
+  // No-login supplier tracking sheet. Token-scoped, read is production-only and
+  // write is limited to ship date / tracking / note. See server/routes/supplier-sheet.ts.
+  app.use("/api/sheet", supplierSheetRouter);
 
   // Public client-approval links (no auth — validated by random URL token)
   app.use("/api/approve", publicApprovalRouter);
