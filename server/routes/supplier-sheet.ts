@@ -23,6 +23,7 @@ import { storage } from "../storage";
 // NB: a "supplier" is a row in `users` with role = supplier. orders.assignedSupplierId
 // references users.id — there is no separate suppliers table.
 import { orders, orderItems, orderActivity, users } from "@shared/schema";
+import { recordPoView, PO_VIEWED_BY_SUPPLIER } from "../po-views";
 
 const router = Router();
 
@@ -92,6 +93,20 @@ router.get("/:token", async (req, res) => {
         };
       })
       .sort((a, b) => String(a.weNeedBy || "9999").localeCompare(String(b.weNeedBy || "9999")));
+
+    // Record that they actually opened it, so admin sees "supplier last viewed 2h ago"
+    // instead of guessing whether the link was ever read. Deduped to one row per PO
+    // per hour by the helper. Fire-and-forget: tracking must never break the read.
+    for (const o of open) {
+      void recordPoView({
+        orderId: o.id,
+        action: PO_VIEWED_BY_SUPPLIER,
+        viewerKey: `token:${req.params.token}`,
+        viewer: { via: "supplier tracking sheet", supplier: sup.teamName || sup.username },
+        userAgent: req.get("user-agent") || undefined,
+        path: req.originalUrl,
+      });
+    }
 
     res.json({ supplier: sup.teamName || sup.username || "Supplier", orders: payload });
   } catch (err: any) {
