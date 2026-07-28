@@ -15,6 +15,7 @@ import {
   Factory,
   Image as ImageIcon,
   Settings as SettingsIcon,
+  Sparkles,
 } from "lucide-react";
 import { useState } from "react";
 import logoHorizontal from "@assets/Sideline_NZ_logo_Horizontal_Wite_1767355724062.png";
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { href: "/admin/customers", label: "Customers", icon: Users },
   { href: "/admin/suppliers", label: "Suppliers", icon: Factory },
   { href: "/admin/vault", label: "File Vault", icon: FolderOpen },
+  { href: "/admin/design-studio", label: "Design Studio", icon: Sparkles },
   { href: "/admin/designs", label: "Design Review", icon: Palette },
   { href: "/admin/quotes", label: "Smart Quotes", icon: FileText },
   { href: "/admin/mockups", label: "Mockup Engine", icon: Wand2 },
