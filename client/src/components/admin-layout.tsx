@@ -34,9 +34,7 @@ const NAV_ITEMS = [
   { href: "/admin/suppliers", label: "Suppliers", icon: Factory },
   { href: "/admin/vault", label: "File Vault", icon: FolderOpen },
   { href: "/admin/design-studio", label: "Design Studio", icon: Sparkles },
-  { href: "/admin/designs", label: "Design Review", icon: Palette },
   { href: "/admin/quotes", label: "Smart Quotes", icon: FileText },
-  { href: "/admin/mockups", label: "Mockup Engine", icon: Wand2 },
   { href: "/admin/integrations", label: "Integrations", icon: Activity },
   { href: "/admin/settings", label: "Settings", icon: SettingsIcon },
 ];
