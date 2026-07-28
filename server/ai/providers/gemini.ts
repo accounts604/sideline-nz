@@ -3,7 +3,7 @@
 // Uses gemini-2.5-flash by default — free tier is 15 RPM / 1.5M tokens/day,
 // vision-capable, and structured-output capable via responseSchema.
 //
-// Sibling to server/mockup/gemini.ts (which is image-generation only).
+// The former server/mockup/gemini.ts (image generation) was retired 2026-07-28.
 // That module uses gemini-2.0-flash-exp's IMAGE modality; this one is
 // text + vision input → text output.
 

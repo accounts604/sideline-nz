@@ -36,16 +36,13 @@ import AdminCustomerDetail from "@/pages/admin/customer-detail";
 import AdminSuppliers from "@/pages/admin/suppliers";
 import AdminSupplierDetail from "@/pages/admin/supplier-detail";
 import AdminVault from "@/pages/admin/vault";
-import AdminDesignReview from "@/pages/admin/design-review";
 import AdminDesignStudio from "@/pages/admin/design-studio";
 import AdminPurchaseOrder from "@/pages/admin/purchase-order";
 import AdminCreatePO from "@/pages/admin/create-po";
-import AdminMockups from "@/pages/admin/mockups";
 import AdminIntegrations from "@/pages/admin/integrations";
 import AdminSettings from "@/pages/admin/settings";
 import AdminAi from "@/pages/admin/ai";
 import AdminEzra from "@/pages/admin/ezra";
-import AdminMockupDetail from "@/pages/admin/mockup-detail";
 import AdminQuotes from "@/pages/admin/quotes";
 import AdminQuoteDetail from "@/pages/admin/quote-detail";
 import AdminCreateQuote from "@/pages/admin/create-quote";
@@ -193,9 +190,6 @@ function Router() {
         <Route path="/admin/design-studio">
           {() => <AdminRoute><AdminDesignStudio /></AdminRoute>}
         </Route>
-        <Route path="/admin/designs">
-          {() => <AdminRoute><AdminDesignReview /></AdminRoute>}
-        </Route>
         <Route path="/admin/quotes/create">
           {() => <AdminRoute><AdminCreateQuote /></AdminRoute>}
         </Route>
@@ -207,12 +201,6 @@ function Router() {
         </Route>
         <Route path="/admin/quotes">
           {() => <AdminRoute><AdminQuotes /></AdminRoute>}
-        </Route>
-        <Route path="/admin/mockups/:id">
-          {() => <AdminRoute><AdminMockupDetail /></AdminRoute>}
-        </Route>
-        <Route path="/admin/mockups">
-          {() => <AdminRoute><AdminMockups /></AdminRoute>}
         </Route>
         <Route path="/admin/integrations">
           {() => <AdminRoute><AdminIntegrations /></AdminRoute>}

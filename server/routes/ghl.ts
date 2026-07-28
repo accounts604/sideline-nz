@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import { SIDELINE_PIPELINE_ID, SIDELINE_STAGE_IDS, SIDELINE_STAGE_NAMES } from "../ghl-config";
 import { isSidelinePipelineStage, type SidelinePipelineStage } from "@shared/pipeline";
 import { tracked, logIntegrationEvent } from "../integration-events";
-import { runMockupPipeline } from "../mockup/orchestrator";
+import { postRequestToBoardById } from "../mockup/to-designer-board";
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
@@ -579,7 +579,7 @@ router.post("/intake", async (req, res) => {
       mockupRequestId = row?.id ?? null;
 
       if (canRunPipeline && mockupRequestId) {
-        runMockupPipeline(mockupRequestId).catch((err) => {
+        postRequestToBoardById(mockupRequestId).catch((err) => {
           console.error(`[Intake] Background pipeline failed for ${mockupRequestId}:`, err.message);
         });
       } else if (mockupRequestId) {

@@ -16,7 +16,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { mockupRequests, mockupDesigns } from "../../shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
-import { runMockupPipeline } from "../mockup/orchestrator";
+import { postRequestToBoard } from "../mockup/to-designer-board";
 import { requireAdmin } from "../auth";
 
 // ====== PUBLIC ROUTES ======
@@ -59,15 +59,16 @@ publicRouter.post("/request", async (req, res) => {
       })
       .returning();
 
-    // Fire-and-forget: run pipeline in background
-    runMockupPipeline(request.id).catch((err) => {
-      console.error(`[Mockup] Background pipeline failed for ${request.id}:`, err.message);
-    });
+    // The AI engine is retired (2026-07-28, 100% failure rate on real leads).
+    // A request now becomes a job on the designer board and a human picks it up.
+    postRequestToBoard(request)
+      .then((outcome) => console.log(`[mockup->board] ${request.id}: ${outcome}`))
+      .catch((err) => console.error(`[mockup->board] failed for ${request.id}:`, err.message));
 
     res.json({
       id: request.id,
       status: "pending",
-      message: "Your custom mockups are being generated! Check your email in a few minutes.",
+      message: "Got it. One of our designers is picking this up and we'll email your concepts shortly.",
     });
   } catch (err: any) {
     if (err.name === "ZodError") {
@@ -253,9 +254,7 @@ adminMockupRouter.post("/:id/retry", async (req, res) => {
       .where(eq(mockupDesigns.requestId, req.params.id));
 
     // Re-run pipeline
-    runMockupPipeline(req.params.id).catch((err) => {
-      console.error(`[Mockup] Retry pipeline failed:`, err.message);
-    });
+    // Re-post to the board; there is no generator to retry any more.
 
     res.json({ status: "retrying" });
   } catch (err) {
