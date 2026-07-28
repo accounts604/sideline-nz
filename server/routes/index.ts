@@ -15,6 +15,7 @@ import supplierSheetRouter from "./supplier-sheet";
 import shipmentsRouter from "./shipments";
 import { publicApprovalRouter, publicProofRouter } from "./approvals";
 import { adminDesignerJobsRouter, publicJobRouter } from "./designer-jobs";
+import { boardRouter } from "./designer-board";
 import chatbotRouter from "./chatbot";
 import notifyRouter from "./notify";
 import cronRouter from "./cron";
@@ -119,6 +120,9 @@ export async function registerRoutes(
   // Designer jobs (Drop Designer pipeline): admin/service API + the designer's
   // public job page (no auth — unguessable token in URL, same pattern as /proof).
   app.use("/api/admin/designer-jobs", adminDesignerJobsRouter);
+  // The designer claim board. No login: the token in the URL is the credential,
+  // same model as /job/<token> and the supplier sheet at /s/<token>.
+  app.use("/designers", boardRouter);
   app.use("/job", publicJobRouter);
 
   // Chatbot API for GHL Conversational AI (Jarvesi web chat)
