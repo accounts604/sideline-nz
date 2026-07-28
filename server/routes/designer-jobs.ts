@@ -63,6 +63,24 @@ async function brandHandoff(job: typeof designerJobs.$inferSelect): Promise<stri
   return `enriched club_brand_identity for account ${account.id} (${account.clubName})`;
 }
 
+/**
+ * JSON that is safe to embed inside a <script> tag.
+ *
+ * JSON.stringify does NOT escape "<" or "/", so a string containing
+ * "</script>" closes the tag and everything after it executes. That is stored
+ * XSS on a page handed to external freelancers. Escaping < > & as unicode
+ * escapes keeps the JSON semantically identical while making a breakout
+ * impossible. U+2028/U+2029 are also escaped: they are valid in JSON but are
+ * line terminators in JS and would be a syntax error inline.
+ */
+const jsonForScript = (v: unknown) =>
+  JSON.stringify(v)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+
 const esc = (s: unknown) =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -594,7 +612,7 @@ tick();setInterval(tick,30000);
 // ---- copy a prompt, ready to paste into Gemini ------------------------
 (function(){
   var wrap=document.querySelector(".card .pgar"); if(!wrap) return;
-  var PROMPTS=${JSON.stringify(garments.map((g) => expandPrompt(g, pack)))};
+  var PROMPTS=${jsonForScript(garments.map((g) => expandPrompt(g, pack)))};
   document.querySelectorAll(".copy[data-p]").forEach(function(b){
     b.addEventListener("click",function(){
       var t=PROMPTS[+b.getAttribute("data-p")]||"";
