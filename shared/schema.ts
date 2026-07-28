@@ -364,8 +364,20 @@ export const designerJobs = pgTable("designer_jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   quoteId: text("quote_id").notNull().unique(), // SL-####
   token: text("token").notNull().unique(), // unguessable public-page token
+  // The order this design became, once the quote converts. Without this link the
+  // app cannot tell WHICH designer made the mockups a client is commenting on, so
+  // client feedback had to be relayed by hand. Nullable: a job exists before an
+  // order does, and speculative mockups may never produce one.
+  orderId: varchar("order_id").references(() => orders.id),
   club: text("club"),
   designerName: text("designer_name").notNull().default("unassigned"),
+  // Where to reach the designer when the client asks for changes. Without it the
+  // loop still works (their job page shows the request) but nobody tells them.
+  designerEmail: text("designer_email"),
+  // Append-only log of every change request, from either direction:
+  // [{at, source:"client"|"qc", notes, failedItems?, round}]. Append-only so a
+  // later round never erases what was asked for in an earlier one.
+  revisionRequests: jsonb("revision_requests"),
   // Designer's IANA timezone. Drives the "your time" clock on the job page and the
   // weekend-safe deadline math, so the rig is no longer hardcoded to one person's
   // country (2026-07-28 multi-freelancer refresh).
