@@ -93,13 +93,18 @@ adminDesignerJobsRouter.post("/", async (req, res) => {
   const parsed = upsertSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message || "invalid body" });
   const b = parsed.data;
+  const quoteId = b.quoteId.toUpperCase();
+  const [existing] = await db.select({ id: designerJobs.id }).from(designerJobs).where(eq(designerJobs.quoteId, quoteId)).limit(1);
+  const isInsert = !existing;
   const values = {
-    quoteId: b.quoteId.toUpperCase(),
+    quoteId,
     token: b.token || crypto.randomBytes(12).toString("base64url"),
     club: b.club,
     // No hardcoded person: the assigning caller names the designer and their zone.
-    // Left undefined the DB default applies on insert, and an update never clobbers.
-    designerName: b.designerName,
+    // The live column still defaults to a specific designer, so an omitted name is
+    // pinned to "unassigned" HERE rather than inheriting a departed person. On
+    // update `undefined` is stripped, so this never clobbers an existing assignment.
+    designerName: b.designerName ?? (isInsert ? "unassigned" : undefined),
     timezone: b.timezone,
     briefMd: b.briefMd,
     assetsBase: b.assetsBase,
