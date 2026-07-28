@@ -124,7 +124,7 @@ export default function AdminDashboard() {
         <StatCard label="Bulk Orders" value={stats?.bulkOrders ?? 0} icon={Package} href="/admin/orders" color="rgba(168,85,247,0.8)" />
         <StatCard label="Team Stores" value={stats?.teamStoreOrders ?? 0} icon={Store} href="/admin/orders" color="rgba(59,130,246,0.8)" />
         <StatCard label="Sample Runs" value={stats?.sampleRuns ?? 0} icon={FlaskConical} href="/admin/orders" color="rgba(234,179,8,0.8)" />
-        <StatCard label="Pending Designs" value={stats?.pendingDesigns ?? 0} icon={Palette} href="/admin/designs" color="rgba(168,85,247,0.8)" />
+        <StatCard label="Pending Designs" value={stats?.pendingDesigns ?? 0} icon={Palette} href="/admin/design-studio" color="rgba(168,85,247,0.8)" />
         <StatCard label="Customers" value={stats?.totalCustomers ?? 0} icon={Users} href="/admin/customers" color="rgba(34,197,94,0.8)" />
         <StatCard label="Suppliers" value={stats?.totalSuppliers ?? 0} icon={Truck} href="/admin/orders" color="rgba(249,115,22,0.8)" />
         <StatCard label="Pending Orders" value={stats?.pendingOrders ?? 0} icon={Clock} href="/admin/orders?status=pending" color="rgba(234,179,8,0.8)" />
