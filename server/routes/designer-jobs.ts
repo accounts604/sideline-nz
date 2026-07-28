@@ -20,7 +20,7 @@ import { z } from "zod";
 import crypto from "crypto";
 import { desc, eq, or } from "drizzle-orm";
 import { db } from "../db";
-import { designerJobs, orders } from "@shared/schema";
+import { designerJobs, designers, orders } from "@shared/schema";
 import { DROP_CHECKLIST, checklistLabel } from "@shared/drop-checklist";
 import { requireAdmin } from "../auth";
 import { storage } from "../storage";
@@ -136,6 +136,64 @@ adminDesignerJobsRouter.post("/", async (req, res) => {
 adminDesignerJobsRouter.get("/", async (_req, res) => {
   const rows = await db.select().from(designerJobs).orderBy(desc(designerJobs.createdAt));
   res.json(rows);
+});
+
+// Create or update a designer. Returns their personal board URL — that link is
+// the entire onboarding: no account, no password, no invite flow.
+const designerSchema = z.object({
+  name: z.string().regex(/^[a-z0-9-]{2,32}$/, "lowercase slug, e.g. \"sam\" or \"ana-t\""),
+  displayName: z.string().min(1).max(60),
+  email: z.string().email().optional(),
+  timezone: z.string().max(64).default("Pacific/Auckland"),
+  slaHours: z.number().int().min(4).max(168).optional(),
+  wipCap: z.number().int().min(1).max(10).optional(),
+  tier: z.enum(["rookie", "designer", "senior"]).optional(),
+  active: z.boolean().optional(),
+});
+
+adminDesignerJobsRouter.post("/designers", async (req, res) => {
+  const parsed = designerSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message || "invalid body" });
+  const b = parsed.data;
+  const values = {
+    name: b.name, displayName: b.displayName, email: b.email, timezone: b.timezone,
+    token: crypto.randomBytes(12).toString("base64url"),
+    ...(b.slaHours !== undefined ? { slaHours: b.slaHours } : {}),
+    ...(b.wipCap !== undefined ? { wipCap: b.wipCap } : {}),
+    ...(b.tier !== undefined ? { tier: b.tier } : {}),
+    ...(b.active !== undefined ? { active: b.active } : {}),
+  };
+  const { token: _t, name: _n, ...updatable } = values as Record<string, unknown>;
+  const [row] = await db
+    .insert(designers)
+    .values(values as typeof designers.$inferInsert)
+    // Idempotent on the slug: re-running never mints a new token, so an existing
+    // designer's board link keeps working.
+    .onConflictDoUpdate({ target: designers.name, set: { ...updatable, updatedAt: new Date() } })
+    .returning();
+  res.json({ ok: true, designer: row, boardUrl: `/designers/${row.token}` });
+});
+
+adminDesignerJobsRouter.get("/designers", async (_req, res) => {
+  res.json(await db.select().from(designers).orderBy(desc(designers.createdAt)));
+});
+
+// Put a job on the board so anyone eligible can claim it. Deliberately does NOT
+// set a deadline: the clock starts when somebody takes it.
+adminDesignerJobsRouter.post("/:quoteId/post", async (req, res) => {
+  const quoteId = req.params.quoteId.toUpperCase();
+  const [job] = await db.select().from(designerJobs).where(eq(designerJobs.quoteId, quoteId)).limit(1);
+  if (!job) return res.status(404).json({ error: "job not found" });
+  if (job.status === "approved") return res.status(409).json({ error: "job already approved" });
+  if (job.claimedAt) return res.status(409).json({ error: `already claimed by ${job.designerName}` });
+
+  const now = new Date();
+  const [row] = await db
+    .update(designerJobs)
+    .set({ status: "available", postedAt: job.postedAt || now, designerName: "unassigned", deadlineAt: null, assignedAt: null, updatedAt: now })
+    .where(eq(designerJobs.quoteId, quoteId))
+    .returning();
+  res.json({ ok: true, quoteId, status: row.status, postedAt: row.postedAt });
 });
 
 // Manual override for when email matching gets it wrong or finds nothing.

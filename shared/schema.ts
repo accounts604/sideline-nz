@@ -357,6 +357,33 @@ export const insertDesignCommentSchema = createInsertSchema(designComments).omit
 export type InsertDesignComment = z.infer<typeof insertDesignCommentSchema>;
 export type DesignComment = typeof designComments.$inferSelect;
 
+// Designers — the roster behind the claim board. A designer has no login: their
+// personal board token IS the credential, same trust model as /job/<token> and
+// the supplier sheet at /s/<token>. Revoke by rotating the token.
+export const designers = pgTable("designers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // Stable slug used in designer_jobs.designer_name. Never change it once they
+  // have jobs, or their history detaches from them.
+  name: text("name").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  email: text("email"),
+  token: text("token").notNull().unique(), // personal board link
+  timezone: text("timezone").notNull().default("Pacific/Auckland"),
+  slaHours: integer("sla_hours").notNull().default(48),
+  // How many jobs they may hold at once. Start new people at 1 so an unproven
+  // designer cannot tie up several clubs' drops before anyone notices.
+  wipCap: integer("wip_cap").notNull().default(1),
+  // rookie | designer | senior — gates which jobs they can see on the board.
+  tier: text("tier").notNull().default("rookie"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertDesignerSchema = createInsertSchema(designers).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertDesigner = z.infer<typeof insertDesignerSchema>;
+export type Designer = typeof designers.$inferSelect;
+
 // Designer jobs — the Drop Designer pipeline (SL-#### quote → assigned drop → QC → pay).
 // One row per drop; UNIQUE(quote_id) makes duplicate job creation structurally impossible
 // (the 2026-07-20 master plan idempotency rule). Public page served at /job/<token>.
@@ -386,10 +413,18 @@ export const designerJobs = pgTable("designer_jobs", {
   assetsBase: text("assets_base"), // absolute URL folder holding refs + brand kit
   assetFiles: jsonb("asset_files"), // string[] of filenames under assetsBase
   assignedAt: timestamp("assigned_at"),
-  deadlineAt: timestamp("deadline_at"), // weekend-safe (computed by the workspace clock)
+  // Claim board (2026-07-28). A job is POSTED to the board, then CLAIMED by a
+  // designer who chooses to take it. The SLA clock starts at the claim, not the
+  // posting, so nobody is ever late for a job they had not seen.
+  postedAt: timestamp("posted_at"),
+  claimedAt: timestamp("claimed_at"),
+  // Times this job has been auto-released back to the board after a missed
+  // deadline. Cheap signal for someone claiming work they cannot finish.
+  releaseCount: integer("release_count").notNull().default(0),
+  deadlineAt: timestamp("deadline_at"), // weekend-safe, computed at CLAIM time
   pausedMs: integer("paused_ms").notNull().default(0), // closed engine-down pauses (extends deadline)
   pauseOpenAt: timestamp("pause_open_at"), // open pause start, null when running
-  status: text("status").notNull().default("in_progress"), // in_progress | submitted | revision | approved | rejected
+  status: text("status").notNull().default("in_progress"), // available | in_progress | submitted | revision | approved | rejected | released
   submittedAt: timestamp("submitted_at"), // on_time is ALWAYS judged from this, never QC latency
   // Work the designer delivered through the job page itself: [{url,name,size,at}].
   // Kept append-only across revision rounds so a reject never destroys evidence of
