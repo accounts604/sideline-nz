@@ -6,6 +6,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { ArrowLeft, Upload, FileText, ExternalLink, RefreshCw, AlertCircle, Receipt, Truck, MapPin } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { ProductionTracker } from "@/components/production-tracker";
+import { DeliveryTimeline } from "@/components/delivery-timeline";
+import type { CustomerVisibleEvent } from "@shared/customer-timeline";
 import { OrderChat } from "@/components/order-chat";
 import { QualityChecksView } from "@/components/quality-checks";
 import { SizeBreakdownView } from "@/components/size-breakdown";
@@ -88,6 +90,7 @@ interface Order {
   trackingNumber: string | null;
   trackingUrl: string | null;
   estimatedDeliveryDate: string | null;
+  dueDate: string | null;
   total: number;
   subtotal: number;
   shipping: number;
@@ -99,6 +102,7 @@ interface Order {
 
 interface OrderDetail {
   order: Order;
+  timeline?: CustomerVisibleEvent[];
   items: OrderItem[];
   designs: DesignFile[];
   comments: DesignComment[];
@@ -258,10 +262,11 @@ export default function PortalOrderDetail() {
   }
 
   const { order, items, designs, comments, stages, qcChecks, sizeBreakdowns } = data;
+  const timeline = data.timeline || [];
 
   const tabs = [
     { key: "overview", label: "Overview" },
-    { key: "production", label: "Production" },
+    { key: "production", label: "Tracking" },
     { key: "designs", label: `Designs (${designs.length})` },
     { key: "chat", label: "Chat" },
   ] as const;
@@ -340,7 +345,7 @@ export default function PortalOrderDetail() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: "24px" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "24px", minWidth: 0 }}>
             {/* Production Progress (compact) */}
-            {stages.length > 0 && <ProductionTracker stages={stages} />}
+            {stages.some((st) => st.status === "completed" || st.status === "in_progress") && <ProductionTracker stages={stages} />}
 
             {/* Order Items */}
             <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", overflow: "hidden" }}>
@@ -424,7 +429,14 @@ export default function PortalOrderDetail() {
       {/* TAB: Production */}
       {activeTab === "production" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px", maxWidth: "700px" }}>
-          <ProductionTracker stages={stages} />
+          <DeliveryTimeline dueDate={order.dueDate} events={timeline} />
+          {/* The old stage tracker needs a human to tick nine boxes per order and
+              in practice nobody does, so an untouched one reads as "nothing has
+              happened" on an order that is well underway. Only show it when it
+              has actually been maintained. */}
+          {stages.some((st) => st.status === "completed" || st.status === "in_progress") && (
+            <ProductionTracker stages={stages} />
+          )}
           {qcChecks.length > 0 && <QualityChecksView checks={qcChecks} />}
         </div>
       )}

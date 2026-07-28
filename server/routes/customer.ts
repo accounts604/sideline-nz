@@ -3,6 +3,10 @@ import { requireAuth } from "../auth";
 import { storage } from "../storage";
 import { z } from "zod";
 import { recordPoView, PO_VIEWED_BY_CUSTOMER } from "../po-views";
+import { eq } from "drizzle-orm";
+import { db } from "../db";
+import { orderActivity } from "@shared/schema";
+import { toCustomerEvents } from "@shared/customer-timeline";
 
 const router = Router();
 
@@ -40,7 +44,21 @@ router.get("/orders/:id", async (req, res) => {
       path: req.originalUrl,
     });
 
-    res.json(result);
+    // Customer-visible slice of the internal activity log. Allowlisted in
+    // shared/customer-timeline.ts — supplier identity, PO refs and cost fields
+    // are never included, and an unrecognised action is invisible by default.
+    let timeline: ReturnType<typeof toCustomerEvents> = [];
+    try {
+      const rows = await db
+        .select({ action: orderActivity.action, details: orderActivity.details, createdAt: orderActivity.createdAt })
+        .from(orderActivity)
+        .where(eq(orderActivity.orderId, result.order.id));
+      timeline = toCustomerEvents(rows);
+    } catch (e: any) {
+      console.error("Customer timeline build failed:", e?.message);
+    }
+
+    res.json({ ...result, timeline });
   } catch (err) {
     console.error("Portal order detail error:", err);
     res.status(500).json({ error: "Failed to load order" });
