@@ -35,6 +35,7 @@ import { storage } from "../storage";
 import { clubLogoPlacement } from "../canva-logos";
 import { updateGhlOpportunityStage } from "./ghl";
 import { sendMockupApprovalRequest, sendClientApprovalResult } from "../email";
+import { routeClientChangesToDesigner } from "../designer-feedback";
 import { recordPoView, PO_VIEWED_BY_CUSTOMER } from "../po-views";
 
 // ===== Exported helper: create a token + send the email =====
@@ -254,6 +255,28 @@ publicApprovalRouter.post("/:token", async (req, res) => {
         sizeRowsWritten: sizesWritten,
       },
     });
+
+    // Send the club's change request straight to the designer instead of parking
+    // it in Romero's inbox for him to relay by hand. Best-effort: a failure here
+    // must never break the client's submission.
+    if (decision === "changes_requested") {
+      try {
+        const outcome = await routeClientChangesToDesigner({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          notes: changesNotes || null,
+        });
+        console.log(`[approvals] ${order.orderNumber} client changes -> designer: ${outcome}`);
+        await db.insert(orderActivity).values({
+          orderId: order.id,
+          userId: null,
+          action: "client_changes_sent_to_designer",
+          details: { outcome },
+        });
+      } catch (e: any) {
+        console.error(`[approvals] routing client changes to designer failed:`, e?.message);
+      }
+    }
 
     // Capture the design elements the customer provided in the same step
     // (colours, sponsors, uploaded logos) — record on the order timeline, and

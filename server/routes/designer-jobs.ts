@@ -75,6 +75,8 @@ const upsertSchema = z.object({
   token: z.string().min(8).max(64).optional(),
   club: z.string().max(120).optional(),
   designerName: z.string().max(40).optional(),
+  designerEmail: z.string().email().optional(),
+  orderId: z.string().uuid().optional(),
   timezone: z.string().max(64).optional(), // IANA zone, e.g. Asia/Colombo, Asia/Manila
   briefMd: z.string().max(20000).optional(),
   assetsBase: z.string().url().optional(),
@@ -105,6 +107,8 @@ adminDesignerJobsRouter.post("/", async (req, res) => {
     // pinned to "unassigned" HERE rather than inheriting a departed person. On
     // update `undefined` is stripped, so this never clobbers an existing assignment.
     designerName: b.designerName ?? (isInsert ? "unassigned" : undefined),
+    designerEmail: b.designerEmail,
+    orderId: b.orderId,
     timezone: b.timezone,
     briefMd: b.briefMd,
     assetsBase: b.assetsBase,
@@ -186,11 +190,15 @@ adminDesignerJobsRouter.post("/:quoteId/qc", async (req, res) => {
   // Evidence-based rejection: WHICH checklist items failed is mandatory.
   if (!reason || !failedItems?.length)
     return res.status(400).json({ error: "reject requires reason AND failedItems (which checklist items failed)" });
+  const priorReqs = Array.isArray(job.revisionRequests) ? (job.revisionRequests as unknown[]) : [];
   const [row] = await db
     .update(designerJobs)
     .set({
       status: "revision", qcBy: by, qcAt: now, qcOnTime: null, qcReason: reason,
       qcFailedItems: failedItems, revisions: job.revisions + 1, submittedAt: null, updatedAt: now,
+      // Same append-only log the client path writes to, so the job carries one
+      // complete revision history regardless of who asked for the change.
+      revisionRequests: [...priorReqs, { at: now.toISOString(), source: "qc", notes: reason, failedItems, round: job.revisions + 1 }],
     })
     .where(eq(designerJobs.quoteId, quoteId))
     .returning();
@@ -352,12 +360,19 @@ publicJobRouter.get("/:token", async (req, res) => {
     const failed = (Array.isArray(job.qcFailedItems) ? job.qcFailedItems : []) as number[];
     // A rejected designer must be able to SEE what failed, in words. Previously
     // this page showed nothing at all after a reject.
+    // Where the change request came from matters: a club comments in prose about
+    // what they want, our QC points at numbered checklist items. Same panel, very
+    // different reading, so label it.
+    const reqs = (Array.isArray(job.revisionRequests) ? job.revisionRequests : []) as Array<{ source?: string; notes?: string; round?: number }>;
+    const latest = reqs.length ? reqs[reqs.length - 1] : null;
+    const fromClient = latest?.source === "client";
     const revisionPanel =
       job.status === "revision"
-        ? `<div class="card fix"><span class="label">Changes needed — round ${esc(job.revisions + 1)}</span>
-${job.qcReason ? `<p>${esc(job.qcReason)}</p>` : ""}
+        ? `<div class="card fix"><span class="label">${fromClient ? "The club asked for changes" : "Changes needed from our check"} — round ${esc(job.revisions + 1)}</span>
+${fromClient ? `<p class="hint">Straight from ${esc(job.club || "the club")}, in their words:</p>` : ""}
+${job.qcReason ? (fromClient ? `<blockquote>${esc(job.qcReason)}</blockquote>` : `<p>${esc(job.qcReason)}</p>`) : ""}
 ${failed.length ? `<ul class="rules">${failed.map((n) => `<li><b>${esc(checklistLabel(n))}</b></li>`).join("")}</ul>` : ""}
-<p class="hint">Fix these and upload again below. Your clock is unchanged.</p></div>`
+<p class="hint">Fix these and upload again below. Your clock does not restart, and our review time never counts against you.</p></div>`
         : "";
 
     const approvedPanel =
@@ -403,7 +418,8 @@ h3{font-size:15px;margin:12px 0 4px}p{margin:6px 0;font-size:14.5px}li{font-size
 .file{display:block;text-decoration:none;color:#B9B9B9;font-size:11.5px;background:#0A0A0A;border:1px solid #262626;border-radius:10px;padding:8px;text-align:center}
 .file img{width:100%;border-radius:6px;margin-bottom:6px;display:block;background:#1C1C1C;min-height:60px}
 .rules li{margin:7px 0}.rules b{color:#fff}
-.card.fix{border-color:#5A4520;background:#171207}.card.ok{border-color:#20503F;background:#08150F}
+.card.fix{border-color:#5A4520;background:#171207}
+blockquote{margin:8px 0;padding:10px 14px;border-left:3px solid #E3B75C;background:#0A0A0A;border-radius:0 8px 8px 0;font-size:14.5px}.card.ok{border-color:#20503F;background:#08150F}
 .hint{color:#9A9A9A;font-size:12.5px}
 #fi{display:none}
 .btn{display:inline-block;width:100%;box-sizing:border-box;text-align:center;background:#5FD9C7;color:#04211C;border:0;border-radius:10px;padding:13px 16px;font-size:15px;font-weight:800;cursor:pointer;margin-top:10px;font-family:inherit}
