@@ -35,7 +35,7 @@ import { storage } from "../storage";
 import { clubLogoPlacement } from "../canva-logos";
 import { updateGhlOpportunityStage } from "./ghl";
 import { sendMockupApprovalRequest, sendClientApprovalResult } from "../email";
-import { routeClientChangesToDesigner } from "../designer-feedback";
+import { routeClientChangesToDesigner, linkDesignerJobToOrder } from "../designer-feedback";
 import { recordPoView, PO_VIEWED_BY_CUSTOMER } from "../po-views";
 
 // ===== Exported helper: create a token + send the email =====
@@ -88,6 +88,13 @@ export async function createApprovalToken(params: {
     action: "approval_link_issued",
     details: { token, expiresAt: expiresAt.toISOString(), clientEmail: params.clientEmail },
   });
+
+  // Sending mockups to a client for a specific order is the moment the design
+  // and the order become the same thing, so link them here. Best-effort: this
+  // must never block issuing the approval link.
+  linkDesignerJobToOrder(params.orderId, params.clientEmail)
+    .then((outcome) => console.log(`[approvals] designer job link for ${params.orderNumber}: ${outcome}`))
+    .catch((err) => console.error("Failed to link designer job to order:", err));
 
   return { token, expiresAt };
 }

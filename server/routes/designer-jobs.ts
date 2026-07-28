@@ -18,9 +18,9 @@
 import { Router, json } from "express";
 import { z } from "zod";
 import crypto from "crypto";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, or } from "drizzle-orm";
 import { db } from "../db";
-import { designerJobs } from "@shared/schema";
+import { designerJobs, orders } from "@shared/schema";
 import { DROP_CHECKLIST, checklistLabel } from "@shared/drop-checklist";
 import { requireAdmin } from "../auth";
 import { storage } from "../storage";
@@ -136,6 +136,31 @@ adminDesignerJobsRouter.post("/", async (req, res) => {
 adminDesignerJobsRouter.get("/", async (_req, res) => {
   const rows = await db.select().from(designerJobs).orderBy(desc(designerJobs.createdAt));
   res.json(rows);
+});
+
+// Manual override for when email matching gets it wrong or finds nothing.
+// Accepts an order id or an order number so it is usable from a terminal.
+adminDesignerJobsRouter.post("/:quoteId/link-order", async (req, res) => {
+  const quoteId = req.params.quoteId.toUpperCase();
+  const ref = String(req.body?.order || "").trim();
+  if (!ref) return res.status(400).json({ error: "pass { order: <order id or order number> }" });
+
+  const [job] = await db.select().from(designerJobs).where(eq(designerJobs.quoteId, quoteId)).limit(1);
+  if (!job) return res.status(404).json({ error: "job not found" });
+
+  const [order] = await db
+    .select({ id: orders.id, no: orders.orderNumber })
+    .from(orders)
+    .where(or(eq(orders.id, ref), eq(orders.orderNumber, ref)))
+    .limit(1);
+  if (!order) return res.status(404).json({ error: `no order matching "${ref}"` });
+
+  const [row] = await db
+    .update(designerJobs)
+    .set({ orderId: order.id, updatedAt: new Date() })
+    .where(eq(designerJobs.quoteId, quoteId))
+    .returning();
+  res.json({ ok: true, quoteId, linkedTo: order.no, job: row });
 });
 
 adminDesignerJobsRouter.post("/:quoteId/submit", async (req, res) => {
