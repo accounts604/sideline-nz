@@ -365,7 +365,11 @@ export const designerJobs = pgTable("designer_jobs", {
   quoteId: text("quote_id").notNull().unique(), // SL-####
   token: text("token").notNull().unique(), // unguessable public-page token
   club: text("club"),
-  designerName: text("designer_name").notNull().default("ashan"),
+  designerName: text("designer_name").notNull().default("unassigned"),
+  // Designer's IANA timezone. Drives the "your time" clock on the job page and the
+  // weekend-safe deadline math, so the rig is no longer hardcoded to one person's
+  // country (2026-07-28 multi-freelancer refresh).
+  timezone: text("timezone").notNull().default("Asia/Colombo"),
   briefMd: text("brief_md"), // markdown brief rendered on the public job page
   assetsBase: text("assets_base"), // absolute URL folder holding refs + brand kit
   assetFiles: jsonb("asset_files"), // string[] of filenames under assetsBase
@@ -375,6 +379,10 @@ export const designerJobs = pgTable("designer_jobs", {
   pauseOpenAt: timestamp("pause_open_at"), // open pause start, null when running
   status: text("status").notNull().default("in_progress"), // in_progress | submitted | revision | approved | rejected
   submittedAt: timestamp("submitted_at"), // on_time is ALWAYS judged from this, never QC latency
+  // Work the designer delivered through the job page itself: [{url,name,size,at}].
+  // Kept append-only across revision rounds so a reject never destroys evidence of
+  // what was sent the first time.
+  submissions: jsonb("submissions"),
   revisions: integer("revisions").notNull().default(0),
   qcBy: text("qc_by"),
   qcAt: timestamp("qc_at"),
