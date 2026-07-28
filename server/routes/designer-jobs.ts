@@ -22,6 +22,7 @@ import { desc, eq, or } from "drizzle-orm";
 import { db } from "../db";
 import { designerJobs, designers, orders } from "@shared/schema";
 import { DROP_CHECKLIST, checklistLabel } from "@shared/drop-checklist";
+import { expandPrompt, BASE_BLOCK, BRAND_BLOCK, DONOT_BLOCK, type PromptPack } from "@shared/mockup-prompt";
 import { requireAdmin } from "../auth";
 import { storage } from "../storage";
 
@@ -79,6 +80,12 @@ const upsertSchema = z.object({
   orderId: z.string().uuid().optional(),
   timezone: z.string().max(64).optional(), // IANA zone, e.g. Asia/Colombo, Asia/Manila
   briefMd: z.string().max(20000).optional(),
+  canvaUrl: z.string().url().optional(),
+  promptPack: z.object({
+    design: z.string().max(4000).optional(),
+    donotExtra: z.string().max(2000).optional(),
+    garments: z.array(z.object({ name: z.string().max(80), prompt: z.string().max(6000) })).max(8).optional(),
+  }).optional(),
   assetsBase: z.string().url().optional(),
   assetFiles: z.array(z.string().max(200)).max(50).optional(),
   assignedAt: z.string().datetime().optional(),
@@ -111,6 +118,8 @@ adminDesignerJobsRouter.post("/", async (req, res) => {
     orderId: b.orderId,
     timezone: b.timezone,
     briefMd: b.briefMd,
+    canvaUrl: b.canvaUrl,
+    promptPack: b.promptPack,
     assetsBase: b.assetsBase,
     assetFiles: b.assetFiles,
     assignedAt: b.assignedAt ? new Date(b.assignedAt) : undefined,
@@ -469,6 +478,31 @@ ${failed.length ? `<ul class="rules">${failed.map((n) => `<li><b>${esc(checklist
 <p>Received ${esc(new Date(job.submittedAt).toLocaleString("en-NZ", { timeZone: job.timezone, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))} your time. Your send time is locked in as your on-time proof, so review speed never counts against you.</p>${sentList}</div>`
         : "";
 
+    // ---- design workspace + prompt pack ----------------------------------
+    // Designers work in their OWN free Gemini account and in the Canva doc
+    // Romero shares with them. They never get a key or access to his Gem, so
+    // the full prompt is inlined here instead.
+    const pack = (job.promptPack || {}) as PromptPack;
+    const garments = Array.isArray(pack.garments) ? pack.garments : [];
+
+    const workspacePanel = (job.canvaUrl || garments.length)
+      ? `<div class="card"><span class="label">Your design workspace</span>
+${job.canvaUrl ? `<p class="hint">Canva doc for this drop, shared with you. Pages are pre-named. Composite the crest and any sponsor logos here at the finishing step.</p>
+<a class="btn ghost" href="${esc(job.canvaUrl)}" target="_blank" rel="noopener">Open the Canva doc</a>` : ""}
+${garments.length ? `<p class="hint" style="margin-top:14px">Generate the garments in <b>Gemini</b>. A free account is fine. Paste a prompt below, and attach these three images from the files above: <b>1</b> the design reference, <b>2</b> sideline-logo-master, <b>3</b> sideline-inner-collar-tape.</p>` : ""}
+</div>`
+      : "";
+
+    const promptPanel = garments.length
+      ? `<div class="card"><span class="label">Prompt pack &mdash; one per garment</span>
+${garments.map((g, i) => {
+        const full = expandPrompt(g, pack);
+        return `<div class="pgar"><div class="ptop"><span class="pnm">${esc(g.name)}</span>
+<button class="copy" type="button" data-p="${i}">Copy prompt</button></div><p>${esc(full)}</p></div>`;
+      }).join("")}
+<p class="hint">If a render comes back with text, a logo or a busy chest, re-roll it. That is the engine ignoring the DO NOT block, not your mistake.</p></div>`
+      : "";
+
     // Upload UI shows while the job is open for work (in progress or in revision).
     const canDeliver = job.status === "in_progress" || job.status === "revision";
     const deliverPanel = canDeliver
@@ -504,6 +538,12 @@ h3{font-size:15px;margin:12px 0 4px}p{margin:6px 0;font-size:14.5px}li{font-size
 .card.fix{border-color:#5A4520;background:#171207}
 blockquote{margin:8px 0;padding:10px 14px;border-left:3px solid #E3B75C;background:#0A0A0A;border-radius:0 8px 8px 0;font-size:14.5px}.card.ok{border-color:#20503F;background:#08150F}
 .hint{color:#9A9A9A;font-size:12.5px}
+.pgar{background:#0A0A0A;border:1px solid #262626;border-radius:9px;padding:12px 14px;margin-bottom:10px}
+.ptop{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+.pnm{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#5FD9C7;font-weight:700}
+.copy{background:#FFFFFF12;border:1px solid #303030;color:#EDEDED;border-radius:6px;font-size:11px;font-family:inherit;padding:4px 10px;cursor:pointer;flex:none}
+.copy:hover{background:#5FD9C733}
+.pgar p{margin:0;font-family:ui-monospace,Menlo,monospace;font-size:10.5px;line-height:1.6;color:#9A9A9A;max-height:104px;overflow:auto}
 #fi{display:none}
 .btn{display:inline-block;width:100%;box-sizing:border-box;text-align:center;background:#5FD9C7;color:#04211C;border:0;border-radius:10px;padding:13px 16px;font-size:15px;font-weight:800;cursor:pointer;margin-top:10px;font-family:inherit}
 .btn:disabled{background:#1F1F1F;color:#6A6A6A;cursor:default}
@@ -525,6 +565,8 @@ textarea{width:100%;box-sizing:border-box;background:#0A0A0A;border:1px solid #2
 ${approvedPanel}${submittedPanel}${revisionPanel}
 <div class="card"><span class="label">The brief</span>${briefToHtml(job.briefMd || "Brief sent in your email — this page tracks the clock and files.")}</div>
 ${files.length ? `<div class="card"><span class="label">Files — references + Sideline brand kit (tap to download)</span><div class="files">${imgs}</div></div>` : ""}
+${workspacePanel}
+${promptPanel}
 ${deliverPanel}
 <div class="card"><span class="label">What we check — every job, same six</span><ul class="rules">
 ${DROP_CHECKLIST.map((c) => `<li>${esc(c)}</li>`).join("\n")}
@@ -548,6 +590,21 @@ function tick(){var el=document.getElementById("cd");
  el.textContent=h+"h "+(m<10?"0":"")+m+"m";el.className=h<8?"warn":"";}
 if(D)document.getElementById("lc").textContent=new Date(D).toLocaleString("en-GB",{timeZone:${JSON.stringify(job.timezone)},weekday:"short",hour:"2-digit",minute:"2-digit"});
 tick();setInterval(tick,30000);
+
+// ---- copy a prompt, ready to paste into Gemini ------------------------
+(function(){
+  var wrap=document.querySelector(".card .pgar"); if(!wrap) return;
+  var PROMPTS=${JSON.stringify(garments.map((g) => expandPrompt(g, pack)))};
+  document.querySelectorAll(".copy[data-p]").forEach(function(b){
+    b.addEventListener("click",function(){
+      var t=PROMPTS[+b.getAttribute("data-p")]||"";
+      var done=function(){var o=b.textContent;b.textContent="Copied";setTimeout(function(){b.textContent=o;},1400);};
+      if(navigator.clipboard){navigator.clipboard.writeText(t).then(done,done);}
+      else{var ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();
+           try{document.execCommand("copy");}catch(_){}document.body.removeChild(ta);done();}
+    });
+  });
+})();
 
 // ---- self-serve delivery ----------------------------------------------
 // Uploads one file at a time so the designer sees real progress and a single

@@ -410,6 +410,14 @@ export const designerJobs = pgTable("designer_jobs", {
   // country (2026-07-28 multi-freelancer refresh).
   timezone: text("timezone").notNull().default("Asia/Colombo"),
   briefMd: text("brief_md"), // markdown brief rendered on the public job page
+  // The shared Canva design workspace for this drop. Romero shares one doc per
+  // job with the designer; this is where the pages are pre-named and where the
+  // crest and sponsor logos get composited at the finishing step.
+  canvaUrl: text("canva_url"),
+  // { design, donotExtra, garments:[{name,prompt}] } — the per-club half of the
+  // mockup prompt. BASE/BRAND/DONOT are constants in shared/mockup-prompt.ts
+  // because they never change.
+  promptPack: jsonb("prompt_pack"),
   assetsBase: text("assets_base"), // absolute URL folder holding refs + brand kit
   assetFiles: jsonb("asset_files"), // string[] of filenames under assetsBase
   assignedAt: timestamp("assigned_at"),
