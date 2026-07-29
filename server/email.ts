@@ -116,7 +116,6 @@ function createEmailService(): EmailService {
 
   // Gmail first. Only an explicit EMAIL_PROVIDER=resend goes back to Resend.
   if (provider !== "resend") {
-    const { isGmailConfigured } = require("./gmail") as typeof import("./gmail");
     if (isGmailConfigured()) {
       const from = process.env.EMAIL_FROM || "Sideline NZ <orders@sidelinenz.com>";
       console.log(`[EMAIL] using Gmail as ${from}`);
