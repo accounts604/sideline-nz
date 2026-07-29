@@ -118,6 +118,32 @@ router.get("/orders/triage", async (_req, res) => {
   try {
     const { orders: all } = await storage.getAllOrders({ limit: 500, offset: 0 });
     const today = new Date();
+
+    // Orders that CANNOT dispatch because a line is missing fabric or branding.
+    // In July 2026 two clients approved their proofs overnight, both dispatches
+    // failed on a blank fabric, and the only trace was a server log — so the
+    // orders simply sat there. One query, surfaced on the screen Romero already
+    // opens, is the difference between catching that in a day and in a fortnight.
+    const blocked = new Map<string, string>();
+    try {
+      const rows = await db.execute(sql`
+        select oi.order_id,
+               count(*) filter (where coalesce(nullif(trim(oi.material), ''), null) is null)        as no_fabric,
+               count(*) filter (where coalesce(nullif(trim(oi.branding_method), ''), null) is null) as no_branding
+        from order_items oi
+        group by oi.order_id
+        having count(*) filter (where coalesce(nullif(trim(oi.material), ''), null) is null) > 0
+            or count(*) filter (where coalesce(nullif(trim(oi.branding_method), ''), null) is null) > 0
+      `);
+      for (const r of (rows as any).rows ?? rows as any[]) {
+        const bits: string[] = [];
+        if (Number(r.no_fabric) > 0) bits.push(`${r.no_fabric} line${Number(r.no_fabric) === 1 ? "" : "s"} missing fabric`);
+        if (Number(r.no_branding) > 0) bits.push(`${r.no_branding} line${Number(r.no_branding) === 1 ? "" : "s"} missing branding`);
+        blocked.set(String(r.order_id), bits.join(", "));
+      }
+    } catch (e: any) {
+      console.error("[triage] blocked-order scan failed:", e?.message);
+    }
     const rows = all
       .filter((o: any) => {
         const stage = o.pipelineStage || "";
@@ -134,6 +160,8 @@ router.get("/orders/triage", async (_req, res) => {
           orderNumber: o.orderNumber,
           poReference: o.poReference,
           accountName: o.accountName,
+          blockedFromDispatch: blocked.has(o.id),
+          blockedReason: blocked.get(o.id) || null,
           pipelineStage: o.pipelineStage,
           status: o.status,
           dueDate: o.dueDate,

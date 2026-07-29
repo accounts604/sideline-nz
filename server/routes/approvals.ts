@@ -592,6 +592,17 @@ publicApprovalRouter.post("/:token/submit", async (req, res) => {
         } else {
           dispatch = { ok: false, error: result.error };
           console.error(`[proof-submit] Supplier dispatch failed for ${order.poReference || order.id}: ${result.error}`);
+          // A console.error is invisible. In July 2026 two clients approved their
+          // proofs overnight and both dispatches failed on a missing fabric; the
+          // only trace was a server log nobody reads, so the orders just sat
+          // there. Write it to the order timeline and flag the order so it shows
+          // up as blocked in admin.
+          await db.insert(orderActivity).values({
+            orderId: order.id,
+            userId: null,
+            action: "dispatch_blocked",
+            details: { reason: result.error, afterClientApproval: true },
+          }).catch(() => {});
         }
       } catch (e: any) {
         dispatch = { ok: false, error: String(e?.message || e) };
