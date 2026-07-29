@@ -75,10 +75,55 @@ class ResendEmailService implements EmailService {
 }
 
 // Factory — explicit EMAIL_PROVIDER wins; otherwise auto-pick Resend if its key is set.
+/**
+ * Gmail-backed sender. This is the default (Romero, 2026-07-29: "we don't use
+ * Resend any more, just plug straight to Gmail").
+ *
+ * Resend was silently rejecting everything: RESEND_FROM defaulted to
+ * hello@kig.co.nz and that domain was never verified, so every send returned
+ * 403 into a log nobody reads. Gmail is already the proven path for supplier
+ * POs and sends as the real orders@sidelinenz.com alias, so replies land in the
+ * inbox Romero actually works from.
+ */
+class GmailEmailService implements EmailService {
+  constructor(private from: string) {}
+
+  async send(payload: EmailPayload) {
+    const { sendGmail } = await import("./gmail");
+    const id = await sendGmail({
+      from: this.from,
+      to: payload.to,
+      cc: payload.cc,
+      replyTo: payload.replyTo,
+      subject: payload.subject,
+      html: payload.html || `<pre style="font:14px/1.5 ui-monospace,monospace;white-space:pre-wrap">${payload.text}</pre>`,
+      text: payload.text,
+      attachments: payload.attachments,
+    });
+    if (!id) {
+      // Loud, because a silent email failure is what caused this change.
+      console.error(`[EMAIL] Gmail send FAILED to ${payload.to} — "${payload.subject}"`);
+      return { success: false };
+    }
+    return { success: true, messageId: id };
+  }
+}
+
 function createEmailService(): EmailService {
   const provider = process.env.EMAIL_PROVIDER;
   const resendKey = process.env.RESEND_API_KEY;
   const resendFrom = process.env.RESEND_FROM || "Sideline NZ <hello@kig.co.nz>";
+
+  // Gmail first. Only an explicit EMAIL_PROVIDER=resend goes back to Resend.
+  if (provider !== "resend") {
+    const { isGmailConfigured } = require("./gmail") as typeof import("./gmail");
+    if (isGmailConfigured()) {
+      const from = process.env.EMAIL_FROM || "Sideline NZ <orders@sidelinenz.com>";
+      console.log(`[EMAIL] using Gmail as ${from}`);
+      return new GmailEmailService(from);
+    }
+    console.warn("[EMAIL] Gmail not configured — falling back");
+  }
 
   if (provider === "resend" || (!provider && resendKey)) {
     if (!resendKey) {
