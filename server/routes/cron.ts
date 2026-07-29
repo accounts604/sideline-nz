@@ -11,6 +11,7 @@
 //   POST /api/cron/process-customer-queue   — Gmail queue → Ezra
 
 import { Router } from "express";
+import { runDesignerSla } from "../designer-sla";
 import { db } from "../db";
 import { orders, clubAccounts } from "@shared/schema";
 import { sql, and, eq, isNotNull } from "drizzle-orm";
@@ -371,5 +372,21 @@ async function buildDailyDigest(): Promise<DigestPayload> {
     text: lines.join("\n"),
   };
 }
+
+// POST /designer-sla — nudge designers approaching a deadline, and hand back
+// jobs that blew through it. Safe to run often: every action is recorded on the
+// job so the same warning cannot fire twice.
+//   ?dryRun=true  report what WOULD happen and change nothing
+router.post("/designer-sla", async (req, res) => {
+  try {
+    const dryRun = String(req.query.dryRun || "") === "true";
+    const result = await runDesignerSla({ dryRun });
+    console.log(`[cron/designer-sla] checked=${result.checked} nudged=${result.nudged.length} released=${result.released.length}${dryRun ? " (dry run)" : ""}`);
+    res.json({ ok: true, dryRun, ...result });
+  } catch (e: any) {
+    console.error("[cron/designer-sla] failed:", e?.message);
+    res.status(500).json({ error: "designer SLA run failed", detail: e?.message });
+  }
+});
 
 export default router;

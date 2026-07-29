@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, numeric, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -458,6 +458,9 @@ export const designerJobs = pgTable("designer_jobs", {
   // Kept append-only across revision rounds so a reject never destroys evidence of
   // what was sent the first time.
   submissions: jsonb("submissions"),
+  // Stage keys of SLA nudges already sent, so a 30-minute cron cannot send the
+  // same warning 48 times.
+  slaNudgesSent: jsonb("sla_nudges_sent"),
   revisions: integer("revisions").notNull().default(0),
   qcBy: text("qc_by"),
   qcAt: timestamp("qc_at"),
@@ -472,6 +475,22 @@ export const designerJobs = pgTable("designer_jobs", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// Designer pay ledger. UNIQUE(job_id, kind) makes paying twice for one drop
+// structurally impossible rather than merely guarded in code — the July 2026
+// auto-assign incident showed retry loops do happen.
+export const designerLedger = pgTable("designer_ledger", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobId: varchar("job_id").notNull().references(() => designerJobs.id, { onDelete: "cascade" }),
+  designerName: text("designer_name").notNull(),
+  kind: text("kind").notNull(), // drop | bonus | clawback
+  amountUsd: numeric("amount_usd", { precision: 10, scale: 2 }).notNull(),
+  onTime: boolean("on_time"),
+  note: text("note"),
+  accruedAt: timestamp("accrued_at").notNull().defaultNow(),
+  paidAt: timestamp("paid_at"),
+}, (t) => ({ jobKind: unique("designer_ledger_job_kind_unique").on(t.jobId, t.kind) }));
+export type DesignerLedgerRow = typeof designerLedger.$inferSelect;
 
 export const insertDesignerJobSchema = createInsertSchema(designerJobs).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertDesignerJob = z.infer<typeof insertDesignerJobSchema>;
