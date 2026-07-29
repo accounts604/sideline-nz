@@ -23,6 +23,8 @@ export const users = pgTable("users", {
   emailVerified: boolean("email_verified").default(false),
   inviteToken: text("invite_token"),
   inviteExpiresAt: timestamp("invite_expires_at"),
+  // Stamped on any authenticated request so admin can see who has gone quiet.
+  lastSeenAt: timestamp("last_seen_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -376,6 +378,8 @@ export const designers = pgTable("designers", {
   // rookie | designer | senior — gates which jobs they can see on the board.
   tier: text("tier").notNull().default("rookie"),
   active: boolean("active").notNull().default(true),
+  // Stamped when they open their board — the no-login surfaces need this too.
+  lastSeenAt: timestamp("last_seen_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -761,6 +765,7 @@ export const clubAccounts = pgTable("club_accounts", {
   supporterDropClosedAt: timestamp("supporter_drop_closed_at"),
   // Profit share in basis points (800 = 8%). Avoids pg numeric quirks.
   profitShareTierBps: integer("profit_share_tier_bps").notNull().default(800),
+  lastSeenAt: timestamp("last_seen_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

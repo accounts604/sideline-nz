@@ -30,6 +30,7 @@ const NAV_ITEMS = [
   { href: "/admin/triage", label: "Triage", icon: Activity },
   { href: "/admin/supporter-campaigns", label: "Supporter Campaigns", icon: Wand2 },
   { href: "/admin/club-logos", label: "Brand Identity", icon: ImageIcon },
+  { href: "/admin/accounts", label: "Accounts", icon: Users },
   { href: "/admin/customers", label: "Customers", icon: Users },
   { href: "/admin/suppliers", label: "Suppliers", icon: Factory },
   { href: "/admin/vault", label: "File Vault", icon: FolderOpen },
