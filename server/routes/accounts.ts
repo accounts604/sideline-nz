@@ -84,6 +84,7 @@ router.get("/", async (_req, res) => {
       scope: ["own orders only"],
       lastSeenAt: u.lastSeenAt,
       viewUrl: "/portal",
+      impersonate: { kind: "user" as const, id: u.id },
       flags: /(^|@)(test|example)\./i.test(u.email || "") || /forge-test/i.test(u.email || "") ? ["test row"] : [],
     }));
 
@@ -99,6 +100,9 @@ router.get("/", async (_req, res) => {
         scope: [c.shopifyOrderTag || "no store tag", `${((c.profitShareTierBps ?? 0) / 100).toFixed(0)}% share`],
         lastSeenAt: c.lastSeenAt,
         viewUrl: "/club-portal/supporter-dashboard",
+        // A shell account has no usable password hash, so there is no session
+        // to inhabit — offering "view as" there would just fail.
+        impersonate: shell ? null : { kind: "club_account" as const, id: c.id },
         flags: shell ? ["never invited"] : [],
       };
     });
@@ -126,6 +130,7 @@ router.get("/", async (_req, res) => {
       scope: (u.supplierCategories as string[] | null)?.length ? [`${(u.supplierCategories as string[]).length} categories`] : ["no categories set"],
       lastSeenAt: u.lastSeenAt,
       viewUrl: "/supplier",
+      impersonate: { kind: "user" as const, id: u.id },
       flags: [],
     }));
 

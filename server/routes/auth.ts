@@ -3,6 +3,9 @@ import { storage } from "../storage";
 import { signToken, setAuthCookie, clearAuthCookie, hashPassword, verifyPassword, requireAuth, readImpersonateCookie, clearImpersonateCookie, IMPERSONATE_COOKIE } from "../auth";
 import type { JwtPayload } from "../auth";
 import { z } from "zod";
+import { eq } from "drizzle-orm";
+import { db } from "../db";
+import { impersonationLog } from "@shared/schema";
 
 const router = Router();
 
@@ -124,7 +127,10 @@ router.get("/me", requireAuth, async (req, res) => {
 
     // Expose impersonation state so the UI can render the "Viewing as X — Return" banner.
     const original = readImpersonateCookie(req);
-    const impersonating = original ? { originalAdminId: original.userId } : null;
+    const cur = (req as any).user as JwtPayload;
+    const impersonating = original
+      ? { originalAdminId: original.userId, label: cur?.imp?.label || user.teamName || user.email, readOnly: !!cur?.imp }
+      : null;
 
     res.json({
       id: user.id,
@@ -148,6 +154,12 @@ router.post("/end-impersonation", async (req, res) => {
   try {
     const original = readImpersonateCookie(req);
     if (!original) return res.status(400).json({ error: "Not impersonating" });
+    // Close the audit row so the log shows a start AND an end, not an open session.
+    const cur = (req as any).user as JwtPayload | undefined;
+    if (cur?.imp?.logId) {
+      await db.update(impersonationLog).set({ endedAt: new Date() })
+        .where(eq(impersonationLog.id, cur.imp.logId)).catch(() => {});
+    }
     // Re-verify the admin still exists + still has admin role before handing back.
     const admin = await storage.getUser(original.userId);
     if (!admin || admin.role !== "admin") {

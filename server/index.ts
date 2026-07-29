@@ -1,3 +1,4 @@
+import { blockImpersonatedWrites } from "./auth";
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
@@ -68,6 +69,9 @@ app.use("/api/uploads/blob", express.json({ limit: "60mb" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
+// Refuse every write while an admin is viewing as someone else. Server-side,
+// because hiding buttons is not a guarantee.
+app.use(blockImpersonatedWrites);
 
 // Ops alerting — throttled so a burst of the same fault doesn't spam Telegram.
 // Fail-soft: no-op if JARVESI_BOT_TOKEN/KIG_GROUP_CHAT_ID aren't set yet.

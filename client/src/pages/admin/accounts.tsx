@@ -6,6 +6,8 @@ import { Users as UsersIcon, ExternalLink } from "lucide-react";
 interface Row {
   id: string; name: string | null; email: string | null; kind: string;
   scope: string[]; lastSeenAt: string | null; viewUrl: string; flags: string[];
+  /** Set when the session can actually be switched (customers, suppliers). */
+  impersonate?: { kind: "user" | "club_account"; id: string } | null;
 }
 interface Scope { can: string[]; cannot: string[]; where: string }
 interface Audience { rows: Row[]; scope: Scope | null; note?: string }
@@ -138,13 +140,34 @@ export default function AdminAccounts() {
                       <td style={{ ...td, fontFamily: "ui-monospace, monospace", fontSize: "12px", whiteSpace: "nowrap", color: seen.dim ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.7)" }}>
                         {seen.text}
                       </td>
-                      <td style={{ ...td, textAlign: "right" }}>
+                      <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
+                        {r.impersonate && (
+                          <button
+                            onClick={async () => {
+                              const res = await fetch("/api/view-as/start", {
+                                method: "POST", credentials: "include",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(r.impersonate),
+                              });
+                              const j = await res.json();
+                              if (!res.ok) { alert(j.error || "Could not view as this account"); return; }
+                              window.location.href = j.redirectTo || "/portal";
+                            }}
+                            style={{
+                              fontSize: "11.5px", background: "rgba(249,115,22,0.16)",
+                              border: "1px solid rgba(249,115,22,0.4)", color: "#f0f0f0",
+                              borderRadius: "6px", padding: "5px 11px", cursor: "pointer", marginRight: "6px",
+                            }}
+                          >
+                            View as them
+                          </button>
+                        )}
                         <a href={r.viewUrl} target="_blank" rel="noopener noreferrer" style={{
                           display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11.5px",
                           background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.06)",
                           color: "#f0f0f0", borderRadius: "6px", padding: "5px 11px", textDecoration: "none", whiteSpace: "nowrap",
                         }}>
-                          Open their view <ExternalLink size={12} />
+                          {r.impersonate ? "Open" : "Open their view"} <ExternalLink size={12} />
                         </a>
                       </td>
                     </tr>

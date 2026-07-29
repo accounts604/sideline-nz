@@ -17,6 +17,7 @@ import { publicApprovalRouter, publicProofRouter } from "./approvals";
 import { adminDesignerJobsRouter, publicJobRouter } from "./designer-jobs";
 import { boardRouter } from "./designer-board";
 import accountsRouter from "./accounts";
+import impersonationRouter from "./impersonation";
 import chatbotRouter from "./chatbot";
 import notifyRouter from "./notify";
 import cronRouter from "./cron";
@@ -123,6 +124,10 @@ export async function registerRoutes(
   app.use("/api/admin/designer-jobs", adminDesignerJobsRouter);
   // Everyone with a way in, what they can see, and when they last looked.
   app.use("/api/admin/accounts", accountsRouter);
+  // Admin "view as" for customers and club managers. Suppliers already had it
+  // at /admin/suppliers/:id/impersonate; exiting for ALL of them goes through
+  // the existing /api/auth/end-impersonation.
+  app.use("/api/view-as", impersonationRouter);
   // The designer claim board. No login: the token in the URL is the credential,
   // same model as /job/<token> and the supplier sheet at /s/<token>.
   app.use("/designers", boardRouter);

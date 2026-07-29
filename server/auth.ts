@@ -15,6 +15,13 @@ const IMPERSONATE_EXPIRES_IN = "1h";
 export interface JwtPayload {
   userId: string;
   role: "admin" | "customer" | "supplier";
+  /**
+   * Present only while an admin is viewing as somebody else. The session IS
+   * the target account for reads, but `imp` marks it so writes can be refused
+   * and the banner can be shown. An admin mistake must never be recorded as
+   * the customer's own action.
+   */
+  imp?: { by: string; logId: string; label?: string };
 }
 
 export function signToken(payload: JwtPayload): string {
@@ -87,6 +94,37 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 // Middleware: require admin role
+/**
+ * Read-only guard for an impersonated session.
+ *
+ * Viewing as someone is for SEEING what they see. Any state change while
+ * impersonating would be recorded against them, so every non-GET is refused
+ * outright rather than trusting the UI to hide the buttons.
+ */
+export function blockImpersonatedWrites(req: Request, res: Response, next: NextFunction) {
+  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return next();
+
+  // Exiting is a POST made while still impersonating, so it must be allowed
+  // through or the admin is locked inside the session they are trying to leave.
+  if (req.path === "/api/auth/end-impersonation") return next();
+
+  // Decode the cookie directly rather than reading req.user. This runs globally,
+  // before any per-route auth middleware, and a security guard must not depend
+  // on middleware ordering to work.
+  const token = req.cookies?.[COOKIE_NAME];
+  if (!token) return next();
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    if (!payload.imp) return next();
+    return res.status(403).json({
+      error: "You're viewing as someone else — this session is read-only. Exit the view to make changes.",
+      impersonating: payload.imp.label || null,
+    });
+  } catch {
+    return next(); // invalid token — let the normal auth path reject it
+  }
+}
+
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   requireAuth(req, res, () => {
     if ((req as any).user?.role !== "admin") {

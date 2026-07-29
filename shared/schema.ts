@@ -388,6 +388,22 @@ export const insertDesignerSchema = createInsertSchema(designers).omit({ id: tru
 export type InsertDesigner = z.infer<typeof insertDesignerSchema>;
 export type Designer = typeof designers.$inferSelect;
 
+// Admin impersonation audit trail. Switching into someone's session is a real
+// privilege; without a log, a mistake made inside their account is
+// indistinguishable from that person doing it themselves.
+export const impersonationLog = pgTable("impersonation_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  adminUserId: varchar("admin_user_id").notNull().references(() => users.id),
+  targetKind: text("target_kind").notNull(), // user | club_account
+  targetId: varchar("target_id").notNull(),
+  targetLabel: text("target_label"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  endedAt: timestamp("ended_at"),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+});
+export type ImpersonationLog = typeof impersonationLog.$inferSelect;
+
 // Designer jobs — the Drop Designer pipeline (SL-#### quote → assigned drop → QC → pay).
 // One row per drop; UNIQUE(quote_id) makes duplicate job creation structurally impossible
 // (the 2026-07-20 master plan idempotency rule). Public page served at /job/<token>.
