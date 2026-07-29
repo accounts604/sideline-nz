@@ -1,3 +1,4 @@
+import { touchUser } from "./last-seen";
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
@@ -40,7 +41,11 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
   const token = req.cookies?.[COOKIE_NAME];
   if (token) {
     try {
-      (req as any).user = jwt.verify(token, JWT_SECRET) as JwtPayload;
+      const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    (req as any).user = payload;
+    // Usage tracking. Throttled to one write per account per hour and
+    // fire-and-forget — it can never affect this request.
+    touchUser(payload.userId);
     } catch {
       // Invalid token — proceed as unauthenticated
     }
@@ -70,7 +75,11 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = req.cookies?.[COOKIE_NAME];
   if (!token) return res.status(401).json({ error: "Not authenticated" });
   try {
-    (req as any).user = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    (req as any).user = payload;
+    // Usage tracking. Throttled to one write per account per hour and
+    // fire-and-forget — it can never affect this request.
+    touchUser(payload.userId);
     next();
   } catch {
     return res.status(401).json({ error: "Invalid or expired token" });

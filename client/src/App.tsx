@@ -37,6 +37,7 @@ import AdminSuppliers from "@/pages/admin/suppliers";
 import AdminSupplierDetail from "@/pages/admin/supplier-detail";
 import AdminVault from "@/pages/admin/vault";
 import AdminDesignStudio from "@/pages/admin/design-studio";
+import AdminAccounts from "@/pages/admin/accounts";
 import AdminPurchaseOrder from "@/pages/admin/purchase-order";
 import AdminCreatePO from "@/pages/admin/create-po";
 import AdminIntegrations from "@/pages/admin/integrations";
@@ -186,6 +187,9 @@ function Router() {
         </Route>
         <Route path="/admin/vault">
           {() => <AdminRoute><AdminVault /></AdminRoute>}
+        </Route>
+        <Route path="/admin/accounts">
+          {() => <AdminRoute><AdminAccounts /></AdminRoute>}
         </Route>
         <Route path="/admin/design-studio">
           {() => <AdminRoute><AdminDesignStudio /></AdminRoute>}

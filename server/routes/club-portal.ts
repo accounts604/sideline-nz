@@ -1,3 +1,4 @@
+import { touchClubAccount } from "../last-seen";
 import { Router, Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
@@ -38,6 +39,7 @@ function requireClubAuth(req: Request, res: Response, next: NextFunction) {
       return res.status(401).json({ error: "Not a club account" });
     }
     (req as any).clubId = payload.clubId;
+    touchClubAccount(payload.clubId); // usage tracking, throttled + fire-and-forget
     next();
   } catch {
     return res.status(401).json({ error: "Invalid token" });

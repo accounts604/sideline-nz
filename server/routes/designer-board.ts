@@ -19,6 +19,7 @@ import { designers, designerJobs } from "@shared/schema";
 import { computeDeadline } from "@shared/designer-clock";
 import { DROP_CHECKLIST } from "@shared/drop-checklist";
 import { renderShell, type PortalView } from "../designer-portal-shell";
+import { touchDesigner } from "../last-seen";
 
 const esc = (s: unknown) =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -27,6 +28,8 @@ const boardRouter = Router();
 
 async function designerByToken(token: string) {
   const [d] = await db.select().from(designers).where(eq(designers.token, token)).limit(1);
+  // The board is a no-login surface, so this token load IS the sign-in event.
+  if (d) touchDesigner(d.id);
   return d;
 }
 

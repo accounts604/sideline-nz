@@ -16,6 +16,7 @@ import shipmentsRouter from "./shipments";
 import { publicApprovalRouter, publicProofRouter } from "./approvals";
 import { adminDesignerJobsRouter, publicJobRouter } from "./designer-jobs";
 import { boardRouter } from "./designer-board";
+import accountsRouter from "./accounts";
 import chatbotRouter from "./chatbot";
 import notifyRouter from "./notify";
 import cronRouter from "./cron";
@@ -120,6 +121,8 @@ export async function registerRoutes(
   // Designer jobs (Drop Designer pipeline): admin/service API + the designer's
   // public job page (no auth — unguessable token in URL, same pattern as /proof).
   app.use("/api/admin/designer-jobs", adminDesignerJobsRouter);
+  // Everyone with a way in, what they can see, and when they last looked.
+  app.use("/api/admin/accounts", accountsRouter);
   // The designer claim board. No login: the token in the URL is the credential,
   // same model as /job/<token> and the supplier sheet at /s/<token>.
   app.use("/designers", boardRouter);
