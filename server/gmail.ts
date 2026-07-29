@@ -70,6 +70,7 @@ export interface GmailSendInput {
   subject: string;
   html: string;
   text?: string;       // fallback plain text (Gmail will send multi-part)
+  attachments?: Array<{ filename: string; content: Buffer | string; contentType?: string }>;
 }
 
 function toList(v: string | string[] | undefined): string[] {
@@ -91,7 +92,13 @@ function buildRfc2822(input: GmailSendInput): string {
   const cc = toList(input.cc).join(", ");
   const bcc = toList(input.bcc).join(", ");
   const replyTo = input.replyTo || input.from;
-  const boundary = `----=_Boundary_${Math.random().toString(36).slice(2)}`;
+  const alt = `----=_Alt_${Math.random().toString(36).slice(2)}`;
+  const files = input.attachments || [];
+
+  // With attachments the body has to be multipart/mixed wrapping the
+  // text+html multipart/alternative, otherwise mail clients show the
+  // attachment INSTEAD of the message rather than alongside it.
+  const mixed = files.length ? `----=_Mixed_${Math.random().toString(36).slice(2)}` : null;
 
   const headers: string[] = [
     `From: ${input.from}`,
@@ -99,24 +106,47 @@ function buildRfc2822(input: GmailSendInput): string {
     `Reply-To: ${replyTo}`,
     `Subject: ${encodeSubject(input.subject)}`,
     "MIME-Version: 1.0",
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    mixed
+      ? `Content-Type: multipart/mixed; boundary="${mixed}"`
+      : `Content-Type: multipart/alternative; boundary="${alt}"`,
   ];
   if (cc) headers.push(`Cc: ${cc}`);
   if (bcc) headers.push(`Bcc: ${bcc}`);
 
   const textPart =
-    `--${boundary}\r\n` +
+    `--${alt}\r\n` +
     `Content-Type: text/plain; charset="UTF-8"\r\n` +
     `Content-Transfer-Encoding: 7bit\r\n\r\n` +
     (input.text || input.html.replace(/<[^>]+>/g, "")) + "\r\n";
 
   const htmlPart =
-    `--${boundary}\r\n` +
+    `--${alt}\r\n` +
     `Content-Type: text/html; charset="UTF-8"\r\n` +
     `Content-Transfer-Encoding: 7bit\r\n\r\n` +
     input.html + "\r\n";
 
-  return headers.join("\r\n") + "\r\n\r\n" + textPart + htmlPart + `--${boundary}--`;
+  const body = textPart + htmlPart + `--${alt}--`;
+  if (!mixed) return headers.join("\r\n") + "\r\n\r\n" + body;
+
+  const altBlock =
+    `--${mixed}\r\n` +
+    `Content-Type: multipart/alternative; boundary="${alt}"\r\n\r\n` +
+    body + "\r\n";
+
+  const fileBlocks = files.map((f) => {
+    const b64 = (Buffer.isBuffer(f.content) ? f.content : Buffer.from(String(f.content), "base64"))
+      .toString("base64")
+      .replace(/(.{76})/g, "$1\r\n"); // RFC2045 line length
+    return (
+      `--${mixed}\r\n` +
+      `Content-Type: ${f.contentType || "application/octet-stream"}; name="${f.filename}"\r\n` +
+      `Content-Disposition: attachment; filename="${f.filename}"\r\n` +
+      `Content-Transfer-Encoding: base64\r\n\r\n` +
+      b64 + "\r\n"
+    );
+  }).join("");
+
+  return headers.join("\r\n") + "\r\n\r\n" + altBlock + fileBlocks + `--${mixed}--`;
 }
 
 function base64UrlEncode(raw: string): string {
