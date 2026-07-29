@@ -1,36 +1,49 @@
 // The Sideline mockup prompt, as the designer receives it.
 //
-// Ported from the proven Gemini Gem ("Sideline Mockup Prompt Builder") and the
-// canva-bridge configs. The Gem is Romero's private custom Gem, which a
-// freelancer cannot open — so the whole thing is inlined here instead. A
-// designer with any free Gemini account gets identical output without needing
-// access to anything of his.
+// REWRITTEN 2026-07-30 on the Richmond Rovers pattern, after mining the local
+// corpus (6 configs, 235 renders). The numbers were not kind to the old version:
 //
-// BASE, BRAND and DONOT never change. Only DESIGN and the per-garment TASK line
-// are per club, and those live on the job row.
+//   config            avg expanded prompt   renders
+//   aorere-college          1,794 chars        20
+//   bob-tag                 2,658 chars         6   <- the one shipped to designers
+//
+// bob-tag had the LONGEST prompts in the corpus and the fewest renders of the
+// working configs, and it was the template handed to freelancers. Nearly all the
+// excess was the DO-NOT block (809 vs 604 chars) stacking prohibitions: don't
+// copy the wordmark, don't copy letters, don't tile an S, no emblem, no badge,
+// no shield, no monogram. Piling on negatives is a known way to make an image
+// model fixate on the very thing being forbidden.
+//
+// richmond-rovers-u12.gemini-prompts.md is the only file in the workspace marked
+// "proven, producing clean matching FRONT + BACK in one style". Its per-garment
+// prompt is about four lines, positive and visual, with the negatives stated
+// ONCE and briefly. That is the shape copied here.
+//
+// Rule of thumb this encodes: describe what you want to SEE. Say each "no" once.
 
 export const BASE_BLOCK =
-  "Premium 3D product render of a SINGLE custom team garment, ghost-mannequin (invisible body) form, floating, no hanger. " +
-  "Studio catalogue quality, soft even lighting, sharp focus, photoreal 3D mockup. Background is a plain seamless mid-grey " +
-  "studio sweep with a soft contact shadow, no brush strokes, no decorative shapes, no props, no text anywhere.";
+  "Professional studio product mockup of a single custom team garment on an invisible ghost mannequin, " +
+  "plain light-grey seamless background, soft even studio lighting, sharp focus, catalogue quality, photoreal. " +
+  "No people, no faces, no hanger, no props, no text, no watermarks.";
 
 export const BRAND_BLOCK =
-  "SIDELINE INNER COLLAR: render the inside back of the neckline showing a plain WHITE woven neck-tape band (the Sideline " +
-  "neck tape), clean and simple; the exact branded wordmark is added later. Add clean contrast piping along the collar edge. " +
-  "This band is INSIDE the garment only.";
+  "Sideline detailing: a plain white woven neck tape lining the inside of the back neckline, " +
+  "and clean contrast piping along the collar edge.";
 
+/**
+ * One short line, said once. The old version repeated seven prohibitions per
+ * garment; this states the single thing that actually matters — a bare chest —
+ * because the crest is composited in Canva at the finishing step.
+ */
 export const DONOT_BLOCK =
-  "STRICT, DO NOT: the garment is completely PLAIN. The chest and body are completely BARE, NO crest, badge, shield, circular " +
-  "emblem, monogram or logo anywhere. ABSOLUTELY NO text, letters, words, numbers or wordmarks anywhere on the garment. " +
-  "NO sponsor logos, NO exterior Sideline S tag. Do NOT tile any letters or an S logo as the fabric pattern. No mannequin " +
-  "body, face, hands, hanger or props. Render ONE garment from ONE single viewing angle only, never front and back together, " +
-  "never two garments. Keep the background a plain seamless studio sweep. No watermarks.";
+  "The chest and body are completely bare: no crest, badge, emblem, monogram or lettering anywhere on the garment. " +
+  "One garment, one viewing angle.";
 
 export interface PromptGarment { name: string; prompt: string }
 export interface PromptPack {
-  /** Per-club design language. The only creative block that varies. */
+  /** Per-club design language. Positive and visual — what the kit LOOKS like. */
   design?: string;
-  /** Extra per-job traps appended to the standing DO NOT block. */
+  /** A per-job trap, if there genuinely is one. Keep it to a sentence. */
   donotExtra?: string;
   garments?: PromptGarment[];
 }
@@ -41,7 +54,14 @@ export function expandPrompt(g: PromptGarment, pack: PromptPack): string {
     .replace(/\{BASE\}/g, BASE_BLOCK)
     .replace(/\{DESIGN\}/g, pack.design || "")
     .replace(/\{BRAND\}/g, BRAND_BLOCK)
-    .replace(/\{DONOT\}/g, DONOT_BLOCK + (pack.donotExtra ? " THIS JOB: " + pack.donotExtra : ""))
+    .replace(/\{DONOT\}/g, DONOT_BLOCK + (pack.donotExtra ? " " + pack.donotExtra : ""))
     .replace(/\s+/g, " ")
     .trim();
 }
+
+/** Guidance shown to whoever writes a brief, so new packs stay on the pattern. */
+export const PROMPT_STYLE_NOTE =
+  "Write each garment line as what you want to SEE: garment type, cut, colour split, where the pattern sits. " +
+  "Four lines is plenty. Resist adding prohibitions — every extra 'do not' makes the engine more likely to " +
+  "produce the thing you are forbidding. The measured version of this advice: our longest prompt set produced " +
+  "the fewest usable renders.";
