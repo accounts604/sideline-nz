@@ -2026,7 +2026,13 @@ router.post("/suppliers/:id/impersonate", async (req, res) => {
     // ALSO park the admin's original short-lived JWT in the second cookie
     // so end-impersonation can restore them.
     const originalAdminToken = signToken({ userId: admin.userId, role: "admin" });
-    const supplierToken = signToken({ userId: supplier.id, role: "supplier" });
+    // Carry the imp claim so blockImpersonatedWrites covers this path too.
+    // Previously this session could WRITE as the supplier and the banner was
+    // the only safeguard, which this route's own comment admitted.
+    const supplierToken = signToken({
+      userId: supplier.id, role: "supplier",
+      imp: { by: admin.userId, logId: "legacy-supplier", label: supplier.teamName || supplier.email || supplier.id },
+    });
     setImpersonateCookie(res, originalAdminToken);
     setAuthCookie(res, supplierToken);
     // Audit trail. Logged against the supplier user via order_activity is wrong

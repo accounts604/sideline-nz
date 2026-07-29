@@ -38,6 +38,7 @@ import AdminSupplierDetail from "@/pages/admin/supplier-detail";
 import AdminVault from "@/pages/admin/vault";
 import AdminDesignStudio from "@/pages/admin/design-studio";
 import AdminAccounts from "@/pages/admin/accounts";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
 import AdminPurchaseOrder from "@/pages/admin/purchase-order";
 import AdminCreatePO from "@/pages/admin/create-po";
 import AdminIntegrations from "@/pages/admin/integrations";
@@ -121,6 +122,8 @@ function GhlChatVisibility() {
 function Router() {
   return (
     <>
+      <ImpersonationBanner />
+      <>
       <ScrollToTop />
       <GhlChatVisibility />
       <Analytics />
@@ -277,6 +280,7 @@ function Router() {
         <Route component={NotFound} />
       </Switch>
     </>
+      </>
   );
 }
 
