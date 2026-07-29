@@ -1,0 +1,37 @@
+name: Designer SLA (hourly)
+
+# Nudges a designer approaching their deadline, and hands a job back to the
+# board once it has blown through it. Hourly because a 48h clock needs finer
+# resolution than a daily job — a nudge that arrives after the deadline is
+# worse than none.
+#
+# Safe to run this often: every nudge is recorded on the job in sla_nudges_sent,
+# so the same warning cannot fire twice, and a release is guarded by a
+# conditional update so a submission landing at the same moment is never lost.
+on:
+  schedule:
+    - cron: '7 * * * *'   # :07 past the hour, off the top-of-hour crowd
+  workflow_dispatch: {}
+
+jobs:
+  designer-sla:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/cron/designer-sla
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -e
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not set in this repo's settings"
+            exit 1
+          fi
+          SITE="${SITE_URL:-https://sidelinenz.com}"
+          echo "Hitting $SITE/api/cron/designer-sla"
+          RESP=$(curl -sS -X POST "$SITE/api/cron/designer-sla" \
+            -H "X-Cron-Secret: $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -w "\nHTTP %{http_code}\n")
+          echo "$RESP"
+          echo "$RESP" | tail -1 | grep -q "HTTP 200" || exit 1

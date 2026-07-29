@@ -24,6 +24,7 @@ import { designerJobs, designers, orders } from "@shared/schema";
 import { DROP_CHECKLIST, checklistLabel } from "@shared/drop-checklist";
 import { expandPrompt, BASE_BLOCK, BRAND_BLOCK, DONOT_BLOCK, type PromptPack } from "@shared/mockup-prompt";
 import { requireAdmin } from "../auth";
+import { accrueDropFee } from "../designer-pay";
 import { storage } from "../storage";
 
 /**
@@ -294,7 +295,14 @@ adminDesignerJobsRouter.post("/:quoteId/qc", async (req, res) => {
     let handoff = "";
     try { handoff = await brandHandoff(row); console.log(`[designer-jobs] brand handoff ${quoteId}: ${handoff}`); }
     catch (e: any) { handoff = "failed: " + e.message; console.error(`[designer-jobs] brand handoff ${quoteId} FAILED:`, e.message); }
-    return res.json({ ok: true, job: row, brandHandoff: handoff });
+
+    // Pay accrual, in the same request as the approval that earns it.
+    // Idempotent by DB constraint, so a double-tapped approve cannot pay twice.
+    let pay = "";
+    try { pay = await accrueDropFee(row); console.log(`[designer-jobs] pay ${quoteId}: ${pay}`); }
+    catch (e: any) { pay = "failed: " + e.message; console.error(`[designer-jobs] pay accrual ${quoteId} FAILED:`, e.message); }
+
+    return res.json({ ok: true, job: row, brandHandoff: handoff, pay });
   }
 
   // Evidence-based rejection: WHICH checklist items failed is mandatory.
