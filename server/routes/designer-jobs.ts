@@ -600,7 +600,10 @@ ${DROP_CHECKLIST.map((c) => `<li>${esc(c)}</li>`).join("\n")}
 <div class="card"><span class="label">How this works — same every job</span><ul class="rules">
 <li><b>Upload your files on this page when done.</b> Your upload time is your proof of on-time — review speed never counts against you.</li>
 <li><b>Blocked by anything on our side?</b> Message straight away — the clock STOPS while it's our problem.</li>
-<li><b>Pay:</b> USD 15 when the set passes quality check on time · USD 30 bonus if the store passes 20 orders.</li>
+<li><b>Pay (NZD):</b> your speed decides it, measured from when YOU claim to when you upload the set we approve.
+ <b>$50</b> on target · <b>$40</b> +12h · <b>$30</b> +24h · <b>$20</b> +36h · <b>$10</b> beyond.
+ Target is 12h for a 3-item set, +4h per extra item. Add <b>$12</b> per item over 3, and <b>2%</b> of the order (capped $100) if it becomes a paid order.
+ Our review time never counts against you.</li>
 <li><b>Reference photos are colour/vibe ONLY</b> — never copy old wordmarks, emblems or supplier logos. Chest stays clean; wordmark goes on in finishing.</li>
 </ul></div>
 <div class="foot">Sideline NZ · this link is private to you — don't share it</div>
