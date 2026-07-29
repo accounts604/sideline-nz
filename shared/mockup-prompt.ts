@@ -20,11 +20,23 @@
 // ONCE and briefly. That is the shape copied here.
 //
 // Rule of thumb this encodes: describe what you want to SEE. Say each "no" once.
+//
+// SECOND, BIGGER FINDING (2026-07-30). Reading the 173 Gemini renders Romero
+// actually DOWNLOADED — the ones he chose to keep — the old blocks described the
+// wrong picture entirely. His kept garment renders are FLAT TECHNICAL MOCKUPS on
+// PURE WHITE: no mannequin, no body, no studio lighting, no contact shadow. A
+// spec drawing that happens to carry real fabric texture. Every previous version
+// of this file asked for "ghost mannequin / light-grey seamless background / soft
+// even studio lighting / catalogue photography", which is a different product.
+// Sample: 2 garment renders (a hoodie back and shorts front, 20-21 Jul, his most
+// recent kit work) — small, but they agree with each other completely, and they
+// are matching pieces of one set.
 
 export const BASE_BLOCK =
-  "Professional studio product mockup of a single custom team garment on an invisible ghost mannequin, " +
-  "plain light-grey seamless background, soft even studio lighting, sharp focus, catalogue quality, photoreal. " +
-  "No people, no faces, no hanger, no props, no text, no watermarks.";
+  "Flat technical apparel mockup of a single garment, laid out front-on and filling the frame, on a pure white " +
+  "background. No mannequin, no body, no hanger, no drop shadow, no studio lighting or background sweep. Photoreal fabric " +
+  "detail — visible knit or mesh weave, stitched seams, ribbed cuffs and hem. Crisp high-resolution product " +
+  "illustration. No people, no text, no watermarks.";
 
 export const BRAND_BLOCK =
   "Sideline detailing: a plain white woven neck tape lining the inside of the back neckline, " +
@@ -61,6 +73,8 @@ export function expandPrompt(g: PromptGarment, pack: PromptPack): string {
 
 /** Guidance shown to whoever writes a brief, so new packs stay on the pattern. */
 export const PROMPT_STYLE_NOTE =
+  "Flat mockup on white, never a mannequin or a studio shot. Tonal all-over pattern (dark on dark) reads better " +
+  "than high-contrast print. Keep the set consistent: same pattern language and accent shapes on every garment. " +
   "Write each garment line as what you want to SEE: garment type, cut, colour split, where the pattern sits. " +
   "Four lines is plenty. Resist adding prohibitions — every extra 'do not' makes the engine more likely to " +
   "produce the thing you are forbidding. The measured version of this advice: our longest prompt set produced " +
