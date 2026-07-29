@@ -484,7 +484,9 @@ export const designerLedger = pgTable("designer_ledger", {
   jobId: varchar("job_id").notNull().references(() => designerJobs.id, { onDelete: "cascade" }),
   designerName: text("designer_name").notNull(),
   kind: text("kind").notNull(), // drop | bonus | clawback
-  amountUsd: numeric("amount_usd", { precision: 10, scale: 2 }).notNull(),
+  amountNzd: numeric("amount_nzd", { precision: 10, scale: 2 }).notNull(),
+  // What the ladder scored, so a payout can be explained months later.
+  breakdown: jsonb("breakdown"),
   onTime: boolean("on_time"),
   note: text("note"),
   accruedAt: timestamp("accrued_at").notNull().defaultNow(),

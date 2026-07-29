@@ -233,7 +233,7 @@ boardRouter.get("/:token/earnings", async (req, res) => {
   res.type("html").send(renderShell({
     ...ctx.common,
     title: "Earnings",
-    subtitle: "Approved drops only. Work sitting with us for review is pay-protected: our review speed can never cost you.",
+    subtitle: "NZD. Approved drops only — work sitting with us for review is pay-protected, because our review speed can never cost you.",
     body:
       `<div class="stats">
         <div class="stat"><p class="k">Caps</p><p class="v">${approved.length}</p><p class="s">drops approved</p></div>
@@ -261,6 +261,7 @@ boardRouter.get("/:token/standards", async (req, res) => {
         <li><b>Your weekend is protected.</b> A deadline landing on your Saturday or Sunday rolls to Monday 5:30pm your time.</li>
         <li><b>One revision round.</b> You are told exactly what to change, and the clock does not restart.</li>
         <li><b>Cultural corrections are free</b> and never count as a revision.</li>
+        <li><b>Pay is NZD and speed-based:</b> $50 on target, $40 +12h, $30 +24h, $20 +36h, $10 beyond. Target is 12h for a 3-item set, +4h per extra item. Plus $12 per item over 3, and 2% of the order (capped $100) once it is paid.</li>
       </ul></div>`,
   }));
 });
