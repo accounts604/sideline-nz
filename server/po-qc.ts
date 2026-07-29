@@ -1,6 +1,6 @@
 // PO QC gate — Sideline Studio, Phase 0.
 //
-// Pure, side-effect-free validation that an order is production-ready BEFORE a
+// Validation that an order is production-ready BEFORE a
 // PO is raised. Runs at the top of dispatchOrderToSuppliers (Pass A) so an
 // incomplete PO never half-dispatches. Verifies the data that already lives on
 // the line: fabric, branding method, a positive quantity, and a size breakdown
@@ -11,6 +11,7 @@
 
 import { db } from "./db";
 import { orderItems, orderSizeBreakdowns } from "@shared/schema";
+import { resolveDefaultMaterial } from "@shared/product-catalog";
 import { eq } from "drizzle-orm";
 
 export type QcSeverity = "block" | "warn";
@@ -41,7 +42,11 @@ function isNonGarment(productType?: string | null, productName?: string | null):
 /**
  * Phase 0 PO QC gate. Returns ok:true when every garment line carries fabric,
  * branding, a positive quantity, and a reconciling size breakdown; otherwise a
- * list of per-line failures. Read-only.
+ * list of per-line failures.
+ *
+ * NOT read-only any more: a missing material that the catalog can name is
+ * repaired in place. That is deliberate — the alternative is an order silently
+ * stuck after the client has already approved.
  */
 export async function assertProductionReady(
   orderId: string,
@@ -60,9 +65,21 @@ export async function assertProductionReady(
 
     if (isNonGarment(it.productType, it.productName)) continue;
 
-    // fabric
+    // fabric. A blank material is repaired from the catalog rather than simply
+    // blocking: every line that stalled PO-2026-0034/0035 in July 2026 was typed
+    // by hand with product_id "manual", so defaultMaterial never pre-filled and
+    // dispatch failed AFTER the client had approved. If the catalog can name the
+    // fabric, fill it and carry on; if it cannot, still block, because guessing a
+    // fabric is worse than a delay.
     if (!String(it.material || "").trim()) {
-      failures.push({ itemId: it.id, productName: name, field: "fabric", reason: "no fabric/material set", severity: "block" });
+      const repaired = resolveDefaultMaterial(it.productId, it.productName);
+      if (repaired) {
+        await db.update(orderItems).set({ material: repaired }).where(eq(orderItems.id, it.id));
+        it.material = repaired;
+        console.log(`[po-qc] ${name}: filled missing material from catalog -> ${repaired}`);
+      } else {
+        failures.push({ itemId: it.id, productName: name, field: "fabric", reason: "no fabric/material set, and no catalog default for this product", severity: "block" });
+      }
     }
     // branding method
     if (!String(it.brandingMethod || "").trim()) {

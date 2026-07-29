@@ -15,6 +15,9 @@ interface TriageRow {
   dueDate: string | null;
   createdAt: string;
   triage: TriageResult;
+  /** Cannot dispatch: a line is missing fabric or branding. */
+  blockedFromDispatch?: boolean;
+  blockedReason?: string | null;
 }
 
 interface TriageResponse {
@@ -132,7 +135,24 @@ export default function AdminTriage() {
                           {r.poReference || r.orderNumber}
                         </Link>
                       </Td>
-                      <Td>{r.accountName || <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>}</Td>
+                      <Td>
+                        {r.accountName || <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>}
+                        {/* A blocked order cannot reach the factory no matter how
+                            healthy its dates look, so it has to be visible on the
+                            row rather than only in a server log. */}
+                        {r.blockedFromDispatch && (
+                          <span
+                            title={r.blockedReason || "Cannot dispatch"}
+                            style={{
+                              marginLeft: "8px", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em",
+                              padding: "2px 7px", borderRadius: "4px", whiteSpace: "nowrap",
+                              background: "rgba(239,68,68,0.14)", color: "#fca5a5",
+                            }}
+                          >
+                            BLOCKED
+                          </span>
+                        )}
+                      </Td>
                       <Td><span style={{ fontSize: "12px", color: "rgba(255,255,255,0.7)" }}>{r.pipelineStage || r.status || "—"}</span></Td>
                       <Td right>{r.dueDate || <span style={{ color: "rgba(255,255,255,0.3)" }}>—</span>}</Td>
                       <Td right>

@@ -243,6 +243,52 @@ export function getProductByName(name: string | null | undefined): SidelineProdu
   return SIDELINE_PRODUCTS.find((p) => p.name.toLowerCase() === n) || null;
 }
 
+/**
+ * Best-effort material for a line that has none.
+ *
+ * Every one of the 7 lines that silently blocked PO-2026-0034/0035 in July 2026
+ * was entered by hand with product_id "manual", so defaultMaterial never
+ * pre-filled and dispatch to Puffin failed AFTER the client had already
+ * approved. Nobody saw it: it only appeared in a server log.
+ *
+ * Three passes, most specific first:
+ *   1. catalog id      — a properly selected line
+ *   2. exact name      — a manual line typed to match the catalog
+ *   3. slugged name    — "Rugby Match Jersey" -> "rugby-match-jersey", which is
+ *                        a real catalog id even though the NAME is "Rugby Jersey"
+ *
+ * Returns null when nothing matches, so an unknown product still blocks rather
+ * than being silently given a fabric somebody has to unpick at the factory.
+ */
+export function resolveDefaultMaterial(
+  productId?: string | null,
+  productName?: string | null,
+): string | null {
+  const byId = getProductById(productId);
+  if (byId?.defaultMaterial) return byId.defaultMaterial;
+
+  const byName = getProductByName(productName);
+  if (byName?.defaultMaterial) return byName.defaultMaterial;
+
+  const slug = (productName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (slug) {
+    const bySlug = SIDELINE_PRODUCTS.find((p) => p.id === slug);
+    if (bySlug?.defaultMaterial) return bySlug.defaultMaterial;
+  }
+
+  // 4. punctuation-insensitive name. "Pompom Beanie" vs the catalog's
+  //    "Pom-Pom Beanie" is the same garment spelled differently, and that exact
+  //    mismatch left 14 beanies blocked on PO-2026-0005. This is a deterministic
+  //    normalisation, NOT fuzzy matching: letters and digits must be identical.
+  const squash = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const n = squash(productName || "");
+  if (n) {
+    const byLoose = SIDELINE_PRODUCTS.find((p) => squash(p.name) === n || squash(p.id) === n);
+    if (byLoose?.defaultMaterial) return byLoose.defaultMaterial;
+  }
+  return null;
+}
+
 // Grouped for <optgroup> rendering
 export function productsGroupedByCategory(): Record<string, SidelineProduct[]> {
   const out: Record<string, SidelineProduct[]> = {};
