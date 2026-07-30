@@ -33,6 +33,11 @@ const mockupRequestSchema = z.object({
   secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   logoUrl: z.string().url().optional(),
+  // Design references the club supplied. Capped and URL-validated because this route is
+  // PUBLIC and the values end up rendered in the designer brief. The site form does not
+  // send these today (there is no public upload endpoint, and adding one would mean
+  // unauthenticated writes to blob storage), so in practice these arrive from GHL.
+  referenceUrls: z.array(z.string().url()).max(6).optional(),
   notes: z.string().optional(),
 });
 
@@ -54,6 +59,7 @@ publicRouter.post("/request", async (req, res) => {
         secondaryColor: data.secondaryColor || null,
         accentColor: data.accentColor || null,
         logoUrl: data.logoUrl || null,
+        referenceUrls: data.referenceUrls?.length ? data.referenceUrls : null,
         notes: data.notes || null,
         status: "pending",
       })

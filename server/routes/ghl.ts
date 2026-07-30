@@ -443,8 +443,50 @@ const intakeFormSchema = z.object({
   logo_notes: z.string().optional(),
   design_notes: z.string().optional(),
   logo_file_url: z.string().optional(),
+  // Design references the club supplies: a pattern, an old kit, a concept board.
+  // Distinct from logo_file_url, which is their crest. A crest is PLACED in Canva
+  // afterwards; a reference is INTERPRETED at render time.
+  //
+  // Accepted under several names and shapes on purpose, because whoever adds the field
+  // in the GHL form builder should not have to match a name exactly, and GHL sends
+  // multi-file fields as a comma or newline separated string rather than an array.
+  // Forward compatible: if the GHL form has no such field, nothing changes.
+  design_reference_url: z.string().optional(),
+  design_reference_urls: z.union([z.string(), z.array(z.string())]).optional(),
+  reference_file_url: z.string().optional(),
   terms_agreed: z.boolean(),
 });
+
+/**
+ * Normalise however GHL sent the references into a clean string[] of http(s) URLs.
+ * GHL multi-file fields arrive as one comma or newline separated string, single-file
+ * fields as a bare string, and a JSON-shaped integration may send a real array.
+ * Non-URL junk is dropped rather than stored, so the designer brief never shows a
+ * reference that cannot be opened.
+ */
+function collectReferenceUrls(p: {
+  design_reference_url?: string;
+  design_reference_urls?: string | string[];
+  reference_file_url?: string;
+}): string[] | null {
+  const raw: string[] = [
+    ...(Array.isArray(p.design_reference_urls)
+      ? p.design_reference_urls
+      : (p.design_reference_urls ?? "").split(/[\n,]+/)),
+    ...(p.design_reference_url ?? "").split(/[\n,]+/),
+    ...(p.reference_file_url ?? "").split(/[\n,]+/),
+  ];
+
+  const urls = Array.from(
+    new Set(
+      raw
+        .map((s) => s.trim())
+        .filter((s) => /^https?:\/\//i.test(s)),
+    ),
+  ).slice(0, 6);
+
+  return urls.length ? urls : null;
+}
 
 router.post("/intake", async (req, res) => {
   try {
@@ -568,6 +610,7 @@ router.post("/intake", async (req, res) => {
           secondaryColor: secondaryHex ?? payload.secondary_colour ?? null,
           accentColor: null,
           logoUrl: payload.logo_file_url || null,
+          referenceUrls: collectReferenceUrls(payload),
           notes: [payload.design_notes, payload.logo_notes].filter(Boolean).join("\n\n") || null,
           status: canRunPipeline ? "pending" : "failed",
           errorMessage: canRunPipeline
