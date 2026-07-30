@@ -903,6 +903,12 @@ export const mockupRequests = pgTable("mockup_requests", {
   secondaryColor: text("secondary_color"), // hex
   accentColor: text("accent_color"), // hex
   logoUrl: text("logo_url"), // uploaded team logo
+  // Design references the CLUB supplied: a pattern, an old kit, a concept board, a
+  // colourway they like. Distinct from logoUrl, which is their crest.
+  // Romero's rule (2026-07-30): a design is only ever built from a reference the club
+  // supplied or he approved, never invented. That rule had nowhere to live until now,
+  // so the intake could not carry the one input the whole design depends on.
+  referenceUrls: text("reference_urls").array(),
   notes: text("notes"), // additional requirements
   // Processing state
   status: text("status").notNull().default("pending"), // pending, generating, designs_ready, video_ready, sent, failed
