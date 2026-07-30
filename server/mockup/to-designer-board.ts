@@ -32,6 +32,8 @@ function buildBrief(r: MockupRequest): string {
     r.accentColor && `accent ${r.accentColor}`,
   ].filter(Boolean).join(", ");
 
+  const refCount = (r.referenceUrls ?? []).filter(Boolean).length;
+
   return [
     "## The job: 3 hero concepts (front view, one per colourway)",
     `- Club: ${r.teamName}`,
@@ -40,12 +42,14 @@ function buildBrief(r: MockupRequest): string {
     "- 3 items. Target 12 hours from when YOU claim it, not from when it was posted",
 
     "## The reference",
-    // No reference column on mockup_requests yet, so the brief has to ask for it out
-    // loud. Romero's rule (2026-07-30): a design is only ever built from a reference
-    // the club supplied or he approved, never invented. No reference, no design.
-    r.logoUrl
-      ? "- Club assets are attached to this job"
-      : "- NO reference or club asset attached. Ask for one before you start",
+    // Romero's rule (2026-07-30): a design is only ever built from a reference the club
+    // supplied or he approved, never invented. A missing reference is stated LOUDLY
+    // rather than the job being held back silently, because a lead source that fails
+    // quietly is worse than no lead source (that is how the old mockup engine died).
+    refCount > 0
+      ? `- ${refCount} design reference${refCount === 1 ? "" : "s"} attached to this job. Work from ${refCount === 1 ? "it" : "them"}`
+      : "- NO DESIGN REFERENCE ATTACHED. Do not start. Ask for a pattern, an old kit, or a concept board first",
+    ...(r.logoUrl ? ["- The club crest is attached too. It is PLACED in Canva later, never rendered into the garment"] : []),
     "- Take from a reference: colours, pattern language, the vibe",
     "- Never take from it: any wordmark, crest, emblem, sponsor or supplier mark",
     "- REINTERPRET, do not copy. Copying a reference directly comes out BLURRY every time, and a literal copy of an old kit is not a new concept",
@@ -101,7 +105,12 @@ export async function postRequestToBoard(r: MockupRequest): Promise<string> {
       club: r.teamName,
       clientEmail: r.contactEmail,
       briefMd: buildBrief(r),
-      assetFiles: r.logoUrl ? [r.logoUrl] : undefined,
+      // References FIRST, crest last: the designer works from the references and only
+      // ever places the crest afterwards, so the order matches the order of work.
+      assetFiles: (() => {
+        const files = [...(r.referenceUrls ?? []), r.logoUrl].filter(Boolean) as string[];
+        return files.length ? files : undefined;
+      })(),
       brand: {
         colors: [
           { role: "primary", name: "Primary", hex: r.primaryColor },
