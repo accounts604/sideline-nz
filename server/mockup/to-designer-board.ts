@@ -12,7 +12,19 @@
 import { db } from "../db";
 import { designerJobs, type MockupRequest } from "@shared/schema";
 
-/** Human-readable brief, in the house format the job page renders. */
+/**
+ * Human-readable brief, in the house format the job page renders.
+ *
+ * Everything below the job/colours header is Romero's standing practice, transcribed
+ * from his own Gemini sessions and finished Canva decks on 2026-07-30 rather than
+ * invented. The earlier version of this brief told a designer WHAT to make but never
+ * the house rules or what a finished page looks like, so those were the things that
+ * came back wrong.
+ *
+ * The four pre-submit checks are the four things Romero confirmed he actually fixes on
+ * a refine (blur, coverage, colour, blending). Putting them in the brief lets a
+ * designer clear them before submitting instead of burning a revision round.
+ */
 function buildBrief(r: MockupRequest): string {
   const colours = [
     r.primaryColor && `primary ${r.primaryColor}`,
@@ -21,17 +33,55 @@ function buildBrief(r: MockupRequest): string {
   ].filter(Boolean).join(", ");
 
   return [
-    "## The job — 3 hero concepts (front view, one per colourway)",
+    "## The job: 3 hero concepts (front view, one per colourway)",
     `- Club: ${r.teamName}`,
     `- Sport: ${r.sport}`,
-    `- Colours: ${colours || "not specified — ask before starting"}`,
-    "## Style",
-    "- Chest stays CLEAN — the crest goes on in the finishing step",
-    "- Every garment shows the Sideline inner collar tape (brand kit attached)",
-    "- Reference images are colour and vibe only. Never copy an old wordmark, emblem or supplier logo",
+    `- Colours: ${colours || "not specified, ask before starting"}`,
+    "- 3 items. Target 12 hours from when YOU claim it, not from when it was posted",
+
+    "## The reference",
+    // No reference column on mockup_requests yet, so the brief has to ask for it out
+    // loud. Romero's rule (2026-07-30): a design is only ever built from a reference
+    // the club supplied or he approved, never invented. No reference, no design.
+    r.logoUrl
+      ? "- Club assets are attached to this job"
+      : "- NO reference or club asset attached. Ask for one before you start",
+    "- Take from a reference: colours, pattern language, the vibe",
+    "- Never take from it: any wordmark, crest, emblem, sponsor or supplier mark",
+    "- REINTERPRET, do not copy. Copying a reference directly comes out BLURRY every time, and a literal copy of an old kit is not a new concept",
+    "- Never invent a cultural pattern. If there is no reference for it, ask",
+
+    "## Non-negotiables",
+    "- STRAIGHT FRONT FACING. Square to camera, centred, symmetrical. No angle, no three-quarter, no rotation, no perspective tilt",
+    "- Chest stays completely BARE. No crest, badge, emblem, wordmark or sponsor. The crest is composited in Canva afterwards, so adding one is a reject not a bonus",
+    "- No placeholder text. No YOUR LOGO HERE, MAJOR SPONSOR, TEAMNAME or 00. The Sideline blank templates HAVE these on them. Remove them",
+    "- Invisible ghost mannequin, garment holds its 3D shape. No hanger, no hook, no visible mannequin, no body, no hands, no person, no scene, no props",
+    "- One garment, one view, one image. Never two views in a single render",
+    "- Keep pattern scale and placement consistent across the three so they read as one family",
+    // QC point 1. Only visible where the collar stands open (polos, open necks). A hood
+    // or a high crew neck covers it, so do not force it there.
+    "- Show the Sideline inner collar tape and size tag wherever the collar stands open enough to see inside the neck, copied from the attached brand kit. Do not invent the wording. A hood or a high crew neck hides it, so do not force it there",
+
+    "## Check these four before you submit",
+    "These are the four things that come back on a refine. Clear them yourself and you skip a round.",
+    "1. SHARP, not blurry. Soft print usually means you copied instead of reinterpreting. Ask for 4k high res",
+    "2. COVERAGE. The pattern fills its zone right up to the panel edge, no dead space",
+    "3. COLOUR. The primary matches the spec exactly, not a near-enough shade",
+    "4. BLENDED, not stuck on. It should look sublimated into the fabric, not laid on top like a sticker",
+
     ...(r.notes ? ["## What they asked for", `- ${r.notes.replace(/\n+/g, " ")}`] : []),
+
     "## Deliver",
-    "- 3 PNG files, portrait 4:5, clean or transparent background, front view",
+    "- 3 PNG files, portrait 4:5 (1080 x 1350), transparent or clean plain background, front view",
+    "- Upload on this page. Your upload time is your proof of speed, so do not email files",
+
+    "## What done looks like",
+    "- Open any finished `<Club> x Sideline NZ` deck in the shared Canva and look at a garment page. Clean garment, bare chest, Sideline mark and crest added afterwards",
+    "- If your render could drop into one of those pages untouched, you are done",
+
+    "## If you get stuck",
+    "- Blocked by something on our side? Say so and the clock stops until it is fixed",
+    "- Cultural elements are real pattern languages, not decoration. If one is not right we fix it free and it never counts as a revision against you",
   ].join("\n");
 }
 
