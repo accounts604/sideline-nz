@@ -64,11 +64,15 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
   tshirt: [
     {
       title: "Youth / Adult Unisex",
-      headers: ["", "Y2", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      // 6XL + 7XL restored 2026-08-05 — the store has always sold supporter tees to 7XL
+      // but the chart stopped at 5XL. Those two columns come from the Kokonut/Puffin
+      // chart approved 21 Jul (data/sideline-size-charts/), which matches this chart's
+      // ½ chest exactly from XL up (5XL = 70 on both), so the grade carries over cleanly.
+      headers: ["", "Y2", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
       rows: [
-        { label: "A. ½ Chest", values: [32,34,36,38,40,42,44,46,49,51,53,56,58,61,64,67,70] },
-        { label: "B. Centre Back", values: [42,46,50,54,57,62,66,70,66,68,70,73,75,77,79,80,81] },
-        { label: "B. Centre Back (Tall)", values: [45,49,53,57,60,65,69,73,71,73,75,78,80,82,84,85,86] },
+        { label: "A. ½ Chest", values: [32,34,36,38,40,42,44,46,49,51,53,56,58,61,64,67,70,73,75] },
+        { label: "B. Centre Back", values: [42,46,50,54,57,62,66,70,66,68,70,73,75,77,79,80,81,84,86] },
+        { label: "B. Centre Back (Tall)", values: [45,49,53,57,60,65,69,73,71,73,75,78,80,82,84,85,86,89,91] },
       ],
       tolerance: "± 1.0cm",
     },
@@ -86,11 +90,15 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
   hoodie: [
     {
       title: "Youth / Adult Unisex",
-      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+      // 6XL + 7XL restored 2026-08-05, same reasoning as the tee chart above. Both charts
+      // land on ½ chest 76 at 5XL, so the Kokonut 6XL/7XL grade carries over. Sleeve stays
+      // "—" past 4XL — Kokonut measures its hoodie sleeve differently, so there is no
+      // comparable neck-to-cuff number to publish.
+      headers: ["", "Y4", "Y6", "Y8", "Y10", "Y12", "Y14", "Y16", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
       rows: [
-        { label: "A. Centre Back Length", values: [46,49,52,55,58,61,64,66,68,70,72,74,76,78,80,82] },
-        { label: "B. ½ Chest", values: [38,40,42,44,46,48,50,52,55,58,61,64,67,70,73,76] },
-        { label: "C. Sleeve (neck to cuff)", values: [58,61,64,65,68,70,72,74,76,78,80,82,84,86,88,"—"] },
+        { label: "A. Centre Back Length", values: [46,49,52,55,58,61,64,66,68,70,72,74,76,78,80,82,86,88] },
+        { label: "B. ½ Chest", values: [38,40,42,44,46,48,50,52,55,58,61,64,67,70,73,76,80,84] },
+        { label: "C. Sleeve (neck to cuff)", values: [58,61,64,65,68,70,72,74,76,78,80,82,84,86,88,"—","—","—"] },
       ],
       tolerance: "± 2.0cm",
     },
