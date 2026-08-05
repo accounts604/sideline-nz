@@ -62,7 +62,7 @@ const FIT_NOTES: Partial<Record<GarmentType, string>> = {
   "rugby-long-sleeve": "Classic relaxed rugby jersey — roomy through the chest with the traditional long body. Sleeve measured neck to cuff.",
 };
 
-function SizeTableComponent({ table }: { table: SizeTable }) {
+export function SizeTableComponent({ table }: { table: SizeTable }) {
   return (
     <div className="mb-8">
       <div className="flex items-center justify-between mb-3">

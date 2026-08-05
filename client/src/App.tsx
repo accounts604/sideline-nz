@@ -24,6 +24,7 @@ import CompetitionPage from "@/pages/competition";
 import TeamStoreDetailPage from "@/pages/team-store-detail";
 import SponsorPlacement from "@/pages/sponsor-placement";
 import SizeChartPage from "@/pages/size-chart";
+import TagSizeChartPage from "@/pages/tag-size-chart";
 import Terms from "@/pages/terms";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
@@ -140,6 +141,7 @@ function Router() {
         <Route path="/our-work" component={OurWorkPage} />
         <Route path="/our-work/:slug" component={CaseStudyDetailPage} />
         <Route path="/sponsor-placement" component={SponsorPlacement} />
+        <Route path="/size-chart/tag" component={TagSizeChartPage} />
         <Route path="/size-chart" component={SizeChartPage} />
         <Route path="/terms" component={Terms} />
         <Route path="/terms-and-conditions" component={Terms} />
