@@ -12,7 +12,8 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "test:proof": "tsx scripts/test-proof-render.ts",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "test:tally": "tsx scripts/test-fundraising-tally.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
