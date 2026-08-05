@@ -650,3 +650,65 @@ export async function getCollectionGidByHandle(handle: string): Promise<string |
   );
   return data.collectionByHandle?.id ?? null;
 }
+
+// ─── Description read/write ────────────────────────────────────────────────
+//
+// Used by the fundraising tally, which rewrites a sentinel-delimited block
+// inside collection and product descriptions on a schedule. Read-modify-write
+// is deliberate: we must preserve the surrounding marketing copy, so we never
+// blind-write a description.
+
+/** Current descriptionHtml for a collection, or null if it does not exist. */
+export async function fetchCollectionDescription(collectionGid: string): Promise<string | null> {
+  const data = await adminFetch<{ collection: { descriptionHtml: string } | null }>(
+    /* GraphQL */ `query($id: ID!){ collection(id: $id){ descriptionHtml } }`,
+    { id: collectionGid },
+  );
+  return data.collection?.descriptionHtml ?? null;
+}
+
+/** Current descriptionHtml for many products, by GID. */
+export async function fetchProductDescriptions(
+  productGids: string[],
+): Promise<Array<{ id: string; descriptionHtml: string }>> {
+  if (productGids.length === 0) return [];
+  const data = await adminFetch<{ nodes: Array<{ id: string; descriptionHtml: string } | null> }>(
+    /* GraphQL */ `query($ids: [ID!]!){ nodes(ids: $ids){ ... on Product { id descriptionHtml } } }`,
+    { ids: productGids },
+  );
+  return (data.nodes || []).filter((n): n is { id: string; descriptionHtml: string } => Boolean(n?.id));
+}
+
+interface CollectionUpdateGQL {
+  collectionUpdate: { userErrors: Array<{ field: string[] | null; message: string }> };
+}
+
+export async function updateCollectionDescription(collectionGid: string, descriptionHtml: string): Promise<void> {
+  const data = await adminFetch<CollectionUpdateGQL>(
+    /* GraphQL */ `
+      mutation($input: CollectionInput!) {
+        collectionUpdate(input: $input) { userErrors { field message } }
+      }`,
+    { input: { id: collectionGid, descriptionHtml } },
+  );
+  if (data.collectionUpdate.userErrors.length) {
+    throw new Error("collectionUpdate userErrors: " + JSON.stringify(data.collectionUpdate.userErrors));
+  }
+}
+
+interface ProductUpdateGQL {
+  productUpdate: { userErrors: Array<{ field: string[] | null; message: string }> };
+}
+
+export async function updateProductDescription(productGid: string, descriptionHtml: string): Promise<void> {
+  const data = await adminFetch<ProductUpdateGQL>(
+    /* GraphQL */ `
+      mutation($input: ProductInput!) {
+        productUpdate(input: $input) { userErrors { field message } }
+      }`,
+    { input: { id: productGid, descriptionHtml } },
+  );
+  if (data.productUpdate.userErrors.length) {
+    throw new Error("productUpdate userErrors: " + JSON.stringify(data.productUpdate.userErrors));
+  }
+}

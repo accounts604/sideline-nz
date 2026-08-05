@@ -9,6 +9,7 @@
 // Endpoints:
 //   POST /api/cron/daily-digest             — morning Telegram digest
 //   POST /api/cron/process-customer-queue   — Gmail queue → Ezra
+//   POST /api/cron/fundraising-tally        — refresh club fundraising tallies
 
 import { Router } from "express";
 import { runDesignerSla } from "../designer-sla";
@@ -17,6 +18,7 @@ import { orders, clubAccounts } from "@shared/schema";
 import { sql, and, eq, isNotNull } from "drizzle-orm";
 import { triageOrder } from "@shared/triage";
 import { sendTelegramCard, isTelegramConfigured } from "../telegram";
+import { syncAllTallies, CAMPAIGNS } from "../fundraising-tally";
 import {
   findOrphanShipments,
   findPosDispatchedWithoutWaybill,
@@ -388,5 +390,32 @@ router.post("/designer-sla", async (req, res) => {
     res.status(500).json({ error: "designer SLA run failed", detail: e?.message });
   }
 });
+
+// ─── Fundraising tally ──────────────────────────────────────────────────
+//
+// Recomputes each live supporter campaign's club fundraising total and writes
+// it into the collection + product descriptions. Safe to run often; it only
+// issues a write when the rendered block actually changed.
+//
+// Pass ?dryRun=true to compute and report without writing to Shopify.
+
+router.post("/fundraising-tally", async (req, res) => {
+  const dryRun = req.query.dryRun === "true";
+  try {
+    const results = await syncAllTallies({ dryRun });
+    const failed = results.filter((r) => r.error);
+    res.json({
+      ok: failed.length === 0,
+      dryRun,
+      campaigns: CAMPAIGNS.length,
+      totalUnits: results.reduce((n, r) => n + r.units, 0),
+      totalRaisedCents: results.reduce((n, r) => n + r.raisedCents, 0),
+      results,
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
 
 export default router;
