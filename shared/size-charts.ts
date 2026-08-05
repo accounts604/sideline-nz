@@ -138,14 +138,22 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
   shorts: [
     {
       title: "Adult Football Shorts",
-      headers: ["", "XS", "S", "M", "L", "XL", "2XL", "3XL"],
+      // Extended 4XL-7XL on 2026-08-05 so shorts reach the same top size as the tops.
+      // These four columns continue this chart's own pattern grade rather than being
+      // measured: every row here grades perfectly linearly (½ waist +3.9, ½ hip +3.8,
+      // both rises +0.5, inseam flat, leg opening +6.0 on a 5.97 average), so the
+      // extension is the same rule the factory already cuts to. Deliberately NOT taken
+      // from the Kokonut chart — theirs grades at half our rate above L (their 2XL waist
+      // is our L), so grafting their top end on would put a step in the middle of ours.
+      // Worth having Puffin confirm before a bulk run in these sizes.
+      headers: ["", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"],
       rows: [
-        { label: "A. ½ Waist", values: [32.5,36.4,40.3,44.2,48.1,52.0,55.9] },
-        { label: "B. ½ Hip", values: [41.2,45.0,48.8,52.6,56.4,60.2,64.0] },
-        { label: "C. Leg Opening", values: [49.7,55.7,61.7,67.6,73.6,80.0,85.5] },
-        { label: "D. Front Rise", values: [35.5,36.0,36.5,37.0,37.5,38.0,38.5] },
-        { label: "E. Back Rise", values: [41.5,42.0,42.5,43.0,43.5,44.0,44.5] },
-        { label: "F. Inseam", values: [14.0,14.0,14.0,14.0,14.0,14.0,14.0] },
+        { label: "A. ½ Waist", values: [32.5,36.4,40.3,44.2,48.1,52.0,55.9,59.8,63.7,67.6,71.5] },
+        { label: "B. ½ Hip", values: [41.2,45.0,48.8,52.6,56.4,60.2,64.0,67.8,71.6,75.4,79.2] },
+        { label: "C. Leg Opening", values: [49.7,55.7,61.7,67.6,73.6,80.0,85.5,91.5,97.5,103.5,109.5] },
+        { label: "D. Front Rise", values: [35.5,36.0,36.5,37.0,37.5,38.0,38.5,39.0,39.5,40.0,40.5] },
+        { label: "E. Back Rise", values: [41.5,42.0,42.5,43.0,43.5,44.0,44.5,45.0,45.5,46.0,46.5] },
+        { label: "F. Inseam", values: [14.0,14.0,14.0,14.0,14.0,14.0,14.0,14.0,14.0,14.0,14.0] },
       ],
       tolerance: "± 1.0cm",
     },
@@ -484,15 +492,14 @@ const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "netball-skirt": "shorts",
   "netball-bike-shorts": "shorts",
   "netball-spanks": "none",          // no verified chart — Sizing Guide omitted on PO until one is added
-  // Tag rugby. The dri-fit tee is the same garment as every other Sideline dri-fit
-  // tee, so it takes the tee chart — nothing about tag changes how it is cut.
-  // The other two stay "none" on purpose: the reversible singlet is double-layer
-  // construction that no chart here describes, and our shorts chart stops at 3XL,
-  // which would print a short size run onto a PO that offers more. Both need one
-  // measured sample from Puffin before they get numbers. See OTX2/TNZA 2026-08-05.
+  // Tag rugby. The dri-fit tee and the shorts are the same garments we cut for every
+  // other club, so they take the standard charts — nothing about tag changes the cut,
+  // and both now run to 7XL so a tag set sizes consistently top to bottom.
+  // The reversible singlet stays "none": it is double-layer construction that no chart
+  // here describes, and it needs one measured sample from Puffin. See OTX2/TNZA.
   "tag-dri-fit-tee": "tshirt",
+  "tag-shorts": "shorts",
   "tag-reversible-singlet": "none",  // double-layer reversible — needs a measured sample
-  "tag-shorts": "none",              // shorts chart stops at 3XL — needs extending first
   "football-jersey": "tshirt",
   "football-shorts": "shorts",
   "football-socks": "socks",
