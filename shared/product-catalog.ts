@@ -135,7 +135,11 @@ function tiers(p11: number, p20: number, p30: number, p50: number, p100: number)
   ];
 }
 
-const ADULT_STANDARD = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"];
+// Runs to 7XL: the teamstore has sold supporter apparel to 7XL since the Otahuhu
+// template, and the published size chart now carries those columns. Stopping the
+// quote/PO catalogue at 5XL meant a customer could buy a size online that could not
+// be put on their quote. Extended 2026-08-05.
+const ADULT_STANDARD = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"];
 const YOUTH_STANDARD = ["4", "6", "8", "10", "12", "14", "16"];
 const UNISEX_JERSEY = [...YOUTH_STANDARD, ...ADULT_STANDARD];
 const WOMENS_DRESS = ["6", "8", "10", "12", "14", "16", "18", "20", "22"];

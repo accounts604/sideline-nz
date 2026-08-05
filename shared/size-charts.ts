@@ -484,9 +484,15 @@ const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "netball-skirt": "shorts",
   "netball-bike-shorts": "shorts",
   "netball-spanks": "none",          // no verified chart — Sizing Guide omitted on PO until one is added
-  "tag-reversible-singlet": "none",  // no verified chart
-  "tag-dri-fit-tee": "none",         // no verified chart
-  "tag-shorts": "none",              // no verified chart
+  // Tag rugby. The dri-fit tee is the same garment as every other Sideline dri-fit
+  // tee, so it takes the tee chart — nothing about tag changes how it is cut.
+  // The other two stay "none" on purpose: the reversible singlet is double-layer
+  // construction that no chart here describes, and our shorts chart stops at 3XL,
+  // which would print a short size run onto a PO that offers more. Both need one
+  // measured sample from Puffin before they get numbers. See OTX2/TNZA 2026-08-05.
+  "tag-dri-fit-tee": "tshirt",
+  "tag-reversible-singlet": "none",  // double-layer reversible — needs a measured sample
+  "tag-shorts": "none",              // shorts chart stops at 3XL — needs extending first
   "football-jersey": "tshirt",
   "football-shorts": "shorts",
   "football-socks": "socks",
