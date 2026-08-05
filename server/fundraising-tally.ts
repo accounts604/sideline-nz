@@ -141,9 +141,11 @@ ${END}`;
 /** Compact one-liner for a product page. */
 export function renderProductTally(t: CampaignTally): string {
   const share = money(CLUB_SHARE_CENTS_PER_UNIT);
+  // Zero state deliberately has no tail: the bold sentence already names the
+  // club, and appending "Be the first to back <club>" repeats it awkwardly.
   const tail =
     t.units === 0
-      ? `Be the first to back ${escapeHtml(t.club)}.`
+      ? "Be the first to order."
       : `${money(t.raisedCents)} raised so far from ${t.units} item${t.units === 1 ? "" : "s"}.`;
   return `${START}
 <p style="background:#f7f9f7;border-left:3px solid #1c6b3a;padding:12px 16px;margin:16px 0 0;font-size:14px;color:#333;border-radius:0 6px 6px 0">
