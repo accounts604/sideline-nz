@@ -60,6 +60,7 @@ export const CAMPAIGNS: CampaignConfig[] = [
   { handle: "2026-malisi-samoa-nz-supporters-range", club: "Malisi Samoa NZ", goalUnits: 100, countFrom: "2026-08-05" },
   { handle: "2026-pineula-salani-supporters-range", club: "Pineula Salani", goalUnits: 100, countFrom: "2026-08-05" },
   { handle: "2026-nations-rugby-supporters-range", club: "Nations Rugby", goalUnits: 100, countFrom: "2026-08-05" },
+  { handle: "2026-apia-maroons-supporters-range", club: "Apia Maroons", goalUnits: 100, countFrom: "2026-08-06" },
 ];
 
 export interface CampaignTally {
