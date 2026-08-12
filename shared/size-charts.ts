@@ -37,6 +37,7 @@ export type SizeChartType =
   | "socks"
   | "headwear"
   | "beanie"
+  | "spanks"
   | "none"; // "none" → skip the Sizing Guide section entirely on the PO
 
 export const SIZE_CHART_LABELS: Record<SizeChartType, string> = {
@@ -57,6 +58,7 @@ export const SIZE_CHART_LABELS: Record<SizeChartType, string> = {
   socks: "Socks",
   headwear: "Headwear — Bucket Hat / 5-Panel Cap",
   beanie: "Beanie (Pom-Pom)",
+  spanks: "Spanks (Gripper Leg)",
   none: "",
 };
 
@@ -458,6 +460,47 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       tolerance: "± 2.0cm",
     },
   ],
+  // Spanks — the OZT3 gripper-leg spec, the first verified spanks numbers we have
+  // held. Added 2026-08-12 from the supplier spec sheet supplied for the tag set.
+  //
+  // Two things about this chart are deliberately not like the others:
+  //
+  // 1. It keeps the OZT3 size run (kids 6G–14G, unisex adults L8–L20) rather than
+  //    being forced into XS–7XL. Oz tag sizes spanks this way, the spec sheet is
+  //    cut against these labels, and inventing a mapping to XS–7XL would put a
+  //    made-to-order garment on a guess.
+  // 2. The spec sheet also carries two elastic CUT measurements, which are cutting
+  //    instructions for the machinist and not something a player can measure. They
+  //    are held here rather than published, because a reader who saw "waist elastic
+  //    52cm" next to their own 80cm waist would pick the wrong size:
+  //      Kids   waist elastic 47/47/48/50/51 · leg elastic 31/32/33/35/37
+  //      Adults waist elastic 52/53/56/60/62/64/66 · leg elastic 39/41/43/45/47/49/51
+  //    If a PO ever needs to state them, add them as rows here and they will flow
+  //    through to the PDF and the dispatch email automatically.
+  spanks: [
+    {
+      title: "Kids",
+      headers: ["", "6G", "8G", "10G", "12G", "14G"],
+      rows: [
+        { label: "½ Hip (18cm below waist)", values: [27,29,31.5,32.5,33.5] },
+        { label: "Total Length at Side", values: [26.5,27,28.5,29,29] },
+        { label: "Inseam Length", values: [5.5,5.7,6,6.4,6.4] },
+        { label: "½ Leg Opening (relaxed)", values: [15.5,16.5,18,19.5,20] },
+      ],
+      tolerance: "± 1.0cm",
+    },
+    {
+      title: "Unisex Adults",
+      headers: ["", "L8", "L10", "L12", "L14", "L16", "L18", "L20"],
+      rows: [
+        { label: "½ Hip (18cm below waist)", values: [33.5,34.5,35.5,37.5,39.5,41.5,44.5] },
+        { label: "Total Length at Side", values: [29,30.5,31.5,32.5,33.5,34.5,35.5] },
+        { label: "Inseam Length", values: [7.3,7.4,7.5,7.5,7.5,7.5,7.5] },
+        { label: "½ Leg Opening (relaxed)", values: [21,21.5,22,23,24,25,26] },
+      ],
+      tolerance: "± 1.0cm",
+    },
+  ],
   none: [],
 };
 
@@ -491,6 +534,9 @@ const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "netball-singlet": "singlet",
   "netball-skirt": "shorts",
   "netball-bike-shorts": "shorts",
+  // Stays "none" on purpose. The OZT3 spanks chart below is the oz tag garment on the
+  // oz tag size run (6G–14G, L8–L20); a netball spank is the womens 6–22 modesty brief.
+  // Same word, different garment and different run, so it does not inherit that chart.
   "netball-spanks": "none",          // no verified chart — Sizing Guide omitted on PO until one is added
   // Tag rugby. The dri-fit tee and the shorts are the same garments we cut for every
   // other club, so they take the standard charts — nothing about tag changes the cut,
@@ -500,6 +546,7 @@ const PRODUCT_TO_CHART: Record<string, SizeChartType> = {
   "tag-dri-fit-tee": "tshirt",
   "tag-shorts": "shorts",
   "tag-reversible-singlet": "none",  // double-layer reversible — needs a measured sample
+  "tag-spanks": "spanks",            // OZT3 gripper spec, own size run — see the spanks chart
   "football-jersey": "tshirt",
   "football-shorts": "shorts",
   "football-socks": "socks",
@@ -565,6 +612,11 @@ export const SIZE_CHART_DIAGRAMS: Record<SizeChartType, string> = {
   socks: "/size-charts/socks-diagram.svg",
   headwear: "/size-charts/headwear-diagram.svg",
   beanie: "/size-charts/beanie-diagram.svg",
+  // No spanks diagram drawn yet. The shorts illustration is deliberately NOT reused:
+  // it labels waist and length, while this chart is measured at the hip, the side and
+  // the leg opening, so it would point at the wrong lines. Empty means the page and the
+  // PDF simply render the table on its own.
+  spanks: "",
   none: "",
 };
 

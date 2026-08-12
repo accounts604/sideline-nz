@@ -26,6 +26,12 @@ const TAG_GARMENTS = [
     blurb:
       "Measured at the half waist, laid flat and unstretched. Waistbands are elasticated, so there is give either side of the number shown.",
   },
+  {
+    key: "spanks" as const,
+    name: "Spanks",
+    blurb:
+      "Spanks are sized on their own run — kids 6G to 14G and adults L8 to L20 — not the XS to 7XL run the rest of the set uses. Measure a pair that already fits across the hip, 18cm down from the waistband, and match the half hip figure.",
+  },
 ];
 
 export default function TagSizeChartPage() {
@@ -46,11 +52,12 @@ export default function TagSizeChartPage() {
             Tag Set Size Chart
           </h1>
           <p style={{ fontSize: "15px", color: "#666", maxWidth: "600px", margin: "0 auto 8px" }}>
-            Everything in the tag set on one page — dri-fit tee, reversible singlet and shorts.
-            All measurements are the garment laid flat, in centimetres.
+            Everything in the tag set on one page — dri-fit tee, reversible singlet, shorts and
+            spanks. All measurements are the garment laid flat, in centimetres.
           </p>
           <p style={{ fontSize: "13px", color: "#999" }}>
-            Sizes run Y2 through to 7XL. Tall sizing adds 3–5cm to the body length on request.
+            Tee, singlet and shorts run Y2 through to 7XL. Spanks run on their own labels, 6G to
+            14G and L8 to L20. Tall sizing adds 3–5cm to the body length on request.
           </p>
         </div>
       </section>
@@ -67,6 +74,7 @@ export default function TagSizeChartPage() {
             <li>Measure the half chest from side to side, 1cm below the armhole.</li>
             <li>Measure the length down the centre back, from the neck seam to the hem.</li>
             <li>For shorts, measure the half waist flat across the top of the waistband.</li>
+            <li>For spanks, measure the half hip across the garment 18cm down from the waistband.</li>
             <li>Find the closest number in the tables below. If you are between two sizes, take the larger one.</li>
           </ol>
           <div style={{ marginTop: "24px", padding: "16px", background: "#fffbeb", borderRadius: "8px", border: "1px solid #fde68a", maxWidth: "700px" }}>
@@ -97,7 +105,9 @@ export default function TagSizeChartPage() {
                 {g.blurb}
               </p>
 
-              <div className="grid md:grid-cols-[280px_1fr] gap-8 items-start">
+              {/* Without a diagram the two-column grid would leave a dead 280px column and
+                  squeeze the table, so a garment with no illustration gets the full width. */}
+              <div className={diagram ? "grid md:grid-cols-[280px_1fr] gap-8 items-start" : ""}>
                 {diagram && (
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#fafafa", borderRadius: "8px", padding: "20px" }}>
                     <img

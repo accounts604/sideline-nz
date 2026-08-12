@@ -143,6 +143,8 @@ const ADULT_STANDARD = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "
 const YOUTH_STANDARD = ["4", "6", "8", "10", "12", "14", "16"];
 const UNISEX_JERSEY = [...YOUTH_STANDARD, ...ADULT_STANDARD];
 const WOMENS_DRESS = ["6", "8", "10", "12", "14", "16", "18", "20", "22"];
+// Oz tag spanks are cut and labelled on their own run (OZT3 gripper spec).
+const TAG_SPANKS = ["6G", "8G", "10G", "12G", "14G", "L8", "L10", "L12", "L14", "L16", "L18", "L20"];
 const HEADWEAR_SM = ["S/M", "L/XL"];
 const HEADWEAR_ONE = ["One Size"];
 const SOCKS = ["Youth", "S", "M", "L", "XL"];
@@ -170,6 +172,10 @@ export const SIDELINE_PRODUCTS: SidelineProduct[] = [
   { id: "tag-reversible-singlet", name: "Tag Reversible Singlet",    category: "Tag",     sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Interlock Polyester (double-layer reversible)", puffinCostKey: "singlet" }, // proxy — reversible construction typically 1.3-1.5x single
   { id: "tag-dri-fit-tee",       name: "Tag Dri-Fit Tee",            category: "Tag",     sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Performance Polyester", puffinCostKey: "t-shirt" },
   { id: "tag-shorts",            name: "Tag Shorts",                 category: "Tag",     sizes: UNISEX_JERSEY, defaultMaterial: "180gsm Polyester Tricot", puffinCostKey: "training-short" },
+  // Spanks run on the OZT3 size labels, not XS–7XL — see the spanks chart in
+  // shared/size-charts.ts. No puffinCostKey: there is no verified spanks cost yet,
+  // so it quotes like the netball skirt does, by asking, rather than off a proxy SKU.
+  { id: "tag-spanks",            name: "Tag Spanks",                 category: "Tag",     sizes: TAG_SPANKS,    defaultMaterial: "Performance Spandex (gripper leg)" },
 
   // ─── Football / Soccer ───
   { id: "football-jersey",       name: "Football Jersey",            category: "Football",sizes: UNISEX_JERSEY, defaultMaterial: "150gsm Micro-Mesh Polyester", pricing: tiers(44,42,40,38,36), minOrder: 11, puffinCostKey: "soccer-jersey" }, // priced at standard jersey tier 2026-06-29 (was unpriced → getUnitPrice null)
