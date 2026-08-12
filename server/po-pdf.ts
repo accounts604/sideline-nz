@@ -14,6 +14,89 @@ import { getSizeChartTables, suggestSizeChart, normalizeChartType, SIZE_CHART_LA
 import { LOGO_POSITIONS, type LogoElement, type LogoPosition } from "@shared/schema";
 import { getDesignPrints, getMockups, type DesignAsset } from "@shared/design-assets";
 import { poBaseName, poFilename } from "@shared/po-filename";
+import { readFileSync, existsSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
+// ─── Site assets on the PO (logo + size-chart diagrams) ─────────
+//
+// These two are the only images on a PO that do not come from a CDN: they are
+// files in the client bundle. They used to be requested as `${siteUrl}${path}`,
+// which made a PO's own branding depend on whatever BASE_URL happened to be set
+// to. When that pointed at a stale preview deployment the requests 404'd and the
+// PO rendered with no logo and no measurement diagrams, silently — a broken
+// <img> leaves blank space and the PDF still "succeeds".
+//
+// Reading the file off disk and inlining it removes the network from the path
+// entirely, so a PO renders identically from a laptop, a cron or a serverless
+// function. If the file cannot be found (bundled runtime with no public dir) we
+// fall back to an absolute URL on the CANONICAL domain, never a preview host.
+
+const CANONICAL_SITE = "https://sidelinenz.com";
+
+function assetBaseUrl(): string {
+  const env = (process.env.VITE_SITE_URL || process.env.BASE_URL || "").trim();
+  if (!env) return CANONICAL_SITE;
+  let host: string;
+  try {
+    const u = new URL(env);
+    // "localhost:3000" parses (protocol "localhost:") but is not fetchable as
+    // an image src, so demand a real http(s) origin.
+    if (u.protocol !== "http:" && u.protocol !== "https:") return CANONICAL_SITE;
+    host = u.hostname;
+  } catch {
+    return CANONICAL_SITE; // not a usable absolute URL
+  }
+  // Preview deployments are per-build and get torn down; their asset URLs die
+  // with them, and a PO PDF outlives any one deploy.
+  if (/\.vercel\.app$/i.test(host)) return CANONICAL_SITE;
+  return env.replace(/\/$/, "");
+}
+
+const MIME_BY_EXT: Record<string, string> = {
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+};
+
+const assetCache = new Map<string, string>();
+
+// `path` is site-absolute, e.g. "/size-charts/spanks-diagram.svg".
+function siteAsset(path: string): string {
+  const cached = assetCache.get(path);
+  if (cached) return cached;
+
+  const rel = path.replace(/^\//, "");
+  const here = dirname(fileURLToPath(import.meta.url));
+  const roots = [
+    join(process.cwd(), "client", "public"),
+    join(process.cwd(), "dist", "public"),
+    join(process.cwd(), "public"),
+    join(here, "..", "client", "public"),
+    join(here, "..", "..", "client", "public"),
+  ];
+
+  for (const root of roots) {
+    const file = join(root, rel);
+    if (!existsSync(file)) continue;
+    const ext = rel.slice(rel.lastIndexOf(".")).toLowerCase();
+    const mime = MIME_BY_EXT[ext];
+    if (!mime) break;
+    try {
+      const uri = `data:${mime};base64,${readFileSync(file).toString("base64")}`;
+      assetCache.set(path, uri);
+      return uri;
+    } catch {
+      break;
+    }
+  }
+
+  const url = `${assetBaseUrl()}${path}`;
+  assetCache.set(path, url);
+  return url;
+}
 
 const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
@@ -255,7 +338,9 @@ export async function generatePoHtml(orderId: string, opts: { audience?: "suppli
   const data = await storage.getOrderWithDetails(orderId);
   if (!data) return null;
   const { order, items, sizeBreakdowns } = data as any;
-  const siteUrl = process.env.VITE_SITE_URL || process.env.BASE_URL || "https://sidelinenz.com";
+  // Canonical, never a preview host — this also backs the QR code, which used to
+  // point a supplier at a deployment that no longer exists.
+  const siteUrl = assetBaseUrl();
   const portalUrl = `${siteUrl}/admin/orders/${order.id}`;
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&margin=2&data=${encodeURIComponent(portalUrl)}`;
 
@@ -425,7 +510,7 @@ export async function generatePoHtml(orderId: string, opts: { audience?: "suppli
           Sizing Guide — ${esc(SIZE_CHART_LABELS[chartType] || String(chartType))}
         </div>
         <div class="snz-2col" style="display:flex;align-items:flex-start;gap:16px;padding:12px 16px;border:1px solid #eee;border-top:none">
-          ${diagramSrc ? `<div style="width:220px;flex-shrink:0;text-align:center"><img src="${siteUrl}${diagramSrc}" style="width:100%;max-height:280px;object-fit:contain" /><p style="font-size:9px;color:#888;margin-top:4px">Measurement reference</p></div>` : ""}
+          ${diagramSrc ? `<div style="width:220px;flex-shrink:0;text-align:center"><img src="${siteAsset(diagramSrc)}" style="width:100%;max-height:280px;object-fit:contain" /><p style="font-size:9px;color:#888;margin-top:4px">Measurement reference</p></div>` : ""}
           <div style="flex:1;overflow-x:auto">
             ${sizeTables.map((t) => `
               <p style="font-size:12px;font-weight:800;margin:6px 0 3px">${esc(t.title)}</p>
@@ -515,7 +600,7 @@ export async function generatePoHtml(orderId: string, opts: { audience?: "suppli
 <!-- Header -->
 <div class="snz-hdr" style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
   <div>
-    <div style="margin-bottom:10px"><img src="${siteUrl}/sideline-logo-vertical.png" style="height:56px;object-fit:contain" /></div>
+    <div style="margin-bottom:10px"><img src="${siteAsset("/sideline-logo-vertical.png")}" style="height:56px;object-fit:contain" /></div>
     <div style="font-size:11px;color:#333;line-height:1.6">
       Sideline NZ (Sideline Custom Goods Ltd)<br/>Unit 2, 66 Cavendish Drive Manukau<br/>Auckland, 2104<br/>022 412 7205<br/>info@sidelinenz.com<br/><span style="color:#0ea5e9">www.sidelinenz.com</span>
     </div>
