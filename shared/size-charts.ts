@@ -482,10 +482,10 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       title: "Kids",
       headers: ["", "6G", "8G", "10G", "12G", "14G"],
       rows: [
-        { label: "½ Hip (18cm below waist)", values: [27,29,31.5,32.5,33.5] },
-        { label: "Total Length at Side", values: [26.5,27,28.5,29,29] },
-        { label: "Inseam Length", values: [5.5,5.7,6,6.4,6.4] },
-        { label: "½ Leg Opening (relaxed)", values: [15.5,16.5,18,19.5,20] },
+        { label: "A. ½ Hip (18cm below waist)", values: [27,29,31.5,32.5,33.5] },
+        { label: "B. Total Length at Side", values: [26.5,27,28.5,29,29] },
+        { label: "C. Inseam Length", values: [5.5,5.7,6,6.4,6.4] },
+        { label: "D. ½ Leg Opening (relaxed)", values: [15.5,16.5,18,19.5,20] },
       ],
       tolerance: "± 1.0cm",
     },
@@ -493,10 +493,10 @@ export const SIZE_CHART_DATA: Record<SizeChartType, SizeTable[]> = {
       title: "Unisex Adults",
       headers: ["", "L8", "L10", "L12", "L14", "L16", "L18", "L20"],
       rows: [
-        { label: "½ Hip (18cm below waist)", values: [33.5,34.5,35.5,37.5,39.5,41.5,44.5] },
-        { label: "Total Length at Side", values: [29,30.5,31.5,32.5,33.5,34.5,35.5] },
-        { label: "Inseam Length", values: [7.3,7.4,7.5,7.5,7.5,7.5,7.5] },
-        { label: "½ Leg Opening (relaxed)", values: [21,21.5,22,23,24,25,26] },
+        { label: "A. ½ Hip (18cm below waist)", values: [33.5,34.5,35.5,37.5,39.5,41.5,44.5] },
+        { label: "B. Total Length at Side", values: [29,30.5,31.5,32.5,33.5,34.5,35.5] },
+        { label: "C. Inseam Length", values: [7.3,7.4,7.5,7.5,7.5,7.5,7.5] },
+        { label: "D. ½ Leg Opening (relaxed)", values: [21,21.5,22,23,24,25,26] },
       ],
       tolerance: "± 1.0cm",
     },
@@ -612,11 +612,10 @@ export const SIZE_CHART_DIAGRAMS: Record<SizeChartType, string> = {
   socks: "/size-charts/socks-diagram.svg",
   headwear: "/size-charts/headwear-diagram.svg",
   beanie: "/size-charts/beanie-diagram.svg",
-  // No spanks diagram drawn yet. The shorts illustration is deliberately NOT reused:
-  // it labels waist and length, while this chart is measured at the hip, the side and
-  // the leg opening, so it would point at the wrong lines. Empty means the page and the
-  // PDF simply render the table on its own.
-  spanks: "",
+  // Drawn 2026-08-12 for this chart specifically. The shorts illustration was not reused
+  // because it labels waist and length, while spanks are measured at the hip, the side
+  // and the leg opening — it would have pointed at the wrong lines.
+  spanks: "/size-charts/spanks-diagram.svg",
   none: "",
 };
 
