@@ -63,19 +63,38 @@ const MIME_BY_EXT: Record<string, string> = {
 
 const assetCache = new Map<string, string>();
 
+// Directory of this module, or null when it cannot be determined.
+//
+// The production bundle is CommonJS (dist/index.cjs), where `import.meta.url`
+// is undefined. Calling fileURLToPath(undefined) throws ERR_INVALID_ARG_TYPE,
+// and because siteAsset() runs on every render that took down the whole PO
+// renderer in production — proof previews 500'd and PDF generation failed
+// (silently, at the call sites that .catch() it) while dev stayed green,
+// since tsx runs this file as real ESM. Never let asset lookup throw: the
+// cwd-based roots below already cover the deployed layout (/app/dist/public),
+// and a missing file falls back to an absolute URL.
+function moduleDir(): string | null {
+  try {
+    const url = (import.meta as unknown as { url?: string } | undefined)?.url;
+    if (typeof url === "string" && url) return dirname(fileURLToPath(url));
+  } catch {
+    /* not ESM — fall through */
+  }
+  return null;
+}
+
 // `path` is site-absolute, e.g. "/size-charts/spanks-diagram.svg".
 function siteAsset(path: string): string {
   const cached = assetCache.get(path);
   if (cached) return cached;
 
   const rel = path.replace(/^\//, "");
-  const here = dirname(fileURLToPath(import.meta.url));
+  const here = moduleDir();
   const roots = [
     join(process.cwd(), "client", "public"),
     join(process.cwd(), "dist", "public"),
     join(process.cwd(), "public"),
-    join(here, "..", "client", "public"),
-    join(here, "..", "..", "client", "public"),
+    ...(here ? [join(here, "..", "client", "public"), join(here, "..", "..", "client", "public")] : []),
   ];
 
   for (const root of roots) {
