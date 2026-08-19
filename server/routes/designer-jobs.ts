@@ -22,7 +22,7 @@ import { desc, eq, or } from "drizzle-orm";
 import { db } from "../db";
 import { designerJobs, designers, orders } from "@shared/schema";
 import { DROP_CHECKLIST, checklistLabel } from "@shared/drop-checklist";
-import { expandPrompt, BASE_BLOCK, BRAND_BLOCK, DONOT_BLOCK, type PromptPack } from "@shared/mockup-prompt";
+import { expandPrompt, type PromptPack } from "@shared/mockup-prompt";
 import { requireAdmin } from "../auth";
 import { accrueDropFee } from "../designer-pay";
 import { storage } from "../storage";
@@ -526,7 +526,7 @@ ${garments.map((g, i) => {
         return `<div class="pgar"><div class="ptop"><span class="pnm">${esc(g.name)}</span>
 <button class="copy" type="button" data-p="${i}">Copy prompt</button></div><p>${esc(full)}</p></div>`;
       }).join("")}
-<p class="hint">If a render comes back with text, a logo or a busy chest, re-roll it. That is the engine ignoring the DO NOT block, not your mistake.</p></div>`
+<p class="hint">If a render comes back with text, a logo or a busy chest, just re-roll it. Two or three attempts per concept is normal and costs you nothing.</p></div>`
       : "";
 
     // Upload UI shows while the job is open for work (in progress or in revision).
