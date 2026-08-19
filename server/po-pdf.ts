@@ -435,7 +435,7 @@ export async function generatePoHtml(orderId: string, opts: { audience?: "suppli
     // Aggregate any existing per-size quantities (for prefilling the grid).
     const sizeMap: Record<string, number> = {};
     for (const b of bds as any[]) { if (b.size) sizeMap[b.size] = (sizeMap[b.size] || 0) + (b.quantity || 0); }
-    const hasRoster = (bds as any[]).some((b) => b.playerName);   // named per-player run (e.g. Richmond)
+    const hasRoster = (bds as any[]).some((b) => b.playerName || b.playerNumber);   // named or numbered per-player run (e.g. Richmond)
     const gridSizes = chartSizes(chartType);                       // this garment's assigned chart sizes
     // The personalise table's size dropdown lists this garment's own chart when
     // it has one, otherwise the legacy generic set.
@@ -444,13 +444,14 @@ export async function generatePoHtml(orderId: string, opts: { audience?: "suppli
     const rowHtml = (b: any, i: number) => isInteractive
       ? `<tr data-row style="${!b.size ? "background:#fff8ee" : ""}">
           <td style="${tdS};text-align:center;color:#888" data-idx>${i + 1}</td>
+          <td style="${tdS}"><input data-cell="playerNumber" inputmode="numeric" maxlength="8" placeholder="(none)" style="${inpS};text-align:center" value="${esc(b.playerNumber || "")}" /></td>
           <td style="${tdS}"><input data-cell="playerName" style="${inpS}" value="${esc(b.playerName || "")}" /></td>
           <td style="${tdS}"><select data-cell="size" style="${inpS}" onchange="snzRecount()">${selOpts(b.size || "")}</select></td>
           <td style="${tdS};text-align:center"><input data-cell="quantity" type="number" min="0" value="${b.quantity ?? 1}" style="${inpS};text-align:center" oninput="snzRecount()" /></td>
           <td style="${tdS}"><input data-cell="nameOnBack" style="${inpS}" placeholder="(no name)" value="${esc(b.namePlacement || "")}" /></td>
           <td class="no-print" style="${tdS};text-align:center"><button type="button" onclick="var tb=this.closest('tbody');this.closest('tr').remove();snzRenumber(tb);snzRecount()" style="border:none;background:none;color:#b34;font-size:16px;cursor:pointer;line-height:1">&times;</button></td>
         </tr>`
-      : `<tr><td style="${tdS};text-align:center;color:#888">${i + 1}</td><td style="${tdS}">${esc(b.playerName || "")}</td><td style="${tdS}">${esc(b.size || "")}</td><td style="${tdS};text-align:center">${b.quantity ?? ""}</td><td style="${tdS}">${esc(b.namePlacement || "")}</td></tr>`;
+      : `<tr><td style="${tdS};text-align:center;color:#888">${i + 1}</td><td style="${tdS};text-align:center">${esc(b.playerNumber || "")}</td><td style="${tdS}">${esc(b.playerName || "")}</td><td style="${tdS}">${esc(b.size || "")}</td><td style="${tdS};text-align:center">${b.quantity ?? ""}</td><td style="${tdS}">${esc(b.namePlacement || "")}</td></tr>`;
 
     const sectionHead = `<div style="background:#000;color:#fff;padding:6px 16px;font-size:12px;font-weight:700;text-align:center">Sizes &amp; Quantities</div>`;
     const totBar = `<div style="display:flex;justify-content:space-between;background:#2b2622;color:#fff;padding:8px 16px;font-size:12px;font-weight:700;margin-top:8px"><span>Total</span><span data-tot data-item-id="${esc(item.id)}" data-ord="${item.quantity}">${totalQty} of ${item.quantity} ordered</span></div>`;
@@ -474,10 +475,10 @@ export async function generatePoHtml(orderId: string, opts: { audience?: "suppli
     // Prefill from existing breakdowns; seed one blank row when there are none
     // so "Add person" has a template to clone.
     const rosterSeed = (bds.length ? bds : (isInteractive ? [{ size: "", quantity: 1, playerName: "", playerNumber: null, namePlacement: "" }] : [])) as any[];
-    const rosterBanner = isInteractive ? `<div class="no-print" style="font-size:11px;color:#7a5f3f;background:#fff8ee;border:1px solid #f0d8b6;border-top:none;padding:8px 12px">Add a row per person. Set each player's size and quantity, add a name for the back if you want one, and use Add person for anyone missing.</div>` : "";
+    const rosterBanner = isInteractive ? `<div class="no-print" style="font-size:11px;color:#7a5f3f;background:#fff8ee;border:1px solid #f0d8b6;border-top:none;padding:8px 12px">Add a row per person. Set each player's size and quantity, add a name for the back if you want one, and use Add person for anyone missing. If the garment is numbered, put the jersey number in the "Jersey no." column. The grey # on the left is only the row count, it is not the jersey number.</div>` : "";
     const rosterInner = (attrs: string) => `${rosterBanner}
         <div class="snz-scroll"><table${attrs ? ` ${attrs}` : ""} style="width:100%;border-collapse:collapse;border:1px solid #eee;border-top:none">
-          <thead><tr><th style="${thS};text-align:center;width:30px">#</th><th style="${thS}">Player</th><th style="${thS};width:120px">Size</th><th style="${thS};width:64px;text-align:center">Qty</th><th style="${thS}">Name on back</th>${isInteractive ? `<th class="no-print" style="${thS};width:30px"></th>` : ""}</tr></thead>
+          <thead><tr><th style="${thS};text-align:center;width:30px">#</th><th style="${thS};text-align:center;width:70px">Jersey no.</th><th style="${thS}">Player</th><th style="${thS};width:120px">Size</th><th style="${thS};width:64px;text-align:center">Qty</th><th style="${thS}">Name on back</th>${isInteractive ? `<th class="no-print" style="${thS};width:30px"></th>` : ""}</tr></thead>
           <tbody data-body>${rosterSeed.map(rowHtml).join("")}</tbody>
         </table></div>
         ${isInteractive ? `<button type="button" class="no-print" onclick="snzAddRow(this)" style="margin:8px 0 0;border:1.4px dashed #cdbfae;background:#fff;color:#5b1a2e;font-weight:700;font-size:12px;padding:8px 12px;border-radius:7px;cursor:pointer">+ Add person</button>` : ""}`;
@@ -725,7 +726,8 @@ function snzCollect(decision){
     t.querySelectorAll('tbody tr').forEach(function(tr){
       var pn=tr.querySelector('[data-cell="playerName"]');var sz=tr.querySelector('[data-cell="size"]');
       var qt=tr.querySelector('[data-cell="quantity"]');var nb=tr.querySelector('[data-cell="nameOnBack"]');
-      rows.push({playerName:snzVal(pn),size:snzVal(sz),quantity:parseInt(snzVal(qt)||'0',10)||0,nameOnBack:snzVal(nb)});
+      var jn=tr.querySelector('[data-cell="playerNumber"]');
+      rows.push({playerNumber:snzVal(jn),playerName:snzVal(pn),size:snzVal(sz),quantity:parseInt(snzVal(qt)||'0',10)||0,nameOnBack:snzVal(nb)});
     });
     rosters.push({itemId:t.getAttribute('data-item-id'),rows:rows});
   });

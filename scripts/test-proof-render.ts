@@ -24,6 +24,7 @@
  */
 import { strict as assert } from "node:assert";
 import { storage } from "../server/storage";
+import { proofSubmitSchema } from "../server/routes/approvals";
 
 let failures = 0;
 function check(name: string, fn: () => void) {
@@ -87,6 +88,33 @@ function assertToggleInvariant(html: string, expectBlocks: number) {
   assert.equal(hidden, expectBlocks, `hidden panels ${hidden} != ${expectBlocks} (exactly one hidden per item)`);
 }
 
+// Execute the page's OWN snzCollect against a minimal DOM stub. No jsdom in this
+// repo, so we stub only the handful of calls snzCollect makes. This runs the
+// emitted browser code rather than asserting on its source text.
+function runCollect(html: string, rowValues: Array<Record<string, string>>): any {
+  const m = html.match(/<script>([\s\S]*?)<\/script>/);
+  assert.ok(m, "no <script> block found");
+  const cell = (v: string) => ({ value: v });
+  const trs = rowValues.map((vals) => ({
+    querySelector: (sel: string) => {
+      const key = (sel.match(/data-cell="([^"]+)"/) || [])[1];
+      return key && key in vals ? cell(vals[key]) : null;
+    },
+  }));
+  const table = {
+    getAttribute: (a: string) => (a === "data-item-id" ? "it1" : null),
+    closest: () => null,                       // not inside a hidden panel → visible
+    querySelectorAll: (sel: string) => (sel === "tbody tr" ? trs : []),
+  };
+  const document = {
+    querySelectorAll: (sel: string) => (sel === "table[data-roster]" ? [table] : []),
+    querySelector: () => null,
+    addEventListener: () => {},
+  };
+  const fn = new Function("document", m![1] + "\n;return snzCollect('approved');");
+  return fn(document);
+}
+
 async function main() {
   console.log("customer proof render — regression guard\n");
 
@@ -143,6 +171,62 @@ async function main() {
     assertScriptParses(multi);
     // 'a' and 'b' are sized (2 blocks); 'c' is one-size (no chart) → no block.
     assertToggleInvariant(multi, 2);
+  });
+
+  // ── Jersey numbers: the proof form must CAPTURE the number-to-size pairing ──
+  // Real incident (Narre Warren PO-2026-0035, Jul 2026): the roster table had
+  // no jersey-number field, so the client encoded the pairing in row order and
+  // it was lost on save. Puffin got 23 sizes it could not match to 23 printed
+  // numbers. These guard the column, the prefill, and the submit payload.
+  const numbered = await render(order({
+    items: [item({ productName: "Rugby Match Jersey", productType: "jersey" })],
+    sizeBreakdowns: [
+      { orderItemId: "it1", size: "M", quantity: 1, playerNumber: "7" },
+      { orderItemId: "it1", size: "2XL", quantity: 1, playerNumber: "23" },
+    ],
+  }));
+  check("jersey no. column renders, prefills, and defaults to the roster mode", () => {
+    assert.ok(numbered.includes("Jersey no."), "Jersey no. column header missing");
+    assert.ok(numbered.includes('data-cell="playerNumber"'), "jersey number input missing");
+    assert.ok(/data-cell="playerNumber"[^>]*value="7"/.test(numbered), "existing number 7 not prefilled");
+    assert.ok(/data-cell="playerNumber"[^>]*value="23"/.test(numbered), "existing number 23 not prefilled");
+    assert.ok(numbered.includes('data-mode="roster"'), "numbered rows should default to the personalise table");
+    assertScriptParses(numbered);
+    assertToggleInvariant(numbered, 1);
+  });
+
+  check("submit payload carries playerNumber (runs the page's own snzCollect)", () => {
+    const payload = runCollect(numbered, [
+      { playerNumber: "7", playerName: "Sione", size: "M", quantity: "1", nameOnBack: "SIONE" },
+      { playerNumber: "23", playerName: "", size: "2XL", quantity: "1", nameOnBack: "" },
+    ]);
+    const rows = payload.rosters[0].rows;
+    assert.equal(rows.length, 2, `expected 2 collected rows, got ${rows.length}`);
+    assert.equal(rows[0].playerNumber, "7", `row 1 playerNumber was ${JSON.stringify(rows[0].playerNumber)}`);
+    assert.equal(rows[1].playerNumber, "23", `row 2 playerNumber was ${JSON.stringify(rows[1].playerNumber)}`);
+    assert.equal(rows[0].size, "M");
+    assert.equal(rows[1].quantity, 1);
+  });
+
+  check("the API schema accepts playerNumber instead of stripping it", () => {
+    const parsed = proofSubmitSchema.parse({
+      decision: "approved",
+      rosters: [{ itemId: "it1", rows: [{ playerNumber: "7", playerName: "Sione", size: "M", quantity: 1 }] }],
+    });
+    assert.equal(parsed.rosters?.[0].rows[0].playerNumber, "7", "zod dropped playerNumber from the payload");
+  });
+
+  // ── The supplier sheet is the payoff: it must print the number ──
+  // Rendered outside check() because check() is synchronous: an await inside it
+  // would swallow the assertion into an unhandled rejection and report a pass.
+  (storage as any).getOrderWithDetails = async () => order({
+    items: [item({ productName: "Rugby Match Jersey" })],
+    sizeBreakdowns: [{ orderItemId: "it1", size: "M", quantity: 1, playerNumber: "7" }],
+  });
+  const { generatePoHtml: genSheet } = await import("../server/po-pdf");
+  const supplierSheet = await genSheet("ord", { audience: "supplier" });
+  check("supplier sheet prints #number beside the size", () => {
+    assert.ok(supplierSheet && supplierSheet.includes("#7"), "supplier sidebar did not print #7");
   });
 
   // ── Degenerate shapes must not throw ──

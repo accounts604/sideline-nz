@@ -418,7 +418,9 @@ const KNOWN_SIZES = new Set<string>([
   "12", "14", "16", "S", "M", "L", "XL", "2XL", "3XL", "One Size", "OSFA",
 ]);
 
-const proofSubmitSchema = z.object({
+// Exported so scripts/test-proof-render.ts can assert the payload contract
+// (notably that playerNumber survives validation) without booting the server.
+export const proofSubmitSchema = z.object({
   decision: z.enum(["approved", "changes", "changes_requested"]),
   deliveryAddress: z.string().max(2000).optional(),
   notes: z.string().max(4000).optional(),
@@ -426,6 +428,7 @@ const proofSubmitSchema = z.object({
   rosters: z.array(z.object({
     itemId: z.string(),
     rows: z.array(z.object({
+      playerNumber: z.string().max(10).optional(),
       playerName: z.string().max(120).optional(),
       size: z.string().max(20).optional(),
       quantity: z.union([z.number(), z.string()]).optional(),
@@ -482,6 +485,7 @@ publicApprovalRouter.post("/:token/submit", async (req, res) => {
         .map((r) => ({
           size: (r.size || "").trim(),
           quantity: clampQty(r.quantity),
+          playerNumber: (r.playerNumber || "").trim().slice(0, 10) || null,
           playerName: (r.playerName || "").trim().slice(0, 120) || null,
           namePlacement: (r.nameOnBack || "").trim().slice(0, 120) || null,
         }))
@@ -495,6 +499,7 @@ publicApprovalRouter.post("/:token/submit", async (req, res) => {
           orderItemId: roster.itemId,
           size: r.size,
           quantity: r.quantity,
+          playerNumber: r.playerNumber,
           playerName: r.playerName,
           namePlacement: r.namePlacement,
         } as any);
