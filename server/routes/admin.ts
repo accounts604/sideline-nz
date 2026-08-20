@@ -1696,7 +1696,8 @@ router.post("/orders/:id/production/advance", async (req, res) => {
     const now = new Date();
 
     // Complete current stage
-    await storage.updateProductionStage(stages[currentIdx].id, {
+    const completedStage = stages[currentIdx];
+    await storage.updateProductionStage(completedStage.id, {
       status: "completed",
       completedAt: now,
       completedBy: user.userId,
@@ -1718,8 +1719,33 @@ router.post("/orders/:id/production/advance", async (req, res) => {
       orderId: req.params.id,
       userId: user.userId,
       action: "stage_advanced",
-      details: { from: stages[currentIdx].stage, to: nextStage.stage, notes },
+      details: { from: completedStage.stage, to: nextStage.stage, notes },
     });
+
+    // Sample-approval auto-trigger — when a sample PO advances past the
+    // sample_approved_by_client checkpoint, fire the bulk-PO build flow.
+    // Fail-soft: the advance still succeeds even if bulk init errors.
+    if (completedStage.stage === "sample_approved_by_client") {
+      try {
+        const setOrder = await storage.getOrder(req.params.id);
+        if (setOrder?.poKind === "sample") {
+          // Stamp the timestamp so existing /raise-bulk-po gate also passes
+          // when called independently.
+          await storage.updateOrder(req.params.id, { sampleApprovedByClientAt: now } as any);
+          const bulkResult = await ensureBulkPoFromSample(req.params.id, user.userId);
+          if (!("error" in bulkResult)) {
+            await storage.logOrderActivity({
+              orderId: req.params.id,
+              userId: user.userId,
+              action: "bulk_po_auto_built_from_sample_approval",
+              details: { bulkOrderId: bulkResult.bulk.id, bulkPoReference: bulkResult.bulk.poReference, created: bulkResult.created },
+            });
+          }
+        }
+      } catch (err) {
+        console.error("[advance] sample→bulk auto-trigger failed:", err);
+      }
+    }
 
     // Notify customer about production progress
     const order = await storage.getOrder(req.params.id);

@@ -498,6 +498,7 @@ function Row({ label, value }: { label: string; value: string | null | undefined
 // auto-advances the next stage to in_progress.
 
 const SUPPLIER_STAGE_LABELS: Record<string, { label: string; supplierHint?: string }> = {
+  // Bulk path
   order_received: { label: "Order Received" },
   design_review:  { label: "Design Review" },
   design_confirmed: { label: "Design Confirmed", supplierHint: "Confirm artwork is correct + production-ready" },
@@ -507,6 +508,11 @@ const SUPPLIER_STAGE_LABELS: Record<string, { label: string; supplierHint?: stri
   packing:        { label: "Packing", supplierHint: "Boxed and ready to ship" },
   shipped:        { label: "Shipped", supplierHint: "Use the 'Mark Dispatched' button below to capture tracking" },
   delivered:      { label: "Delivered" },
+  // Sample path
+  sample_produced: { label: "Sample Produced", supplierHint: "Sample garment(s) made — photo of the finished sample helps Romero review" },
+  sample_dispatched: { label: "Sample Dispatched", supplierHint: "Sample left you — add tracking via the Mark Dispatched button below" },
+  sample_received_by_client: { label: "Sample Received by Client", supplierHint: "Marked by Sideline ops, not you" },
+  sample_approved_by_client: { label: "Sample Approved by Client", supplierHint: "Marked by Sideline ops once client confirms. Triggers the bulk PO." },
 };
 
 type SupplierStage = {

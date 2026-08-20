@@ -1136,23 +1136,48 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async initializeProductionPipeline(orderId: string): Promise<ProductionStage[]> {
-    const stages = [
-      "order_received",
-      "design_review",
-      "design_confirmed",
-      "in_production",
-      "printing",
-      "quality_check",
-      "packing",
-      "shipped",
-      "delivered",
-    ];
+  // Standard 9-stage path for bulk / single POs.
+  private static BULK_STAGES = [
+    "order_received",
+    "design_review",
+    "design_confirmed",
+    "in_production",
+    "printing",
+    "quality_check",
+    "packing",
+    "shipped",
+    "delivered",
+  ];
 
+  // Sample path — the goal of a sample run is "client gives the thumbs-up
+  // and we kick off the bulk PO from it". Different milestones than bulk:
+  // no printing/packing/shipping of large quantities, but there IS a
+  // sample_dispatched (small parcel to client) and a sample_approved step
+  // that triggers the downstream bulk pipeline.
+  private static SAMPLE_STAGES = [
+    "order_received",
+    "design_review",
+    "design_confirmed",
+    "sample_produced",
+    "sample_dispatched",
+    "sample_received_by_client",
+    "sample_approved_by_client",
+  ];
+
+  async initializeProductionPipeline(orderId: string): Promise<ProductionStage[]> {
     // Idempotent — if any stages exist for this order, return them as-is.
     // Lets the raise-PO hook call this unconditionally without duplicating.
     const existing = await db.select().from(productionStages).where(eq(productionStages.orderId, orderId));
     if (existing.length > 0) return existing;
+
+    // Pick the path based on the order's poKind. Sample POs get the
+    // sample-specific milestones; bulk and single use the full production
+    // pipeline. The choice locks in at seed time — re-seeding requires
+    // deleting existing stages first.
+    const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+    const stages = order?.poKind === "sample"
+      ? DatabaseStorage.SAMPLE_STAGES
+      : DatabaseStorage.BULK_STAGES;
 
     const created: ProductionStage[] = [];
     for (let i = 0; i < stages.length; i++) {
@@ -1165,8 +1190,8 @@ export class DatabaseStorage implements IStorage {
       created.push(row);
     }
 
-    // Set order's production stage
-    await db.update(orders).set({ productionStage: "order_received", updatedAt: new Date() }).where(eq(orders.id, orderId));
+    // Set order's production stage to the first stage.
+    await db.update(orders).set({ productionStage: stages[0], updatedAt: new Date() }).where(eq(orders.id, orderId));
 
     return created;
   }

@@ -172,3 +172,30 @@ Query params:
 ### Reuse from CLI
 
 The module `server/ezra/queue-processor.ts` is the single source of truth — `scripts/process-sideline-queue.ts` still works for ad-hoc CLI runs, and the cron endpoint imports the same `processCustomerQueue()` function.
+
+## Order stages — two parallel systems
+
+### Pipeline stages (high-level, GHL-mirrored)
+`Lead Received → Brief Sent → Mockup In Progress → Mockup Sent → Deposit Paid → PO Raised → In Production → Shipped → Delivered → Invoice Sent → Paid` (+ Completed, Cancelled)
+
+- Source: `shared/order-stages.ts` (`ALL_ORDER_STAGES`)
+- Push to GHL: only stages in `SIDELINE_PIPELINE_STAGES` (`shared/pipeline.ts`)
+- **In Production** and **Shipped** are currently in `INTERNAL_PIPELINE_STAGES` — admin can pick them but no GHL push fires
+- To enable GHL push: add the matching stages to the GHL pipeline UI, then move them from `INTERNAL_PIPELINE_STAGES` to `SIDELINE_PIPELINE_STAGES` (same commit)
+
+### Production stages (operational, per-PO)
+Auto-seeded on raise-PO; branches by `orders.poKind`:
+
+| Path | Stages |
+|---|---|
+| **Bulk / single** | order_received → design_review → design_confirmed → in_production → printing → quality_check → packing → shipped → delivered |
+| **Sample** | order_received → design_review → design_confirmed → sample_produced → sample_dispatched → sample_received_by_client → sample_approved_by_client |
+
+When admin advances a sample PO past `sample_approved_by_client`, the system auto-fires `ensureBulkPoFromSample` to build the bulk PO from the sample order (idempotent — won't double-create).
+
+### Source of truth (which field is the answer?)
+- `orders.pipelineStage` — pipeline stage (above). What you see on the orders list. GHL is canonical for the non-internal subset.
+- `orders.productionStage` — current in-progress operational stage. Mirrored from `production_stages` for fast lookup.
+- `production_stages` (table) — full history of stage transitions per order with timestamps, notes, completed-by user.
+- `orders.designStatus` — separate from stages; tracks design-review state (not_started / pending_review / approved / needs_revision).
+- `orders.poKind` — sample / bulk / single. Determines which production_stages path is seeded.

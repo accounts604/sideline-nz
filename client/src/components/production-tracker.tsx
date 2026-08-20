@@ -24,6 +24,7 @@ interface ProductionStage {
  * 8. Shipped
  */
 const STAGE_CONFIG: Record<string, { label: string; icon: any; order: number }> = {
+  // Bulk path
   order_received: { label: "Order Received", icon: Package, order: 1 },
   design_review: { label: "Design Review", icon: Paintbrush, order: 2 },
   design_confirmed: { label: "Design Confirmed", icon: FileCheck, order: 3 },
@@ -32,7 +33,12 @@ const STAGE_CONFIG: Record<string, { label: string; icon: any; order: number }> 
   quality_check: { label: "Quality Check", icon: Shield, order: 6 },
   packing: { label: "Packing", icon: Box, order: 7 },
   shipped: { label: "Shipped", icon: Truck, order: 8 },
-  delivered: { label: "Delivered", icon: Home, order: 8 },
+  delivered: { label: "Delivered", icon: Home, order: 9 },
+  // Sample path
+  sample_produced: { label: "Sample Produced", icon: Package, order: 4 },
+  sample_dispatched: { label: "Sample Dispatched", icon: Truck, order: 5 },
+  sample_received_by_client: { label: "Sample Received", icon: Home, order: 6 },
+  sample_approved_by_client: { label: "Sample Approved", icon: FileCheck, order: 7 },
 };
 
 function StageIcon({ stage, status }: { stage: string; status: string }) {
