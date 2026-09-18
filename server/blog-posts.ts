@@ -23,20 +23,32 @@ const posts: BlogPost[] = [
     slug: "nations-rugby-pacific-settlement-2026-team-kit",
     title: "Nations Rugby — Pacific Settlement team kit",
     summary:
-      "Custom sublimated teamwear for Nations Rugby and Pacific Settlement Support Service, built and delivered through Sideline NZ.",
+      "Custom sublimated rugby team kit for Nations Rugby and Pacific Settlement Support Service — dri-fit training shirts, hoodies and coach windbreakers, built and delivered by Sideline NZ.",
     publishedAt: "2026-09-18",
     featuredImage: "/our-work/nations/00-nations-hero-collage.jpg",
-    featuredImageAlt: "Nations Rugby Pacific Settlement kit — training shirt with crest and sleeve detail collage",
-    tags: ["rugby union", "custom teamwear", "Nations Rugby", "Pacific Settlement"],
-    body: `<p>Custom sublimated teamwear for Nations Rugby and Pacific Settlement Support Service, built and delivered through Sideline NZ.</p>
+    featuredImageAlt:
+      "Custom Nations Rugby Pacific Settlement team kit collage — sublimated training shirt with crest and sleeve detail",
+    tags: [
+      "rugby union",
+      "custom rugby kit",
+      "sublimated teamwear",
+      "Nations Rugby",
+      "Pacific Settlement",
+      "New Zealand",
+    ],
+    body: `<p class="lede">Custom sublimated teamwear for Nations Rugby and Pacific Settlement Support Service, built and delivered through Sideline NZ.</p>
+<h2>The Pacific Settlement kit</h2>
 <p>Nations Rugby’s Pacific Settlement kit is delivered. The order covered dri-fit training shirts, players hoodies, and coach/manager windbreakers — full sublimation, with Nations crest and Pacific Settlement Support Service marks on the kit.</p>
-<figure class="single"><img src="/our-work/nations/00-nations-hero-collage.jpg" alt="Nations Rugby Pacific Settlement kit collage — shirt, crest, and sleeve" loading="lazy"><figcaption>Nations Rugby Pacific Settlement kit</figcaption></figure>
-<figure class="single"><img src="/our-work/nations/05-shirt-only.jpeg" alt="Nations Rugby training shirt — royal blue to red, full sublimation" loading="lazy"><figcaption>Nations Rugby training shirt — royal blue to red, full sublimation</figcaption></figure>
-<figure class="single"><img src="/our-work/nations/04-settlement-sleeve.jpeg" alt="Pacific Settlement Support Service sleeve mark" loading="lazy"><figcaption>Pacific Settlement Support Service sleeve mark</figcaption></figure>
-<figure class="single"><img src="/our-work/nations/06-pacific-series-sleeve.jpeg" alt="Nations crest — In God We Trust" loading="lazy"><figcaption>Nations crest — In God We Trust</figcaption></figure>
-<figure class="single"><img src="/our-work/nations/07-windbreaker-coach-UPPER.jpeg" alt="Coach windbreaker (finished)" loading="lazy"><figcaption>Coach windbreaker (finished)</figcaption></figure>
+<h2>Kit details</h2>
+<div class="gallery">
+<figure><img src="/our-work/nations/05-shirt-only.jpeg" alt="Nations Rugby custom sublimated training shirt in royal blue to red" loading="lazy" width="1200" height="1500"><figcaption>Nations Rugby training shirt — royal blue to red, full sublimation</figcaption></figure>
+<figure><img src="/our-work/nations/06-pacific-series-sleeve.jpeg" alt="Nations Rugby crest on Pacific Settlement team kit — In God We Trust" loading="lazy" width="1200" height="1500"><figcaption>Nations crest — In God We Trust</figcaption></figure>
+<figure><img src="/our-work/nations/04-settlement-sleeve.jpeg" alt="Pacific Settlement Support Service sleeve mark on custom rugby kit" loading="lazy" width="1200" height="1500"><figcaption>Pacific Settlement Support Service sleeve mark</figcaption></figure>
+<figure><img src="/our-work/nations/07-windbreaker-coach-UPPER.jpeg" alt="Finished Nations Rugby coach windbreaker — custom sublimated teamwear" loading="lazy" width="1200" height="1500"><figcaption>Coach windbreaker (finished)</figcaption></figure>
+</div>
+<h2>Work with Sideline NZ</h2>
 <p><a href="https://www.pacificsettlement.nz">Learn more about Pacific Settlement</a></p>
-<p><a href="https://teamstore.sidelinenz.com/collections/2026-nations-rugby-supporters-range">See the Nations supporters range</a></p>`,
+<p>Browse related work in <a href="/our-work">Our Work</a>, including the <a href="/our-work/vaimoso-tama-ole-mau-2026-team-kit">Vaimoso Tama ole Mau 2026 team kit</a>.</p>`,
   },
   {
     slug: "vaimoso-tama-ole-mau-2026-team-kit",
