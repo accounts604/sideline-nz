@@ -20,6 +20,24 @@ const teamstoreify = (html: string) =>
 
 const posts: BlogPost[] = [
   {
+    slug: "vaimoso-tama-ole-mau-2026-team-kit",
+    title: "Vaimoso Tama ole Mau — 2026 team kit",
+    summary:
+      "Custom rugby kit for Vaimoso, built and delivered through Sideline NZ. Playing jerseys, shorts, socks, and dri-fit tees — full sublimation teamwear.",
+    publishedAt: "2026-09-18",
+    featuredImage: "/our-work/vaimoso/01-team-nine-hero.jpg",
+    featuredImageAlt: "Vaimoso Tama ole Mau 2026 team in finished match-day kit",
+    tags: ["rugby union", "custom teamwear", "Vaimoso", "delivered kit"],
+    body: `<p>Custom rugby kit for Vaimoso, built and delivered through Sideline NZ.</p>
+<p>Vaimoso’s 2026 Tama ole Mau kit is delivered. The order covered playing jerseys, shorts, socks, and dri-fit tees — full sublimation teamwear, with numbered jerseys for the playing group.</p>
+<p>Match-day photography — finished garments.</p>
+<figure class="single"><img src="/our-work/vaimoso/01-team-nine-hero.jpg" alt="Vaimoso Tama ole Mau — 2026 rugby jersey" loading="lazy"><figcaption>Vaimoso Tama ole Mau — 2026 rugby jersey</figcaption></figure>
+<figure class="single"><img src="/our-work/vaimoso/02-duo-thumbs.jpg" alt="Matching shorts and socks" loading="lazy"><figcaption>Matching shorts and socks</figcaption></figure>
+<figure class="single"><img src="/our-work/vaimoso/03-squad-wide.jpg" alt="Delivered for the 2026 season" loading="lazy"><figcaption>Delivered for the 2026 season</figcaption></figure>
+<figure class="single"><img src="/our-work/vaimoso/04-squad-fists.jpg" alt="Club crest on the kit" loading="lazy"><figcaption>Club crest on the kit</figcaption></figure>
+<p><a href="https://teamstore.sidelinenz.com/collections/2026-vaimoso-tama-ole-mau-team-kit">See the kit on the teamstore</a></p>`,
+  },
+  {
     slug: "onewhero-rugby-2026-supporters-range-mockup-vs-real",
     title: "From Mockup to Match Day: Onewhero Rugby's 2026 Supporters Range",
     summary:
