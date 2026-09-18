@@ -56,17 +56,21 @@ ${opts.jsonLd ? `<script type="application/ld+json">${JSON.stringify(opts.jsonLd
   .nav nav a{font-size:11px;letter-spacing:.14em;text-transform:uppercase;text-decoration:none;color:rgba(255,255,255,.5)}
   .nav nav a:hover{color:#fff}
   .nav .cta{background:#fff;color:#000;padding:8px 14px;border-radius:4px;font-weight:600}
-  main{max-width:820px;margin:0 auto;padding:40px 20px 80px}
+  main{max-width:920px;margin:0 auto;padding:40px 20px 80px}
   h1{font-family:"Bebas Neue",sans-serif;font-size:clamp(34px,6vw,54px);line-height:1.05;letter-spacing:.02em;margin:8px 0 10px}
   h2{font-family:"Bebas Neue",sans-serif;font-size:30px;letter-spacing:.03em;margin:44px 0 10px}
   h3{font-size:19px;margin:32px 0 8px}
   .meta{color:rgba(255,255,255,.4);font-size:13px;letter-spacing:.1em;text-transform:uppercase}
+  .lede{font-size:1.12rem;color:rgba(255,255,255,.88);margin:0 0 8px}
   article p{color:rgba(255,255,255,.78)}
   article a{color:#fff;text-underline-offset:3px}
-  .hero{width:100%;border-radius:10px;margin:22px 0 8px}
+  .hero{width:100%;border-radius:10px;margin:22px 0 8px;aspect-ratio:16/10;object-fit:cover;background:#111}
   .compare{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}
   .compare figure{flex:1;min-width:260px;margin:0}
-  figure.single{margin:14px 0;max-width:540px}
+  .gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:18px 0 8px}
+  @media (max-width:700px){.gallery{grid-template-columns:1fr}}
+  .gallery figure{margin:0}
+  figure.single{margin:14px 0}
   article img{width:100%;border-radius:8px;background:#111}
   figcaption{font-size:13px;color:rgba(255,255,255,.45);margin-top:6px}
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px;margin-top:28px}
@@ -128,18 +132,21 @@ router.get("/our-work/:slug", (req, res, next) => {
   const post = getPost(req.params.slug);
   if (!post) return next();
   const canonical = `${SITE}/our-work/${post.slug}`;
+  const ogImage = post.featuredImage.startsWith("http")
+    ? post.featuredImage
+    : `${SITE}${post.featuredImage}`;
   const html = page({
-    title: `${post.title} | Sideline NZ`,
+    title: `${post.title} | Custom Rugby Kit NZ | Sideline NZ`,
     description: post.summary,
     canonical,
     ogType: "article",
-    ogImage: post.featuredImage,
+    ogImage,
     jsonLd: {
       "@context": "https://schema.org",
       "@type": "BlogPosting",
       headline: post.title,
       description: post.summary,
-      image: post.featuredImage,
+      image: ogImage,
       datePublished: post.publishedAt,
       keywords: post.tags.join(", "),
       mainEntityOfPage: canonical,
