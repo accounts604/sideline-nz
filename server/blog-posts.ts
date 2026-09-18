@@ -25,11 +25,16 @@ const posts: BlogPost[] = [
     summary:
       "Custom sublimated teamwear for Nations Rugby and Pacific Settlement Support Service, built and delivered through Sideline NZ.",
     publishedAt: "2026-09-18",
-    featuredImage: "/our-work/nations/05-shirt-only.jpeg",
-    featuredImageAlt: "Nations Rugby Pacific Settlement dri-fit training shirt, royal blue to red full sublimation",
+    featuredImage: "/our-work/nations/00-dynasty-hero-collage.jpg",
+    featuredImageAlt: "Nations Rugby AI mockups — Dynasty-style collage of maroon and white Pacific Settlement kit concepts",
     tags: ["rugby union", "custom teamwear", "Nations Rugby", "Pacific Settlement"],
     body: `<p>Custom sublimated teamwear for Nations Rugby and Pacific Settlement Support Service, built and delivered through Sideline NZ.</p>
 <p>Nations Rugby’s Pacific Settlement kit is delivered. The order covered dri-fit training shirts, players hoodies, and coach/manager windbreakers — full sublimation, with Nations crest and Pacific Settlement Support Service marks on the kit.</p>
+<p>Design concepts — AI mockups (Dynasty-style layout).</p>
+<figure class="single"><img src="/our-work/nations/00-dynasty-hero-collage.jpg" alt="Nations Rugby mockups — maroon hero with white kit and chest detail" loading="lazy"><figcaption>Design concept collage — maroon and white Nations kits</figcaption></figure>
+<figure class="single"><img src="/our-work/nations/01-maroon-nations-mockup.jpg" alt="Maroon Nations Rugby jersey mockup" loading="lazy"><figcaption>Maroon Nations jersey — concept mockup</figcaption></figure>
+<figure class="single"><img src="/our-work/nations/02-white-nations-mockup.jpg" alt="White Nations Rugby jersey mockup" loading="lazy"><figcaption>White Nations jersey — concept mockup</figcaption></figure>
+<p>Finished garments.</p>
 <figure class="single"><img src="/our-work/nations/05-shirt-only.jpeg" alt="Nations Rugby training shirt — royal blue to red, full sublimation" loading="lazy"><figcaption>Nations Rugby training shirt — royal blue to red, full sublimation</figcaption></figure>
 <figure class="single"><img src="/our-work/nations/04-settlement-sleeve.jpeg" alt="Pacific Settlement Support Service sleeve mark" loading="lazy"><figcaption>Pacific Settlement Support Service sleeve mark</figcaption></figure>
 <figure class="single"><img src="/our-work/nations/06-pacific-series-sleeve.jpeg" alt="Nations crest — In God We Trust" loading="lazy"><figcaption>Nations crest — In God We Trust</figcaption></figure>
