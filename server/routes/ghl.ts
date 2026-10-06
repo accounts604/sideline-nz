@@ -50,7 +50,34 @@ const router = Router();
 // ====== GHL API Integration ======
 const GHL_API_BASE = "https://services.leadconnectorhq.com";
 
+// Every Sideline lead also goes to kig-leads (ClickUp pipeline + admin@ email).
+// Awaited with an 8s cap (Vercel can freeze un-awaited work) and never throws, so it
+// cannot break a customer's form.
+async function forwardToKigLeads(contactData: any, tags: string[]): Promise<void> {
+  const url = process.env.KIG_LEADS_URL, key = process.env.KIG_LEADS_KEY;
+  if (!url || !key) return;
+  const { name, contact_name, organization, email, phone, message, notes, source, ...rest } = contactData || {};
+  const body = {
+    brand: "sideline",
+    name: name || contact_name || "",
+    organization: organization || "",
+    email: email || "",
+    phone: phone || "",
+    message: message || notes || "",
+    source: `sidelinenz.com${tags.length ? ` (${tags.join(", ")})` : ""}${source ? ` / ${source}` : ""}`,
+    fields: rest,
+  };
+  await fetch(`${url}/lead`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-KIG-Key": key },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000),
+  }).then((r) => { if (!r.ok) console.error("[kig-leads] forward failed", r.status); })
+    .catch((e) => console.error("[kig-leads] forward error:", e?.message));
+}
+
 export async function createGhlContact(contactData: any, tags: string[] = []) {
+  await forwardToKigLeads(contactData, tags);
   const apiKey = process.env.SIDELINE_GHL_API_KEY;
   const locationId = process.env.SIDELINE_GHL_LOCATION_ID;
 
